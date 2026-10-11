@@ -34,3 +34,35 @@ Build 1272 contains the same original fixture and is tracked independently; its
 native quality work is not cancelled or represented as release acceptance.
 
 See [evidence](evidence/audio-build-repair-2026-10-11/).
+
+## Repair attempt 2: semantic fake-clock boundaries
+
+[Build 1273](https://github.com/battlesbudz/Jarvis-OS-V2/actions/runs/38116461319),
+source `c82b26e34032ec3ad9d3baa467e85f2d45377fa8`, passed Android test compilation
+and ran 2,240 release JVM tests. Exactly one failed: the existing native timing
+worker fixture expected checked-close entry at 110, but observed 150. The raw
+[JUnit XML](evidence/audio-build-repair-2026-10-11/clock-fixture/build-1273-native-timing.xml)
+is retained from the SHA-256-verified same-run unit artifact.
+
+The fixture advanced its fake clock every time diagnostics read it. New append
+start/end and seal start/end observations introduced four extra reads. The narrow
+test-only correction advances time at fake seal return and successful checked-close
+return instead; observing time is now side-effect-free. Exact 110/120 timestamps,
+producer identity 99, metrics validity, cancellation suppression and mismatched
+receipt rejection remain unchanged. No production code or acceptance threshold
+changes in this repair.
+
+Independent reproduction against the actual reviewed SDK failed only that case
+in the old 144-test suite, then passed all 144 after correction. This extends the
+earlier 133-test selection with all three native timing worker tests, five retained
+encoder lifecycle tests and three queue tests. The nearby 38-test worker/timing
+selection also passed ten consecutive runs. A restricted public-core API compile
+and host execution passed 144 tests; it remains a symbol-visibility proxy, not
+an Android SDK/device pass. Evidence and immutable-source/hash identity are in
+[the clock repair receipt](evidence/audio-build-repair-2026-10-11/clock-fixture/repair-receipt.json).
+
+Builds 1271 and 1272 ultimately passed their independent full-E2B native quality
+gates but failed the original test-compilation fixture, so neither produced an
+accepted APK. Build 1273's native quality work remains independently tracked.
+The final repaired revision still requires the complete hosted release gate,
+including all Android profiles; host checks do not qualify a release candidate.

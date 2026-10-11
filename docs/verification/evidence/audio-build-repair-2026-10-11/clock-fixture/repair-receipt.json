@@ -1,0 +1,32 @@
+{
+  "classification": "test_harness_clock",
+  "repair_attempt": 2,
+  "baseline": "c82b26e34032ec3ad9d3baa467e85f2d45377fa8",
+  "failed_run": 38116461319,
+  "failed_job": 114405531084,
+  "jvm_artifact_id": 11694467261,
+  "jvm_artifact_sha256": "756abae7c8be9dfc1f08ab03d07999c758ade216d18aa1c2f6aeea09ac973bfd",
+  "fixture_sha256": "761ef1abcce8e48427aff5378996c0f472db95231a5514c940d91a40ddec336c",
+  "production_changes": false,
+  "expected_checked_close_timestamps_unchanged": [
+    110,
+    120
+  ],
+  "old_suite": {
+    "tests": 144,
+    "failed": 1,
+    "expected": 110,
+    "actual": 150
+  },
+  "repaired_host_tests": 144,
+  "restricted_api_host_tests": 144,
+  "repeated_nearby_tests_per_run": 38,
+  "repeated_runs": 10,
+  "restricted_api_is_android_gradle": false,
+  "sdk_classes_sha256": "dbb65a34071c5b16c0abbf20c69d83140b3d4ddf6f19d96ef91a3d503ebdf98e",
+  "not_covered": [
+    "Final-revision full Android Gradle release test suite",
+    "Signed APK/package and sandbox gates",
+    "Physical device inference and latency"
+  ]
+}

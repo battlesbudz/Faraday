@@ -16,21 +16,26 @@ import org.junit.Test
 class NativeAudioTimingWorkerTest {
     private class Encoder(private val closeEntered: CountDownLatch? = null,
         private val closeRelease: CountDownLatch? = null,
-        private val wrongTimingCount: Boolean = false) : RetainedPcmEncoderWorker.Encoder<String> {
+        private val wrongTimingCount: Boolean = false,
+        private val phaseClock: AtomicLong? = null) : RetainedPcmEncoderWorker.Encoder<String> {
         override fun append(pcm: FloatArray) = Unit
         override fun requestCancel() = Unit
         override fun closeOnWorker(timeoutMs: Long): Boolean {
             closeEntered?.countDown()
-            return closeRelease?.await(2, TimeUnit.SECONDS) ?: true
+            val closed = closeRelease?.await(2, TimeUnit.SECONDS) ?: true
+            if (closed) phaseClock?.set(120)
+            return closed
         }
         override fun seal() = RetainedPcmEncoderWorker.Sealed(1, "sealed", NativeAudioCaptureTiming(
             NativeAudioTimingReceipt(NativeAudioTimingPhase.SEALED, 99, if (wrongTimingCount) 2 else 1,
-                1, 1, true, false, false, null, null, null, null, null), 1, 2))
+                1, 1, true, false, false, null, null, null, null, null), 1, 2)).also { phaseClock?.set(110) }
     }
 
     @Test fun timingIsPublishedOnlyWithSuccessfulCheckedCloseStamps() = runBlocking {
         val clock = AtomicLong(100)
-        val worker = RetainedPcmEncoderWorker({ Encoder() }, { true }, nowNs = { clock.addAndGet(10) })
+        // Advance at semantic native boundaries, not on observation. Additional append/seal
+        // diagnostic reads must not change the expected checked-close interval.
+        val worker = RetainedPcmEncoderWorker({ Encoder(phaseClock = clock) }, { true }, nowNs = clock::get)
         try {
             worker.onPcm(byteArrayOf(1, 0))
             val result = withTimeout(3000) { worker.sealAfterCaptureJoined(byteArrayOf(1, 0)) }
