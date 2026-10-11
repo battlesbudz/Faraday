@@ -4,7 +4,7 @@ import re
 import struct
 import tempfile
 import unittest
-from prepare_whisper_qnn import FILES, HOST, DSP, check_elf, prepare
+from prepare_whisper_qnn import FILES, HOST, DSP, ASSET_SUFFIX, asset_name, check_elf, prepare
 from sherpa_jni_profile import QNN_SYMBOLS
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -33,6 +33,11 @@ class WhisperQnnPackageTest(unittest.TestCase):
         self.assertNotIn('libonnxruntime.so', FILES); self.assertNotIn('libQnnHtpPrepare.so', FILES)
         self.assertIn('part.setReadOnly()', source); self.assertIn('GZIPInputStream(context.assets.open(', source)
         self.assertIn('supportedSoc(Build.SOC_MODEL)', source)
+        self.assertIn(f'private const val ASSET_SUFFIX = "{ASSET_SUFFIX}"', source)
+        self.assertIn('${spec.name}$ASSET_SUFFIX', source)
+        for name in FILES:
+            self.assertFalse(asset_name(name).endswith('.gz'))
+            self.assertEqual(asset_name(name), name + '.gz.bin')
     def test_exports_and_native_sources_are_build_inputs(self):
         import json
         self.assertTrue(set(QNN_SYMBOLS) <= set(json.loads((ROOT/'scripts/sherpa_required_symbols.json').read_text())))

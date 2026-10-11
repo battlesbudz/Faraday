@@ -8,6 +8,8 @@ import java.util.zip.GZIPInputStream
 
 /** App-packaged vendor code only; no executable download or shared ORT replacement. */
 internal object WhisperQnnRuntime {
+    // Keep the final suffix opaque to Android AssetMerger's automatic .gz inflation.
+    private const val ASSET_SUFFIX = ".gz.bin"
     const val DIRECTORY = "whisper-qnn-runtime-2.50-v75"
     private data class Library(val name: String, val bytes: Long, val sha: String)
     private val files = listOf(
@@ -29,7 +31,7 @@ internal object WhisperQnnRuntime {
             if (!valid(file, spec)) {
                 val part = File(directory, spec.name + ".part")
                 try {
-                    GZIPInputStream(context.assets.open("whisper-qnn-runtime/${spec.name}.gz")).use { input ->
+                    GZIPInputStream(context.assets.open("whisper-qnn-runtime/${spec.name}$ASSET_SUFFIX")).use { input ->
                         part.outputStream().use { output ->
                             val buffer = ByteArray(65536); var count = 0L
                             while (true) {

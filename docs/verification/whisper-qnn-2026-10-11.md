@@ -25,7 +25,8 @@ and [early Gemma preparation/prefill](early-gemma-session-2026-10-11.md).
 The separately registered official QNN EP 2.6.0 uses the existing ORT C API
 1.27.1. No second ORT AAR, renamed runtime, `pickFirst`, or shared-runtime
 replacement is introduced. Only the five pinned runtime objects needed for
-precompiled v75 contexts are packaged as deterministic gzip assets; no graph
+precompiled v75 contexts are packaged as deterministic gzip assets with opaque `.gz.bin` filenames
+(to prevent Android asset-merge inflation); no graph
 compiler or other SoC objects are shipped. Hash and byte-count checks apply to
 both source AARs, each extracted ELF, generated assets, on-device extraction and
 model files. AArch64 ELF load segments must support 16 KB pages; the Hexagon

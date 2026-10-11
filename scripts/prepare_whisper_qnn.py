@@ -17,6 +17,14 @@ PROVIDER_SHA256 = '169add91932e27196e0ab704f53fe8cd517af3ecee0d4a73fbf14513ab455
 RUNTIME_SHA256 = 'b507656e4031d8aa6a7ab0fecf725b941096737ad7440ad7ea288f7c9cc9d743'
 HOST = ('libonnxruntime_providers_qnn.so', 'libQnnSystem.so', 'libQnnHtp.so', 'libQnnHtpV75Stub.so')
 DSP = 'libQnnHtpV75Skel.so'
+# Android AssetMerger transparently inflates a final .gz suffix and strips it.
+# An opaque final suffix preserves the pinned gzip bytes through APK packaging.
+ASSET_SUFFIX = '.gz.bin'
+
+def asset_name(library):
+    return library + ASSET_SUFFIX
+
+
 FILES = {
     'libonnxruntime_providers_qnn.so': (4281832, '21556616b76a82a9c5d3226c2b35f275263447235f356a13b5f208e5fa469fae'),
     'libQnnSystem.so': (4068296, 'ca9e5429c77380e1c3f5a401f00288915ec2f6cc478979bafd57c665391d432f'),
@@ -53,8 +61,8 @@ def prepare(provider, runtime, output):
             data = archive.read('jni/arm64-v8a/' + name)
             if (len(data), hashlib.sha256(data).hexdigest()) != FILES[name]: raise ValueError('Pinned QNN library checksum mismatch')
             check_elf(data, 164 if name == DSP else 183)
-            (target / (name + '.gz')).write_bytes(gzip.compress(data, compresslevel=9, mtime=0))
-            entries.append(dict(name=name, asset=name + '.gz', bytes=len(data), sha256=hashlib.sha256(data).hexdigest(), architecture='hexagon-v75' if name == DSP else 'aarch64'))
+            (target / asset_name(name)).write_bytes(gzip.compress(data, compresslevel=9, mtime=0))
+            entries.append(dict(name=name, asset=asset_name(name), bytes=len(data), sha256=hashlib.sha256(data).hexdigest(), architecture='hexagon-v75' if name == DSP else 'aarch64'))
         licenses = assets / 'licenses/whisper-qnn'; licenses.mkdir(parents=True)
         for name in ('LICENSE.pdf', 'NOTICE.txt'): (licenses / name).write_bytes(r.read(name))
     manifest = dict(schema=1, qnn_plugin='2.6.0', qairt='2.50.0', ort='1.27.1', htp='v75', files=entries)

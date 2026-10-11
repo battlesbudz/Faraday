@@ -66,3 +66,44 @@ gates but failed the original test-compilation fixture, so neither produced an
 accepted APK. Build 1273's native quality work remains independently tracked.
 The final repaired revision still requires the complete hosted release gate,
 including all Android profiles; host checks do not qualify a release candidate.
+
+## Repair attempt 3: preserve compressed runtime assets through Android merge
+
+[Build 1276](https://github.com/battlesbudz/Jarvis-OS-V2/actions/runs/38118615319),
+source `fe9feeccdd15583864c290cd029da83e21cb7ed1`, passed all 2,240 release JVM
+tests without failures, errors or skips, including both repaired fixtures. It
+assembled a signed APK, then correctly failed the QNN asset inventory gate.
+The APK contained expanded `.so` files instead of the required `.so.gz` gzip
+streams, so the app's verified gzip loader would not find its expected files.
+This is a production packaging defect, not an acceptance-test defect. The
+rejected APK is not a release candidate.
+
+Pinned Android Gradle Plugin sdk-common 31.7.3 `AssetItem.create` strips a final
+`.gz` suffix, and `MergedAssetWriter.AssetWorkAction.run` transparently inflates
+those files during asset merge. The official
+[source archive](https://dl.google.com/dl/android/maven2/com/android/tools/sdk-common/31.7.3/sdk-common-31.7.3-sources.jar)
+contains both classes. Direct AAPT2 packaging alone does not reproduce this
+transformation; it is the Gradle asset-merge stage.
+
+The fix uses an opaque final suffix, `.so.gz.bin`, consistently in preparation,
+manifest, runtime loader and APK inspection. Contents remain deterministic gzip.
+All expanded byte counts, SHA-256, ELF architecture/16-KB, native dependency and
+on-device integrity checks remain required. The inventory gate now additionally
+rejects unexpected and duplicate runtime entries, including raw `.so` and legacy
+`.so.gz` names. No runtime library pins, native ABI, weights, CPU fallback or
+provider-assignment policy changes.
+
+The actual pinned vendor AARs produce five checked gzip streams totalling
+9,306,959 bytes. A runnable proof executes the actual pinned AGP asset-merge
+classes and official AAPT2: all five real gzip streams retain names and complete
+bytes through both stages, while the old suffix independently reproduces the
+expansion. The [weight-free reproducer](evidence/audio-build-repair-2026-10-11/opaque-assets/android-reproduction/)
+includes source/tool hashes and a receipt, with no vendor binaries or weights.
+The changed Kotlin runtime adapter compiles against Android
+API classes. All 124 helper and 101 verification tests pass with the strengthened
+packaging regression cases. The final revision still needs the full hosted
+release/package/native/sandbox gate; these checks do not establish phone execution
+or final normal/compact APK size.
+
+[Failure, JVM and packaging evidence](evidence/audio-build-repair-2026-10-11/opaque-assets/)
+retains the rejected APK inventory separately from future accepted size results.

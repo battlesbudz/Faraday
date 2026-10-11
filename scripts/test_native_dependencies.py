@@ -3,12 +3,33 @@ import io
 import unittest
 import zipfile
 
-from check_asr_apk import check_dependencies, check_retired_moonshine, RETIRED_MOONSHINE_LIBRARIES
+from check_asr_apk import check_dependencies, check_retired_moonshine, RETIRED_MOONSHINE_LIBRARIES, check_qnn_asset_names
 
+
+from prepare_whisper_qnn import FILES as QNN_FILES, asset_name
 
 def needed(*libraries):
     return '\n'.join(f' 0x0000000000000001 (NEEDED) Shared library: [{name}]'
                      for name in libraries)
+
+
+class QnnAssetNamesTests(unittest.TestCase):
+    def names(self):
+        return ["assets/whisper-qnn-runtime/" + asset_name(n) for n in QNN_FILES] + ["assets/whisper-qnn-runtime/manifest.json"]
+
+    def test_exact_opaque_gzip_assets_pass(self):
+        check_qnn_asset_names(self.names())
+
+    def test_android_inflated_raw_libraries_and_legacy_gzip_names_fail(self):
+        for suffix in ("", ".gz"):
+            names = ["assets/whisper-qnn-runtime/" + n + suffix for n in QNN_FILES]
+            with self.assertRaisesRegex(AssertionError, "QNN packaged asset names changed"):
+                check_qnn_asset_names(names + ["assets/whisper-qnn-runtime/manifest.json"])
+
+    def test_missing_duplicate_and_unexpected_entries_fail(self):
+        for names in (self.names()[:-1], self.names() + [self.names()[0]], self.names() + ["assets/whisper-qnn-runtime/extra.bin"]):
+            with self.assertRaisesRegex(AssertionError, "QNN packaged asset names changed"):
+                check_qnn_asset_names(names)
 
 
 class NativeDependencyTests(unittest.TestCase):

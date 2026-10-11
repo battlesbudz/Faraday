@@ -1,0 +1,19 @@
+2026-10-11T07:23:47.9374771Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.12-1/x64
+2026-10-11T07:23:47.9375366Z   JAVA_HOME_21_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.12-1/x64
+2026-10-11T07:23:47.9375868Z   GRADLE_ACTION_ID: gradle/actions/setup-gradle
+2026-10-11T07:23:47.9376247Z   GRADLE_USER_HOME: /home/runner/.gradle
+2026-10-11T07:23:47.9376606Z   GRADLE_BUILD_ACTION_SETUP_COMPLETED: true
+2026-10-11T07:23:47.9376989Z   GRADLE_BUILD_ACTION_CACHE_RESTORED: true
+2026-10-11T07:23:47.9377781Z   DEVELOCITY_INJECTION_INIT_SCRIPT_NAME: gradle-actions.inject-develocity.init.gradle
+2026-10-11T07:23:47.9378360Z   DEVELOCITY_INJECTION_CUSTOM_VALUE: gradle-actions
+2026-10-11T07:23:47.9378751Z   GITHUB_DEPENDENCY_GRAPH_ENABLED: false
+2026-10-11T07:23:47.9379078Z ##[endgroup]
+2026-10-11T07:23:48.2248596Z Traceback (most recent call last):
+2026-10-11T07:23:48.2249663Z   File "/home/runner/work/Jarvis-OS-V2/Jarvis-OS-V2/scripts/check_asr_apk.py", line 104, in <module>
+2026-10-11T07:23:48.2250603Z     check(parser.parse_args().apk)
+2026-10-11T07:23:48.2251505Z   File "/home/runner/work/Jarvis-OS-V2/Jarvis-OS-V2/scripts/check_asr_apk.py", line 79, in check
+2026-10-11T07:23:48.2252609Z     assert {Path(n).name for n in names if n.startswith(qnn_prefix) and n.endswith(('.so', '.so.gz'))} == {n + '.gz' for n in QNN_FILES}
+2026-10-11T07:23:48.2253376Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-10-11T07:23:48.2254112Z AssertionError
+2026-10-11T07:23:48.2390982Z ##[error]Process completed with exit code 1.
+2026-10-11T07:23:48.2473625Z ##[group]Run actions/upload-artifact@v4

@@ -6,7 +6,7 @@ import gzip
 import json
 
 from sherpa_jni_profile import REMOVED_CLASSES
-from prepare_whisper_qnn import FILES as QNN_FILES, DSP as QNN_DSP, check_elf
+from prepare_whisper_qnn import FILES as QNN_FILES, DSP as QNN_DSP, check_elf, asset_name
 import re
 from pathlib import Path
 import subprocess
@@ -45,6 +45,14 @@ def check_retired_moonshine(archive):
             assert b"Lai/moonshine/voice/" not in archive.read(entry), f"Retired Moonshine SDK classes packaged: {entry}"
 
 
+def check_qnn_asset_names(names):
+    prefix = "assets/whisper-qnn-runtime/"
+    actual = [n.removeprefix(prefix) for n in names if n.startswith(prefix) and not n.endswith('/')]
+    expected = {asset_name(n) for n in QNN_FILES} | {"manifest.json"}
+    assert len(actual) == len(expected) and set(actual) == expected, (
+        f"QNN packaged asset names changed: expected {sorted(expected)}, got {sorted(actual)}")
+
+
 def check(apk):
     with zipfile.ZipFile(apk) as archive, tempfile.TemporaryDirectory() as temporary:
         names = archive.namelist()
@@ -76,10 +84,10 @@ def check(apk):
             assert f"Java_com_k2fsa_sherpa_onnx_{retired}_" not in exports, f"Unused JNI wrapper retained: {retired}"
         check_dependencies(metadata)
         qnn_prefix = "assets/whisper-qnn-runtime/"
-        assert {Path(n).name for n in names if n.startswith(qnn_prefix) and n.endswith(('.so', '.so.gz'))} == {n + '.gz' for n in QNN_FILES}
+        check_qnn_asset_names(names)
         for name, (size, digest) in QNN_FILES.items():
-            assert names.count(qnn_prefix + name + ".gz") == 1, f"Missing/duplicate QNN asset {name}"
-            payload = gzip.decompress(archive.read(qnn_prefix + name + ".gz"))
+            assert names.count(qnn_prefix + asset_name(name)) == 1, f"Missing/duplicate QNN asset {name}"
+            payload = gzip.decompress(archive.read(qnn_prefix + asset_name(name)))
             assert len(payload) == size and hashlib.sha256(payload).hexdigest() == digest, f"QNN asset changed: {name}"
             check_elf(payload, 164 if name == QNN_DSP else 183)
             assert prefix + name not in names, f"Optional QNN library linked into startup: {name}"

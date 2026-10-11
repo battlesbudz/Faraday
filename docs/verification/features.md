@@ -16,7 +16,10 @@ latency, real-model execution or the integrated release candidate.
 [Audio build fixture repairs](audio-build-repair-2026-10-11.md) retain the
 Android compile failure and reflection-only correction, then Build 1273's
 read-count-coupled fake-clock failure and semantic-boundary correction. Exact
-assertions remain; release verification must rerun at the repaired revision.
+assertions remain. Build 1276 passed all 2,240 JVM tests, then exposed Android's
+automatic `.gz` asset inflation; opaque `.gz.bin` names fix the production
+packaging contract without weakening integrity checks. Full release verification
+must rerun at the repaired revision.
 
 Optional [Snapdragon Whisper QNN](whisper-qnn-2026-10-11.md) with verified assets,
 strict provider diagnostics and CPU fallback replaces the retired Moonshine option.
