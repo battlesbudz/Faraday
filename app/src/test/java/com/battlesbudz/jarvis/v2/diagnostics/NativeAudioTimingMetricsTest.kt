@@ -5,6 +5,21 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class NativeAudioTimingMetricsTest {
+    @Test fun additiveFinalStepIntervalsRoundTripAndOldReceiptLeavesThemUnknown() {
+        val old = observed().json()
+        listOf("last_step_from_admission", "first_to_last_step_elapsed", "endpoint_to_last_step", "endpoint_to_seal_commit").forEach { name ->
+            old.remove("native_audio_${name}_lower_ms"); old.remove("native_audio_${name}_upper_ms")
+        }
+        assertNull(NativeAudioTimingMetrics.read(old)!!.endpointToSealCommitLowerMs)
+        val value = observed().copy(lastStepFromAdmissionLowerMs = 900.0, lastStepFromAdmissionUpperMs = 900.1,
+            firstToLastStepLowerMs = 699.9, firstToLastStepUpperMs = 700.1,
+            endpointToLastStepLowerMs = -1100.1, endpointToLastStepUpperMs = -1099.9,
+            endpointToSealCommitLowerMs = 20.0, endpointToSealCommitUpperMs = 20.1)
+        assertEquals(value, NativeAudioTimingMetrics.read(value.json()))
+        assertNull(NativeAudioTimingMetrics.read(value.json().put("native_audio_endpoint_to_last_step_upper_ms", JSONObject.NULL)))
+        assertTrue(runCatching { value.copy(clockMappingAvailable = false, alignmentUncertaintyNanos = null) }.isFailure)
+    }
+
     private fun observed() = NativeAudioTimingMetrics(
         retainedPcmSamples = 49_221, retainedPreRollSamples = 19_200,
         completedSteps = 7, validatedRows = 77, clockMappingAvailable = true,

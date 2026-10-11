@@ -76,6 +76,12 @@ and `CheckedConversationLifecycle` serialize fixed-preface preparation before
 encoder/model work while microphone PCM is retained. See the [combined contract](../verification/whisper-qnn-2026-10-11.md)
 and linked component verification notes for measured versus pending coverage.
 
+`NativeInferenceMeasurement` retains per-submission app edges; `PipelineBenchmarkCapture`
+aligns only an unambiguous completed answer to the turn. `PiperFirstPcmTiming`
+latches the first nonempty validated PCM. [Measurement scopes and clocks](../verification/gemma-processing-measurements-2026-10-11.md)
+keep SDK proxy/derived durations, encoder interval bounds and actual playback
+observations distinct.
+
 ## Main flow
 
 ```mermaid

@@ -8,6 +8,68 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class NativeInferenceMeasurementTest {
+    @Test fun fifoCallbackConsumerSubmitReturnAndDrainEdgesKeepDistinctOrigins() {
+        var clock = 100_250_000L
+        val measurement = NativeInferenceMeasurement { clock }
+        clock = 110_250_000L; measurement.submissionStarted(clock)
+        clock = 112_250_000L; measurement.callback(false)
+        clock = 116_250_000L; measurement.callback(true)
+        clock = 120_250_000L; measurement.terminal()
+        clock = 125_250_000L; measurement.submitted(110_250_000L)
+        clock = 126_250_000L; measurement.consumed(false)
+        clock = 130_250_000L; measurement.consumed(true)
+        clock = 132_250_000L; measurement.visibleText()
+        clock = 135_250_000L; measurement.consumerDrained()
+        clock = 140_250_000L
+        val s = measurement.snapshot(4)
+        assertEquals(25L, s.submitReturnMs)
+        assertEquals(26L, s.firstConsumerMs); assertEquals(30L, s.firstConsumerTextMs)
+        assertEquals(14L, s.callbackToConsumerMs); assertEquals(14L, s.rawTextToConsumerMs)
+        assertEquals(true, s.firstCallbackBeforeSubmitReturn)
+        assertEquals(20L, s.nativeTerminalMs); assertEquals(35L, s.consumerDrainedMs)
+        assertEquals(15L, s.terminalToConsumerDrainedMs); assertEquals(5L, s.consumerDrainedToReturnMs)
+        assertEquals(116L, s.eventClocksMs["first_native_raw_text"])
+        assertEquals(130L, s.eventClocksMs["first_consumer_raw_text"])
+    }
+    @Test fun unobservedOrReversedConsumerEdgesAndTerminalRemainUnavailable() {
+        var clock = 10_000_000L
+        val measurement = NativeInferenceMeasurement { clock }
+        clock = 11_000_000L; measurement.consumed(true)
+        clock = 12_000_000L; measurement.callback(true)
+        val s = measurement.snapshot(4)
+        assertNull(s.callbackToConsumerMs); assertNull(s.rawTextToConsumerMs)
+        assertNull(s.nativeTerminalMs); assertNull(s.consumerDrainedMs)
+        assertNull(s.rawDecodeMs); assertNull(s.estimatedRawDecodeTokensPerSecond)
+        assertNull(s.terminalToConsumerDrainedMs); assertNull(s.consumerDrainedToReturnMs)
+        assertNull(s.firstCallbackBeforeSubmitReturn)
+        assertFalse(s.eventClocksMs.containsKey("native_terminal"))
+    }
+    @Test fun callbacksAfterSdkReturnAreNotSynchronousSubmitWork() {
+        var clock = 0L
+        val measurement = NativeInferenceMeasurement { clock }
+        measurement.submissionStarted(clock)
+        clock = 2_000_000L; measurement.submitted(0)
+        clock = 8_000_000L; measurement.callback(true)
+        clock = 10_000_000L; measurement.consumed(true)
+        val s = measurement.snapshot(4)
+        assertEquals(false, s.firstCallbackBeforeSubmitReturn)
+        assertEquals(2L, s.rawTextToConsumerMs)
+    }
+    @Test fun cancelledOrFailedNativeSnapshotCannotBecomeCurrentSubmissionTelemetry() {
+        for (outcome in listOf(PipelineBenchmarkOutcome.CANCELLED, PipelineBenchmarkOutcome.ERROR)) {
+            var record: PipelineBenchmarkSubmission? = null
+            NativeInferenceBenchmark("gemma", PipelineBenchmarkPurpose.ANSWER,
+                PipelineBenchmarkWarmState.WARM, "text", sink = { record = it }).finish(
+                outcome, 4, 12, 1, nativeTokens = NativeTokenTelemetry.checked(4, 2, 0.1, 20.0, 10.0, 0.1))
+            val actual = requireNotNull(record)
+            assertNull(actual.exactInputTokens); assertNull(actual.exactOutputTokens)
+            assertNull(actual.measurements["native_terminal_ms"])
+            assertNull(actual.measurements["sdk_first_prefill_decode_ttft_proxy_ms"])
+            assertNull(actual.measurements["derived_native_last_prefill_executor_ms"])
+            assertNull(actual.measurements["derived_native_last_decode_loop_ms"])
+        }
+    }
+
     @Test fun preparationAndSubmitCallbacksAreSeparateFromLegacyTtft() {
         var clock = 0L
         val measurement = NativeInferenceMeasurement { clock }
@@ -136,7 +198,11 @@ class NativeInferenceMeasurementTest {
         assertEquals(18, measured.exactInputTokens)
         assertEquals(12, measured.exactOutputTokens)
         assertEquals(20, measured.estimatedOutputTokens)
-        assertEquals(200.0, measured.measurements["native_ttft_ms"]!!, 0.0)
+        assertNull(measured.measurements["native_ttft_ms"])
+        assertEquals(200.0, measured.measurements["sdk_first_prefill_decode_ttft_proxy_ms"]!!, 0.0)
+        assertEquals(180.0, measured.measurements["derived_native_last_prefill_executor_ms"]!!, 0.0)
+        assertEquals(300.0, measured.measurements["derived_native_last_decode_loop_ms"]!!, 0.0)
+        assertNull(measured.nativeFirstOutputTokenMs)
         assertEquals(40.0, measured.measurements["native_decode_tokens_per_second"]!!, 0.0)
         assertNull("SDK relative TTFT cannot be subtracted from a callback clock", measured.exactDecodeTokensPerSecond)
         assertTrue(measured.tokenTelemetrySource!!.contains("getBenchmarkInfo"))

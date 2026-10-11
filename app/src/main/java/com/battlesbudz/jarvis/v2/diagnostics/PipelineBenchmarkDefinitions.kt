@@ -5,6 +5,44 @@ import org.json.JSONObject
 /** Exported definitions version independently from the backwards-compatible record schema. */
 object PipelineBenchmarkDefinitions {
     val notes = linkedMapOf(
+        "native_audio_last_step_from_admission_lower_ms" to "Lower clock-alignment bound from native PCM admission to last validated encoder graph-step commit. Includes input/capture gaps; not cumulative encoder compute.",
+        "native_audio_last_step_from_admission_upper_ms" to "Upper clock-alignment bound from native PCM admission to last validated encoder graph-step commit. Includes input/capture gaps; not cumulative encoder compute.",
+        "native_audio_first_to_last_step_elapsed_lower_ms" to "Lower clock-alignment bound from first to last validated encoder graph-step commit. Includes time between calls/capture; not summed or per-step compute.",
+        "native_audio_first_to_last_step_elapsed_upper_ms" to "Upper clock-alignment bound from first to last validated encoder graph-step commit. Includes time between calls/capture; not summed or per-step compute.",
+        "native_audio_endpoint_to_last_step_lower_ms" to "Lower clock-alignment bound from accepted endpoint decision to last validated encoder graph-step commit. Signed: negative means the final step preceded endpoint; not encoder compute.",
+        "native_audio_endpoint_to_last_step_upper_ms" to "Upper clock-alignment bound from accepted endpoint decision to last validated encoder graph-step commit. Signed: negative means the final step preceded endpoint; not encoder compute.",
+        "native_audio_endpoint_to_seal_commit_lower_ms" to "Lower clock-alignment bound from accepted endpoint decision to native seal-commit boundary. Signed elapsed time includes queued/input/finalization work; not isolated seal compute.",
+        "native_audio_endpoint_to_seal_commit_upper_ms" to "Upper clock-alignment bound from accepted endpoint decision to native seal-commit boundary. Signed elapsed time includes queued/input/finalization work; not isolated seal compute.",
+        "submit_return_ms" to "App inference measurement start to SDK send return/throw; a callback may precede return. Not native prefill or queue time.",
+        "first_consumer_callback_ms" to "App inference measurement start to first FIFO native-channel receive, including empty/control callbacks; before policy guard and delivery fence.",
+        "first_consumer_raw_text_ms" to "App inference measurement start to first nonempty native text received by the FIFO consumer, including hidden/control text; before policy guard.",
+        "callback_to_consumer_ms" to "First any native callback to its FIFO consumer receive on the same Java monotonic clock.",
+        "raw_text_to_consumer_ms" to "First nonempty native callback to its corresponding FIFO consumer receive; differs from any-callback queue delay.",
+        "first_callback_before_submit_return" to "1 when first callback occurs before or at SDK send return; 0 when later; unavailable if either edge is missing.",
+        "native_terminal_ms" to "App inference measurement start to observed terminal callback or synchronous submission exception; unavailable when neither is observed.",
+        "consumer_drained_ms" to "App inference measurement start to successful native-channel drain and raw-session text flush, before checked native cleanup.",
+        "terminal_to_consumer_drained_ms" to "Observed terminal edge to successful consumer drain; absent/reversed edges remain unavailable.",
+        "consumer_drained_to_return_ms" to "Successful consumer drain to benchmark snapshot after checked native cleanup and optional telemetry read; not isolated native-drain time.",
+        "first_visible_text_ms" to "Legacy adapter-consumer text edge; Conversation still applies assistant filtering, repetition/policy guard and delivery fence afterwards.",
+        "first_piper_text" to "Turn-stage offset when Piper collects first nonblank answer text after the queued delivery/memory fences; before text batching and synthesis.",
+        "first_piper_pcm" to "Turn-stage offset after answer synthesis first returns nonempty validated PCM; before PCM queue admission and playback. No acoustic onset measurement.",
+        "answer_processing_alignment" to "Answer-native turn stages require exactly one completed ANSWER submission, same Java clock and no omitted submissions. Draft/retry/tool/multiple-answer attribution is unavailable; transcription-only passes remain independent.",
+        "answer_submit_to_first_native_callback_ms" to "Same-clock SDK send entry to first any native callback for the uniquely attributable completed answer.",
+        "answer_submit_to_first_native_raw_text_ms" to "Same-clock SDK send entry to first nonempty native text callback for the uniquely attributable completed answer.",
+        "answer_native_callback_to_consumer_ms" to "First any native callback to its FIFO consumer event for the uniquely attributable completed answer.",
+        "answer_native_raw_text_to_consumer_ms" to "First nonempty native text callback to its FIFO consumer event for the uniquely attributable completed answer.",
+        "answer_consumer_raw_text_to_guard_ms" to "First consumed raw answer text to first repetition/policy guard release; includes filtering and clause accumulation, before queued delivery fence.",
+        "guard_to_piper_first_text_ms" to "First guard release to Piper first nonblank text collection; includes queued delivery, memory-fence admission and coroutine scheduling.",
+        "piper_first_text_to_pcm_ms" to "Piper first text collection to first validated answer PCM; includes batching, waiting for the TTS owner and synthesis.",
+        "piper_first_pcm_to_answer_playback_ms" to "First validated answer PCM to first answer playback-head advancement; queue/buffering/scheduling proxy, not acoustic latency.",
+        "answer_native_raw_text_to_piper_pcm_ms" to "First native raw-text callback to first answer PCM only with unambiguous completed-answer attribution; no SDK-clock subtraction.",
+        "answer_native_raw_text_to_playback_ms" to "First native raw-text callback to first answer playback-head advancement only with unambiguous completed-answer attribution; not acoustic onset.",
+        "native_ttft_ms" to "Legacy SDK value was a first-recorded-prefill plus average first-recorded-decode proxy, not measured current-turn TTFT. New records leave this field unavailable.",
+        "sdk_first_prefill_decode_ttft_proxy_ms" to "SDK first recorded prefill duration plus average token duration of first recorded decode. Fixed system prefill can supply its origin. Not current-turn or measured first-token latency.",
+        "derived_native_last_prefill_executor_ms" to "Derived 1000 * last completed prefill token count / its SDK rate after successful checked idle. Executor.Prefill only; excludes task queue, tokenization, multimodal encoding and input combining.",
+        "derived_native_last_decode_loop_ms" to "Derived 1000 * last completed decode token count / its SDK rate after successful checked idle. Whole native decode loop/setup/callbacks; not post-first-token or GPU-only work.",
+        "native_prefill_tokens_per_second" to "SDK last completed executor-prefill count/duration after successful checked idle; excludes separate earlier system-policy prefill.",
+        "native_decode_tokens_per_second" to "SDK last completed whole-decode count/duration after successful checked idle; includes first token and native setup/callback work.",
         "first_guard_release" to "Stage offset when the first checked voice fragment leaves the repetition/policy guard; precedes queued delivery-fence admission and Piper collection, not acoustic playback.",
         "speech_end_to_first_answer_playback_ms" to "Last detected user speech to first answer playback-head advancement. Excludes filler; acoustic onset unavailable.",
         "native_first_audio_to_speech_lower_ms" to "Lower clock-alignment bound: validated first native PCM admission to first answer playback-head event. Includes remaining capture; historical pre-roll is not backdated. Excludes filler; acoustic onset unmeasured.",
@@ -57,6 +95,9 @@ object PipelineBenchmarkDefinitions {
         metrics.forEach { (name, value) ->
             val status = when { value == null -> "unavailable";
                 name.startsWith("native_first_audio_to_speech_") -> "playback_proxy_clock_bound";
+                name == "sdk_first_prefill_decode_ttft_proxy_ms" || name == "native_ttft_ms" -> "sdk_proxy";
+                name.startsWith("derived_native_") -> "derived_native";
+                name.startsWith("native_audio_") && (name.endsWith("_lower_ms") || name.endsWith("_upper_ms")) -> "observed_clock_bound";
                 name.startsWith("estimated_") -> "estimated";
                 name.startsWith("exact_") || name == "native_first_output_token_ms" -> "native";
                 name.contains("playback") -> "playback_proxy"; else -> "observed" }
@@ -64,7 +105,7 @@ object PipelineBenchmarkDefinitions {
                 "reason" to if (value == null) "not_observed_in_this_attempt_or_not_exposed_by_runtime" else null))
         }
     }
-    fun json() = JSONObject().put("version", 4).put("definitions", JSONObject(notes))
+    fun json() = JSONObject().put("version", 5).put("definitions", JSONObject(notes))
         .put("missingValue", "unavailable_not_observed_or_not_supported; never zero-filled")
         .put("sampling", "resource snapshots only at turn boundaries; no periodic per-token polling")
         .put("privacy", "metrics-only by default; no prompt, transcript, reference text or PCM")

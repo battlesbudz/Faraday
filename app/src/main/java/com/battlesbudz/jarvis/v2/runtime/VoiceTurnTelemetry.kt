@@ -156,7 +156,7 @@ internal class VoiceTurnTelemetry(
             nativeTiming?.observations()?.forEach { (name, value) -> benchmark.metric(name, value) }
             comparison?.mark("answer_audio")
             turnTrace.mark(VoiceTurnTrace.Stage.FIRST_REPLY_AUDIO)
-            benchmark.mark("first_reply_audio")
+            benchmark.markAt("first_reply_audio", playbackAt)
             asrComparisonStore.update(asrTurnId, "final_to_playback_start_ms",
                 (System.nanoTime() - finalReadyAt.get()) / 1_000_000)
             if (speechEndedAt.get() != 0L) {

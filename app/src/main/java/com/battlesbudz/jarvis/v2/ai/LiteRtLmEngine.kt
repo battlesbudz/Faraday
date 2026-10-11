@@ -348,6 +348,7 @@ class LiteRtLmEngine(
         val toolCalls = mutableListOf<ToolCall>()
         var streamEvents = 0
         val firstCallbackAt = java.util.concurrent.atomic.AtomicLong()
+        val firstRawTextReported = java.util.concurrent.atomic.AtomicBoolean(false)
         var nativeSubmitMs: Long? = null
         var benchmarkOutcome = PipelineBenchmarkOutcome.ERROR
         var benchmarkError: Throwable? = null
@@ -371,9 +372,10 @@ class LiteRtLmEngine(
             benchmark.measurement.submissionStarted(nativeSubmitBeganAt)
             try { activeConversation.sendMessageAsync(message, object : MessageCallback {
                 override fun onMessage(message: Message) = nativeCallback {
-                    val callbackAt = System.nanoTime()
-                    benchmark.measurement.callback(message.toString().isNotEmpty())
-                    if (firstCallbackAt.compareAndSet(0L, callbackAt))
+                    val hasText = message.toString().isNotEmpty()
+                    val callbackAt = benchmark.measurement.callback(hasText)
+                    firstCallbackAt.compareAndSet(0L, callbackAt)
+                    if (hasText && firstRawTextReported.compareAndSet(false, true))
                         progressSink(InferenceProgress(firstRawTokenAtMs = callbackAt / 1_000_000))
                     if (responses.trySend(message).isFailure)
                         responses.close(IllegalStateException("native_response_queue_capacity"))
@@ -393,10 +395,11 @@ class LiteRtLmEngine(
                 throw error
             }
             for (response in responses) {
+                val messageText = response.toString()
+                benchmark.measurement.consumed(messageText.isNotEmpty())
                 response.toolCalls.forEach {
                     toolCalls += ToolCall(it.name, JSONObject(it.arguments).toString())
                 }
-                val messageText = response.toString()
                 if (messageText.isNotEmpty()) {
                     benchmark.measurement.visibleText()
                     firstTokenAt = firstTokenAt ?: System.nanoTime()
@@ -405,6 +408,7 @@ class LiteRtLmEngine(
                     onToken(messageText)
                 }
             }
+            benchmark.measurement.consumerDrained()
             completed = true
         } catch (error: Throwable) {
             benchmarkError = error

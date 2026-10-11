@@ -29,7 +29,9 @@ class PiperVoiceOutput internal constructor(
     private val onPlayback: (VoicePlaybackFrame) -> Unit = {},
     private val onMetrics: (TtsSessionMetrics) -> Unit = {},
     private val speakerId: Int = engine.speaker,
-    private val log: (String) -> Unit = {}
+    private val log: (String) -> Unit = {},
+    /** Text-free System.nanoTime / 1e6 boundaries, emitted once per answer speech session. */
+    private val onTiming: (stage: String, monotonicMs: Long) -> Unit = { _, _ -> }
 ) : VoiceOutput {
     private val numThreads = 4
     private val audioTrackFactory = SpeechAudioTrackFactory(log)
@@ -117,6 +119,7 @@ class PiperVoiceOutput internal constructor(
         var firstTextToPcmMs: Long? = null
         var firstTextToPlaybackMs: Long? = null
         var piperOpening = 0
+        val firstPcmTiming = PiperFirstPcmTiming({ at -> onTiming("first_piper_pcm", at) })
         val firstTextAt = AtomicLong()
         val firstAudibleFrame = AtomicLong(-1)
         var inputChars = 0
@@ -146,7 +149,11 @@ class PiperVoiceOutput internal constructor(
         val collectTokens = launch {
             try {
                 chunks.collect { token ->
-                    if (token.isNotBlank()) firstTextAt.compareAndSet(0, System.nanoTime())
+                    if (token.isNotBlank()) {
+                        val at = System.nanoTime()
+                        if (firstTextAt.compareAndSet(0, at))
+                            runCatching { onTiming("first_piper_text", at / 1_000_000) }
+                    }
                     tokens.send(token)
                 }
                 tokens.close()
@@ -186,6 +193,7 @@ class PiperVoiceOutput internal constructor(
                     }
                     val result = synthesizer.synthesize(text)
                     if (stopped) return
+                    firstPcmTiming.observe(result.pcm.size)
                     val phraseIndex = index++
                     if (phraseIndex == 0) {
                         piperOpening = text.length

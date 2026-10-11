@@ -23,6 +23,14 @@ data class NativeAudioTimingMetrics(
     val stepsBeforeEndpointExact: Int? = null,
     val rowsBeforeEndpointExact: Int? = null,
     val checkedCloseDurationMs: Double? = null,
+    val lastStepFromAdmissionLowerMs: Double? = null,
+    val lastStepFromAdmissionUpperMs: Double? = null,
+    val firstToLastStepLowerMs: Double? = null,
+    val firstToLastStepUpperMs: Double? = null,
+    val endpointToLastStepLowerMs: Double? = null,
+    val endpointToLastStepUpperMs: Double? = null,
+    val endpointToSealCommitLowerMs: Double? = null,
+    val endpointToSealCommitUpperMs: Double? = null,
 ) {
     init {
         require(retainedPcmSamples in 1..480_000)
@@ -33,6 +41,10 @@ data class NativeAudioTimingMetrics(
         require(validInterval(firstAudioToSpeechLowerMs, firstAudioToSpeechUpperMs, false))
         require(validInterval(firstStepFromAdmissionLowerMs, firstStepFromAdmissionUpperMs, true))
         require(validInterval(endpointFromAdmissionLowerMs, endpointFromAdmissionUpperMs, true))
+        require(validInterval(lastStepFromAdmissionLowerMs, lastStepFromAdmissionUpperMs, true))
+        require(validInterval(firstToLastStepLowerMs, firstToLastStepUpperMs, true))
+        require(validInterval(endpointToLastStepLowerMs, endpointToLastStepUpperMs, true))
+        require(validInterval(endpointToSealCommitLowerMs, endpointToSealCommitUpperMs, true))
         require(checkedCloseDurationMs == null || checkedCloseDurationMs.isFinite() && checkedCloseDurationMs in 0.0..MAX_DURATION_MS)
         require(stepsBeforeEndpointLowerBound == null || stepsBeforeEndpointLowerBound in 0..completedSteps)
         require(stepsBeforeEndpointExact == null || stepsBeforeEndpointExact in 0..completedSteps)
@@ -40,7 +52,8 @@ data class NativeAudioTimingMetrics(
         require(stepsBeforeEndpointExact == null || stepsBeforeEndpointLowerBound == stepsBeforeEndpointExact)
         require((stepsBeforeEndpointExact == null) == (rowsBeforeEndpointExact == null))
         if (!clockMappingAvailable) require(listOf(firstAudioToSpeechLowerMs, firstStepFromAdmissionLowerMs,
-            endpointFromAdmissionLowerMs, stepsBeforeEndpointLowerBound).all { it == null })
+            endpointFromAdmissionLowerMs, stepsBeforeEndpointLowerBound,
+            lastStepFromAdmissionLowerMs, firstToLastStepLowerMs, endpointToLastStepLowerMs, endpointToSealCommitLowerMs).all { it == null })
     }
 
     fun summary(): String {
@@ -71,6 +84,14 @@ data class NativeAudioTimingMetrics(
         "native_audio_steps_before_endpoint_exact" to stepsBeforeEndpointExact,
         "native_audio_rows_before_endpoint_exact" to rowsBeforeEndpointExact,
         "native_audio_checked_close_ms" to checkedCloseDurationMs,
+        "native_audio_last_step_from_admission_lower_ms" to lastStepFromAdmissionLowerMs,
+        "native_audio_last_step_from_admission_upper_ms" to lastStepFromAdmissionUpperMs,
+        "native_audio_first_to_last_step_elapsed_lower_ms" to firstToLastStepLowerMs,
+        "native_audio_first_to_last_step_elapsed_upper_ms" to firstToLastStepUpperMs,
+        "native_audio_endpoint_to_last_step_lower_ms" to endpointToLastStepLowerMs,
+        "native_audio_endpoint_to_last_step_upper_ms" to endpointToLastStepUpperMs,
+        "native_audio_endpoint_to_seal_commit_lower_ms" to endpointToSealCommitLowerMs,
+        "native_audio_endpoint_to_seal_commit_upper_ms" to endpointToSealCommitUpperMs,
     )
 
     fun json(): JSONObject = JSONObject().put("schema", 1).also { json ->
@@ -114,6 +135,14 @@ data class NativeAudioTimingMetrics(
                 stepsBeforeEndpointExact = integer("native_audio_steps_before_endpoint_exact"),
                 rowsBeforeEndpointExact = integer("native_audio_rows_before_endpoint_exact"),
                 checkedCloseDurationMs = number("native_audio_checked_close_ms")?.toDouble(),
+                lastStepFromAdmissionLowerMs = number("native_audio_last_step_from_admission_lower_ms")?.toDouble(),
+                lastStepFromAdmissionUpperMs = number("native_audio_last_step_from_admission_upper_ms")?.toDouble(),
+                firstToLastStepLowerMs = number("native_audio_first_to_last_step_elapsed_lower_ms")?.toDouble(),
+                firstToLastStepUpperMs = number("native_audio_first_to_last_step_elapsed_upper_ms")?.toDouble(),
+                endpointToLastStepLowerMs = number("native_audio_endpoint_to_last_step_lower_ms")?.toDouble(),
+                endpointToLastStepUpperMs = number("native_audio_endpoint_to_last_step_upper_ms")?.toDouble(),
+                endpointToSealCommitLowerMs = number("native_audio_endpoint_to_seal_commit_lower_ms")?.toDouble(),
+                endpointToSealCommitUpperMs = number("native_audio_endpoint_to_seal_commit_upper_ms")?.toDouble(),
             )
         }.getOrNull() }
     }

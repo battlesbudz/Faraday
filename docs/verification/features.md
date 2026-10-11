@@ -1,5 +1,16 @@
 # Feature and acceptance map
 
+## Gemma processing measurements — 11 October 2026
+
+[Clocked Gemma processing diagnostics](gemma-processing-measurements-2026-10-11.md)
+add send/callback/consumer/drain boundaries, guard-to-Piper/PCM/playback spans and
+final-receipt encoder interval bounds. Existing early fixed-preface and retained
+encoder API metrics remain separate. SDK's misleading first-recorded-turn TTFT
+proxy is explicitly relabelled; native count/rate-derived executor-prefill and
+whole-decode phases require successful checked idle. Cancelled/ambiguous/missing
+observations stay unavailable. Focused JVM/API coverage does not qualify physical
+latency, real-model execution or the integrated release candidate.
+
 ## Combined audio candidate — 11 October 2026
 
 Optional [Snapdragon Whisper QNN](whisper-qnn-2026-10-11.md) with verified assets,

@@ -72,7 +72,7 @@ data class TurnLatency(
             appendLine("First speech text → playback: ${seconds(textToPlaybackMs)}")
             appendLine("Estimated audio supply gaps: ${seconds(supplyGapMs)}")
         }
-        appendLine("TTFT starts at model submission; it excludes model loading and speech synthesis. Token counts/speed marked ~ are estimates. Timings overlap; do not add them together. Voice timing excludes cached filler and uses the playback head as an audio proxy, not an acoustic microphone measurement.")
+        appendLine("TTFT starts at app generation entry, including lazy conversation preparation; it excludes model loading and speech synthesis. Token counts/speed marked ~ are estimates. Timings overlap; do not add them together. Voice timing excludes cached filler and uses the playback head as an audio proxy, not an acoustic microphone measurement.")
         append("Turn $id")
     }
     companion object {

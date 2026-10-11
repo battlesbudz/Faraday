@@ -31,6 +31,10 @@ internal data class NativeAudioCaptureTiming(
         val firstStep = if (receipt.mappingAvailable) receipt.firstStep?.let { admission?.elapsedTo(it) } else null
         val endpoint = endpointDecisionAtNs?.let { NativeNanoInterval.point(it) }
         val endpointFromAdmission = if (receipt.mappingAvailable) endpoint?.let { admission?.elapsedTo(it) } else null
+        val lastStepFromAdmission = if (receipt.mappingAvailable) receipt.lastStep?.let { admission?.elapsedTo(it) } else null
+        val firstToLastStep = if (receipt.mappingAvailable) receipt.lastStep?.let { receipt.firstStep?.elapsedTo(it) } else null
+        val endpointToLastStep = if (receipt.mappingAvailable) receipt.lastStep?.let { endpoint?.elapsedTo(it) } else null
+        val endpointToSealCommit = if (receipt.mappingAvailable) receipt.sealCommit?.let { endpoint?.elapsedTo(it) } else null
         val before = endpoint?.takeIf { receipt.mappingAvailable }?.let(receipt::workBefore)
         val measuredBefore = before?.takeIf { it.kind != NativeWorkBeforeKind.UNAVAILABLE }
         val usablePlayback = firstAudioToSpeech?.takeIf { it.lowerNanos >= 0 }
@@ -51,6 +55,14 @@ internal data class NativeAudioCaptureTiming(
             stepsBeforeEndpointExact = measuredBefore?.exactStepCount,
             rowsBeforeEndpointExact = measuredBefore?.exactRowCount,
             checkedCloseDurationMs = closeNs / 1_000_000.0,
+            lastStepFromAdmissionLowerMs = lastStepFromAdmission?.lowerNanos?.div(1_000_000.0),
+            lastStepFromAdmissionUpperMs = lastStepFromAdmission?.upperNanos?.div(1_000_000.0),
+            firstToLastStepLowerMs = firstToLastStep?.lowerNanos?.div(1_000_000.0),
+            firstToLastStepUpperMs = firstToLastStep?.upperNanos?.div(1_000_000.0),
+            endpointToLastStepLowerMs = endpointToLastStep?.lowerNanos?.div(1_000_000.0),
+            endpointToLastStepUpperMs = endpointToLastStep?.upperNanos?.div(1_000_000.0),
+            endpointToSealCommitLowerMs = endpointToSealCommit?.lowerNanos?.div(1_000_000.0),
+            endpointToSealCommitUpperMs = endpointToSealCommit?.upperNanos?.div(1_000_000.0),
         )
     }.getOrNull()
 }

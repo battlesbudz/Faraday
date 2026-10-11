@@ -118,6 +118,21 @@ class CheckedConversationLifecycleTest {
         }
     }
 
+    @Test fun cancellationDuringPostIdleTelemetryInvalidatesTheCandidateBeforeReuse() {
+        val native = Native()
+        val active = AtomicBoolean(true)
+        val turn = native.owner.beginTurn()
+        assertFalse(native.owner.finishTurn(turn, active::get) { child ->
+            assertEquals("drain:1", native.events.last())
+            native.events += "telemetry:${child.number}"
+            active.set(false)
+        })
+        assertEquals(listOf("initialize", "create:1", "drain:1", "telemetry:1", "close:1"), native.events)
+        assertTrue(native.owner.requiresConfirmedHistoryRebuild)
+        assertTrue(native.owner.safeToRelease)
+        failure { native.owner.beginTurn() }
+    }
+
     @Test fun cancellationDuringDrainDiscardsTheCompletedCandidate() {
         val native = Native()
         val active = AtomicBoolean(true)
