@@ -13,6 +13,10 @@ latency, real-model execution or the integrated release candidate.
 
 ## Combined audio candidate — 11 October 2026
 
+[Build 1271 test-fixture repair](audio-build-repair-2026-10-11.md) retains the
+Android compile failure and reflection-only host-test correction; release
+verification must rerun at the repaired revision.
+
 Optional [Snapdragon Whisper QNN](whisper-qnn-2026-10-11.md) with verified assets,
 strict provider diagnostics and CPU fallback replaces the retired Moonshine option.
 [first meaningful Piper clause](first-piper-clause-2026-10-11.md) delivery retains

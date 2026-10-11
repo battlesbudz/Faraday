@@ -1,0 +1,22 @@
+{
+  "classification": "test_harness_compilation",
+  "repair_attempt": 1,
+  "baseline": "ea3a716092d725dfc90b3dd889e40fb75647e284",
+  "fixture_sha256": "610e76370ec9b01ed7b273491fa5c8c7a23ab1890f36ad491dbd5ed8540c6d42",
+  "all_test_methods_and_assertions_unchanged": true,
+  "remaining_fixture_initialization_unchanged": true,
+  "host_tests": 133,
+  "isolated_mode_tests": 4,
+  "restricted_compile_original": "fails unresolved sun/allocateInstance",
+  "restricted_compile_repaired": "passes",
+  "restricted_runtime_tests": 133,
+  "restriction": "-no-jdk with public java/javax runtime classes and cached android-all; no sun/jdk internal classes",
+  "android_sdk_compile": false,
+  "production_changes": false,
+  "not_covered": [
+    "Full Android Gradle test compile",
+    "Full release APK/package/sandbox",
+    "Device inference/latency"
+  ],
+  "sdk_classes_sha256": "dbb65a34071c5b16c0abbf20c69d83140b3d4ddf6f19d96ef91a3d503ebdf98e"
+}

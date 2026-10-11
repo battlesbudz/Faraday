@@ -1,0 +1,13 @@
+app/build/kotlin/compileReleaseKotlin/
+2026-10-11T05:47:25.1734296Z > Task :app:compileReleaseKotlin
+2026-10-11T05:49:13.1724742Z > Task :app:compileReleaseKotlin
+2026-10-11T05:49:18.8764013Z > Task :app:compileReleaseJavaWithJavac
+2026-10-11T05:49:49.2706411Z > Task :app:compileReleaseUnitTestKotlin
+2026-10-11T05:50:01.5715526Z e: file:///home/runner/work/Jarvis-OS-V2/Jarvis-OS-V2/app/src/test/java/com/battlesbudz/jarvis/v2/conversation/EarlyGemmaInputModeTest.kt:25:25 Unresolved reference 'sun'.
+2026-10-11T05:50:01.5744955Z e: file:///home/runner/work/Jarvis-OS-V2/Jarvis-OS-V2/app/src/test/java/com/battlesbudz/jarvis/v2/conversation/EarlyGemmaInputModeTest.kt:25:48 Cannot infer type for type parameter 'T'. Specify it explicitly.
+2026-10-11T05:50:01.5746787Z > Task :app:compileReleaseUnitTestKotlin FAILED
+2026-10-11T05:50:01.5773255Z e: file:///home/runner/work/Jarvis-OS-V2/Jarvis-OS-V2/app/src/test/java/com/battlesbudz/jarvis/v2/conversation/EarlyGemmaInputModeTest.kt:25:48 Unresolved reference. None of the following candidates is applicable because of a receiver type mismatch:
+2026-10-11T05:50:01.5854665Z e: file:///home/runner/work/Jarvis-OS-V2/Jarvis-OS-V2/app/src/test/java/com/battlesbudz/jarvis/v2/conversation/EarlyGemmaInputModeTest.kt:26:45 Unresolved reference 'sun'.
+2026-10-11T05:50:01.5914756Z e: file:///home/runner/work/Jarvis-OS-V2/Jarvis-OS-V2/app/src/test/java/com/battlesbudz/jarvis/v2/conversation/EarlyGemmaInputModeTest.kt:27:21 Unresolved reference 'allocateInstance'.
+2026-10-11T05:50:35.9694703Z Execution failed for task ':app:compileReleaseUnitTestKotlin'.
+2026-10-11T05:50:35.9705394Z BUILD FAILED in 9m 20s

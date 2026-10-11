@@ -22,9 +22,13 @@ class EarlyGemmaInputModeTest {
             closeConversation = { events += "close" }, closeEngine = {}, checkWorkerThread = {})
         // Constructor bypass is narrowly limited to replacing the native lifecycle with its checked fake.
         val engine = run {
-            val field = sun.misc.Unsafe::class.java.getDeclaredField("theUnsafe").apply { isAccessible = true }
-            val unsafe = field.get(null) as sun.misc.Unsafe
-            (unsafe.allocateInstance(LiteRtLmEngine::class.java) as LiteRtLmEngine).also {
+            // This host-JVM fixture is compiled against Android boot classes, which intentionally
+            // do not expose sun.misc types. Resolve the JDK allocator only at JVM test runtime.
+            val allocator = Class.forName("sun.misc.Unsafe")
+            val field = allocator.getDeclaredField("theUnsafe").apply { isAccessible = true }
+            val unsafe = field.get(null)
+            (allocator.getMethod("allocateInstance", Class::class.java)
+                .invoke(unsafe, LiteRtLmEngine::class.java) as LiteRtLmEngine).also {
                 fun put(name: String, value: Any) = LiteRtLmEngine::class.java.getDeclaredField(name)
                     .apply { isAccessible = true }.set(it, value)
                 put("lifecycle", owner)
