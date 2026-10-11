@@ -55,7 +55,15 @@ def load_profiles(path=PROFILES):
             if isinstance(profile[key], bool) or not isinstance(profile[key], int) or not lower <= profile[key] <= upper:
                 raise ValueError(f'Invalid or out-of-bounds emulator {key}')
         main_timeout = profile['instrumentation_timeout']
-        if (isinstance(main_timeout, bool) or not isinstance(main_timeout, int) or
+        if profile['screen_profile'] == 'foldable':
+            # The Pixel Fold dual-display emulator on software rendering runs the
+            # same journey materially slower than phone profiles (run 1270
+            # completed 73/76 tests in 900s before the cap fired), so it gets a
+            # bounded higher wall-clock budget. Phone profiles stay pinned.
+            if (isinstance(main_timeout, bool) or not isinstance(main_timeout, int) or
+                    not 900 <= main_timeout <= 1500):
+                raise ValueError('Invalid or out-of-scope foldable instrumentation timeout')
+        elif (isinstance(main_timeout, bool) or not isinstance(main_timeout, int) or
                 main_timeout != 900):
             raise ValueError('Invalid or out-of-scope main instrumentation timeout')
         configuration = tuple(profile[key] for key in sorted(FIELDS - {'id'}))
