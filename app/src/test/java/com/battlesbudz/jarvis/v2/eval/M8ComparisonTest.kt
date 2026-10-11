@@ -37,24 +37,29 @@ class M8ComparisonTest {
         assertEquals(1, stats.coldCount)
         assertEquals(2, stats.warmCount)
         assertEquals(1000L, stats.coldP50Ms)
-        assertEquals(150L, stats.warmP50Ms) // ceil(0.5*2)=1 -> first of [100,200]
+        assertEquals(100L, stats.warmP50Ms) // ceil(0.5*2)=1 -> first of [100,200]
     }
 
     @Test fun timingRunnerMarksFirstUtteranceCold() = runBlocking {
         val tracker = ModelLatencyTracker()
         var now = 0L
-        val inner = FakeToolCallRunner(mapOf("a" to emptyList(), "b" to emptyList()))
+        val inner = object : ToolCallRunner {
+            override suspend fun runUtterance(modelId: String, utterance: String): List<ToolCall> {
+                now += 50 // simulate 50ms of model work
+                return emptyList()
+            }
+        }
         val timing = TimingToolCallRunner(inner, tracker, clock = { now })
-        now = 100; timing.runUtterance("m", "a") // cold: 0 elapsed
-        now = 150; timing.runUtterance("m", "b") // warm: 50 elapsed
+        now = 100; timing.runUtterance("m", "a") // cold: 50 elapsed
+        timing.runUtterance("m", "b") // warm: 50 elapsed
         val stats = tracker.stats()
         assertEquals(1, stats.coldCount)
         assertEquals(1, stats.warmCount)
-        assertEquals(0L, stats.coldP50Ms)
+        assertEquals(50L, stats.coldP50Ms)
         assertEquals(50L, stats.warmP50Ms)
         // after markModelLoaded the next utterance is cold again
         timing.markModelLoaded()
-        now = 200; timing.runUtterance("m", "a")
+        timing.runUtterance("m", "a")
         assertEquals(2, tracker.stats().coldCount)
     }
 
