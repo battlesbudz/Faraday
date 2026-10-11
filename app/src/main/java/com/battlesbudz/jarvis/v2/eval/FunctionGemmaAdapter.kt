@@ -107,7 +107,7 @@ class FunctionGemmaAdapter(
                     if (key.isEmpty() || !key.all { it.isLetterOrDigit() || it == '_' }) return null
                     i = colon + 1
                     // value: <escape>-wrapped string, or bare token until ',' or end
-                    val (value, next) = if (inner.startsWith(ESCAPE, i)) {
+                    val next = if (inner.startsWith(ESCAPE, i)) {
                         val valueStart = i + ESCAPE.length
                         val valueEnd = inner.indexOf(ESCAPE, valueStart)
                         if (valueEnd < 0) return null
