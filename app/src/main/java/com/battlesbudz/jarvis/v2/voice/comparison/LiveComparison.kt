@@ -12,10 +12,10 @@ import java.util.zip.ZipOutputStream
 /** Opt-in instrumentation of real voice turns. Reference text is never passed to inference. */
 internal object LiveComparison {
     enum class Path(val label: String) {
-        MOONSHINE("Moonshine → Gemma → Piper"), WHISPER("Whisper → Gemma → Piper"),
+        WHISPER("Whisper CPU → Gemma → Piper"), WHISPER_NPU("Whisper NPU with CPU fallback → Gemma → Piper"),
         GEMMA_ASR("Gemma transcription → Gemma answer → Piper"), GEMMA_DIRECT("Gemma audio answer → Piper");
         val usesAudio get() = this == GEMMA_ASR || this == GEMMA_DIRECT
-        val captureEngine get() = if (this == WHISPER) AsrEngine.WHISPER else AsrEngine.MOONSHINE
+        val captureEngine get() = if (this == WHISPER_NPU) AsrEngine.WHISPER_NPU else AsrEngine.WHISPER
     }
     data class Request(val path: Path, val reference: String, val repeat: Int)
     val status = MutableStateFlow("No comparison armed.")

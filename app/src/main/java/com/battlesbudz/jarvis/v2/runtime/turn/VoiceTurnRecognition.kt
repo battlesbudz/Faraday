@@ -152,7 +152,7 @@ internal class VoiceTurnRecognition(
         }
         diagnosticRecorder.recordSummary("Voice recognition turn=${request.asrTurnId} path=${if (prepared.correction == null) "normal" else "after_keyword"} " +
             "engine=${request.asrEngine.id} asrChars=${asrTranscript.length} gemmaTranscriptionFallback=${asrTranscript.isBlank()} " +
-            "speechGate=${if (request.asrEngine == com.battlesbudz.jarvis.v2.voice.AsrEngine.MOONSHINE) "jarvis_vad_native_gate_bypassed_v1" else "engine_default"}")
+            "speechGate=engine_default")
         val sealStarted = System.nanoTime()
         prepared.incremental.seal()
         val preparedText = prepared.incremental.takeIf { !prepared.directAudioTurn && asrTranscript.isNotBlank() && recognitionIssue == null }

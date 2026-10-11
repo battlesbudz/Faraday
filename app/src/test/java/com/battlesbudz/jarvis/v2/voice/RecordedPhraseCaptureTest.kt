@@ -14,7 +14,7 @@ import org.junit.Test
 /** Tests production retention with recorded phonemes; ASR itself runs in the host gate. */
 class RecordedPhraseCaptureTest {
     @Test fun whisperRetainsRecordedOpeningPauseAndEnding() = retainRecordedPhrase(900)
-    @Test fun moonshineRetainsRecordedOpeningPauseAndEnding() = retainRecordedPhrase(3000)
+    @Test fun longSilencePolicyRetainsRecordedOpeningPauseAndEnding() = retainRecordedPhrase(3000)
 
     private fun retainRecordedPhrase(recognizerNoTextSilenceMs: Long) = runBlocking<Unit> {
         val recording = RecordedSpeechFixture.pcm
@@ -27,7 +27,7 @@ class RecordedPhraseCaptureTest {
             override fun close() = Unit
         }
         val nativeInput = ByteArrayOutputStream()
-        // Use the same phrase gate that the real Whisper/Moonshine adapters own.
+        // Use the same phrase gate that the real Whisper adapters own.
         val gate = ExternalSpeechGate.completePhrase()
         var finishes = 0
         val recognizer = object : StreamingTranscriber {

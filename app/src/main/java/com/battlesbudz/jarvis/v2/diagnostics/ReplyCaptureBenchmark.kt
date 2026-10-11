@@ -159,7 +159,7 @@ internal class ReplyCaptureBenchmark(
         output: PiperVoiceOutput,
         asrDirectory: File?,
         onConfirmed: () -> Unit,
-        asrEngine: AsrEngine = AsrEngine.MOONSHINE,
+        asrEngine: AsrEngine = AsrEngine.WHISPER,
         onPartialTranscript: (String) -> Unit = {},
         trace: VoiceTurnTrace? = null,
         inputFactory: (suspend () -> AudioInput)? = null,

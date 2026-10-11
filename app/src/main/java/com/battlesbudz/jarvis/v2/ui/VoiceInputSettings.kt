@@ -55,7 +55,7 @@ internal fun VoiceInputSettings(enabled: Boolean, onBusy: (Boolean) -> Unit) {
                             enabled = enabled && !busy,
                             modifier = Modifier.testTag("gemma_caption_${when (engine) {
                                 null -> "off"
-                                AsrEngine.MOONSHINE -> "moonshine"
+                                AsrEngine.WHISPER_NPU -> "whisper_npu"
                                 AsrEngine.WHISPER -> "whisper"
                             }}"),
                             text = { Text(engine?.label ?: "Off") },
@@ -68,7 +68,7 @@ internal fun VoiceInputSettings(enabled: Boolean, onBusy: (Boolean) -> Unit) {
                     }
                 }
             }
-            Text("Turn captions off to skip all Whisper/Moonshine loading and recognition. Interrupt using Hey Jarvis or stop; natural speech interruption is disabled in this benchmark mode. Gemma's final transcription updates your message after answer generation.", style = MaterialTheme.typography.bodySmall)
+            Text("Turn captions off to skip all Whisper loading and recognition. Interrupt using Hey Jarvis or stop; natural speech interruption is disabled in this benchmark mode. Gemma's final transcription updates your message after answer generation.", style = MaterialTheme.typography.bodySmall)
         }
         Text("Speech recognition: ${selected.label}")
         AsrEngine.entries.forEach { engine ->
@@ -78,14 +78,16 @@ internal fun VoiceInputSettings(enabled: Boolean, onBusy: (Boolean) -> Unit) {
                     try {
                         engine.prepare(context) { value -> scope.launch { message = value } }
                         AsrEngine.select(context, engine); selected = engine
-                        message = "${engine.label} will handle your next voice call."
+                        message = if (engine == AsrEngine.WHISPER_NPU) "Whisper will try Snapdragon NPU on the next call, with CPU fallback if unavailable."
+                            else "${engine.label} will handle your next voice call."
                     } catch (cancelled: CancellationException) { throw cancelled }
                     catch (error: Throwable) { message = error.message ?: "Download failed" }
                     finally { busy = false }
                 }
             }) { Text("Use ${engine.label}") }
         }
-        Text("Both transcribe your voice on this phone. Moonshine transcribes as you speak; Whisper updates provisional captions and confirms them when you finish.", style = MaterialTheme.typography.bodySmall)
+        Text("Whisper transcribes your voice on this phone, updates provisional captions and confirms them when you finish. The Snapdragon NPU option falls back to CPU when acceleration is unavailable.", style = MaterialTheme.typography.bodySmall)
+        Text("Snapdragon NPU is experimental and targets 8 Gen 3 (SM8650). English transcription has a separate CPU fallback; speed and accuracy require device measurement.", style = MaterialTheme.typography.bodySmall)
         Text("Smart Turn turn ending: ${if (smartTurnEnabled) "On" else "Off"}")
         Text(if (smartTurnReady) "Model installed. Smart Turn listens for whether you have finished or are continuing a native-audio turn."
             else "Model not installed. Download 8.7 MB to use Smart Turn; ordinary pause detection is available offline.", style = MaterialTheme.typography.bodySmall)

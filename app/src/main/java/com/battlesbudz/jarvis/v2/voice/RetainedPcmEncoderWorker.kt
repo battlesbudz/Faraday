@@ -28,7 +28,12 @@ internal class RetainedPcmEncoderWorker<T : Any>(
     private val maxEvents: Int = 64,
     private val nativeCloseTimeoutMs: Long = 10_000,
     private val nowNs: () -> Long = System::nanoTime,
+    private val onWork: (WorkSnapshot) -> Unit = {},
 ) : RetainedPcmObserver {
+    /** API-wall work, not individual graph steps or LLM multimodal prefill. */
+    data class WorkSnapshot(val phase: String, val busy: Boolean, val appendCalls: Int,
+        val appendWorkNs: Long, val maxAppendWorkNs: Long, val sealWorkNs: Long,
+        val lastWorkNs: Long, val queuedBytes: Int, val peakQueuedBytes: Int)
     interface Encoder<T> {
         fun append(pcm: FloatArray)
         fun seal(): Sealed<T>
@@ -50,6 +55,7 @@ internal class RetainedPcmEncoderWorker<T : Any>(
     private var candidate = 1L
     private var acceptedBytes = 0
     private var queuedBytes = 0
+    private var peakQueuedBytes = 0
     private var failure: Throwable? = null
     private val active = AtomicReference<Active<T>?>(null)
     private val completed = CompletableDeferred<Completed<T>>()
@@ -62,7 +68,7 @@ internal class RetainedPcmEncoderWorker<T : Any>(
 
     init {
         require(maxQueuedBytes in 38_400..960_000 && maxQueuedBytes % 2 == 0)
-        require(maxEvents in 1..256)
+        require(maxEvents in 1..(maxQueuedBytes / 2 + 2))
         require(nativeCloseTimeoutMs in 0..300_000)
         CoroutineScope(workerJob + workerDispatcher).launch { runWorker() }
     }
@@ -78,6 +84,7 @@ internal class RetainedPcmEncoderWorker<T : Any>(
                 // Capture transferred a private array. The worker now owns and wipes it.
                 check(queue.trySend(Event.Pcm(candidate, retainedPcm16)).isSuccess) { "native_audio_queue_capacity" }
                 queuedBytes += retainedPcm16.size
+                peakQueuedBytes = maxOf(peakQueuedBytes, queuedBytes)
                 acceptedBytes += retainedPcm16.size
             } catch (caught: Throwable) { error = caught }
         }
@@ -180,6 +187,17 @@ internal class RetainedPcmEncoderWorker<T : Any>(
         var consumedBytes = 0
         var safeToRelease = true
         var closeFailed = false
+        var appendCalls = 0
+        var appendWorkNs = 0L
+        var maxAppendWorkNs = 0L
+        var sealWorkNs = 0L
+        fun work(phase: String, busy: Boolean, elapsedNs: Long = 0) {
+            val snapshot = synchronized(gate) {
+                WorkSnapshot(phase, busy, appendCalls, appendWorkNs, maxAppendWorkNs,
+                    sealWorkNs, elapsedNs, queuedBytes, peakQueuedBytes)
+            }
+            runCatching { onWork(snapshot) }
+        }
         fun closeCurrent(): Boolean {
             if (closeFailed) return false
             val old = current ?: return true
@@ -213,7 +231,15 @@ internal class RetainedPcmEncoderWorker<T : Any>(
                                 val at = offset + index * 2
                                 (((event.bytes[at].toInt() and 255) or (event.bytes[at + 1].toInt() shl 8)).toShort().toInt()) / 32768.0f
                             }
-                            try { requireNotNull(current?.encoder).append(floats) } finally { floats.fill(0f) }
+                            work("append", true)
+                            val appendStarted = nowNs()
+                            try { requireNotNull(current?.encoder).append(floats) } finally {
+                                val elapsed = (nowNs() - appendStarted).coerceAtLeast(0)
+                                appendCalls++; appendWorkNs += elapsed
+                                maxAppendWorkNs = maxOf(maxAppendWorkNs, elapsed)
+                                floats.fill(0f)
+                                work("append", false, elapsed)
+                            }
                             offset += samples * 2
                         }
                         consumedBytes += event.bytes.size
@@ -232,7 +258,13 @@ internal class RetainedPcmEncoderWorker<T : Any>(
                         check(isWanted(event.candidate)) { "native_audio_stale_seal" }
                         check(current?.candidate == event.candidate && consumedBytes == event.bytes) { "native_audio_consumed_pcm_count" }
                         check(MessageDigest.isEqual(digest.digest(), event.digest)) { "native_audio_complete_pcm_mismatch" }
-                        val result = requireNotNull(current?.encoder).seal()
+                        work("seal", true)
+                        val sealStarted = nowNs()
+                        val result = try { requireNotNull(current?.encoder).seal() } finally {
+                            val elapsed = (nowNs() - sealStarted).coerceAtLeast(0)
+                            sealWorkNs += elapsed
+                            work("seal", false, elapsed)
+                        }
                         check(result.pcmSampleCount == consumedBytes / 2) { "native_audio_native_pcm_count" }
                         // Release the separate encoder before admitting LLM prefill.
                         val checkedCloseCalledAtNs = nowNs()

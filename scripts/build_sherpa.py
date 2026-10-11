@@ -36,15 +36,17 @@ def download(spec, directory):
 
 def source_fingerprint(root=ROOT):
     """Bind native source names and bytes as well as the profile, not just upstream revision."""
-    source_dir = root / 'app/src/main/cpp/smartturn'
-    sources = sorted(path for path in source_dir.iterdir() if path.is_file())
+    sources = []
+    for name in ('smartturn', 'whisperqnn'):
+        source_dir = root / 'app/src/main/cpp' / name
+        sources.extend(sorted(path for path in source_dir.iterdir() if path.is_file()))
     if not sources:
         raise ValueError('Missing app Smart Turn native sources')
     digest = hashlib.sha256()
     for path in [root / 'scripts/sherpa_jni_profile.py', *sources]:
         digest.update(path.relative_to(root).as_posix().encode() + b'\0')
         digest.update(hashlib.sha256(path.read_bytes()).digest())
-    return 'app-jni-smartturn-v1-' + digest.hexdigest()
+    return 'app-jni-smartturn-whisper-qnn-v2-' + digest.hexdigest()
 
 
 def build(output, ndk=None):

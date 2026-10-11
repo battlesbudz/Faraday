@@ -1,29 +1,35 @@
 package com.battlesbudz.jarvis.v2.voice
 
-import com.k2fsa.sherpa.onnx.*
+import com.battlesbudz.jarvis.v2.voice.whisper.*
 import java.io.File
 
 /** Optional background window decoding: Whisper base is not a native streaming recognizer. Decoding never runs on the live microphone thread. VAD bounds the retained input and Gemma still handles blanks. */
-class WhisperTranscriber(private val directory: File, live: Boolean = true, log: (String) -> Unit = {}, modelSession: VoiceModelSession? = null, private val audioEvidence: RecognitionAudioEvidence? = null, warmProbe: Boolean = false) : StreamingTranscriber {
+class WhisperTranscriber(private val directory: File, live: Boolean = true, private val log: (String) -> Unit = {}, modelSession: VoiceModelSession? = null, private val audioEvidence: RecognitionAudioEvidence? = null, warmProbe: Boolean = false, private val preferNpu: Boolean = false) : StreamingTranscriber {
     init { require(!warmProbe || (!live && modelSession != null)) }
     private val audio = RollingAudioBuffer(AudioFormat(16_000), maxDurationMs = 25_000)
     // Bound idle room audio, then retain the contiguous phrase through endpoint.
     // Final-only probes without observeSpeech() still receive their complete PCM.
     private val speechGate = ExternalSpeechGate.completePhrase()
-    private fun createRecognizer() = OfflineRecognizer(config = OfflineRecognizerConfig(
-        modelConfig = OfflineModelConfig(whisper = OfflineWhisperModelConfig(
-            encoder = File(directory, "base.en-encoder.int8.onnx").path,
-            decoder = File(directory, "base.en-decoder.int8.onnx").path),
-            tokens = File(directory, "base.en-tokens.txt").path, modelType = "whisper", numThreads = 2)))
-    private val lease = if (warmProbe) requireNotNull(modelSession).whisper.acquireWarm(directory.path)
-        else modelSession?.whisper?.acquire(directory.path, create = ::createRecognizer)
+    private fun createRecognizer(): WhisperDecoder {
+        if (!preferNpu) return CpuWhisperDecoder(directory)
+        val cpuDirectory = if (directory.name == WhisperQnnModelStore.DIRECTORY)
+            File(directory.parentFile, "sherpa-onnx-whisper-base.en") else directory
+        return FallbackWhisperDecoder(
+            primary = { check(directory.name == WhisperQnnModelStore.DIRECTORY) { "QNN bundle unavailable" }; WhisperQnnDecoder(directory, log) },
+            cpu = { CpuWhisperDecoder(cpuDirectory) }, log = log)
+    }
+    private val modelKey = "${directory.path}:qnn=$preferNpu"
+    private val lease = if (warmProbe) requireNotNull(modelSession).whisper.acquireWarm(modelKey)
+        else modelSession?.whisper?.acquire(modelKey, create = ::createRecognizer)
     private val recognizer = lease?.value ?: createRecognizer()
     private var healthy = true
-    private fun releaseRecognizer() { if (lease != null) lease.finish(healthy) else recognizer.release() }
+    private fun releaseRecognizer() { if (lease != null) lease.finish(healthy) else recognizer.close() }
     private var closed = false
+    private val providersUsed = java.util.concurrent.ConcurrentSkipListSet<String>()
     private val directWork = AsrRecognitionWorkAccumulator("whisper_batch_decode_callback_wall")
-    private val streaming = if (live) AsyncWhisperSession(::decode, ::releaseRecognizer, log) else null
-    override val recognitionWorkMetrics get() = streaming?.recognitionWorkMetrics ?: directWork.snapshot()
+    private val streaming = if (live) AsyncWhisperSession(::decode, ::releaseRecognizer, log, cancel = { healthy = false; recognizer.cancel() }) else null
+    override val recognitionWorkMetrics get() = (streaming?.recognitionWorkMetrics ?: directWork.snapshot())
+        .let { it.copy(scope = "${it.scope}:${providersUsed.takeIf { used -> used.isNotEmpty() }?.joinToString("+") ?: "not_executed"}") }
     override val completedEndpointCue get() = streaming?.completedEndpointCue
     override val noTextSilenceMs: Long get() = 900
     override fun prepareForBoundedProbe(maxAudioMs: Long): String {
@@ -53,13 +59,8 @@ class WhisperTranscriber(private val directory: File, live: Boolean = true, log:
         check(!closed)
         if (pcm.isEmpty()) return ""
         audioEvidence?.record(pcm, replace = true)
-        val stream = recognizer.createStream()
-        return try {
-            stream.acceptWaveform(pcmFloats(pcm), 16_000)
-            recognizer.decode(stream)
-            recognizer.getResult(stream).text.trim()
-        } catch (error: Throwable) { healthy = false; throw error }
-        finally { stream.release() }
+        return try { recognizer.decode(pcmFloats(pcm)).also { providersUsed.add(recognizer.lastDecodeBackend) } }
+        catch (error: Throwable) { healthy = false; throw error }
     }
     override fun close() { if (!closed) { if (streaming != null) streaming.close() else releaseRecognizer(); closed = true; audio.clear(); speechGate.clear() } }
 }

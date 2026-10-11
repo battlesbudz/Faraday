@@ -8,7 +8,7 @@ import java.util.zip.ZipInputStream
 
 class LiveComparisonTest {
     @Test fun timingUsesSpeechEndAndSeparatesSubmissionFromPlayback() {
-        val t = LiveComparison.Trial("x", LiveComparison.Request(LiveComparison.Path.MOONSHINE, "No yes", 1))
+        val t = LiveComparison.Trial("x", LiveComparison.Request(LiveComparison.Path.WHISPER_NPU, "No yes", 1))
         t.mark("speech_end", 100); t.mark("answer_submit", 200); t.mark("answer_first_token", 240)
         t.mark("answer_first_token", 999); t.mark("answer_audio", 600)
         t.put("resolved_transcript", "No. Yes.")
@@ -27,7 +27,7 @@ class LiveComparisonTest {
         assertTrue(r.isNull("speech_end_to_first_audible_answer_frame_ms"))
     }
     @Test fun failedOrInterruptedPlaybackCannotCountAsCompleteTrial() {
-        val t = LiveComparison.Trial("x", LiveComparison.Request(LiveComparison.Path.MOONSHINE, "hello", 1))
+        val t = LiveComparison.Trial("x", LiveComparison.Request(LiveComparison.Path.WHISPER_NPU, "hello", 1))
         t.put("resolved_transcript", "hello")
         t.put("turn_completed", true); t.mark("answer_first_token"); t.mark("answer_audio")
         assertTrue(JSONObject(t.report().substringBefore("\n\n")).getBoolean("complete_trial"))

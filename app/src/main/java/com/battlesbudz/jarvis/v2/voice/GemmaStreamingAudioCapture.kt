@@ -19,6 +19,10 @@ internal class GemmaStreamingAudioCapture(
     private val artifact: GemmaStreamingArtifactStore.Lease,
     turnId: String,
     turnIsCurrent: () -> Boolean,
+    private val beforeEncoderCreate: () -> Unit = {},
+    private val onEncoderPreparationWait: (Long) -> Unit = {},
+    private val cancelEncoderPreparation: () -> Unit = {},
+    private val onEncoderWork: (RetainedPcmEncoderWorker.WorkSnapshot) -> Unit = {},
 ) : RetainedPcmObserver {
     private val valid = AtomicBoolean(true)
     private val turnContext = AtomicReference<(() -> Boolean)?>(turnIsCurrent)
@@ -31,6 +35,10 @@ internal class GemmaStreamingAudioCapture(
     }
     private val worker = RetainedPcmEncoderWorker<Content.SealedAudioEmbeddings>(
         createEncoder = { candidate ->
+            val waitedAt = System.nanoTime()
+            beforeEncoderCreate()
+            runCatching { onEncoderPreparationWait((System.nanoTime() - waitedAt) / 1_000_000) }
+            check(valid.get() && turnContext.get()?.invoke() == true) { "native_audio_stale_before_create" }
             artifact.checkImmutableAndLive()
             val workerToken = NativeAudioWorker.bindCurrentThread {
                 check(Looper.myLooper() != Looper.getMainLooper()) { "native_audio_on_ui_thread" }
@@ -46,6 +54,12 @@ internal class GemmaStreamingAudioCapture(
             adapter
         },
         isGenerationCurrent = { valid.get() && turnContext.get()?.invoke() == true },
+        // Never exceed the already-existing 30-second accepted PCM budget.
+        maxQueuedBytes = PREPARATION_QUEUED_BYTES,
+        // Channel storage is lazy. At two bytes per legal PCM packet, the existing
+        // byte budget bounds data events; leave room for seal/control events too.
+        maxEvents = PREPARATION_MAX_EVENTS,
+        onWork = onEncoderWork,
     )
 
     override fun onPcm(retainedPcm16: ByteArray) = worker.onPcm(retainedPcm16)
@@ -88,7 +102,11 @@ internal class GemmaStreamingAudioCapture(
     /** Keep the turn artifact lease until final cleanup; only the candidate worker closes. */
     suspend fun drainFrozenWorker(): Boolean = worker.closeAndDrain()
 
-    fun requestCancel() { valid.set(false); turnContext.set(null); worker.requestCancel() }
+    fun requestCancel() {
+        valid.set(false); turnContext.set(null)
+        cancelEncoderPreparation()
+        worker.requestCancel()
+    }
 
     /** Caller invokes under NonCancellable, then releases the artifact/model lease
      * only on true. False is permanent quarantine for this turn. */
@@ -115,5 +133,9 @@ internal class GemmaStreamingAudioCapture(
         override fun closeOnWorker(timeoutMs: Long) = native.closeOnWorker(timeoutMs)
     }
 
-    companion object { private val generations = AtomicLong() }
+    companion object {
+        internal const val PREPARATION_QUEUED_BYTES = 960_000
+        internal const val PREPARATION_MAX_EVENTS = PREPARATION_QUEUED_BYTES / 2 + 2
+        private val generations = AtomicLong()
+    }
 }

@@ -5,10 +5,21 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
-// Both SDKs ship libonnxruntime.so but require different versioned C symbols.
-// Namespace Moonshine's matching runtime instead of picking/replacing a library.
-val moonshineSdk by configurations.creating { isTransitive = false }
+// Sherpa supplies the shared CPU runtime for Whisper, Piper, VAD and speaker models.
 val sherpaSdk by configurations.creating { isTransitive = false }
+// Plugin-only QNN reuses Sherpa ORT 1.27.1; never add a second ORT AAR.
+val whisperQnnProvider by configurations.creating { isTransitive = false }
+val whisperQnnRuntime by configurations.creating { isTransitive = false }
+val whisperQnnDir = layout.buildDirectory.dir("whisper-qnn-runtime")
+val prepareWhisperQnn by tasks.registering(Exec::class) {
+    inputs.files(whisperQnnProvider, whisperQnnRuntime)
+    inputs.file(rootProject.file("scripts/prepare_whisper_qnn.py"))
+    outputs.dir(whisperQnnDir)
+    doFirst {
+        commandLine("python3", rootProject.file("scripts/prepare_whisper_qnn.py"),
+            whisperQnnProvider.singleFile, whisperQnnRuntime.singleFile, whisperQnnDir.get().asFile)
+    }
+}
 val sherpaDir = layout.buildDirectory.dir("sherpa-sdk")
 val sherpaNativeDir = layout.buildDirectory.dir("sherpa-native")
 // The streaming API and checked lifecycle ABI must come from one reviewed build.
@@ -49,24 +60,16 @@ val buildSherpa by tasks.registering(Exec::class) {
     inputs.file(rootProject.file("scripts/build_sherpa.py"))
     inputs.file(rootProject.file("scripts/sherpa_jni_profile.py"))
     inputs.dir(rootProject.file("app/src/main/cpp/smartturn"))
+    inputs.dir(rootProject.file("app/src/main/cpp/whisperqnn"))
     outputs.dir(sherpaNativeDir.map { it.dir("jni") })
     doFirst {
         commandLine("python3", rootProject.file("scripts/build_sherpa.py"), "--output", sherpaNativeDir.get().asFile,
             "--android-ndk", File(android.sdkDirectory, "ndk/27.2.12479018"))
     }
 }
-val moonshineDir = layout.buildDirectory.dir("moonshine-sdk")
-val extractMoonshine by tasks.registering(Exec::class) {
-    inputs.files(moonshineSdk)
-    inputs.file(rootProject.file("scripts/prepare_moonshine_sdk.py"))
-    outputs.dir(moonshineDir)
-    doFirst {
-        commandLine("python3", rootProject.file("scripts/prepare_moonshine_sdk.py"),
-            moonshineSdk.singleFile, moonshineDir.get().asFile)
-    }
-}
-tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(validateStreamingSdk, extractMoonshine, extractSherpa, buildSherpa) }
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(validateStreamingSdk, extractSherpa, buildSherpa, prepareWhisperQnn) }
 android {
+    sourceSets.getByName("main").assets.srcDir(whisperQnnDir.map { it.dir("assets") })
     sourceSets.getByName("main").jniLibs.srcDir(sherpaNativeDir.map { it.dir("jni") })
     namespace = "com.battlesbudz.jarvis.v2"
     compileSdk = 35
@@ -127,7 +130,6 @@ android {
             jvmTarget.set(JvmTarget.JVM_17)
         }
     }
-    sourceSets.getByName("main").jniLibs.srcDir(moonshineDir.map { it.dir("jni") })
     // Optional smaller sideload download. Android extracts these libraries at install;
     // the normal artifact keeps direct APK loading and lower installed storage.
     packaging.jniLibs.useLegacyPackaging = providers.gradleProperty("compactApk")
@@ -142,8 +144,8 @@ android {
     buildFeatures { compose = true; buildConfig = true }
 }
 dependencies {
-    moonshineSdk("ai.moonshine:moonshine-voice:0.1.5@aar")
-    implementation(files(moonshineDir.map { it.file("classes.jar") }).builtBy(extractMoonshine))
+    whisperQnnProvider("com.qualcomm.qti:onnxruntime-android-qnn:2.6.0@aar")
+    whisperQnnRuntime("com.qualcomm.qti:qnn-runtime:2.50.0@aar")
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.10.0")
     implementation("androidx.compose.material3:material3")

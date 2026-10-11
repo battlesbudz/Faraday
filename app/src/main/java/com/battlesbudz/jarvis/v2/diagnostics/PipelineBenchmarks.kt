@@ -37,7 +37,8 @@ internal class PipelineBenchmarks(
         val models = linkedMapOf("llm" to PipelineBenchmarkModel(selected.id, "LiteRT-LM", "0.16.0",
             if (selected.recommendedGpu) "GPU_requested" else "CPU_requested", selected.expectedSha256))
         asr?.let { models["asr"] = PipelineBenchmarkModel(it.id,
-            if (it == AsrEngine.MOONSHINE) "Moonshine" else "Sherpa-ONNX", it.modelVersion, "CPU") }
+            if (it == AsrEngine.WHISPER_NPU) "QNN HTP / Sherpa-ONNX fallback" else "Sherpa-ONNX",
+            it.modelVersion, if (it == AsrEngine.WHISPER_NPU) "NPU requested; execution unverified / CPU fallback" else "CPU") }
         tts?.let { models["tts"] = PipelineBenchmarkModel(it.id, "Sherpa-ONNX", it.version, "CPU") }
         val capture = PipelineBenchmarkCapture(turnId, channel, System.currentTimeMillis(),
             resources.provenance(models, mapOf(

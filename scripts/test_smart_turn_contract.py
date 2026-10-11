@@ -16,12 +16,14 @@ class SmartTurnBuildContractTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); sources = root / 'app/src/main/cpp/smartturn'
             sources.mkdir(parents=True); (root / 'scripts').mkdir()
+            qnn = root / 'app/src/main/cpp/whisperqnn'; qnn.mkdir(); (qnn / 'decoder.cc').write_text('qnn')
             profile = root / 'scripts/sherpa_jni_profile.py'; profile.write_text('profile')
             source = sources / 'frontend.cc'; source.write_text('a')
             first = source_fingerprint(root); self.assertEqual(first, source_fingerprint(root))
             source.write_text('b'); second = source_fingerprint(root); self.assertNotEqual(first, second)
             source.rename(sources / 'renamed.cc'); third = source_fingerprint(root); self.assertNotEqual(second, third)
-            profile.write_text('changed'); self.assertNotEqual(third, source_fingerprint(root))
+            profile.write_text('changed'); fourth = source_fingerprint(root); self.assertNotEqual(third, fourth)
+            (qnn / 'decoder.cc').write_text('qnn2'); self.assertNotEqual(fourth, source_fingerprint(root))
 
     def test_missing_native_source_is_not_a_valid_cache_identity(self):
         with tempfile.TemporaryDirectory() as directory:

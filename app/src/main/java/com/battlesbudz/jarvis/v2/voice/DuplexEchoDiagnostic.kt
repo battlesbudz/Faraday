@@ -112,7 +112,7 @@ object DuplexEchoDiagnostic {
                 microphoneScope=AudioRecord_after_platform_effects preHardwarePcm=unavailable
                 referenceScope=PCM_submitted_to_AudioTrack renderedPositions=timeline.csv acousticOutput=not_measured
                 playbackPolicy=fixed_8s_stream speed=1.0 generation=completed_before_capture liveCallLoad=not_reproduced
-                recognitionScope=offline_full_clip_after_capture jarvisVadFiltering=false moonshineNativeGate=${if (engine == AsrEngine.MOONSHINE) "enabled_0.5" else "not_applicable"} liveBargeScheduler=false speakerVerification=false
+                recognitionScope=offline_full_clip_after_capture jarvisVadFiltering=false liveBargeScheduler=false speakerVerification=false
                 keywordScope=offline_100ms_replay readiness_and_hits_are_observations_not_interruptions
                 gemma=false tools=false automaticInterruption=false routeChanged=$communication
                 AEC enabled/control state is not proof of effective cancellation. No ERLE or before/after claim is possible without pre-effect PCM.

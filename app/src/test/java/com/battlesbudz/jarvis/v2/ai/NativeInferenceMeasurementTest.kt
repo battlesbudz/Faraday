@@ -8,6 +8,26 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class NativeInferenceMeasurementTest {
+    @Test fun preparationAndSubmitCallbacksAreSeparateFromLegacyTtft() {
+        var clock = 0L
+        val measurement = NativeInferenceMeasurement { clock }
+        clock = 118_000_000L; measurement.conversationReady(0, earlyPrepared = false)
+        clock = 125_000_000L; measurement.submissionStarted(clock)
+        clock = 126_000_000L; measurement.callback(false)
+        clock = 130_000_000L; measurement.submitted(125_000_000L)
+        clock = 140_000_000L; measurement.callback(true)
+        val snapshot = measurement.snapshot(4)
+        assertEquals(118L, snapshot.conversationPreparationMs); assertEquals(125L, snapshot.preSubmitMs)
+        assertEquals(1L, snapshot.submitToFirstCallbackMs); assertEquals(15L, snapshot.submitToFirstRawTextMs)
+        assertEquals(126L, snapshot.firstCallbackMs); assertEquals(140L, snapshot.firstRawTextMs)
+        assertEquals(false, snapshot.reusedEarlyConversation)
+    }
+    @Test fun missingPreparationOrSubmissionRemainsUnknown() {
+        val snapshot = NativeInferenceMeasurement { 0L }.snapshot(0)
+        assertNull(snapshot.conversationPreparationMs); assertNull(snapshot.preSubmitMs)
+        assertNull(snapshot.submitToFirstCallbackMs); assertNull(snapshot.submitToFirstRawTextMs)
+        assertNull(snapshot.reusedEarlyConversation)
+    }
     @Test fun controlCallbackRawTextAndVisibleTextHaveSeparateClocks() {
         var clock = 1_000_000L
         val measurement = NativeInferenceMeasurement { clock }

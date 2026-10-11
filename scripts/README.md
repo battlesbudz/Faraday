@@ -62,12 +62,13 @@ Gradle inputs and native cache keys.
 | `prepare_sherpa_sdk.py` | Extract the official pinned Sherpa Kotlin ABI (`classes.jar`). | `app/build.gradle.kts` |
 | `build_sherpa.py` | Build the pinned Sherpa JNI/ORT runtime and apply the required JNI profile. | `app/build.gradle.kts` |
 | `sherpa_jni_profile.py`, `sherpa_required_symbols.json` | Declare and validate the Sherpa JNI pruning/symbol contract. | `build_sherpa.py`, `check_asr_apk.py`, helper tests |
-| `prepare_moonshine_sdk.py` | Extract Moonshine and namespace its version-specific ORT runtime while preserving ELF layout. | `app/build.gradle.kts` |
+| `prepare_whisper_qnn.py` | Verify and package the optional QNN plugin/SM8650 runtime as compressed assets without adding another ORT. | `app/build.gradle.kts` |
 | `ci_gradle.sh` | Run the caller's Gradle tasks and retain non-secret build-performance diagnostics. | `.github/workflows/android.yml` |
 
-Sherpa and Moonshine deliberately use different preparation paths. Moonshine's
-ORT namespacing and Sherpa's source-built runtime preserve their distinct native
-ABIs; they must not be replaced by a generic AAR extraction shortcut.
+Whisper CPU, Piper, VAD and Smart Turn share Sherpa's source-built ORT 1.27.1.
+The optional QNN plugin uses the same runtime; its packaged vendor code is verified
+and extracted privately only on supported devices. Moonshine's SDK, runtime and
+preparation path are retired. Historical `d2-replay` scripts remain archival.
 
 ## Release validation and evidence
 
@@ -88,7 +89,7 @@ release contract. These helpers each validate a specific boundary:
 | `verification/receipt.py` | Consolidate APK hashes, JVM/model/native results and every required emulator profile and phase before publication. |
 | `verification/profiles.json`, `profiles.py` | One device provisioning, artifact-selection and receipt contract for the required matrix. |
 | `verification/previous_release.py` | Fetch and checksum an actual earlier published APK for replacement-install upgrade tests. |
-| `check_recorded_audio.py` | Execute pinned host Whisper/Moonshine weights on recorded phrase boundaries and quiet endings with scored evidence. |
+| `check_recorded_audio.py` | Execute pinned host Whisper weights on recorded phrase boundaries and quiet endings with scored evidence. |
 | `check_page_sizes.py` | Audit every native ELF and direct-load APK alignment, including RELRO writable-page conflicts. |
 | `verification/local_gate.py` | Build the signed release/test APKs and run the emulator gate in an already configured repair environment. |
 | `verification/repair.py` | Bound local repair/retest attempts and retain failures; stop changes to protected acceptance infrastructure. |
@@ -121,3 +122,14 @@ fixtures. It does not download or execute model weights. The same checks run in
 regeneration is separate: `generate_goldens.py` needs NumPy 2.3.5 and must preserve
 all original decoded hashes unless an independently reviewed frontend change
 requires new fixtures. See the [recovery contract](../docs/verification/smart-turn-recovery-2026-10-09.md).
+
+## Optional Whisper QNN
+
+`prepare_whisper_qnn.py` consumes the two checksum-pinned public Qualcomm AARs,
+packages only precompiled-context v75 runtime gzip assets and preserves notices.
+It does not replace Sherpa ORT or download model weights. The final APK gate
+checks the embedded compressed objects, ABI, page compatibility and licenses.
+Weight-free native checks: `app/src/main/cpp/whisperqnn/tests/verify_frontend.py`
+and `verify_decoder.py` (the latter needs the checksum-pinned host ORT1.27.1 and
+JDK JNI headers). The optional `scripts/whisper-qnn/run_kotlin_tests.py` takes an
+existing dependency cache and performs no downloads. See the [candidate contract](../docs/verification/whisper-qnn-2026-10-11.md).

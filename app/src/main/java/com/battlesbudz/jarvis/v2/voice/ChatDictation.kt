@@ -58,7 +58,7 @@ internal class LocalChatDictation(context: Context) : ChatDictation {
         val directory = engine.prepare(context, onStatus)
         ensureActive()
         onStatus("Transcribing…")
-        // Full-clip recovery avoids Whisper's rolling 25-second window and uses raw-input Moonshine VAD.
+        // Full-clip recovery avoids Whisper's rolling 25-second window for complete clip recognition.
         val text = engine.createDiagnostic(directory).use { it.recover(pcm) }.trim()
         ensureActive()
         check(text.isNotBlank()) { "No speech detected. Try recording again." }

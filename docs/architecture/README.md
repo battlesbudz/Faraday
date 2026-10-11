@@ -62,6 +62,20 @@ ownership. Failed detach retains its existing controller/binder cleanup state;
 closed callbacks cannot publish and queued captures cannot enter after closure.
 Android service lifecycle and final cancellation remain main-thread serialized.
 
+## Optional audio acceleration and first delivery
+
+`voice/whisper/` owns verified QNN assets, CPU fallback and provider diagnostics;
+`cpp/whisperqnn/` owns the Whisper frontend, strict NPU sessions, autoregressive
+cache and terminal native cancellation. `VoiceModelSession` retains a single
+leased Whisper decoder alongside Piper; shared ORT remains pinned for SmartTurn.
+Moonshine runtime selection is migrated without deleting historical/downloaded data.
+`SpeechTextBoundaries`, `VoiceRepetitionGuard` and `PiperTextStream` agree on the
+first meaningful clause; later batching and stale/duplicate checks stay owned by
+the existing speech path. `EarlyGemmaPreparationGate`, `VoiceTurnPreparation`
+and `CheckedConversationLifecycle` serialize fixed-preface preparation before
+encoder/model work while microphone PCM is retained. See the [combined contract](../verification/whisper-qnn-2026-10-11.md)
+and linked component verification notes for measured versus pending coverage.
+
 ## Main flow
 
 ```mermaid

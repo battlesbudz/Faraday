@@ -13,7 +13,7 @@ explicit reference lookup use the network; there is no required conversation bac
 
 Jarvis implements a **system-level full-duplex voice pipeline**: microphone
 capture can continue while Piper plays the assistant's reply. In speech-recognition
-mode, bounded Moonshine/Whisper probes verify natural barge-in, stop the reply and
+mode, bounded Whisper probes verify natural barge-in, stop the reply and
 retain the interruption audio for the next turn. Wake-word activation, Gemma through
 LiteRT-LM and Piper output keep the core assistant loop on the device. See the
 [duplex architecture and validation limits](docs/verification/voice-audio-and-metrics.md#system-level-full-duplex).
@@ -58,7 +58,7 @@ records the typed stage owners and justified cohesive components.
 | --- | --- |
 | UI | Jetpack Compose; conversation surface with voice overlay, setup, history and diagnostics |
 | Local inference | LiteRT-LM 0.16.0; Gemma E2B/E4B and curated experimental Qwen bundles |
-| Recognition | Moonshine Small Streaming or Whisper base.en |
+| Recognition | Whisper base.en CPU or experimental Snapdragon NPU with CPU fallback |
 | Speech output | Piper Northern English Male medium |
 | Phone actions | Validated battery, media-volume and installed-app actions with durable receipts |
 | Memory | Device-local SQLite store and source archive; retrieval, review and mutation fences |
@@ -90,3 +90,5 @@ before automated work; creation or merging of a PR requires Justin's explicit pe
 Source-available under the PolyForm Noncommercial License 1.0.0: free for personal,
 study, research, and other noncommercial use. Commercial use needs permission.
 See [LICENSE.md](LICENSE.md).
+
+The [11 October audio candidate](docs/verification/whisper-qnn-2026-10-11.md) adds optional Snapdragon Whisper QNN, removes Moonshine runtime dependencies, starts Piper at a checked first clause, and prepares Gemma's fixed preface during capture. Physical-device acceleration and latency remain to be qualified.

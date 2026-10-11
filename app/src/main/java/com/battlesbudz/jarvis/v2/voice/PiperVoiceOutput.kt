@@ -116,6 +116,7 @@ class PiperVoiceOutput internal constructor(
         var firstPcmMs: Long? = null
         var firstTextToPcmMs: Long? = null
         var firstTextToPlaybackMs: Long? = null
+        var piperOpening = 0
         val firstTextAt = AtomicLong()
         val firstAudibleFrame = AtomicLong(-1)
         var inputChars = 0
@@ -132,15 +133,14 @@ class PiperVoiceOutput internal constructor(
         val playbackSpeed = 1f
         var estimatedGapMs = 0L
         var sourcePcmSummary: String? = null
-        val pcmDelivery = "piper_whole_passages_max640_v1"
+        val pcmDelivery = "piper_first_clause_then_passages_max640_v2"
         // One owner creates, invokes and releases the native engine. Playback never owns it.
         // Bounded PCM backpressure prevents long answers from accumulating unlimited audio.
         val audio = NativeAudioQueue<SynthesizedPhrase>(maxQueuedPassages) {
             it.pcm.size * 1000L / it.sampleRate
         }
-        val piperOpening = PiperTextStream.TARGET_CHARS
         val piperText = PiperTextStream()
-        log("piper_text_policy version=natural-v1 targetChars=320 maxChars=640 nativeMaxNumSentences=0 speed=1.0 threads=4")
+        log("piper_text_policy version=first-clause-v2 subsequentTargetChars=320 maxChars=640 nativeMaxNumSentences=0 speed=1.0 threads=4")
         val startupReady = CompletableDeferred<Unit>()
         val tokens = Channel<String>(64)
         val collectTokens = launch {
@@ -188,9 +188,10 @@ class PiperVoiceOutput internal constructor(
                     if (stopped) return
                     val phraseIndex = index++
                     if (phraseIndex == 0) {
+                        piperOpening = text.length
                         firstPcmMs = result.synthesisMs
                         firstTextToPcmMs = firstTextAt.get().takeIf { it != 0L }?.let(::elapsedMs)
-                        log("tts_opening_ready prepared=false firstTextToPcmMs=$firstTextToPcmMs openingChars=$piperOpening")
+                        log("tts_opening_ready prepared=false firstTextToPcmMs=$firstTextToPcmMs openingChars=${text.length}")
                     }
                     val rate = result.sampleRate
                     val frames = result.pcm.size.toLong()

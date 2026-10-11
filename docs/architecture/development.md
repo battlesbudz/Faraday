@@ -50,7 +50,7 @@ gradle --version
 ```
 
 Android Studio can import the root Gradle project. Keep `local.properties` local.
-The first build prepares the pinned Moonshine/Sherpa SDKs and compiles native
+The first build prepares the pinned Sherpa SDK and optional QNN runtime and compiles native
 speech/keyword code; subsequent builds reuse generated state and dependency caches.
 
 ## Checks
@@ -117,9 +117,11 @@ hosted release acceptance includes both API 30 normal and API 35 compact variant
 ## Native and release boundaries
 
 `app/build.gradle.kts` wires SDK extraction and Sherpa's native build into
-`preBuild`. `scripts/prepare_moonshine_sdk.py` namespaces Moonshine's ONNX runtime;
-Sherpa/Piper/Whisper/Silero retain their matching runtime. A packaging `pickFirst`
-for competing ONNX libraries would break versioned native symbols.
+`preBuild`. Whisper CPU, Piper, Silero and Smart Turn retain the shared Sherpa
+ORT 1.27.1 runtime. The optional QNN plugin uses that same ORT and packages its
+reviewed SM8650 runtime subset as compressed assets. Moonshine and its separate
+namespaced runtime are retired; no generic `pickFirst` or runtime replacement is
+used. Existing downloaded Moonshine files and comparison history are preserved.
 
 `voice/SherpaPcmCallback.java` is the concrete native PCM callback ABI.
 `scripts/sherpa_jni_profile.py` limits compiled Sherpa sources/symbols.

@@ -2,6 +2,7 @@ package com.battlesbudz.jarvis.v2.voice
 
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import java.util.concurrent.CancellationException
 
 /** Single native worker. Live input never waits for decode; busy workers skip obsolete windows.
  * Windows overlap and grow with this bounded utterance, so partials do not duplicate boundary words. */
@@ -9,7 +10,8 @@ internal class AsyncWhisperSession(
     private val decode: (ByteArray) -> String,
     private val release: () -> Unit,
     private val log: (String) -> Unit = {},
-    workClockNs: () -> Long = System::nanoTime
+    workClockNs: () -> Long = System::nanoTime,
+    private val cancel: () -> Unit = {}
 ) : StreamingTranscriber {
     private val work = AsrRecognitionWorkAccumulator("whisper_batch_decode_callback_wall", workClockNs)
     override val recognitionWorkMetrics get() = work.snapshot()
@@ -55,8 +57,11 @@ internal class AsyncWhisperSession(
                 try {
                     val began = System.nanoTime()
                     val text = work.measure(AsrRecognitionWorkAccumulator.Phase.PARTIAL, snapshot.size / 2) { decode(snapshot) }
-                    stable = agreeingPrefix(latest.text, text)
-                    latest = Result(end, text, CompletedEndpointCue(++completedRevision, text, coveredSamples))
+                    synchronized(this@AsyncWhisperSession) {
+                        if (closed) throw CancellationException("Whisper session closed")
+                        stable = agreeingPrefix(latest.text, text)
+                        latest = Result(end, text, CompletedEndpointCue(++completedRevision, text, coveredSamples))
+                    }
                     log("whisper_partial recognition=provisional queueWaitMs=${(began - queuedAt) / 1_000_000} audioMs=${snapshot.size / 32} decodeMs=${(System.nanoTime()-began)/1_000_000} stableChars=${stable.length} pendingWindows=0")
                 } catch (error: Throwable) { failure = error }
             }
@@ -91,11 +96,14 @@ internal class AsyncWhisperSession(
                 val reused = latest.end == end
                 val began = System.nanoTime()
                 val result = if (reused) latest.text else work.measure(AsrRecognitionWorkAccumulator.Phase.FINAL, snapshot.size / 2) { decode(snapshot) }
+                synchronized(this@AsyncWhisperSession) { if (closed) throw CancellationException("Whisper session closed") }
                 log("whisper_final recognition=committed reused=$reused queueWaitMs=$queueWaitMs audioMs=${snapshot.size / 32} decodeMs=${(System.nanoTime()-began)/1_000_000}")
                 result
-            }
+            }.also { inFlight = it }
         }
-        return final.get()
+        val result = final.get()
+        synchronized(this) { if (closed) throw CancellationException("Whisper session closed") }
+        return result
     }
     override fun recover(pcm: ByteArray): String {
         val recovery = synchronized(this) {
@@ -103,14 +111,17 @@ internal class AsyncWhisperSession(
             sealed = true
             worker.submit<String> {
                 work.measure(AsrRecognitionWorkAccumulator.Phase.RECOVERY, pcm.size / 2) { decode(pcm) }
-            }
+            }.also { inFlight = it }
         }
-        return recovery.get()
+        val result = recovery.get()
+        synchronized(this) { if (closed) throw CancellationException("Whisper session closed") }
+        return result
     }
     override fun close() {
         val releaseTask = synchronized(this) {
             closing ?: run {
                 closed = true
+                if (inFlight?.isDone == false) cancel()
                 audio.clear(); speechGate.clear()
                 // The same admission lock seals submission before queueing release.
                 worker.submit { release() }.also { closing = it }

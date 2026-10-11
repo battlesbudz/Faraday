@@ -1,0 +1,62 @@
+{
+  "status": "passed",
+  "scope": "Targeted host policy tests, production AsrEngine from reviewed integration jar; not Robolectric/Android UI/model inference",
+  "commands": [
+    [
+      "java",
+      "-Xmx900m",
+      "-cp",
+      "<execution-temp>/jarvis-host-deps/sherpa-1.13.7.jar:<execution-temp>/jarvis-host-deps/annotations-13.0.jar:<execution-temp>/jarvis-host-deps/android-all-14-robolectric-10818077.jar:<execution-temp>/jarvis-host-deps/commons-compress-1.27.1.jar:<execution-temp>/jarvis-host-deps/hamcrest-core-1.3.jar:<execution-temp>/jarvis-host-deps/junit-4.13.2.jar:<execution-temp>/jarvis-host-deps/trove4j-1.0.20200330.jar:<execution-temp>/jarvis-host-deps/kotlin-stdlib-2.3.21.jar:<execution-temp>/jarvis-host-deps/kotlinx-coroutines-core-jvm-1.9.0.jar:<execution-temp>/jarvis-host-deps/kotlin-script-runtime-2.3.21.jar:<execution-temp>/jarvis-host-deps/kotlin-reflect-2.3.21.jar:<execution-temp>/jarvis-host-deps/kotlin-compiler-embeddable-2.3.21.jar:<execution-temp>/jarvis-host-deps/kotlin-daemon-embeddable-2.3.21.jar:<execution-temp>/jarvis-qnn-research/final-jvm/tests.jar",
+      "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+      "-no-stdlib",
+      "-no-reflect",
+      "-jvm-target",
+      "17",
+      "-classpath",
+      "<execution-temp>/jarvis-host-deps/sherpa-1.13.7.jar:<execution-temp>/jarvis-host-deps/annotations-13.0.jar:<execution-temp>/jarvis-host-deps/android-all-14-robolectric-10818077.jar:<execution-temp>/jarvis-host-deps/commons-compress-1.27.1.jar:<execution-temp>/jarvis-host-deps/hamcrest-core-1.3.jar:<execution-temp>/jarvis-host-deps/junit-4.13.2.jar:<execution-temp>/jarvis-host-deps/trove4j-1.0.20200330.jar:<execution-temp>/jarvis-host-deps/kotlin-stdlib-2.3.21.jar:<execution-temp>/jarvis-host-deps/kotlinx-coroutines-core-jvm-1.9.0.jar:<execution-temp>/jarvis-host-deps/kotlin-script-runtime-2.3.21.jar:<execution-temp>/jarvis-host-deps/kotlin-reflect-2.3.21.jar:<execution-temp>/jarvis-host-deps/kotlin-compiler-embeddable-2.3.21.jar:<execution-temp>/jarvis-host-deps/kotlin-daemon-embeddable-2.3.21.jar:<execution-temp>/jarvis-qnn-research/final-jvm/tests.jar",
+      "-d",
+      "<execution-temp>/moonshine-retirement-jvm/tests.jar",
+      "app/src/main/java/com/battlesbudz/jarvis/v2/voice/VoiceInputMode.kt",
+      "app/src/main/java/com/battlesbudz/jarvis/v2/voice/AsrComparisonStore.kt",
+      "app/src/main/java/com/battlesbudz/jarvis/v2/voice/AsrCaptureMetrics.kt",
+      "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptureAcousticMetrics.kt",
+      "app/src/main/java/com/battlesbudz/jarvis/v2/voice/Pcm16Signal.kt",
+      "app/src/main/java/com/battlesbudz/jarvis/v2/voice/SpeechDetector.kt",
+      "app/src/main/java/com/battlesbudz/jarvis/v2/voice/WordErrorRate.kt",
+      "app/src/main/java/com/battlesbudz/jarvis/v2/voice/GemmaAudioInputPolicy.kt",
+      "app/src/main/java/com/battlesbudz/jarvis/v2/voice/comparison/LiveComparison.kt",
+      "app/src/main/java/com/battlesbudz/jarvis/v2/voice/VoiceTranscriptResolver.kt",
+      "app/src/main/java/com/battlesbudz/jarvis/v2/voice/TranscriptContent.kt",
+      "app/src/test/java/com/battlesbudz/jarvis/v2/voice/VoiceInputModeTest.kt",
+      "app/src/test/java/com/battlesbudz/jarvis/v2/voice/AsrComparisonStoreTest.kt",
+      "app/src/test/java/com/battlesbudz/jarvis/v2/voice/comparison/LiveComparisonTest.kt",
+      "<execution-temp>/moonshine-retirement-jvm/RawVadType.kt"
+    ],
+    [
+      "java",
+      "-cp",
+      "<execution-temp>/moonshine-retirement-jvm/tests.jar:<execution-temp>/jarvis-host-deps/sherpa-1.13.7.jar:<execution-temp>/jarvis-host-deps/annotations-13.0.jar:<execution-temp>/jarvis-host-deps/android-all-14-robolectric-10818077.jar:<execution-temp>/jarvis-host-deps/commons-compress-1.27.1.jar:<execution-temp>/jarvis-host-deps/hamcrest-core-1.3.jar:<execution-temp>/jarvis-host-deps/junit-4.13.2.jar:<execution-temp>/jarvis-host-deps/trove4j-1.0.20200330.jar:<execution-temp>/jarvis-host-deps/kotlin-stdlib-2.3.21.jar:<execution-temp>/jarvis-host-deps/kotlinx-coroutines-core-jvm-1.9.0.jar:<execution-temp>/jarvis-host-deps/kotlin-script-runtime-2.3.21.jar:<execution-temp>/jarvis-host-deps/kotlin-reflect-2.3.21.jar:<execution-temp>/jarvis-host-deps/kotlin-compiler-embeddable-2.3.21.jar:<execution-temp>/jarvis-host-deps/kotlin-daemon-embeddable-2.3.21.jar:<execution-temp>/jarvis-qnn-research/final-jvm/tests.jar",
+      "org.junit.runner.JUnitCore",
+      "com.battlesbudz.jarvis.v2.voice.VoiceInputModeTest",
+      "com.battlesbudz.jarvis.v2.voice.AsrComparisonStoreTest",
+      "com.battlesbudz.jarvis.v2.voice.comparison.LiveComparisonTest"
+    ]
+  ],
+  "sources": {
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/VoiceInputMode.kt": "03832264c375d6bd3052c55c786668a27d2b2b0e1fd729bb7390052e526c3402",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/AsrComparisonStore.kt": "56ee8cb2cf8820f5161dad50ea5fbc941b237567d4a0ad957f9626071f2912d3",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/AsrCaptureMetrics.kt": "1529ac2fc715763196da338d886751e3550648b64aac696124b5fbc5f06cf752",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptureAcousticMetrics.kt": "1c11343de9485c595e46e814f71bfb9de48773fb92284291f9596ac0d0cf10f1",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/Pcm16Signal.kt": "a04c6b59cabc959cd64cb398a1e2388b9b6c6eb147826651287ef3d604ed7ac0",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/SpeechDetector.kt": "bb6c1d49c49ad974cc285d5d976b1c79be209bca7376d6566216cfc6bb0d09af",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/WordErrorRate.kt": "522f02242229bb217af379c62e514c73851e3379b6fe26b25601eef649a11dd3",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/GemmaAudioInputPolicy.kt": "8276b14a801611895f8842ba2d76c5a6a364c1ced46548e9b391c6a8e79f6ec7",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/comparison/LiveComparison.kt": "4ef8e99c087aa1191678a54a67a55078b0b865ad6e6aaeab374704b255a5e9ad",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/VoiceTranscriptResolver.kt": "309cea5fbf522a5a69ff4a2c0467d1648f9051031c7937e3d0248ef67c141f74",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/TranscriptContent.kt": "7cb13728e27b96cc13c583749025f9f5ee4f07e381473bfa58c7c9587d64679a",
+    "app/src/test/java/com/battlesbudz/jarvis/v2/voice/VoiceInputModeTest.kt": "3f0ebe7a6fdb84caf5c826fcfe809cb32d2b08ce9ee66f7ba99b187efb395b1a",
+    "app/src/test/java/com/battlesbudz/jarvis/v2/voice/AsrComparisonStoreTest.kt": "592a2c848d72ddb76cf1adb254dbb599c093382ab0bf7cf0785af93bcaa7fd35",
+    "app/src/test/java/com/battlesbudz/jarvis/v2/voice/comparison/LiveComparisonTest.kt": "24047108c37024ff1fce67968a73ed0bdd4e48541eb978e5302f879d3709095e",
+    "<execution-temp>/moonshine-retirement-jvm/RawVadType.kt": "ae08f9f5c63393894b90c3529b69303223e405a36ada20702d929d3eee50fc4c"
+  }
+}

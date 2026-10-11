@@ -8,7 +8,7 @@ import kotlinx.coroutines.*
 /** Local speech capture alongside generation/playback, with the ordinary mic-priority contract. */
 class ReplyVoiceCapture(private val context: Context, private val log: (String) -> Unit) {
     suspend fun listen(output: PiperVoiceOutput, asrDirectory: File?,
-                       onConfirmed: () -> Unit, asrEngine: AsrEngine = AsrEngine.MOONSHINE, onPartialTranscript: (String) -> Unit = {}, trace: VoiceTurnTrace? = null,
+                       onConfirmed: () -> Unit, asrEngine: AsrEngine = AsrEngine.WHISPER, onPartialTranscript: (String) -> Unit = {}, trace: VoiceTurnTrace? = null,
                        inputFactory: (suspend () -> AudioInput)? = null, modelSession: VoiceModelSession? = null,
                        /** Action mode listens while native work is silent; its ASR budget is independent of Piper. */
                        asrOnly: Boolean = false,
@@ -58,14 +58,7 @@ class ReplyVoiceCapture(private val context: Context, private val log: (String) 
                     createKeyword = { MicroInterruptionKeywords(context.assets) },
                     createVad = { SileroSpeechDetector.create(context.assets) },
                     createTranscriber = {
-                        when (asrEngine) {
-                            AsrEngine.MOONSHINE -> {
-                                check(MoonshineStreamingTranscriber.canReuseForProbe(requireNotNull(asrDirectory), modelSession)) { "probe_model_not_warm" }
-                                MoonshineStreamingTranscriber(requireNotNull(asrDirectory), modelSession = modelSession, reserveReplyProbes = false)
-                            }
-                            AsrEngine.WHISPER -> WhisperTranscriber(requireNotNull(asrDirectory), live = false,
-                                log = log, modelSession = modelSession, warmProbe = true)
-                        }
+                        asrEngine.createProbe(requireNotNull(asrDirectory), log, modelSession)
                     },
                     playing = { currentOutput().isPlayingAudio }, reference = { currentOutput().recentSpokenText() },
                     hasPlaybackBudget = { asrOnly || currentOutput().hasInterruptionBudget() },

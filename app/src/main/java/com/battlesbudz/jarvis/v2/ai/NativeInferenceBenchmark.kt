@@ -54,6 +54,11 @@ internal class NativeInferenceBenchmark(
             estimatedDecodeTokensPerSecond = measured.estimatedRawDecodeTokensPerSecond.takeIf { generationAttempted },
             streamEvents = streamEvents,
             measurements = linkedMapOf(
+                "conversation_prepare_ms" to measured.conversationPreparationMs?.toDouble(),
+                "pre_submit_ms" to measured.preSubmitMs?.toDouble(),
+                "submit_to_first_callback_ms" to measured.submitToFirstCallbackMs?.toDouble(),
+                "submit_to_first_raw_text_ms" to measured.submitToFirstRawTextMs?.toDouble(),
+                "early_conversation_reused" to measured.reusedEarlyConversation?.let { if (it) 1.0 else 0.0 },
                 "first_visible_text_ms" to measured.firstVisibleTextMs?.toDouble(),
                 "native_terminal_ms" to measured.durationMs.toDouble().takeIf { generationAttempted },
                 "consumer_return_ms" to measured.returnDurationMs.toDouble().takeIf { generationAttempted },
@@ -80,6 +85,9 @@ internal class NativeInferenceBenchmark(
                 put("started_monotonic_ms", (measurement.beganAtNanos / 1_000_000).toString())
                 put("estimated_tokens_policy", "ceil_visible_output_characters_div_4")
                 put("estimated_decode_policy", "visible_char4_estimate_over_first_raw_text_to_native_terminal")
+                put("pre_submit_scope", "measurement_start_to_send_includes_lazy_conversation_preparation")
+                put("conversation_prepare_scope", "beginTurn_child_lookup_or_create_including_fixed_prefill_if_not_early")
+                put("native_prefill_tokens_scope", "last_user_submission_excludes_separately_prefilled_system_policy")
                 put("ttft_policy", "first_nonempty_native_text_callback_including_hidden_or_control_text")
                 put("callback_intervals_policy", "native_callback_chunks_nearest_rank_prefix_cap_4096")
                 put("warm_state_policy", "engine_instance_first_submission_not_disk_cache")

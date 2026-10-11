@@ -299,7 +299,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: app/build/sherpa-native
-          key: sherpa-arm64-137-${{ runner.os }}-${{ hashFiles('scripts/build_sherpa.py', 'scripts/sherpa_jni_profile.py', 'app/src/main/cpp/smartturn/**') }}
+          key: sherpa-arm64-137-${{ runner.os }}-${{ hashFiles('scripts/build_sherpa.py', 'scripts/sherpa_jni_profile.py', 'app/src/main/cpp/smartturn/**', 'app/src/main/cpp/whisperqnn/**') }}
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -572,7 +572,24 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install pinned real-model speech runtimes
-        run: python3 -m pip install 'numpy==2.2.6' 'moonshine-voice==0.1.5' 'sherpa-onnx==1.13.7' 'onnxruntime==1.23.2'
+        run: python3 -m pip install 'numpy==2.2.6' 'sherpa-onnx==1.13.7' 'onnxruntime==1.23.2'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify weight-free Whisper QNN frontend and native contracts
+        run: |
+          python3 - <<'PYTHON'
+          import sys, zipfile
+          from pathlib import Path
+          sys.path.insert(0, 'scripts')
+          from build_sherpa import ORT_HOST, download
+          output = Path('qnn-host-inputs'); output.mkdir(exist_ok=True)
+          with zipfile.ZipFile(download(ORT_HOST, output)) as archive:
+              archive.extractall(output / 'ort')
+          PYTHON
+          python3 app/src/main/cpp/whisperqnn/tests/verify_frontend.py --receipt recorded-audio/whisper-qnn-frontend.json
+          python3 app/src/main/cpp/whisperqnn/tests/verify_decoder.py --ort-root qnn-host-inputs/ort --jni-include "$JAVA_HOME/include" --receipt recorded-audio/whisper-qnn-native.json
       - name: Cache checksum-verified acoustic model inputs
         uses: actions/cache@v4
         with:

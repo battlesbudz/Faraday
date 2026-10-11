@@ -35,9 +35,43 @@ class RecordedAudioContractTests(unittest.TestCase):
 
     def test_production_weight_specs_are_not_empty_or_replaced(self):
         specs = gate.model_specs()
-        self.assertEqual((8, 3), (len(specs["moonshine"]), len(specs["whisper"])))
+        self.assertEqual({"whisper"}, set(specs))
+        self.assertEqual(3, len(specs["whisper"]))
         self.assertEqual("base.en-encoder.int8.onnx", specs["whisper"][0]["name"])
-        self.assertEqual(64, len(specs["moonshine"][0]["sha256"]))
+        self.assertEqual(64, len(specs["whisper"][0]["sha256"]))
+
+    def test_retirement_preserves_whisper_checks_pins_and_thresholds(self):
+        required = gate.contract()
+        self.assertEqual({"sherpa-onnx": "1.13.7", "onnxruntime": "1.23.2"}, required["runtime_versions"])
+        self.assertEqual(["whisper_recorded_boundaries", "whisper_recorded_quiet_ending"],
+                         [item["name"] for item in required["checks"]])
+        self.assertEqual(["original", "trailing_silence"], [item["variant"] for item in required["checks"]])
+        for item in required["checks"]:
+            self.assertEqual("whisper", item["backend"])
+            self.assertEqual(3 / 28, item["max_word_error_rate"])
+            self.assertEqual(2 / 28, item["baseline_word_error_rate"])
+        self.assertEqual(3, len(gate.model_specs()["whisper"]))
+        self.assertTrue(any(item["name"] == "instructionPrecedesCompleteHumanRecordingInNativeContent"
+                            for item in required["required_jvm_tests"]))
+
+    def test_retired_backend_report_cannot_replace_current_whisper_evidence(self):
+        report = self.report()
+        report["checks"][0]["backend"] = "moonshine"
+        with self.assertRaises(ValueError):
+            gate.validate_report(report, self.SOURCE)
+
+    def test_no_download_requires_only_whisper_files_and_keeps_old_cache(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            old = root / "moonshine" / "old-model.ort"
+            old.parent.mkdir()
+            old.write_bytes(b"retained historical cache")
+            with mock.patch.object(gate, "valid_model", return_value=True) as validate:
+                specs = gate.prepare_models(root, allow_download=False)
+            self.assertEqual({"whisper"}, set(specs))
+            self.assertEqual(3, validate.call_count)
+            self.assertTrue(all(call.args[0].parent.name == "whisper" for call in validate.call_args_list))
+            self.assertEqual(b"retained historical cache", old.read_bytes())
 
     def test_complete_exact_revision_report_passes(self):
         gate.validate_report(self.report(), self.SOURCE)
@@ -65,7 +99,7 @@ class RecordedAudioContractTests(unittest.TestCase):
                 if mutation == "source":
                     report["source_commit"] = "b" * 40
                 elif mutation == "runtime":
-                    report["runtime_versions"]["moonshine-voice"] = "unverified"
+                    report["runtime_versions"]["sherpa-onnx"] = "unverified"
                 elif mutation == "recording":
                     check["recording_sha256"] = "0" * 64
                 elif mutation == "pcm":

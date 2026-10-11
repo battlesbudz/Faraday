@@ -19,6 +19,15 @@ internal class NativeInferenceMeasurement(private val nowNanos: () -> Long = Sys
     private var lastCallbackAt: Long? = null
     private var droppedCallbackIntervals = 0
     private var nativeSubmitNanos: Long? = null
+    private var submissionStartedAtNanos: Long? = null
+    private var conversationPreparationNanos: Long? = null
+    private var reusedEarlyConversation: Boolean? = null
+    fun conversationReady(startedAtNanos: Long, earlyPrepared: Boolean) {
+        conversationPreparationNanos = (nowNanos() - startedAtNanos).coerceAtLeast(0)
+        reusedEarlyConversation = earlyPrepared
+    }
+    fun submissionStarted(atNanos: Long) { submissionStartedAtNanos = atNanos }
+
 
     @Synchronized fun callback(hasText: Boolean): Long {
         val at = nowNanos()
@@ -38,6 +47,7 @@ internal class NativeInferenceMeasurement(private val nowNanos: () -> Long = Sys
 
     /** Only duration within sendMessageAsync/generateContentStream, excluding preparation. */
     fun submitted(submissionBeganAtNanos: Long) {
+        submissionStartedAtNanos = submissionStartedAtNanos ?: submissionBeganAtNanos
         nativeSubmitNanos = (nowNanos() - submissionBeganAtNanos).coerceAtLeast(0)
     }
 
@@ -56,6 +66,15 @@ internal class NativeInferenceMeasurement(private val nowNanos: () -> Long = Sys
             durationMs = (endedAt - beganAtNanos).coerceAtLeast(0) / 1_000_000,
             returnDurationMs = (returnedAt - beganAtNanos).coerceAtLeast(0) / 1_000_000,
             nativeSubmitMs = nativeSubmitNanos?.div(1_000_000),
+            conversationPreparationMs = conversationPreparationNanos?.div(1_000_000),
+            preSubmitMs = submissionStartedAtNanos?.let { (it - beganAtNanos).coerceAtLeast(0) / 1_000_000 },
+            submitToFirstCallbackMs = submissionStartedAtNanos?.let { submitted ->
+                firstCallbackAt.get().takeUnless { it == UNSET }?.let { (it - submitted).coerceAtLeast(0) / 1_000_000 }
+            },
+            submitToFirstRawTextMs = submissionStartedAtNanos?.let { submitted ->
+                rawAt?.let { (it - submitted).coerceAtLeast(0) / 1_000_000 }
+            },
+            reusedEarlyConversation = reusedEarlyConversation,
             firstCallbackMs = offset(firstCallbackAt.get()),
             firstRawTextMs = rawAt?.let { (it - beganAtNanos).coerceAtLeast(0) / 1_000_000 },
             firstVisibleTextMs = visibleAt?.let { (it - beganAtNanos).coerceAtLeast(0) / 1_000_000 },
@@ -89,6 +108,11 @@ internal class NativeInferenceMeasurement(private val nowNanos: () -> Long = Sys
         val durationMs: Long,
         val returnDurationMs: Long,
         val nativeSubmitMs: Long?,
+        val conversationPreparationMs: Long?,
+        val preSubmitMs: Long?,
+        val submitToFirstCallbackMs: Long?,
+        val submitToFirstRawTextMs: Long?,
+        val reusedEarlyConversation: Boolean?,
         val firstCallbackMs: Long?,
         val firstRawTextMs: Long?,
         val firstVisibleTextMs: Long?,

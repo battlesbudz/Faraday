@@ -2,8 +2,7 @@ package com.battlesbudz.jarvis.v2.voice
 
 /** Actual recognizer work on its executing thread. Queue waits, microphone time,
  * model loading and caller accept wall time are outside this measurement.
- * Whisper measures its batch decode callback; Moonshine measures native feed /
- * stop / batch API calls, whose internal encoder/decoder split is unavailable. */
+ * Whisper measures its decode callback, including backend work and CPU fallback. */
 data class AsrRecognitionWorkMetrics(
     val scope: String,
     val feedWorkNs: Long = 0,
@@ -12,8 +11,7 @@ data class AsrRecognitionWorkMetrics(
     val recoveryDecodeWorkNs: Long = 0,
     val invocations: Int = 0,
     /** Sum of 16 kHz mono samples submitted to measured decode/native work.
-     * Overlapping Whisper windows and explicit recoveries each count their input;
-     * streamed Moonshine finish flushes existing input without counting it twice. */
+     * Overlapping Whisper windows and explicit recoveries each count their input. */
     val submittedAudioSamples: Long = 0,
     val complete: Boolean = true
 ) {

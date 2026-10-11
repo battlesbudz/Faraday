@@ -29,6 +29,7 @@ internal class CheckedConversationLifecycle<C : Any>(
 
     private val lock = Any()
     private var conversation: C? = null
+    private var preparedUnused = false
     private var activeTurn: Turn<C>? = null
     private var childLease: ChildLease<*>? = null
     private var childClosing = false
@@ -39,6 +40,9 @@ internal class CheckedConversationLifecycle<C : Any>(
     private var closeRequested = false
     private var quarantine: Throwable? = null
     private var needsHistoryRebuild = false
+
+    val hasConversationHistory: Boolean get() = synchronized(lock) { conversation != null && !preparedUnused }
+    val hasUnusedPreparedConversation: Boolean get() = synchronized(lock) { preparedUnused && conversation != null && !busy && quarantine == null }
 
     val safeToRelease: Boolean get() = synchronized(lock) { !busy && quarantine == null }
     val isQuarantined: Boolean get() = synchronized(lock) { quarantine != null }
@@ -57,6 +61,31 @@ internal class CheckedConversationLifecycle<C : Any>(
         } finally { synchronized(lock) { busy = false } }
     }
 
+    /** Prepare one idle child under the existing exclusive owner; submit no user turn. */
+    fun prepareConversation(isCurrent: () -> Boolean): Boolean {
+        checkWorkerThread()
+        if (!isCurrent()) return false
+        synchronized(lock) {
+            checkAvailable()
+            check(initialized) { "Native engine must be initialized before preparation" }
+            check(!needsHistoryRebuild) { "Failed native history must be rebuilt before preparation" }
+            if (conversation != null) return preparedUnused
+            busy = true
+        }
+        try {
+            val child = createConversation()
+            synchronized(lock) { conversation = child }
+            awaitIdle(child)
+            if (!isCurrent()) { disposeConversation(child); return false }
+            synchronized(lock) { preparedUnused = true }
+            return true
+        } catch (error: Throwable) {
+            synchronized(lock) { needsHistoryRebuild = true }
+            if (synchronized(lock) { conversation != null }) quarantine(error)
+            throw error
+        } finally { synchronized(lock) { busy = false } }
+    }
+
     fun beginTurn(): Turn<C> {
         checkWorkerThread()
         val current = synchronized(lock) {
@@ -70,6 +99,7 @@ internal class CheckedConversationLifecycle<C : Any>(
             val child = current ?: createConversation()
             return synchronized(lock) {
                 conversation = child
+                preparedUnused = false
                 Turn(child).also { activeTurn = it }
             }
         } catch (error: Throwable) {
@@ -233,7 +263,7 @@ internal class CheckedConversationLifecycle<C : Any>(
     private fun disposeConversation(child: C) {
         try { closeConversation(child) }
         catch (error: Throwable) { quarantine(error); throw error }
-        synchronized(lock) { if (conversation === child) conversation = null }
+        synchronized(lock) { if (conversation === child) { conversation = null; preparedUnused = false } }
     }
 
     private fun quarantine(error: Throwable) {

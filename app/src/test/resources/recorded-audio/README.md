@@ -13,7 +13,7 @@ The JVM tests feed this actual waveform through shipping `AudioTurnCapture`,
 Their injected VAD/recognizer decisions establish byte retention and delivery;
 they do not establish speech recognition or Gemma understanding.
 `scripts/check_recorded_audio.py` separately executes the exact pinned Whisper
-and Moonshine weights on Linux, scores the transcript and boundary words, and
+weights on Linux, scores the transcript and boundary words, and
 preserves the raw native result. One clean speaker is a bounded regression
 check, not a representative population or microphone/noise benchmark.
 
@@ -27,8 +27,10 @@ The 2026-10-03 Linux CPU baseline with the exact pinned weights scored 2/28 word
 errors for Whisper and 1/28 for Moonshine on both the original recording and
 its one-second quiet extension. Both first and last words were correct.
 `flour`/`flower` and Whisper's `fattened`/`faten` remain counted as errors.
-The regression budget allows one additional interior word error: maximum 3/28
-for Whisper and 2/28 for Moonshine. First and last words must both be correct
+The current regression budget keeps one additional interior word error: maximum
+3/28 for Whisper. Moonshine's historical 2/28 limit and recorded baseline are
+retained here as history; that retired runtime is no longer an active gate.
+First and last words must both be correct
 regardless of overall WER. Raw text and native output are always retained;
 `Mr.`/`mister` normalization is orthographic only and does not affect this clip.
 These numbers are fixture calibration, not population accuracy or device latency.

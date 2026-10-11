@@ -13,6 +13,7 @@ class CheckedConversationLifecycleTest {
     private class Native {
         val events = mutableListOf<String>()
         var created = 0
+        var creating: () -> Unit = {}
         var drain: () -> Unit = {}
         var cancel: () -> Unit = {}
         var dispose: () -> Unit = {}
@@ -21,7 +22,7 @@ class CheckedConversationLifecycleTest {
         var quarantineNotifications = 0
         val quarantineFailures = mutableListOf<Throwable>()
         val owner = CheckedConversationLifecycle(
-            createConversation = { Child(++created).also { events += "create:${it.number}" } },
+            createConversation = { creating(); Child(++created).also { events += "create:${it.number}" } },
             cancelConversation = { events += "cancel:${it.number}"; cancel() },
             awaitIdle = { events += "drain:${it.number}"; drain() },
             closeConversation = { events += "close:${it.number}"; dispose() },
@@ -33,6 +34,54 @@ class CheckedConversationLifecycleTest {
     private fun failure(block: () -> Unit): Throwable {
         try { block() } catch (error: Throwable) { return error }
         throw AssertionError("Expected failure")
+    }
+
+    @Test fun earlyPreparedChildIsIdleAndUsedExactlyOnce() {
+        val native = Native()
+        assertTrue(native.owner.prepareConversation { true })
+        assertTrue(native.owner.hasUnusedPreparedConversation)
+        assertTrue(native.owner.safeToRelease)
+        assertEquals(listOf("initialize", "create:1", "drain:1"), native.events)
+        assertTrue(native.owner.prepareConversation { true })
+        assertEquals(1, native.created)
+        val turn = native.owner.beginTurn()
+        assertFalse(native.owner.hasUnusedPreparedConversation)
+        native.owner.finishTurn(turn, { true })
+        assertFalse(native.owner.prepareConversation { true })
+        assertEquals(1, native.created)
+    }
+    @Test fun resetDiscardsPreparationBeforeAnyNewTurn() {
+        val native = Native()
+        native.owner.prepareConversation { true }; native.owner.resetForConfirmedHistory()
+        assertFalse(native.owner.hasUnusedPreparedConversation)
+        val turn = native.owner.beginTurn()
+        assertEquals(2, turn.conversation.number)
+        native.owner.finishTurn(turn, { true })
+    }
+    @Test fun ownerCancelledDuringPreparationCannotPublishItsChild() {
+        val native = Native(); val current = AtomicBoolean(true)
+        native.drain = { current.set(false) }
+        assertFalse(native.owner.prepareConversation(current::get))
+        assertFalse(native.owner.hasUnusedPreparedConversation)
+        assertTrue(native.owner.safeToRelease)
+        assertEquals(listOf("initialize", "create:1", "drain:1", "close:1"), native.events)
+    }
+    @Test fun concurrentGenerationAndResetAreRejectedDuringEarlyPrefill() {
+        val native = Native(); val entered = CountDownLatch(1); val release = CountDownLatch(1)
+        native.creating = { entered.countDown(); check(release.await(2, TimeUnit.SECONDS)) }
+        val error = AtomicReference<Throwable?>()
+        val worker = thread { try { native.owner.prepareConversation { true } } catch (caught: Throwable) { error.set(caught) } }
+        assertTrue(entered.await(2, TimeUnit.SECONDS)); assertFalse(native.owner.safeToRelease)
+        failure { native.owner.beginTurn() }; failure { native.owner.resetForConfirmedHistory() }
+        release.countDown(); worker.join(2000)
+        assertNull(error.get()); assertTrue(native.owner.hasUnusedPreparedConversation)
+        native.owner.close()
+    }
+    @Test fun failedPreparationDrainQuarantinesBeforeReuse() {
+        val native = Native(); native.drain = { error("prefill drain failed") }
+        failure { native.owner.prepareConversation { true } }
+        assertTrue(native.owner.isQuarantined); assertFalse(native.owner.safeToRelease)
+        failure { native.owner.beginTurn() }; assertFalse(native.events.contains("close:1"))
     }
 
     @Test fun successfulTerminalStillNeedsCheckedDrainBeforeReuseOrTelemetry() {

@@ -1,5 +1,15 @@
 # Feature and acceptance map
 
+## Combined audio candidate — 11 October 2026
+
+Optional [Snapdragon Whisper QNN](whisper-qnn-2026-10-11.md) with verified assets,
+strict provider diagnostics and CPU fallback replaces the retired Moonshine option.
+[first meaningful Piper clause](first-piper-clause-2026-10-11.md) delivery retains
+later passage batching, while [early Gemma preparation](early-gemma-session-2026-10-11.md)
+uses a real fixed system preface and checked lifecycle barrier. Host tests are
+source-level evidence; Android release and Fold6 acceleration/latency qualification
+remain separate gates.
+
 ## Same-host native encoder acceptance proposal — October 10, 2026
 
 This local-only harness proposal uses the versioned

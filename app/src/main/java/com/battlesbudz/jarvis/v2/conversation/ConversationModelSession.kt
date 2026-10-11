@@ -54,6 +54,15 @@ internal class ConversationModelSession(
                         reply: ConversationReply): ConversationBackend {
         check(state.engine?.isNativeQuarantined != true) { "Native model is still quarantined; ownership cannot be reused" }
         if (state.engine?.requiresConfirmedHistoryRebuild == true) reset()
+        if (!voiceAttached) {
+            // A prior direct-audio child has a fixed system preface. Change modes before
+            // prompt assembly so confirmed history is reseeded after replacing that child.
+            val resident = state.engine
+            if (resident?.hasFixedVoicePreface == true) {
+                beforeNativeMutation()
+                if (resident.prepareOrdinaryConversation()) clearContextAccounting()
+            }
+        }
         if (imageAttached) {
             check(selectedModel().supportsVision) {
                 "${selectedModel().id} is text-only. Select a model with image input."

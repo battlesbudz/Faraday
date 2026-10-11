@@ -74,7 +74,7 @@ class VoiceInputSettingsTest {
         mount()
         compose.onNodeWithTag("gemma_caption_engine").assertTextContains("Off")
         assertNull(VoiceInputMode.captionEngine(context))
-        for ((tag, engine) in listOf("moonshine" to AsrEngine.MOONSHINE,
+        for ((tag, engine) in listOf("whisper_npu" to AsrEngine.WHISPER_NPU,
             "whisper" to AsrEngine.WHISPER, "off" to null)) {
             compose.onNodeWithTag("gemma_caption_engine").performScrollTo().performClick()
             compose.onNodeWithTag("gemma_caption_$tag").performClick()
@@ -88,16 +88,16 @@ class VoiceInputSettingsTest {
     }
 
     @Test fun anOffChoiceMadeInAnOlderApkWinsOnReturnAfterAnEngineWasSelected() {
-        VoiceInputMode.captionEngine(context, AsrEngine.MOONSHINE)
-        assertEquals(AsrEngine.MOONSHINE, VoiceInputMode.captionEngine(context))
+        VoiceInputMode.captionEngine(context, AsrEngine.WHISPER_NPU)
+        assertEquals(AsrEngine.WHISPER_NPU, VoiceInputMode.captionEngine(context))
         // The older APK knows only this setting, leaving the new engine key intact.
         preferences.edit().putBoolean("gemma_whisper_captions", false).commit()
         mount()
         compose.onNodeWithTag("gemma_caption_engine").assertTextContains("Off")
         assertNull(VoiceInputMode.captionEngine(context))
         compose.onNodeWithTag("gemma_caption_engine").performScrollTo().performClick()
-        compose.onNodeWithTag("gemma_caption_moonshine").performClick()
-        assertEquals(AsrEngine.MOONSHINE, VoiceInputMode.captionEngine(context))
+        compose.onNodeWithTag("gemma_caption_whisper_npu").performClick()
+        assertEquals(AsrEngine.WHISPER_NPU, VoiceInputMode.captionEngine(context))
         assertTrue(preferences.getBoolean("gemma_whisper_captions", false))
     }
 

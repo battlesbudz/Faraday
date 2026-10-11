@@ -17,8 +17,14 @@ enum class VoiceInputMode(val id: String, val label: String) {
         /** A null engine means Off. Existing installs keep their Whisper on/off choice. */
         fun captionEngine(context: Context): AsrEngine? {
             val preferences = context.getSharedPreferences("voice_input", Context.MODE_PRIVATE)
-            return resolveCaptionEngine(preferences.getString("caption_engine", null),
+            val storedId = preferences.getString("caption_engine", null)
+            val resolved = resolveCaptionEngine(storedId,
                 preferences.getBoolean("gemma_whisper_captions", true))
+            if (storedId == "moonshine_small") {
+                // Retire only the selection, preserving existing downloads and history.
+                preferences.edit().putString("caption_engine", resolved?.id ?: "off").apply()
+            }
+            return resolved
         }
         fun captionEngine(context: Context, engine: AsrEngine?) {
             context.getSharedPreferences("voice_input", Context.MODE_PRIVATE).edit()

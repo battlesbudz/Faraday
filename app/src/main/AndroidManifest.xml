@@ -37,6 +37,7 @@
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/benchmark_export_paths" />
         </provider>
         <uses-native-library android:name="libvndksupport.so" android:required="false" />
+        <uses-native-library android:name="libcdsprpc.so" android:required="false" />
         <uses-native-library android:name="libOpenCL.so" android:required="false" />
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"

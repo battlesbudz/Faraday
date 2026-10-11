@@ -3418,7 +3418,7 @@ class ReleaseJourneyTest {
             // Exercise the actual dropdown and rebuild the UI for each persisted choice.
             // Expected UI labels are fixture data, not getters across the independently
             // optimized app/test APK boundary (the app can inline AsrEngine.label).
-            for ((label, engine) in listOf("Moonshine" to AsrEngine.MOONSHINE,
+            for ((label, engine) in listOf("Whisper base · Snapdragon NPU" to AsrEngine.WHISPER_NPU,
                 "Whisper base.en" to AsrEngine.WHISPER, "Off" to null)) {
                 find(By.res("gemma_caption_engine")).click()
                 // The separate popup window does not inherit testTagsAsResourceId.

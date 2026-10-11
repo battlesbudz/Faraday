@@ -210,7 +210,7 @@ def consolidate(root, source_commit, pr_head, run_url, needs):
     result = {'schema': 2, 'passed': False, 'source_commit': source_commit,
               'pr_head': pr_head, 'run_url': run_url, 'errors': [], 'variants': [],
               'release_approved': False,
-              'coverage': 'Pinned host Whisper/Moonshine recorded inference + shipping JVM phrase capture/Gemma Content delivery + expanded Android emulator matrix',
+              'coverage': 'Pinned host Whisper recorded inference + shipping JVM phrase capture/Gemma Content delivery + expanded Android emulator matrix',
               'not_covered': ['Android language-model inference/tool selection/approved-memory use and Gemma audio understanding'
                               if item == 'Real-model inference and model-generated tool selection' else item
                               for item in scenarios['not_covered']],

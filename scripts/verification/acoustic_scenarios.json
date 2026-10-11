@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "runtime_versions": {
-    "moonshine-voice": "0.1.5",
     "sherpa-onnx": "1.13.7",
     "onnxruntime": "1.23.2"
   },
@@ -19,30 +18,12 @@
       "variant": "trailing_silence",
       "max_word_error_rate": 0.10714285714285714,
       "baseline_word_error_rate": 0.07142857142857142
-    },
-    {
-      "name": "moonshine_recorded_boundaries",
-      "backend": "moonshine",
-      "variant": "original",
-      "max_word_error_rate": 0.07142857142857142,
-      "baseline_word_error_rate": 0.03571428571428571
-    },
-    {
-      "name": "moonshine_recorded_quiet_ending",
-      "backend": "moonshine",
-      "variant": "trailing_silence",
-      "max_word_error_rate": 0.07142857142857142,
-      "baseline_word_error_rate": 0.03571428571428571
     }
   ],
   "required_jvm_tests": [
     {
       "classname": "com.battlesbudz.jarvis.v2.voice.RecordedPhraseCaptureTest",
       "name": "whisperRetainsRecordedOpeningPauseAndEnding"
-    },
-    {
-      "classname": "com.battlesbudz.jarvis.v2.voice.RecordedPhraseCaptureTest",
-      "name": "moonshineRetainsRecordedOpeningPauseAndEnding"
     },
     {
       "classname": "com.battlesbudz.jarvis.v2.ai.GemmaRecordedAudioDeliveryTest",

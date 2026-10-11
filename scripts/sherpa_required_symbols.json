@@ -51,5 +51,9 @@
   "Java_com_k2fsa_sherpa_onnx_Vad_newFromAsset",
   "Java_com_k2fsa_sherpa_onnx_Vad_newFromFile",
   "Java_com_k2fsa_sherpa_onnx_Vad_pop",
-  "Java_com_k2fsa_sherpa_onnx_Vad_reset"
+  "Java_com_k2fsa_sherpa_onnx_Vad_reset",
+  "Java_com_battlesbudz_jarvis_v2_voice_whisper_WhisperQnnNative_create",
+  "Java_com_battlesbudz_jarvis_v2_voice_whisper_WhisperQnnNative_decode",
+  "Java_com_battlesbudz_jarvis_v2_voice_whisper_WhisperQnnNative_cancel",
+  "Java_com_battlesbudz_jarvis_v2_voice_whisper_WhisperQnnNative_close"
 ]

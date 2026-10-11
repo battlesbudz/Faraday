@@ -15,8 +15,20 @@ class AsrComparisonStoreTest {
         val store = AsrComparisonStore(preferences)
         store.add("new", metrics, "hello")
         assertEquals("zipformer", store.records().first().getString("engine"))
-        assertEquals(MoonshineModelInfo.id, store.records().last().getString("engine"))
+        assertEquals(AsrEngine.WHISPER.id, store.records().last().getString("engine"))
         assertTrue(store.snapshot().contains("Zipformer (retired)"))
+    }
+
+    @Test fun retiredMoonshineHistoryRemainsReadableBesideNewWhisperTurns() {
+        val preferences = preferences()
+        preferences.edit().putString("turns",
+            """[{"id":"old","engine":"moonshine_small","model":"old-model","transcript":"retained"}]""").apply()
+        val store = AsrComparisonStore(preferences)
+        store.add("new", metrics, "current")
+        assertEquals("moonshine_small", store.records().first().getString("engine"))
+        assertEquals("retained", store.records().first().getString("transcript"))
+        assertEquals(AsrEngine.WHISPER.id, store.records().last().getString("engine"))
+        assertTrue(store.snapshot().contains("Moonshine Small Streaming (retired)"))
     }
 
     @Test fun keepsEngineReferenceAndTimingAcrossStoreRecreation() {
@@ -35,7 +47,7 @@ class AsrComparisonStoreTest {
         repeat(23) { store.add(it.toString(), metrics, "hello") }
         assertEquals(20, store.records().size)
         assertEquals("3", store.records().first().getString("id"))
-        assertTrue(store.records().all { it.getString("engine") == MoonshineModelInfo.id })
+        assertTrue(store.records().all { it.getString("engine") == AsrEngine.WHISPER.id })
         store.update("0", "late_update", 1)
         assertEquals(20, store.records().size)
         assertTrue(store.snapshot().contains("unscored"))

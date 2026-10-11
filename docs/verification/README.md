@@ -46,7 +46,7 @@ commits. Do not create or merge another PR without Justin's permission.
    numbered user APK is installed and populated before replacement without
    clearing its data; ordinary isolated journeys still use disposable resets. That JSON is the current test contract;
    historical test counts in old reports are not current requirements.
-5. Run real recorded-speech inference with pinned Whisper/Moonshine host runtimes,
+5. Run real recorded-speech inference with the pinned Whisper host runtime,
    audit both APKs for native 16 KB compatibility, and exercise actual prior-APK
    upgrades and platform/lifecycle/layout phases on every required profile.
 6. Consolidate exact same-run JVM, APK and emulator evidence, rehash artifact
