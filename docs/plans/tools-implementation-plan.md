@@ -5,6 +5,88 @@ Follow-up source baseline: `feature-tools` at `bfeca6d06dc3dba583e0f92e812046e9e
 Created: September 24, 2026. Updated: September 30, 2026 (America/New_York). Owner: Justin Battles.
 Status: existing tools scope retained; September 29 autonomous messaging/warm-inference requirements integrated. New phases below are planned, not implemented or verified by this documentation update.
 
+## Implementation checkpoint — October 11, 2026 (M7 external-agent access)
+
+M7 is implemented on `feature/muse-tools` (no PR, no merge). The implementation
+commit is `2bccfed6` (October 11): the protected provider boundary for
+external-agent access to narrowly scoped Jarvis functions, caller
+authorization persisted in the task journal, and 18 JVM tests; `e40c499b`
+follows with a warning-silencing cleanup of the recursion fence (no
+behavior change). M7 is the mirror of M3's consumer-side provider
+dispatch: there Jarvis calls other providers' functions; here external
+agents (other on-device agents/apps) call a fixed narrow set of Jarvis's
+own functions — through the same ledger, the same journal, and no
+separate permission system.
+
+- Narrow exposed set (D06): `actions/ExternalAgentAccess.kt` —
+  `ExternalAgentFunctions.EXPOSED` is fixed in code to five functions:
+  `read_battery`, `show_schedule`, `media_control`, `set_volume`, and
+  `post_notification` (read-only reads, local low-risk controls, one
+  user-visible notification channel). Screen functions, browser submit/
+  login, launch/navigation, and reminder scheduling are deliberately
+  absent and can never be granted.
+- Caller authorization (D06): `authorizeCaller()` opts a caller in
+  explicitly with a per-caller `ExternalAgentGrant` covering only listed
+  exposed functions; re-authorization replaces the grant (narrowing is
+  immediate); `revokeCaller()` and `setCallerEnabled()` revoke or pause
+  access. Unknown, disabled, or revoked callers get honest denials and
+  nothing dispatches.
+- No session-grant inheritance: external calls are admitted only under
+  the caller's own grant plus the user's family-level denial/revocation
+  state (`ToolSourceAccess`). Session-scoped grants and exact approvals
+  are never consulted and never inherited. A defensive D11 gate rejects
+  session/approval-gated functions even if the exposed set were
+  misconfigured, so there is no external path around individual
+  approval (D11–D17).
+- Anti-recursion checks: external calls are single-level per thread — a
+  call arriving while another external call is dispatching is rejected
+  with `RECURSION_BOUNDED`. External callers get single calls, never
+  journeys.
+- Ledger provenance: every admitted call is recorded with the new
+  `ToolAuthority.EXTERNAL_AGENT` and the authorizing grant's id, so the
+  receipt history shows exactly which external caller did what.
+  `ToolTaskLedger.create()` takes optional authority/grant id (defaults
+  keep existing callers unchanged).
+- Durable grants: caller authorizations persist in the journal's new
+  `externalAgentGrants` list with encode/decode/validate/retain. The
+  static scope cap is enforced at decode: a hand-edited journal claiming
+  functions outside the exposed set fails closed with INVALID_CONTENT.
+  Pre-M7 journals decode with an empty grant list; schema stays 3.
+
+Tests: `ExternalAgentAccessTest` (JVM, 18 tests) covers unknown/unusable
+caller ids, authorized execution with ledger receipt provenance,
+function-outside-grant and unknown-function denials, authorization
+rejecting non-exposed functions (screen_tap, browse_submit) and empty
+sets, revoked/disabled callers, grant replacement on re-authorization,
+user-denial propagation to external callers, invalid-argument rejection
+with zero effects, the recursion bound (a re-entrant call inside the
+executor is rejected while the outer call completes), no session
+authority on external attempts, grant survival across file round-trips,
+hand-edited scope broadening failing closed, and legacy journals
+without the grants key decoding cleanly.
+
+CI: run 38135854677 on `e40c499b` — "Build signed release APK" green
+(all release unit tests, including the 18 new external-agent tests;
+signed release APK produced) and 4 of 5 emulator release journeys
+green. The 35-phone-compact journey failed on emulator GPU/
+instrumentation-harness errors with no app test failure; the same
+harness flaked other profiles and commits the same day (including a
+docs-only commit), so this is environmental, not a code regression. A
+re-run of that single journey job is the remaining step to a fully
+green run.
+
+Explicitly unverified per the coverage boundaries: the on-device service
+binding (AppFunctions provider declaration and calling-package identity
+from the platform) — the boundary exposes `ExternalActionExecutor` as
+the injection seam for the native executor, and platform eligibility
+for Jarvis-as-provider is follow-up, not M7 scope; a Settings UI for
+authorizing/revoking callers (the journal API is implemented; the UI
+surface is follow-up).
+
+M7 remaining: none — caller authorization, narrow scope, anti-recursion,
+no session-grant inheritance, and durable grant provenance are
+implemented. M8 is still planned.
+
 ## Implementation checkpoint — October 11, 2026 (M6 automatic memory)
 
 M6 is implemented on `feature/muse-tools` (no PR, no merge). The implementation
