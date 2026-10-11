@@ -5,6 +5,78 @@ Follow-up source baseline: `feature-tools` at `bfeca6d06dc3dba583e0f92e812046e9e
 Created: September 24, 2026. Updated: September 30, 2026 (America/New_York). Owner: Justin Battles.
 Status: existing tools scope retained; September 29 autonomous messaging/warm-inference requirements integrated. New phases below are planned, not implemented or verified by this documentation update.
 
+## Implementation checkpoint — October 11, 2026 (M6 automatic memory)
+
+M6 is implemented on `feature/muse-tools` (no PR, no merge). The implementation
+commit is `19a68eee` (October 11): the automatic-memory pipeline, the evaluator
+with measured thresholds, and 19 JVM tests. It builds on the existing Memory OS
+explicit-review substrate (`MemoryOs`, `MemoryPolicy`, `MemoryWiki`) — extended,
+never duplicated.
+
+- Default-on setting (D45): `memory/AutomaticMemory.kt` —
+  `AutomaticMemorySettings(enabled = true)` is the global automatic-memory
+  setting, on by default across chat, voice, and tools. `capture()` rejects
+  immediately when disabled. Capture sources are `AutoMemorySource`
+  (CHAT/VOICE/TOOL), capturing facts, preferences, topics, ideas, people,
+  places, times, and decisions.
+- Candidate self-review (D46): `capture()` self-reviews before anything is
+  persisted. Credential-bearing content is excluded first via
+  `MemoryPolicy.containsRawRestrictedContent` (D49, D38); too-short and
+  over-limit content is rejected; the anti-resurrection fence is consulted;
+  duplicates of live approved memories are suppressed. Accepted candidates are
+  queued for background evaluation — nothing is saved at capture time.
+  Classification assigns FACT/PREFERENCE/PERSON/GOAL.
+- Separate interruptible evaluation (D46, D47): `evaluatePending(evaluator,
+  isIdle, cancel)` runs only while the local model is idle and stops
+  immediately on cancellation or when the user needs Jarvis — the evaluation
+  pass never competes with the user. Source permission is re-checked at
+  evaluation time, so revocation between capture and evaluation blocks the
+  save. The evaluation log preserves every decision with its reason.
+- Versioned scores (D46): `memory/MemoryEvaluator.kt` — every
+  `MemoryEvaluation` carries `EVALUATOR_VERSION` (1), so scores from different
+  evaluator generations are distinguishable. `HeuristicMemoryEvaluator` is the
+  deterministic on-device fallback (relevance from preference/fact/person/
+  temporal/named-entity/length signals, confidence from source reliability and
+  clarity). Thresholds are measured engineering defaults tuned on the held-out
+  fixture set in `AutomaticMemoryTest.thresholdFixtures`: positives score
+  relevance 45–60, negatives 0–10; `SAVE_RELEVANCE = 30`,
+  `SAVE_CONFIDENCE = 60`.
+- Automatic wiki/index updates: qualifying candidates commit through
+  `MemoryOs.propose` + `approve` with `MemoryWiki.suggest` assignment; the wiki
+  and `MemoryWikiIndex` are derived views, so they update automatically —
+  verified by prompt retrieval after commit in the tests. Memory facts never
+  create execution grants (the commit path only touches MemoryOs). Normal
+  memory learning requires no user review; routine/skill activation still does.
+- Anti-resurrection fences (D48): `AutomaticMemoryFence` records the
+  content-fingerprint (SHA-256 of normalized content) of every committed
+  candidate, with pluggable persistence (`InMemoryFenceStore`,
+  `FileFenceStore`). A fingerprint whose memory no longer exists in the
+  snapshot was manually deleted and is fenced at capture time and re-checked
+  at evaluation time — queued evaluations, old sources, and restarts can never
+  resurrect it. Manual correction/deletion stays authoritative through MemoryOs
+  edit/delete lineage and tombstones.
+
+Tests: `AutomaticMemoryTest` (JVM, 19 tests) covers the default-on setting,
+positive/negative/conflicting/credential fixtures, source-permission
+revocation (at capture and between capture and evaluation),
+queued-evaluation races (two pipeline instances sharing one fence store),
+fence survival across restart (file-backed store), idle yield, interruption,
+versioned scores, the held-out threshold-tuning fixture set, and prompt wiki
+retrieval after index changes.
+
+CI: run 38122855015 green on `19a68eee` — all 16 jobs (14 success, 2 skipped
+PR-only publishes), including the release unit tests.
+
+Explicitly unverified per the coverage boundaries: on-device idle scheduling
+(the pipeline exposes `isIdle`/`EvaluationCancel` hooks; production wiring to
+the local-model scheduler is follow-up, not M6 scope); a Settings UI toggle
+for the global setting (the setting and pipeline integration are implemented;
+the UI surface is follow-up).
+
+M6 remaining: none — automatic capture, self-review, idle-gated evaluation,
+versioned scoring, wiki/index updates, and anti-resurrection fences are
+implemented. M7–M8 are still planned.
+
 ## Implementation checkpoint — October 11, 2026 (M5 community workflows and scripts)
 
 M5 is implemented on `feature/muse-tools` (no PR, no merge). The implementation
