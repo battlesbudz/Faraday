@@ -5,6 +5,82 @@ Follow-up source baseline: `feature-tools` at `bfeca6d06dc3dba583e0f92e812046e9e
 Created: September 24, 2026. Updated: September 30, 2026 (America/New_York). Owner: Justin Battles.
 Status: existing tools scope retained; September 29 autonomous messaging/warm-inference requirements integrated. New phases below are planned, not implemented or verified by this documentation update.
 
+## Implementation checkpoint — October 11, 2026 (M8 FunctionGemma comparison and adoption decision)
+
+M8 is implemented on `feature/muse-tools` (no PR, no merge) across three
+commits (October 11): `272dfedb` adds the comparison harness and adoption
+decision with 19 JVM tests; `12609350` fixes a destructuring compile error the
+first CI run caught; `be4bef8c` fixes two test assertions (a percentile
+expectation and a fake runner that never advanced the injected clock). The M8
+plan calls for a matched comparison of the exact-command path, selected E2B/E4B,
+and FunctionGemma with a real enable/retain decision (T25, level D). What is
+implemented is the full comparison and decision harness; the D-level verdict
+itself requires a physical Fold 6 benchmark run, which has not happened — so
+this checkpoint records the framework, not a verdict. Per T25, no latency or
+reliability result is reported as measured.
+
+- Cold/warm p50/p95 full-action latency (D08,D52): `eval/ModelLatencyTracker.kt`
+  — `ModelLatencyTracker` records wall-clock samples split into cold (first
+  sample per modelId: engine init and weights warm-up) and warm (everything
+  after) and computes nearest-rank p50/p95 for each. `TimingToolCallRunner`
+  decorates any `ToolCallRunner` and measures full-action latency per utterance
+  with an injectable clock, so the harness is deterministic in JVM tests and
+  wall-clock on device.
+- FunctionGemma comparison path: `eval/FunctionGemmaAdapter.kt` — a
+  `ToolCallRunner` for FunctionGemma-family models, so FunctionGemma runs
+  through the same reliability harness as E2B/E4B on matched tasks with the same
+  schemas and conditions. `buildPrompt()` issues the developer-turn prompt with
+  the exact trigger phrase FunctionGemma needs to enter tooling mode (developer
+  role, not system). `parseFunctionCalls()` extracts
+  `<start_function_call>call:{name}{args}<end_function_call>` blocks — multiple
+  and parallel calls included — parsing `<escape>`-wrapped strings and bare
+  number/boolean tokens into the standard `ToolCall` schema. Unknown tool names
+  are rejected, malformed blocks are skipped, and plain chat output yields zero
+  calls, never an error. The `generate` function is an injection seam: wiring
+  it to a real LiteRT engine (`llm_model_type: function_gemma`) is the D-level
+  physical-device step.
+- Adoption decision: `eval/AdoptionDecision.kt` — the plan's enable/retain rule
+  as deterministic logic. A candidate is adopted only if its correctness (tool
+  choice plus argument agreement on the matched fixture set) is at least the
+  baseline's — a faster model that gets more calls wrong is never adopted — AND
+  its warm-p95 full-action latency improves on the baseline by at least 15%
+  (`MIN_LATENCY_IMPROVEMENT = 0.15`, a measured engineering default, not a
+  user-selected constant). Missing artifact fingerprints, missing latency, or a
+  cross-version suite comparison fails closed to `Retain` with a rationale; the
+  decision never consumes tokens/second.
+
+Tests: `M8ComparisonTest` (JVM, 19 tests) covers nearest-rank percentile math
+(empty, single-sample, and multi-sample trackers), cold vs warm sample
+splitting, the timing decorator against an injected clock, the FunctionGemma
+parser (plain chat yields no calls; multiple/parallel blocks; `<escape>`
+strings; bare numbers/booleans; unknown-tool rejection; malformed-block
+skipping), and the adoption rule (retain on correctness regression, retain
+below the 15% bar, adopt at or above it, fail closed on missing
+fingerprints/latency and cross-version comparison).
+
+CI: run 38153328702 on `be4bef8c` — "Build signed release APK" green (all
+release unit tests, including the 19 new M8 tests; signed release APK
+produced) and 4 of 5 emulator release journeys green. The 36-foldable-compact
+journey failed inside "Verify release on a disposable Android device" — the
+foldable-profile emulator run with its owned X display and Qt backend — with no
+app test failure; the other four journeys passed (including 35-phone-compact,
+which flaked the same way on the M7 run) and no androidTest covers the eval
+package, so this is the same environmental emulator-harness flake class, not
+an M8 regression. The downstream "Consolidate exact-build verification
+evidence" job failed only because the foldable journey's evidence was missing.
+
+Explicitly unverified per the coverage boundaries: the D-level evidence T25
+names — a matched real-device benchmark on Fold 6 (exact-command path vs
+selected E2B/E4B vs FunctionGemma) reporting memory/thermal behavior and
+artifact/backend identity alongside the harness's latency and correctness (the
+harness records and gates on artifact identity via `modelFingerprint`;
+memory/thermal collection belongs to the device run). The 15% improvement bar
+is a policy default, not a measured outcome, and stays open to change when
+real-device numbers exist. No enable/retain verdict is recorded here.
+
+M8 remaining: the physical Fold 6 benchmark run to produce the enable/retain
+verdict. The harness is complete; no further framework work is pending.
+
 ## Implementation checkpoint — October 11, 2026 (M7 external-agent access)
 
 M7 is implemented on `feature/muse-tools` (no PR, no merge). The implementation
