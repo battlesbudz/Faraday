@@ -32,10 +32,18 @@ class ToolTaskLedger(
     private val now: () -> Long = System::currentTimeMillis
 ) {
 
-    fun create(request: ActionRequest, state: ToolTaskState = ToolTaskState.QUEUED): ToolTaskAttempt {
+    /**
+     * M7: external-agent calls record [ToolAuthority.EXTERNAL_AGENT] with
+     * the authorizing grant's id, so the receipt history shows exactly
+     * which external caller did what. Defaults keep every existing caller
+     * on user-request authority.
+     */
+    fun create(request: ActionRequest, state: ToolTaskState = ToolTaskState.QUEUED,
+        authority: ToolAuthority = ToolAuthority.USER_REQUEST, grantId: String? = null): ToolTaskAttempt {
         val at = now()
         val created = ToolTaskAttempt(UUID.randomUUID().toString(), 0, state,
-            request.copy(arguments = request.arguments.toMap()), at, at)
+            request.copy(arguments = request.arguments.toMap()), at, at,
+            authority = authority, grantId = grantId)
         store.update { it + created }
         return created
     }
