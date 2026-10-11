@@ -34,7 +34,16 @@ class ProfileContractTest(unittest.TestCase):
                          tuple(large_page[0][key] for key in ('id', 'api', 'target', 'apk')))
         self.assertTrue(any(p['api'] == 35 and p['page_size'] == 4096 for p in profiles))
         for profile in profiles:
-            self.assertEqual(900, profile['instrumentation_timeout'])
+            if profile['screen_profile'] == 'foldable':
+                # The foldable emulator on software rendering needs a bounded
+                # higher wall-clock budget (run 1270 completed 73/76 tests in
+                # 900s); the validator allows 900-1500 for foldable profiles.
+                timeout = profile['instrumentation_timeout']
+                self.assertIs(type(timeout), int)
+                self.assertTrue(900 <= timeout <= 1500,
+                                f"foldable {profile['id']} timeout {timeout} outside 900-1500")
+            else:
+                self.assertEqual(900, profile['instrumentation_timeout'])
             self.assertEqual(('ubuntu-latest', 'x86_64', 'kvm', 300, 40),
                              tuple(profile[key] for key in ('runner', 'arch', 'acceleration', 'boot_timeout', 'job_timeout')))
 
@@ -91,15 +100,46 @@ class ProfileContractTest(unittest.TestCase):
 
     def test_retired_software_budgets_cannot_reenter_supported_profiles(self):
         for index in range(len(self.original['profiles'])):
-            for key, value in (('instrumentation_timeout', True), ('instrumentation_timeout', 900.0),
-                               ('instrumentation_timeout', '900'), ('instrumentation_timeout', 899),
-                               ('instrumentation_timeout', 901), ('instrumentation_timeout', 2400),
-                               ('job_timeout', 60), ('job_timeout', 90), ('boot_timeout', 900)):
+            screen = self.original['profiles'][index]['screen_profile']
+            invalid_timeouts = [('instrumentation_timeout', True), ('instrumentation_timeout', 900.0),
+                                ('instrumentation_timeout', '900'), ('instrumentation_timeout', 899),
+                                ('instrumentation_timeout', 2400)]
+            if screen != 'foldable':
+                # 901 is within the foldable 900-1500 budget, so it is only
+                # invalid for phone profiles, which stay pinned at exactly 900.
+                invalid_timeouts.append(('instrumentation_timeout', 901))
+            for key, value in invalid_timeouts + [('job_timeout', 60), ('job_timeout', 90),
+                                                  ('boot_timeout', 900)]:
                 contract = copy.deepcopy(self.original)
                 contract['profiles'][index][key] = value
                 self.path.write_text(json.dumps(contract))
                 with self.subTest(index=index, key=key, value=value), self.assertRaises(ValueError):
                     load_profiles(self.path)
+
+    def test_foldable_instrumentation_timeout_range(self):
+        foldable_index = next(i for i, p in enumerate(self.original['profiles'])
+                              if p['screen_profile'] == 'foldable')
+        for value in (900, 901, 1200, 1500):
+            contract = copy.deepcopy(self.original)
+            contract['profiles'][foldable_index]['instrumentation_timeout'] = value
+            self.path.write_text(json.dumps(contract))
+            with self.subTest(value=value):
+                loaded = load_profiles(self.path)
+                self.assertEqual(value, loaded[foldable_index]['instrumentation_timeout'])
+        for value in (899, 1501):
+            contract = copy.deepcopy(self.original)
+            contract['profiles'][foldable_index]['instrumentation_timeout'] = value
+            self.path.write_text(json.dumps(contract))
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                load_profiles(self.path)
+        phone_index = next(i for i, p in enumerate(self.original['profiles'])
+                           if p['screen_profile'] != 'foldable')
+        for value in (901, 1200):
+            contract = copy.deepcopy(self.original)
+            contract['profiles'][phone_index]['instrumentation_timeout'] = value
+            self.path.write_text(json.dumps(contract))
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                load_profiles(self.path)
 
     def test_provisioning_fields_are_required_and_cannot_be_silently_defaulted(self):
         for key in ('runner', 'arch', 'acceleration', 'boot_timeout', 'job_timeout', 'instrumentation_timeout'):
