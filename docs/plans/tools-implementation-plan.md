@@ -5,6 +5,116 @@ Follow-up source baseline: `feature-tools` at `bfeca6d06dc3dba583e0f92e812046e9e
 Created: September 24, 2026. Updated: September 30, 2026 (America/New_York). Owner: Justin Battles.
 Status: existing tools scope retained; September 29 autonomous messaging/warm-inference requirements integrated. New phases below are planned, not implemented or verified by this documentation update.
 
+## Implementation checkpoint — October 11, 2026 (M5 community workflows and scripts)
+
+M5 is implemented on `feature/muse-tools` (no PR, no merge). The implementation
+commits landed October 7–8 — before the M4 head commit, so the milestones were
+built in parallel: journey registration `3a06105b`, test78/79 fixtures
+`17f3359b`/`9dcff768`, export redaction `525e74ee`/`ab426ccd`, import-review
+hardening `22495027`, redacted-regex repairs `60ae0bae`/`0daca490`/`b9352b95`/
+`28d4d96d`, and R8 keeps for the journey classes
+`6da1b2fd`/`e6cc2496`/`30e7a961`. It builds on the M2 workflow substrate —
+extended, never duplicated.
+
+- Versioned manifests (D41–D44, T19): `actions/WorkflowManifest.kt` — canonical
+  JSON (sorted keys, hand-rolled codec identical on JVM and Android),
+  `WORKFLOW_MANIFEST_VERSION = 1`. Newer versions are rejected ("needs a newer
+  app version"), unknown step/trigger/condition/wait kinds are rejected
+  (fail closed — silently dropping a step would change behavior), unknown
+  fields are ignored. A manifest carries required tool contracts (name plus
+  minimum catalog version), permitted scopes, script runtime requirements,
+  setup bindings, provenance, and documentation.
+- Import review (T19): `actions/WorkflowImportExport.kt` —
+  `reviewWorkflowManifest` parses the manifest and checks it against
+  `DeviceCapabilities` (tool catalog versions, granted scopes, script
+  runtime), reporting missing tools, missing scopes and runtime problems plus
+  a plain-language preview. `admitWorkflowManifest` admits only as a disabled
+  draft (M2 draft semantics — nothing runs until an explicit enable) with a
+  `disabledReason`, or rejects a declined import. Script runtime requirements
+  are derived from the Script steps when the manifest metadata is omitted or
+  underdeclares host functions: an omission never marks a script ready.
+- Sanitized export plus preview (T19): `exportWorkflow` redacts secret-hint
+  argument keys (token, secret, password, api_key, auth, credential, …),
+  identifier keys (email, phone, account, username, …), URL- and email-looking
+  values (private endpoints), personal-content arguments (reminder messages,
+  notification titles/bodies, screen typing text), descriptions, adaptive
+  goals, and branch-condition literals/regexes. Redacted regexes are stored
+  `\Q{{setup:name}}\E`-quoted so the exported manifest still passes regex
+  validation at import review. String literals inside script sources that look
+  like URLs, emails or secrets are redacted too. Location triggers are removed
+  (the importer adds their own); location waits refuse export with guidance.
+  The same key with the same value reuses one binding; distinct values get
+  distinct bindings. Every redaction becomes a `SetupBinding` the importer
+  must fill in, and `ExportPreview` exposes every retained value post-redaction
+  so the exporter reviews exactly what is shared. `resolveSetupBindings`
+  restores placeholders with typed whole-string replacement.
+- Update policy (D43, T19): `actions/WorkflowUpdatePolicy.kt` —
+  `classifyWorkflowUpdate` is a pure function of the canonical manifest bytes:
+  only documentation text, display name/description and the workflow version
+  number may change for DOCUMENTATION_ONLY; everything else (steps, triggers,
+  tools, scopes, script runtime, setup bindings, provenance) is a behavior
+  change. Documentation-only updates auto-apply; behavior changes wait in
+  `pendingUpdate` while the admitted version keeps running (`AdmittedWorkflow`
+  pins running workflows to their admitted version). A model's assertion is
+  never sufficient to certify code equivalence — changed scripts always go
+  through review. `diffWorkflowManifests` renders the change list for review;
+  `approvePendingWorkflowUpdate`/`rejectPendingWorkflowUpdate` resolve it.
+- Isolated scripts (D44, T20): `actions/ScriptRuntime.kt` — "JarvisScript", a
+  tiny deterministic language with no I/O primitives in the grammar: no file,
+  network, reflection or platform API can even be named. The only effects are
+  the explicit allowlist in `ScriptHost` (deny-by-default), intersected with
+  the step's declared `requiredHostFunctions` — a host function the step did
+  not declare is denied, never silently granted. Runs are bounded by an
+  operation budget, a string-allocation budget, an output cap and a wall-clock
+  deadline; exhaustion terminates the script. Cancellation is checked on every
+  operation and during parsing. Parsing is bounded too: block nesting, prefix
+  runs, expression depth and statement count are capped, so a pathological
+  source is a typed parse failure, never a stack overflow. Pure Kotlin — the
+  same interpreter runs on the JVM (unit tests) and on Android, with no
+  WebView and no platform JS engine. `WorkflowEngine` runs script steps
+  through an injected runner whose default fails closed ("No script runtime is
+  installed on this device"); `runtime/WorkflowCoordinator.kt` wires
+  production to the real interpreter with the allowlisted host and cooperative
+  cancellation.
+- Tests: `M5WorkflowsTest` (JVM) covers manifest round-trip and rejection,
+  the redaction rule table, end-to-end export, import review/admission
+  (missing dependencies saved disabled with a reason), setup bindings, the
+  update policy (doc-only auto-apply vs behavior-change review, version
+  pinning), and the script sandbox (denial of file/network/tool access,
+  infinite-loop/memory-bomb/output-bomb termination, cancellation, allowlist
+  behavior, declared-function gating) plus engine integration.
+  `ScriptRuntimeHardeningTest` (JVM) covers parse boundedness and
+  cancellation reaching the interpreter. Release journeys: `test68` (a revised
+  workflow never mutates a running occurrence's pinned version), `test78`
+  (a script step runs on device through the real interpreter with the
+  production allowlisted host; an undeclared function stays denied), `test79`
+  (export sanitizes personal content on device; the manifest re-parses and
+  validates). All named in `scripts/verification/scenarios.json`.
+- CI evidence: run 1261 (`38038631782`) at `6fb742e1` — Build signed release
+  APK, native 16 KB compatibility, sandbox release journeys on
+  36-16k-native / 35-phone / 36-phone / 36-foldable / 30-phone, and
+  exact-build evidence consolidation all succeeded. The release build runs
+  `testReleaseUnitTest` (the M5 JVM suites) before assembling the APK.
+
+M5 definition of done: satisfiable on emulator evidence — manifests version
+with contracts, scopes, runtime requirements and provenance; imports review
+with unavailable dependencies saved disabled; exports redact with a full
+preview; documentation-only updates auto-apply while changed scripts wait for
+review; running workflows stay pinned to their admitted version; and sandbox
+tests prove denial of unauthorized file/network/tool access,
+resource-exhaustion termination, and cancellation.
+
+Explicitly unverified per the coverage boundaries: physical Fold 6 evidence
+(T20 D-level) and real-model proposal of workflow steps. Follow-up work, not
+M5 scope: a production entry point for community import/export (no chat
+command or share target invokes the import/export flows yet — they are
+implemented and tested library code awaiting a surface); the production
+script host currently exposes only `log`.
+
+M5 remaining: none — community imports/exports, compatible updates and
+isolated on-phone scripts are implemented. (M4's checkpoint entry is still
+missing from this document.) M6–M8 are still planned.
+
 ## Implementation checkpoint — October 5, 2026 (audio-pr2 import)
 
 Battles ordered the deferred audio-pr2 blend into `feature/muse-tools`. The
