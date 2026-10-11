@@ -133,6 +133,9 @@ class ExternalAgentAccess(
     /** Anti-recursion fence: external calls are single-level per thread. */
     private val dispatchDepth = ThreadLocal.withInitial { 0 }
 
+    /** Platform type from ThreadLocal.get(); the Elvis keeps the read null-safe and warning-clean. */
+    private fun depthNow(): Int = dispatchDepth.get() ?: 0
+
     /**
      * Authorize (or re-authorize) an external caller. The user opts a caller
      * in explicitly; the grant covers only the listed functions, which must
@@ -198,7 +201,7 @@ class ExternalAgentAccess(
      */
     fun call(callerId: String, request: ActionRequest): ExternalAgentCallResult {
         // Anti-recursion: an external call may never re-enter the boundary.
-        if (dispatchDepth.get() > 0) {
+        if (depthNow() > 0) {
             return ExternalAgentCallResult.Denied(ExternalDenialCode.RECURSION_BOUNDED,
                 "External agent calls cannot nest: this call arrived while another external call was dispatching.")
         }
@@ -255,10 +258,10 @@ class ExternalAgentAccess(
             ?: return ExternalAgentCallResult.Denied(ExternalDenialCode.DENIED_PERMISSION,
                 "Access changed before this call could run. Nothing was dispatched.")
         val result = try {
-            dispatchDepth.set(dispatchDepth.get() + 1)
+            dispatchDepth.set(depthNow() + 1)
             executor.execute(action)
         } finally {
-            dispatchDepth.set(dispatchDepth.get() - 1)
+            dispatchDepth.set(depthNow() - 1)
         }
         ledger.finish(running, result)
         return ExternalAgentCallResult.Executed(result, attempt.id)
