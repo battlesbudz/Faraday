@@ -8,7 +8,12 @@ expand/collapse control while retaining all measured and unavailable fields in
 exports. Required test45 exercises repeated visibility changes, immutable
 retained/exported data and the original scoring/review/export flows. Its API 30
 NOISY lookup uses existing held discovery with unchanged bounds and tap checks;
-build 1292 failure evidence is retained. Full exact-revision Android CI is required.
+build 1292 failure evidence is retained. Build 1293 passed all four phone/16KB
+profiles; its Fold collapse check exposed a cached childless accessibility node.
+The second bounded instrumentation repair requires fresh collapsed-label and
+details-absence observations within the original five seconds, with no extra
+action or removed assertion. Both failed artifacts are retained; full exact-revision
+Android CI is required.
 
 ## Measured audio preparation overlap — 12 October 2026
 

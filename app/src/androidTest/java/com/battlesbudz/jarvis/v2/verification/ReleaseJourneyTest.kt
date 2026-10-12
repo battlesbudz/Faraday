@@ -3082,6 +3082,28 @@ class ReleaseJourneyTest {
         throw AssertionError("Benchmark control did not become stably enabled inside its viewport: $selector")
     }
 
+    private fun benchmarkAssertTimingCollapsed() {
+        val deadline = SystemClock.uptimeMillis() + 5_000
+        val settled = observeBenchmarkNavigation {
+            var matched = false
+            while (SystemClock.uptimeMillis() < deadline) {
+                val collapsed = benchmarkFindNavigationObject(By.res("pipeline_benchmark_timing_toggle")
+                    .hasDescendant(By.text("Show timing measurements (9/31 available)"))) != null
+                // The label and an already removed details parent can coexist in
+                // the accessibility cache. Use the same fresh observation path
+                // as benchmark navigation; a cached negative/positive is not proof.
+                val detailsAbsent = benchmarkFindNavigationObject(By.res("pipeline_benchmark_timing_details")) == null
+                val remaining = deadline - SystemClock.uptimeMillis()
+                android.util.Log.i("JarvisVerification", "benchmark_timing_collapse_observed collapsed=$collapsed detailsAbsent=$detailsAbsent remainingMs=$remaining")
+                if (remaining <= 0) break
+                if (collapsed && detailsAbsent) { matched = true; break }
+                SystemClock.sleep(remaining.coerceAtMost(100))
+            }
+            matched
+        }
+        assertTrue("Timing collapse must show its collapsed label and remove details within 5 seconds", settled)
+    }
+
     /** Controlled observations exercise the release dashboard; they are not model/audio performance evidence. */
     @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
     @Test fun test45_pipelineBenchmarksScoreOriginalAsrPersistAndExportRedactedEvidence() = runBlocking {
@@ -3200,7 +3222,7 @@ class ReleaseJourneyTest {
             fun timingToggle() = By.res("pipeline_benchmark_timing_toggle")
             assertNotNull(benchmarkScrollTo(timingToggle().hasDescendant(By.text("Show timing measurements (9/31 available)")),
                 holdDiscovery = true, sparseHeldDiscovery = android.os.Build.VERSION.SDK_INT >= 35))
-            assertFalse(device.hasObject(By.res("pipeline_benchmark_timing_details")))
+            assertNull("Timing details start collapsed", benchmarkFindNavigationObject(By.res("pipeline_benchmark_timing_details")))
             repeat(2) {
                 benchmarkClickEnabled(timingToggle(), holdDiscovery = true,
                     sparseHeldDiscovery = android.os.Build.VERSION.SDK_INT >= 35)
@@ -3208,9 +3230,7 @@ class ReleaseJourneyTest {
                 captureEvidence("pipeline_benchmark_timing_expanded_$it")
                 benchmarkClickEnabled(timingToggle().hasDescendant(By.text("Hide timing measurements")), towardTop = true,
                     holdDiscovery = true, sparseHeldDiscovery = android.os.Build.VERSION.SDK_INT >= 35)
-                assertTrue("Collapse is acknowledged before checking hidden details", device.wait(Until.hasObject(
-                    timingToggle().hasDescendant(By.text("Show timing measurements (9/31 available)"))), 5_000))
-                assertFalse(device.hasObject(By.res("pipeline_benchmark_timing_details")))
+                benchmarkAssertTimingCollapsed()
                 assertEquals("Timing visibility must not mutate retained/exported data", beforeTiming,
                     store.samples.value.single { it.turnId == completedId }.json().toString())
             }

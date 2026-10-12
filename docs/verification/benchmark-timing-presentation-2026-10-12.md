@@ -66,3 +66,44 @@ Local Compose/Android execution is unavailable. These additions require the
 full exact-revision signed release gate before the repaired APK can be called
 verified. The controlled timing fixture is UI/export evidence, not phone
 performance, physical overlap or incremental LLM-audio-prefill evidence.
+
+## Second bounded repair: Fold collapse observation
+
+[Build 1293](https://github.com/battlesbudz/Jarvis-OS-V2/actions/runs/38237018210)
+compiled and exercised the presentation change. API 30 normal, API 35 compact,
+API 36 normal and API 36 16 KB profiles passed. Fold's 82 main journeys had one
+failure in the new second-collapse assertion; the original NOISY discovery,
+reference scoring and human review had already passed.
+
+The [second failure receipt](evidence/benchmark-fold-observation-2026-10-12/failure-receipt.json),
+[runner failure](evidence/benchmark-fold-observation-2026-10-12/build1293-fold-failure.txt),
+[report](evidence/benchmark-fold-observation-2026-10-12/build1293-fold-report.json)
+and [collapse trace](evidence/benchmark-fold-observation-2026-10-12/build1293-fold-collapse-trace.txt)
+retain the source and artifact identity. The reviewed expanded PNG shows the
+measured value and Hide label. The failure PNG shows the Show (9/31) label and
+ordinary metrics with timing rows removed. Its XML and log retain a childless
+old `pipeline_benchmark_timing_details` accessibility node. Unlike the previous
+failure, the screenshot and XML here captured the same user-visible state but
+disagree about that obsolete parent node.
+
+The new direct `hasObject` absence assertion bypassed the existing benchmark
+cache-refresh path. Product code uses the same Boolean for the label and the
+conditional details, and the four other profiles passed; the evidence supports
+a harness observation defect rather than a demonstrated product collapse
+regression. No refreshed observation was captured on that failing device, so
+the correction still requires the next exact-revision hosted gate.
+
+The second repair changes only instrumentation and evidence. A single original
+five-second acknowledgement budget now requires both the exact collapsed label
+and details absence through the existing refreshed observation helper. It
+restores the implicit-idle configuration in `finally`, records both observed
+conditions, fails on deadline, performs no tap/gesture, and does not repeat a
+state-changing action. Both expansion/collapse cycles, all data-preservation
+checks and every original test45 assertion remain. Application code, metrics,
+exports, navigation bounds, device profiles and release gates are unchanged.
+
+The [second repair host receipt](evidence/benchmark-fold-observation-2026-10-12/host-receipt.json)
+records the repeated 219-test production JVM closure and 124 plus 101 helper
+checks. It does not claim local Android instrumentation compilation. The initial
+pre-expansion absence assertion remains immediate, with a refreshed lookup;
+only the two post-click observations share the existing five-second budget.
