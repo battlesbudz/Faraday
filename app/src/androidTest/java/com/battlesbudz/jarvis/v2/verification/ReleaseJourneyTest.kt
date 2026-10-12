@@ -3139,7 +3139,10 @@ class ReleaseJourneyTest {
                 provenance = provenance, outcome = PipelineBenchmarkOutcome.COMPLETE,
                 clock = "controlled_fixture_monotonic",
                 stageOffsetsMs = mapOf("turn_started" to 0, "microphone_ready" to 20, "recognition_finalized" to 200,
-                    "reply_dispatched" to 210, "first_reply_text" to 350, "turn_finished" to 900),
+                    "reply_dispatched" to 210, "first_reply_text" to 350, "turn_finished" to 900,
+                    "speech_started" to 40, "speech_ended" to 150, "endpoint_decided" to 190,
+                    "early_gemma_session_prepare_started" to 30, "early_gemma_fixed_prefill_completed" to 100,
+                    "smart_turn_0_backend_called" to 110, "smart_turn_0_backend_returned" to 160),
                 asr = PipelineBenchmarkAsr("controlled-whisper-fixture", inputAudioMs = 400, decodeWorkMs = 200,
                     transcriptCharacters = originalAsr.length),
                 submissions = listOf(PipelineBenchmarkSubmission(
@@ -3149,7 +3152,11 @@ class ReleaseJourneyTest {
             store.flush()
             render(store)
             benchmarkClickEnabled(By.res("pipeline_benchmark_sample_$completedId"))
-            benchmarkClickEnabled(By.res("benchmark_environment_NOISY"))
+            // The expanded header starts at the lower edge on API 30. Discover the
+            // adjacent controls with an overlapping held stroke, keeping the same
+            // deadline, gesture budget, fresh safe bounds and exactly-one-tap rule.
+            benchmarkClickEnabled(By.res("benchmark_environment_NOISY"),
+                holdDiscovery = android.os.Build.VERSION.SDK_INT == 30)
             benchmarkClickEnabled(By.res("pipeline_benchmark_reference"))
             assertTrue(find(By.text("Original ASR: $originalAsr")).text.contains(originalAsr))
             assertFalse(find(By.res("pipeline_benchmark_reference_score")).isEnabled)
@@ -3187,6 +3194,26 @@ class ReleaseJourneyTest {
             assertEquals(PipelineBenchmarkVerdict.FAIL, quality.factualityVerdict)
             assertEquals(PipelineBenchmarkOutcome.COMPLETE, store.samples.value.single { it.turnId == completedId }.outcome)
             assertEquals(PipelineBenchmarkEnvironment.NOISY, store.samples.value.single { it.turnId == completedId }.environment)
+            // Timing details remain discoverable without adding 31 verbose rows
+            // to every expanded sample. Opening/closing them cannot change data.
+            val beforeTiming = store.samples.value.single { it.turnId == completedId }.json().toString()
+            fun timingToggle() = By.res("pipeline_benchmark_timing_toggle")
+            assertNotNull(benchmarkScrollTo(timingToggle().hasDescendant(By.text("Show timing measurements (9/31 available)")),
+                holdDiscovery = true, sparseHeldDiscovery = android.os.Build.VERSION.SDK_INT >= 35))
+            assertFalse(device.hasObject(By.res("pipeline_benchmark_timing_details")))
+            repeat(2) {
+                benchmarkClickEnabled(timingToggle(), holdDiscovery = true,
+                    sparseHeldDiscovery = android.os.Build.VERSION.SDK_INT >= 35)
+                assertNotNull(benchmarkRevealText("early_gemma_preparation_capture_overlap_ms: 70.00", holdDiscovery = true))
+                captureEvidence("pipeline_benchmark_timing_expanded_$it")
+                benchmarkClickEnabled(timingToggle().hasDescendant(By.text("Hide timing measurements")), towardTop = true,
+                    holdDiscovery = true, sparseHeldDiscovery = android.os.Build.VERSION.SDK_INT >= 35)
+                assertTrue("Collapse is acknowledged before checking hidden details", device.wait(Until.hasObject(
+                    timingToggle().hasDescendant(By.text("Show timing measurements (9/31 available)"))), 5_000))
+                assertFalse(device.hasObject(By.res("pipeline_benchmark_timing_details")))
+                assertEquals("Timing visibility must not mutate retained/exported data", beforeTiming,
+                    store.samples.value.single { it.turnId == completedId }.json().toString())
+            }
             assertNotNull(if (android.os.Build.VERSION.SDK_INT == 30)
                 benchmarkRevealText("tts_load_ms: unavailable", holdDiscovery = true)
                 else benchmarkScrollTo(By.text("tts_load_ms: unavailable"), sparseHeldDiscovery = true))
@@ -3234,6 +3261,8 @@ class ReleaseJourneyTest {
                 assertTrue(text.contains("id=\"$cancelledId\""))
                 assertFalse(text.contains(originalAsr))
                 assertFalse(text.contains(reference))
+                assertTrue(text.contains("early_gemma_preparation_capture_overlap_ms"))
+                assertTrue(text.contains("smart_turn_7_backend_after_speech_ms"))
                 assertTrue("Pending export keeps its original scope/settings despite recomposition", text.contains("environment=NOISY"))
                 store.setEnvironment(completedId, PipelineBenchmarkEnvironment.NOISY)
                 activity.onActivity { } // drain the state change before requesting the next snapshot
@@ -3295,6 +3324,11 @@ class ReleaseJourneyTest {
             assertEquals(1, export.getJSONObject("completedTurns").getInt("turnCount"))
             val exportedCompleted = (0 until export.getJSONArray("turns").length())
                 .map { export.getJSONArray("turns").getJSONObject(it) }.single { it.getString("turnId") == completedId }
+            val exportedTiming = PipelineBenchmarkTurn.read(exportedCompleted).metrics()
+            assertEquals(70.0, exportedTiming["early_gemma_preparation_capture_overlap_ms"])
+            assertEquals(40.0, exportedTiming["smart_turn_0_backend_speech_span_overlap_ms"])
+            assertTrue(exportedTiming.containsKey("smart_turn_7_backend_after_speech_ms"))
+            assertNull(exportedTiming["smart_turn_7_backend_after_speech_ms"])
             assertTrue("Missing playback measurements remain JSON null", exportedCompleted.isNull("tts"))
             assertTrue("Token estimates do not invent native counts", exportedCompleted.getJSONArray("submissions")
                 .getJSONObject(0).isNull("exactOutputTokens"))

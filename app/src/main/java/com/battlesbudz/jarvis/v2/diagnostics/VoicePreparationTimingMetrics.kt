@@ -2,6 +2,9 @@ package com.battlesbudz.jarvis.v2.diagnostics
 
 /** Same-clock wall intervals only. A speech span includes pauses, not just voiced frames. */
 internal object VoicePreparationTimingMetrics {
+    /** Presentation may group these fields, but exports retain every measured/null value. */
+    val keys: Set<String> = from(emptyMap()).keys
+
     fun from(stages: Map<String, Long>): Map<String, Double?> {
         fun interval(start: String, end: String): LongRange? {
             val a = stages[start] ?: return null

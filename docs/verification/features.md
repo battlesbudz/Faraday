@@ -1,5 +1,15 @@
 # Feature and acceptance map
 
+## Discoverable timing detail and bounded benchmark navigation — 12 October 2026
+
+[Timing presentation and API 30 repair](benchmark-timing-presentation-2026-10-12.md)
+groups the 31 newly added preparation/Smart Turn measurements behind a labelled
+expand/collapse control while retaining all measured and unavailable fields in
+exports. Required test45 exercises repeated visibility changes, immutable
+retained/exported data and the original scoring/review/export flows. Its API 30
+NOISY lookup uses existing held discovery with unchanged bounds and tap checks;
+build 1292 failure evidence is retained. Full exact-revision Android CI is required.
+
 ## Measured audio preparation overlap — 12 October 2026
 
 [Capture and speech-span overlap evidence](audio-overlap-and-incremental-prefill-2026-10-12.md)

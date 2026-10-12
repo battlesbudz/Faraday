@@ -17,6 +17,23 @@ class VoicePreparationTimingMetricsTest {
         "smart_turn_0_backend_called" to 190L,
         "smart_turn_0_backend_returned" to 280L,
     )
+    @Test fun presentationKeysPreserveEveryMeasuredAndUnavailableTimingField() {
+        val metrics = VoicePreparationTimingMetrics.from(stages)
+        assertEquals(31, VoicePreparationTimingMetrics.keys.size)
+        assertEquals(metrics.keys, VoicePreparationTimingMetrics.keys)
+        assertEquals(VoicePreparationTimingMetrics.from(emptyMap()).keys, VoicePreparationTimingMetrics.keys)
+        assertFalse("Existing pipeline measurements are not collapsed", "tts_load_ms" in VoicePreparationTimingMetrics.keys)
+        val turn = PipelineBenchmarkTurn("turn", channel = "voice", capturedAtEpochMs = 1L,
+            provenance = PipelineBenchmarkProvenance("test", 1), outcome = PipelineBenchmarkOutcome.COMPLETE,
+            stageOffsetsMs = stages)
+        val all = turn.metrics()
+        val details = all.filterKeys { it in VoicePreparationTimingMetrics.keys }
+        val ordinary = all.filterKeys { it !in VoicePreparationTimingMetrics.keys }
+        assertEquals(metrics, details)
+        assertTrue(ordinary.containsKey("tts_load_ms"))
+        assertTrue(details.keys.intersect(ordinary.keys).isEmpty())
+        assertEquals(all, ordinary + details)
+    }
     @Test fun separatesCaptureSpeechSpanAndPostSpeechRemainder() {
         val metrics = VoicePreparationTimingMetrics.from(stages)
         assertEquals(280.0, metrics["early_gemma_preparation_capture_overlap_ms"])
