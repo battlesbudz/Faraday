@@ -41,7 +41,7 @@ class CapsuleTests(unittest.TestCase):
             p=self.root/name;pin=w.file_identity(p);dest='sources/'+name
             self.policy['source_archives'][dest]={'identity':pin,'origin':origin}
             self.files.append({'capsule_path':dest,'source_path':str(p),'identity':pin,'kind':'source_archive','origin':origin})
-        bindings={'repository':'battlesbudz/Jarvis-OS-V2','run_id':1,'run_attempt':1,'head_sha':'1'*40,'source_commit':'2'*40}
+        bindings={'repository':'battlesbudz/Faraday','run_id':1,'run_attempt':1,'head_sha':'1'*40,'source_commit':'2'*40}
         for key in ('build_receipt_sha256','source_snapshot_sha256','recipe_manifest_sha256','android_source_receipt_sha256',
                     'reviewed_patch_sha256','build_command_sha256','bazel_sha256'):bindings[key]='3'*64
         bindings['policy_sha256']=w.digest(self.policy)
@@ -57,6 +57,14 @@ class CapsuleTests(unittest.TestCase):
 
     def validate(self):return w.validate_capture(self.capture,self.policy,w.digest(self.policy))
     def archive(self,name='test.tar.gz'):return w.write_capsule(self.capture,self.policy,w.digest(self.policy),self.root/name)
+
+    def test_current_repository_binding_is_exact_after_rename(self):
+        bindings = dict(self.capture['bindings'], repository='battlesbudz/Faraday')
+        w.validate_bindings(bindings)
+        for repository in ('battlesbudz/Jarvis-OS-V2', 'other/Faraday',
+                           'battlesbudz/Other', 'battlesbudz/Faraday-extra'):
+            with self.subTest(repository=repository), self.assertRaisesRegex(ValueError, 'Unexpected repository'):
+                w.validate_bindings(dict(bindings, repository=repository))
 
     def test_archive_is_exact_regular_allowlisted_and_deterministic(self):
         a=self.archive('one.tar.gz');b=self.archive('two.tar.gz')

@@ -23,7 +23,7 @@ from test_quality import result as native_result
 class QualityEvidenceBinding(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)/'jarvis-streaming-quality-evidence-123-1';self.root.mkdir()
-        self.identity={'GITHUB_RUN_ID':'123','GITHUB_RUN_ATTEMPT':'1','GITHUB_SHA':'a'*40,'GITHUB_REPOSITORY':'battlesbudz/Jarvis-OS-V2'}
+        self.identity={'GITHUB_RUN_ID':'123','GITHUB_RUN_ATTEMPT':'1','GITHUB_SHA':'a'*40,'GITHUB_REPOSITORY':'battlesbudz/Faraday'}
         self.quality_identity=dict(self.identity)
         self.patch='b'*64
         snapshot={'files':{'source.cc':'c'*64}}
@@ -33,7 +33,7 @@ class QualityEvidenceBinding(unittest.TestCase):
         self.data={name:{} for name in QUALITY_FILES}
         self.data.update({'build/source-snapshot.json':snapshot,'run/summary.json':summary,
             'build/diagnostic-status.json':{'schema_version':1,'producer':'encoder_replay_diagnostic',
-                'invocation_id':'1'*32,'context':{'repository':'battlesbudz/Jarvis-OS-V2','run_id':123,'run_attempt':1,
+                'invocation_id':'1'*32,'context':{'repository':'battlesbudz/Faraday','run_id':123,'run_attempt':1,
                     'head_sha':'f'*40,'source_commit':'a'*40},'state':'complete','phase':'packaging',
                 'outcome':'passed','error':None,'child':{'started':True,'exit_code':0},
                 'cleanup':{'verified':True,'surviving_process_count':0},
@@ -428,7 +428,7 @@ class ConsumerEvidenceLayout(unittest.TestCase):
         self.bundle = self.consumer/'streaming-sdk-input'
         self.bundle.mkdir(parents=True)
         self.identity = {'GITHUB_RUN_ID':'123', 'GITHUB_RUN_ATTEMPT':'1',
-                         'GITHUB_SHA':'a'*40, 'GITHUB_REPOSITORY':'battlesbudz/Jarvis-OS-V2'}
+                         'GITHUB_SHA':'a'*40, 'GITHUB_REPOSITORY':'battlesbudz/Faraday'}
         manifest = ROOT/'third_party/litert-lm-0.16.0/reviewed-source.json'
         self.source = {'workflow_identity':self.identity.copy(),
                        'reviewed_patch_sha256':json.loads(manifest.read_text())['patch_sha256'],

@@ -16,7 +16,7 @@ import diagnostic_guard as guard
 import diagnostic_status as status
 import hosted_capture as capture
 
-CONTEXT = {'repository': 'battlesbudz/Jarvis-OS-V2', 'run_id': 123, 'run_attempt': 2,
+CONTEXT = {'repository': 'battlesbudz/Faraday', 'run_id': 123, 'run_attempt': 2,
            'head_sha': 'a'*40, 'source_commit': 'b'*40}
 REPORT = {'started': True, 'passed': False, 'exit_code': 2, 'resource_profile': 'diagnostic',
           'classification': 'build_compile_failure', 'cleanup_verified': True,
@@ -30,6 +30,14 @@ class PublicStatusTests(unittest.TestCase):
 
     def create(self): return status.Status(self.root, CONTEXT)
     def read(self): return status.read(self.root/status.NAME, CONTEXT)
+
+    def test_current_repository_identity_is_exact_after_rename(self):
+        current = dict(CONTEXT, repository='battlesbudz/Faraday')
+        self.assertEqual(current, status.validate_context(current))
+        for repository in ('battlesbudz/Jarvis-OS-V2', 'other/Faraday',
+                           'battlesbudz/Other', 'battlesbudz/Faraday-extra'):
+            with self.subTest(repository=repository), self.assertRaises(ValueError):
+                status.validate_context(dict(current, repository=repository))
 
     def test_failure_preserves_stage_and_exact_identity_after_cleanup(self):
         owner = self.create()

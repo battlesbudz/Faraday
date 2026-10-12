@@ -299,7 +299,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: app/build/sherpa-native
-          key: sherpa-arm64-137-${{ runner.os }}-${{ hashFiles('scripts/build_sherpa.py', 'scripts/sherpa_jni_profile.py', 'app/src/main/cpp/smartturn/**', 'app/src/main/cpp/whisperqnn/**') }}
+          # CMake embeds the checkout path, which changes on repository rename.
+          # Do not restore a cache from a differently named checkout.
+          key: sherpa-arm64-137-${{ runner.os }}-${{ github.repository }}-${{ hashFiles('scripts/build_sherpa.py', 'scripts/sherpa_jni_profile.py', 'app/src/main/cpp/smartturn/**', 'app/src/main/cpp/whisperqnn/**') }}
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4

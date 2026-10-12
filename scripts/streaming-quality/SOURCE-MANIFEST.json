@@ -22,8 +22,8 @@
       "sha256": "beb9f7d377eb12cdd3d2b216ec2f38adf5705057b7e287bf3c32a34964057972"
     },
     "encoder-replay/capsule_writer.py": {
-      "bytes": 12766,
-      "sha256": "a632511735962e02e6f6c1196cdb03c17fea18a038dca62cc896acfbaa64e583"
+      "bytes": 12761,
+      "sha256": "3c0f13eebde427ea845ce9b5eb61f5c35249c98df875d28dfc8a76d54f05554f"
     },
     "encoder-replay/diagnostic_guard.py": {
       "bytes": 8616,
@@ -50,12 +50,12 @@
       "sha256": "9cd6a37ff33b70793c3b40dfaeb6b32abe04fb803a9d02a2ae6569328d9cb7b0"
     },
     "encoder-replay/test_collector.py": {
-      "bytes": 15824,
-      "sha256": "5c69fdf55a10b9cb224231305615ea9a74fe74f9c54aa2311384a9ce759d7ae7"
+      "bytes": 16351,
+      "sha256": "eaf0281151a289aa2242f1f05aab752b6ec361aa709600ca03dea2212477ff39"
     },
     "encoder-replay/test_diagnostic_guard.py": {
-      "bytes": 10012,
-      "sha256": "84a622b9ec2cdc39915bd6218a62dab7ea991be6c2030a9dda671c78fd55d662"
+      "bytes": 10007,
+      "sha256": "7ca80a286513b25c35aaa88cb43dd50b4bad22cdbeb54b84b0fa1a48d898bd9e"
     },
     "encoder-replay/trace_compiler_inputs.py": {
       "bytes": 8402,
@@ -150,16 +150,16 @@
       "sha256": "63c3a18fd9275c04ba71e47007d0fddfdc721b188c825d01a62721edeb717abd"
     },
     "test_quality.py": {
-      "bytes": 18904,
-      "sha256": "feb30ec6951207857b042d779f219316f470294625b15d601197fecd320f2d98"
+      "bytes": 18899,
+      "sha256": "a69acaaafdaf4e1011b2013dcb7c374acdc5a39e7f90bda98dda1a058582780b"
     },
     "encoder-replay/diagnostic_status.py": {
-      "bytes": 17900,
-      "sha256": "94e76e1e285110dfd7b5709ae1c0ec91354384768d03fb443c60fe6255f7e8bc"
+      "bytes": 17895,
+      "sha256": "7acf18ef14e48d9cf4b387a4e5f1a2d06a260460825ab12417921ab27e6cd7c0"
     },
     "encoder-replay/test_diagnostic_status.py": {
-      "bytes": 15625,
-      "sha256": "65b0c7bf703e62ca40e559c307acdd82267433c10763cd96fa64766963ea5d12"
+      "bytes": 16138,
+      "sha256": "b93ae1ea1ff89fb44172548379accd5e09e81476b488b6b19510c8ed5ab22822"
     },
     "encoder-replay/test_source_normalization.py": {
       "bytes": 8654,

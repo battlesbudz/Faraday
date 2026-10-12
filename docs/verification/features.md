@@ -1,5 +1,18 @@
 # Feature and acceptance map
 
+## Faraday main integration and rename repairs — 12 October 2026
+
+[Integration evidence](faraday-integration-2026-10-12.md) retains Build 1295's
+repository-rename failure: Sherpa's cached CMake build referenced the old
+Jarvis-OS-V2 checkout. A repository-scoped native cache key prevents restoring
+that non-relocatable build into Faraday. Application/native source, dependencies,
+assertions and release gates are unchanged. The regression fails against the
+old workflow. The same run's diagnostic admission also rejected Faraday because
+two exact-name guards still pinned Jarvis-OS-V2. Their expected namespace and
+synthetic fixtures are updated without loosening identity, cleanup, resource or
+quality checks; negative-repository regressions and failure evidence are retained.
+Exact-revision full release verification remains required.
+
 ## Discoverable timing detail and bounded benchmark navigation — 12 October 2026
 
 [Timing presentation and API 30 repair](benchmark-timing-presentation-2026-10-12.md)
