@@ -79,7 +79,7 @@ internal class VoiceTurnCaptureFactory(
             nativePauseTurnId = nativePauseTurnId,
             nativePauseGeneration = nativePauseGeneration,
             canUseSmartTurn = { onset ->
-                plan.directAudioTurn && comparison == null && !needsFollowupTranscript(onset)
+                comparison == null && !needsFollowupTranscript(onset)
             },
             canUseNativePause = { onset ->
                 plan.directAudioTurn && comparison == null && retainedPcmObserver != null && !needsFollowupTranscript(onset)

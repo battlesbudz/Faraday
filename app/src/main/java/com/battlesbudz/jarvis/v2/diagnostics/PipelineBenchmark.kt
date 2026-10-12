@@ -251,7 +251,10 @@ data class PipelineBenchmarkTurn(
         "tts_generated_audio_ms" to tts?.generatedAudioMs.benchmarkNumber(), "tts_queue_wait_ms" to tts?.queueWaitMs.benchmarkNumber(),
         "tts_playback_starvation_ms" to tts?.playbackStarvationMs.benchmarkNumber(), "tts_underruns" to tts?.underruns.benchmarkNumber(),
         "tts_realtime_factor" to tts?.realtimeFactor, "asr_wer" to accuracy?.wer, "asr_cer" to accuracy?.cer
-    ).also { it.putAll(observedMetrics.mapValues { (_,v) -> v?.takeIf(Double::isFinite) }) }
+    ).also {
+        it.putAll(VoicePreparationTimingMetrics.from(stageOffsetsMs))
+        it.putAll(observedMetrics.mapValues { (_,v) -> v?.takeIf(Double::isFinite) })
+    }
     private fun span(start: String, end: String): Double? = benchmarkDuration(stageOffsetsMs[start], stageOffsetsMs[end]).benchmarkNumber()
     fun json(includeText: Boolean = false): JSONObject = benchmarkJson("turnId" to turnId, "callId" to callId,
         "conversationId" to conversationId, "channel" to channel, "capturedAtEpochMs" to capturedAtEpochMs, "outcome" to outcome.name,

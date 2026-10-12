@@ -80,7 +80,10 @@ and linked component verification notes for measured versus pending coverage.
 aligns only an unambiguous completed answer to the turn. `PiperFirstPcmTiming`
 latches the first nonempty validated PCM. [Measurement scopes and clocks](../verification/gemma-processing-measurements-2026-10-11.md)
 keep SDK proxy/derived durations, encoder interval bounds and actual playback
-observations distinct.
+observations distinct. `VoicePreparationTimingMetrics` projects same-clock capture,
+speech-span, early preparation and bounded Smart Turn backend-call edges into
+wall-time overlap and post-speech remainder; the [overlap contract](../verification/audio-overlap-and-incremental-prefill-2026-10-12.md)
+explicitly separates speech-span pauses, frame observation and final endpoint authority.
 
 ## Main flow
 

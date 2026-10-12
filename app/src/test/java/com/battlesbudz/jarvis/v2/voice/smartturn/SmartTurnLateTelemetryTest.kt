@@ -55,10 +55,27 @@ class SmartTurnLateTelemetryTest {
         val telemetry = SmartTurnBenchmarkTelemetry(capture) { key, data -> records[key] = data }
         val completion = SmartTurnWorkCompletion(SmartTurnGeneration("turn", 1, 0), 100,
             10, 20, true, SmartTurnTiming(0, null, null, null, 10))
-        repeat(3) { telemetry.completion(it, completion, null) }
-        assertEquals(3, records.size)
+        repeat(8) { telemetry.completion(it, completion, null) }
+        assertEquals(8, records.size)
         assertTrue(records.getValue("smart_turn_shadow_0_work").contains("initializationMs=null"))
-        assertThrows(IllegalArgumentException::class.java) { telemetry.completion(3, completion, null) }
+        assertThrows(IllegalArgumentException::class.java) { telemetry.completion(8, completion, null) }
+    }
+    @Test fun actualBackendEdgesExcludeInitializationAndRemainTurnRelative() {
+        var now = 1000L
+        val capture = PipelineBenchmarkCapture("turn", "voice", 1, PipelineBenchmarkProvenance("test", 1)) { now }
+        val records = mutableMapOf<String, String>()
+        val telemetry = SmartTurnBenchmarkTelemetry(capture) { key, data -> records[key] = data }
+        telemetry.completion(7, SmartTurnWorkCompletion(SmartTurnGeneration("turn", 1, 0), 1600,
+            1_010_000_000, 1_050_000_000, false, SmartTurnTiming(0, 20_000_000, 1_000_000, 9_000_000, 40_000_000),
+            backendCalledAtNanos = 1_040_000_000, backendReturnedAtNanos = 1_050_000_000), null)
+        now = 1100L
+        val row = capture.finish(PipelineBenchmarkOutcome.COMPLETE)!!
+        assertEquals(10L, row.stageOffsetsMs["smart_turn_7_request_started"])
+        assertEquals(40L, row.stageOffsetsMs["smart_turn_7_backend_called"])
+        assertEquals(50L, row.stageOffsetsMs["smart_turn_7_backend_returned"])
+        assertEquals(10.0, row.metrics()["smart_turn_7_backend_call_ms"])
+        assertTrue(records.getValue("smart_turn_shadow_7_work").contains("backendCalledAtNanos=1040000000"))
+        assertNull(row.metrics()["smart_turn_7_backend_speech_span_overlap_ms"])
     }
     @Test fun followupMeasurementsCannotOverwriteInitialCaptureAndDiagnosticsKeepNextIdentity() {
         val capture = PipelineBenchmarkCapture("old", "voice", 1, PipelineBenchmarkProvenance("test", 1))

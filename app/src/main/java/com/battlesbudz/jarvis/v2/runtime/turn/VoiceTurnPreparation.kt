@@ -319,16 +319,17 @@ internal class VoiceTurnPreparation(
         val shadowTelemetry = com.battlesbudz.jarvis.v2.diagnostics.SmartTurnBenchmarkTelemetry(observation.benchmark) { category, evidence ->
             diagnosticRecorder.recordTurnEvidence(request.asrTurnId, category, evidence)
         }
+        observation.benchmark.configuration("smart_turn_capture_route", if (directAudioTurn) "gemma_direct_audio" else "whisper_text")
         val shadowObserver = try { resources.smartTurn.beginCapture(
             expectedCallId, request.asrTurnId, nativePauseGeneration,
-            enabled = directAudioTurn && request.comparison == null &&
+            enabled = request.comparison == null &&
                 com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnSettings.enabled(context),
             model = com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnSettings.store(context).availableFile(),
             telemetry = shadowTelemetry,
             ownerIsCurrent = { exactShadowTurnJob?.isActive == true && call.state.armed &&
                 call.controller.currentCallId() == expectedCallId },
             observeCapture = correction == null,
-            endpointEnabled = directAudioTurn,
+            endpointEnabled = true,
             admissionBlocker = {
                 when {
                     lifetime.nativeSpeculation?.consumedEncoder == true -> "gemma_speculation"

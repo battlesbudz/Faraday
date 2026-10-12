@@ -1,5 +1,31 @@
 # Feature and acceptance map
 
+## Measured audio preparation overlap — 12 October 2026
+
+[Capture and speech-span overlap evidence](audio-overlap-and-incremental-prefill-2026-10-12.md)
+adds same-clock preparation/capture/speech intervals, actual Smart Turn backend
+call edges and separate endpoint-decision/final-recognition stages. Missing or
+invalid boundaries remain unavailable; internal pauses stay explicitly inside
+the detected-speech span. Source review distinguishes current incremental audio
+encoding from a future incremental language-model-prefill path and defines the
+native ordering/cache parity gate before that experiment. No physical overlap,
+phone speedup or new LLM audio-streaming implementation is claimed.
+
+## Smart Turn on Whisper text capture — 12 October 2026
+
+[Whisper Smart Turn endpointing](smart-turn-whisper-2026-10-12.md) enables the
+existing retained-PCM worker on the ordinary CPU/QNN Whisper text path while
+requiring authoritative final recognition. Whisper ASR segmentation no longer
+disables a fresh PCM verdict; committed words, overlap uncertainty/recovery,
+continued speech, playback guards, stale/deadline fallback and finalization
+drain remain protected. Gemma-direct keeps its existing eligibility and caption
+behavior; this change does not resolve its pre-existing caption/control coupling.
+Recovery repeats hardware-drain checks so a new suffix cannot be sealed out while
+the full-recording retry is running. The combined source-bound host suite passed
+218 JVM checks and both Python helper suites
+(124 and 101 tests). Full exact-revision release/Android gates and physical
+model/audio/latency acceptance remain required.
+
 ## Gemma processing measurements — 11 October 2026
 
 [Clocked Gemma processing diagnostics](gemma-processing-measurements-2026-10-11.md)
@@ -68,7 +94,8 @@ of sampled/classified quiet reaches fallback at an exactly covered boundary
 (3500–4200 ms across existing read phases). Missing/loading/busy/
 expired work adds no mandatory wait to ordinary endpointing. An explicit new
 preference preserves a disable choice without inheriting the old shadow flag.
-ASR-text mode and playback/quiet/segmentation guards remain intact.
+At this checkpoint ASR-text mode remained excluded. The 12 October extension
+above enables Whisper while retaining playback/quiet and native-caption guards.
 
 `SmartTurnAudioEndpointTest` exercises the actual collector, bounded worker and
 PCM owner with synthetic acoustic/model outputs: 100 ms and irregular reads,

@@ -359,7 +359,9 @@ class AudioTurnCapture(
                             }) else legacyEndpoint
                     val acousticEndpoint = if (trailingSilenceMs == null) NativePauseEndpointPolicy.decision(
                         baseEndpoint, nativeEligibility, frame.rawDecision.rawCoverage, audioBytes, legacyEndpoint) else baseEndpoint
-                    val smartRouteAllowed = captionOnly && unsegmented && audioIsComplete &&
+                    // Smart Turn observes retained PCM, independently of ASR segment seams.
+                    // Caption retirement and native speculation keep their separate guards.
+                    val smartRouteAllowed = (!captionOnly || unsegmented) && audioIsComplete &&
                         canUseSmartTurn(firstSpeechCaptureAtMs)
                     val smartEligibility = NativePauseEndpointPolicy.eligibility(hasSpeech,
                         nativeSpeechEvidence.snapshot().strongMs, quietEvidenceUsed, audioAt - lastSpeechAt,
@@ -461,7 +463,9 @@ class AudioTurnCapture(
                                 pendingAudio.clear()
                                 if (guardedTail.isNotEmpty()) transcriber?.accept(guardedTail, allowPartial = false)
                             }
-                            val skipSmartCaption = smartComplete && reason == "trailing_silence"
+                            // Whisper text is the authoritative request and must be finalized.
+                            // Segmented native captions also retain their finalization/recovery.
+                            val skipSmartCaption = captionOnly && unsegmented && smartComplete && reason == "trailing_silence"
                             captionFinalizationReason = when {
                                 skipSmartCaption -> "smart_turn_complete_native_audio"
                                 retiredCaptionAtPendingEndpoint -> "clean_native_idle_pending_drain"
@@ -519,9 +523,11 @@ class AudioTurnCapture(
                             // or unclassified hardware audio before accepting an old endpoint.
                             // Already classified silence alone cannot invalidate it. Retain the
                             // final words as a segment and continue on the same hardware reader.
-                            if (reason == "trailing_silence" && (speechQueue.bufferedAudioMs > 0 || smartComplete || endpoint.cue == "smart_turn_continue") &&
+                            fun needsFinalizationDrain(): Boolean = reason == "trailing_silence" &&
+                                (speechQueue.bufferedAudioMs > 0 || smartComplete || endpoint.cue == "smart_turn_continue") &&
                                 (if (nativePause != null || endpointObserver != null) speechQueue.requiresNativeEndpointDrain(audioBytes) else speechQueue.requiresEndpointDrain(audioAt)) &&
-                                (transcriber is SegmentedTranscriber || endpointObserver != null)) {
+                                (transcriber is SegmentedTranscriber || endpointObserver != null)
+                            if (needsFinalizationDrain()) {
                                 if (!pendingEndpoint) {
                                     pendingAudio.clear()
                                     log("turn_endpoint_deferred reason=audio_arrived_during_finalization")
@@ -530,10 +536,12 @@ class AudioTurnCapture(
                                 return@collect
                             }
                             var resolvedFinal = rawFinal
+                            var recoveryAttempted = false
                             if (audioIsComplete && recognitionIssue in setOf("unrecognized_segment", "segment_boundary_uncertain")) {
                                 val completePcm = synchronized(pcm) { pcm.snapshot() }
                                 log("asr_recovery_started reason=$recognitionIssue source=complete_turn audioMs=${completePcm.size / 32}")
                                 val recoveryStarted = nowMs()
+                                recoveryAttempted = true
                                 val recovered = transcriber?.recover(completePcm).orEmpty().trim()
                                 finalDecodeMs += nowMs() - recoveryStarted
                                 currentCoroutineContext().ensureActive()
@@ -552,11 +560,20 @@ class AudioTurnCapture(
                                 log("asr_recovery_started candidateAudioMs=${candidate.size / 32} reason=empty_stream source=full_capture_window nativeVad=bypassed")
                                 onRecognitionRecovery(true)
                                 try {
+                                    recoveryAttempted = true
                                     finalTranscript = TranscriptContent.speech(transcriber?.recover(candidate).orEmpty())
                                     log("asr_recovery_finished chars=${finalTranscript.length} elapsedMs=${nowMs() - recoveryAt}")
                                 } finally {
                                     onRecognitionRecovery(false)
                                 }
+                            }
+                            // Recovery is another native decode over an earlier snapshot.
+                            // Its completed words cannot seal speech that arrived meanwhile.
+                            if (recoveryAttempted && needsFinalizationDrain()) {
+                                if (!pendingEndpoint) pendingAudio.clear()
+                                pendingEndpoint = true
+                                log("turn_endpoint_deferred reason=audio_arrived_during_recovery")
+                                return@collect
                             }
                             val finalCandidateRejected = recognitionIssue == null && rejectFinalCandidate(finalTranscript, firstSpeechCaptureAtMs)
                             if (finalCandidateRejected || (!captionOnly && transcriber != null && finalTranscript.isBlank() && (!allowAudioOnlyTurns || nonverbal) && recognitionIssue == null)) {

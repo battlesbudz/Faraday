@@ -53,6 +53,14 @@ internal class VoiceTurnRecognition(
         }
         observation.turnTrace.mark(com.battlesbudz.jarvis.v2.voice.VoiceTurnTrace.Stage.RECOGNITION_FINALIZED)
         observation.benchmark.mark("recognition_finalized")
+        if (prepared.correction == null) {
+            // Read only after the existing capture join. These are captured-frame
+            // speech bounds and the accepted proposal, not recognition completion.
+            prepared.activeCapture.firstSpeechCaptureAtMs?.let { observation.benchmark.markAt("speech_started", it) }
+            prepared.activeCapture.endpointDecisionAtNs?.let { observation.benchmark.markAt("endpoint_decided", it / 1_000_000) }
+            observation.benchmark.configuration("capture_overlap_scope",
+                "same_java_clock;first_to_last_detected_speech_span_includes_internal_pauses;not_voiced_cpu_time")
+        }
         val endpointAt = System.nanoTime()
         observation.telemetry.finalReadyAt.set(endpointAt)
         val audioBytes = prepared.correction?.wav ?: prepared.activeCapture.stop()

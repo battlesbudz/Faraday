@@ -33,10 +33,13 @@ class SmartTurnAudioEndpointTest {
         override fun event(message: String) {}
     }
     private class Rig(scope: CoroutineScope, captions: Boolean = false, val native: Boolean = true,
-                      available: Boolean = true, val fixed: Long? = null, speculate: Boolean = false) {
+                      available: Boolean = true, val fixed: Long? = null, speculate: Boolean = false,
+                      segmentSoftMs: Long = 15_000, segmentHardMs: Long = 22_000) {
         val wall = AtomicLong(); var samples = 0L; var acoustic = .99f; var captureTimeGapMs = 0L
         var riskyTailSamples = 0; var current = true; var routeAllowed = true; var blocker: String? = null
         var caption = "what is the"; var finalCalls = 0; var captionClosed = false; var finalizeLogHook: (() -> Unit)? = null
+        var finalCaption: String? = null; var finishHook: (() -> Unit)? = null
+        var recoveryText = ""; var recoveredPcm: ByteArray? = null; var recoverHook: (() -> Unit)? = null
         var hardwareBacklog = 0L; var collectorBytes = 0; var acknowledgedSamples = 0L
         val proposals = mutableListOf<NativePauseProposal>()
         val logs = mutableListOf<String>(); val original = ByteArrayOutputStream(); val retained = ByteArrayOutputStream()
@@ -59,8 +62,11 @@ class SmartTurnAudioEndpointTest {
             nowMs = wall::get, nowNs = { wall.get() * 1_000_000 }, captureDispatcher = Dispatchers.Unconfined,
             captionOnly = native, allowAudioOnlyTurns = native, trailingSilenceMs = fixed,
             createTranscriber = if (!captions) null else { { object : StreamingTranscriber {
+                override val segmentSoftLimitMs = segmentSoftMs
+                override val segmentHardLimitMs = segmentHardMs
                 override fun accept(pcm: ByteArray) = caption
-                override fun finish(): String { finalCalls++; return caption }
+                override fun finish(): String { finalCalls++; finishHook?.invoke(); return finalCaption ?: caption }
+                override fun recover(pcm: ByteArray): String { recoveredPcm = pcm.copyOf(); recoverHook?.invoke(); return recoveryText }
                 override fun close() { captionClosed = true }
             } } },
             canUseSmartTurn = { routeAllowed }, shadowObserver = observer.takeIf { available },
@@ -251,11 +257,11 @@ class SmartTurnAudioEndpointTest {
         } finally { r.close() }
     }
 
-    @Test fun textModeAndPlaybackRiskKeepRequiredFinalRecognition() = runBlocking<Unit> {
-        for (textMode in listOf(false, true)) {
-            val r = Rig(this, captions = true, native = !textMode, fixed = 1200)
+    @Test fun playbackRiskKeepsOrdinaryEndpointAndRequiredFinalRecognitionOnBothPaths() = runBlocking<Unit> {
+        for (native in listOf(false, true)) {
+            val r = Rig(this, captions = true, native = native, fixed = 1200)
             try {
-                r.routeAllowed = textMode
+                r.routeAllowed = false
                 r.startPause(); r.result(.9f, 765); assertNull(r.capture.endpointDecisionAtNs)
                 while (r.samples / 16 < 1500) r.emit(.01f)
                 r.completeWav(); assertEquals(1, r.finalCalls); assertEquals("what is the", r.capture.finalTranscript)
@@ -263,15 +269,242 @@ class SmartTurnAudioEndpointTest {
         }
     }
 
-    @Test fun quietSpeechCannotUseCompleteToBypassCorroborationAndStrongSpeechGate() = runBlocking<Unit> {
-        val r = Rig(this, captions = true, fixed = 1800)
+    @Test fun whisperCompleteWakesEarlyButFinalTranscriptRemainsAuthoritative() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = false, fixed = 1800)
         try {
-            r.capture.start(); repeat(5) { r.emit(.25f) }; repeat(4) { r.emit(.01f) }
-            eventually { r.backend.calls.get() == 1 }; r.result(.9f, 965)
-            assertNull(r.capture.endpointDecisionAtNs)
-            while (r.samples / 16 < 2300) r.emit(.01f)
-            r.completeWav(); assertTrue(r.finalCalls > 0)
+            r.caption = "provisional words"
+            r.finalCaption = "What is the weather today?"
+            r.startPause(); r.result(.9f, 765); r.completeWav()
+            assertEquals(765_000_000L, r.capture.endpointDecisionAtNs)
+            assertEquals(1, r.finalCalls)
+            assertEquals("What is the weather today?", r.capture.finalTranscript)
+            assertEquals("finalized", r.capture.finalAsrStatus)
+            assertEquals("authoritative_asr", r.capture.captionFinalizationReason)
+            assertTrue(r.captionClosed)
+            assertTrue(r.logs.any { it.contains("endpointCue=smart_turn_complete") })
         } finally { r.close() }
+    }
+
+    @Test fun whisperSegmentedPcmCanCompleteWithoutLosingCommittedOrFinalWords() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = false, fixed = 1800, segmentSoftMs = 500)
+        try {
+            r.caption = "Please tell me"
+            r.capture.start(); repeat(3) { r.emit(.99f) }; repeat(2) { r.emit(.01f) }
+            assertEquals(1, r.finalCalls)
+            assertTrue(r.logs.any { it.contains("asr_segment_committed index=1") })
+            r.caption = "the weather today."
+            repeat(2) { r.emit(.01f) }; eventually { r.backend.calls.get() == 1 }
+            r.result(.9f, 765); r.completeWav()
+            assertEquals(765_000_000L, r.capture.endpointDecisionAtNs)
+            assertEquals(2, r.finalCalls)
+            assertEquals("Please tell me the weather today.", r.capture.finalTranscript)
+            assertEquals("finalized", r.capture.finalAsrStatus)
+            assertNull(r.capture.recognitionIssue)
+        } finally { r.close() }
+    }
+
+    @Test fun whisperContinueKeepsListeningAndFreshCompleteFinalizesContinuedSpeech() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = false, fixed = 650)
+        try {
+            r.startPause(); r.result(.1f, 765); repeat(4) { r.emit(.01f) }
+            assertNull(r.capture.endpointDecisionAtNs); assertEquals(0, r.finalCalls)
+            r.caption = "What is the weather tomorrow?"
+            repeat(3) { r.emit(.99f) }; repeat(4) { r.emit(.01f) }
+            eventually { r.backend.calls.get() == 2 }
+            r.result(.9f, r.wall.get() + 65); r.completeWav()
+            assertEquals(1, r.finalCalls)
+            assertEquals("What is the weather tomorrow?", r.capture.finalTranscript)
+            assertEquals(1, r.telemetry.metrics["smart_turn_resumption_invalidations"])
+        } finally { r.close() }
+    }
+
+    @Test fun whisperHardSegmentSeamRetainsOverlapValidationAndCompleteAudioRecovery() = runBlocking<Unit> {
+        for (seamMatches in listOf(false, true)) {
+            val r = Rig(this, captions = true, native = false, fixed = 1800, segmentHardMs = 500)
+            try {
+                r.caption = "Please tell me the weather"
+                r.capture.start(); repeat(5) { r.emit(.99f) }
+                assertEquals(1, r.finalCalls)
+                assertTrue(r.logs.any { it.contains("asr_segment_committed index=1") && it.contains("overlapMs=500") })
+                r.caption = if (seamMatches) "the weather tomorrow." else "A different hypothesis."
+                r.recoveryText = "Please tell me the weather tomorrow."
+                repeat(4) { r.emit(.01f) }; eventually { r.backend.calls.get() == 1 }
+                r.result(.9f, 965)
+                if (!seamMatches) {
+                    // The conflicting seam still exposes only the committed unfinished
+                    // request. Preserve its ordinary uncertainty margin before recovery.
+                    assertNull(r.capture.endpointDecisionAtNs)
+                    assertTrue(r.logs.any { it.contains("native_endpoint_deferred reason=final_caption_uncertain") })
+                    while (r.samples / 16 < 2000) r.emit(.01f)
+                }
+                r.completeWav()
+                assertEquals(if (seamMatches) 965_000_000L else 2_000_000_000L, r.capture.endpointDecisionAtNs)
+                assertEquals(2, r.finalCalls)
+                assertEquals("Please tell me the weather tomorrow.", r.capture.finalTranscript)
+                assertNull(r.capture.recognitionIssue)
+                if (seamMatches) assertNull(r.recoveredPcm)
+                else {
+                    assertArrayEquals(r.original.toByteArray(), r.recoveredPcm)
+                    assertTrue(r.logs.any { it.contains("asr_recovery_started reason=segment_boundary_uncertain") })
+                }
+            } finally { r.close() }
+        }
+    }
+
+    @Test fun whisperDeadlineMissingAndBlockedModelFallBackWithFinalText() = runBlocking<Unit> {
+        for (kind in listOf("deadline", "blocked", "missing")) {
+            val r = Rig(this, captions = true, native = false, fixed = 1200, available = kind != "missing")
+            try {
+                r.caption = "What is the weather today?"
+                if (kind == "blocked") r.blocker = "thermal_severe"
+                r.capture.start(); repeat(3) { r.emit(.99f) }; repeat(4) { r.emit(.01f) }
+                if (kind == "deadline") {
+                    eventually { r.backend.calls.get() == 1 }; r.result(.9f, 951)
+                }
+                assertNull(r.capture.endpointDecisionAtNs); assertEquals(0, r.finalCalls)
+                while (r.samples / 16 < 1500) r.emit(.01f)
+                r.completeWav()
+                assertEquals(1_500_000_000L, r.capture.endpointDecisionAtNs)
+                assertEquals(1, r.finalCalls); assertEquals(r.caption, r.capture.finalTranscript)
+                assertEquals("finalized", r.capture.finalAsrStatus)
+                assertTrue(r.logs.any { it.contains("endpointCue=fixed") })
+            } finally { r.close() }
+        }
+    }
+
+    @Test fun whisperSpeechArrivingDuringSeamRecoveryRemainsInTheSameRequest() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = false, fixed = 1800, segmentHardMs = 500)
+        try {
+            r.caption = "Please tell me the weather"
+            r.capture.start(); repeat(5) { r.emit(.99f) }
+            r.caption = "A conflicting seam."
+            r.recoveryText = "Please tell me the weather."
+            r.recoverHook = { r.hardwareBacklog = 100; r.recoverHook = null }
+            repeat(4) { r.emit(.01f) }; eventually { r.backend.calls.get() == 1 }; r.result(.9f, 965)
+            while (r.samples / 16 < 2000) r.emit(.01f)
+            eventually { r.recoveredPcm != null }
+            assertNull(r.capture.endpointDecisionAtNs)
+            assertTrue(r.logs.any { it.contains("turn_endpoint_deferred reason=audio_arrived_during_recovery") })
+            r.hardwareBacklog = 0
+            r.caption = "And tomorrow as well."
+            r.recoveryText = "Please tell me the weather. And tomorrow as well."
+            repeat(3) { r.emit(.99f) }; repeat(4) { r.emit(.01f) }
+            eventually { r.backend.calls.get() == 2 }; r.result(.9f, r.wall.get() + 65)
+            while (r.capture.endpointDecisionAtNs == null && r.samples / 16 < 4100) r.emit(.01f)
+            r.completeWav()
+            assertEquals(r.recoveryText, r.capture.finalTranscript)
+            assertArrayEquals(r.original.toByteArray(), r.recoveredPcm)
+            assertNull(r.capture.recognitionIssue)
+        } finally { r.close() }
+    }
+
+    @Test fun whisperStaleCallAndRawSpeechRevisionCannotAuthorizeEarlyFinalization() = runBlocking<Unit> {
+        for (changedCall in listOf(false, true)) {
+            val r = Rig(this, captions = true, native = false, fixed = 1800)
+            try {
+                r.startPause()
+                if (changedCall) r.current = false else r.emit(.25f)
+                r.result(.9f, 820)
+                assertNull(r.capture.endpointDecisionAtNs); assertEquals(0, r.finalCalls)
+                if (!changedCall) assertTrue(r.backend.cancellations.get() > 0)
+                val wav = r.capture.stop()
+                assertArrayEquals(r.original.toByteArray(), wav.copyOfRange(44, wav.size))
+            } finally { r.close() }
+        }
+    }
+
+    @Test fun whisperSpeechArrivingDuringBlankFinalRetryRemainsInTheSameRequest() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = false, fixed = 1800)
+        try {
+            r.caption = "What is the weather today?"
+            r.finalCaption = ""
+            r.recoveryText = r.caption
+            r.recoverHook = { r.hardwareBacklog = 100; r.recoverHook = null }
+            r.startPause(); r.result(.9f, 765)
+            assertNull(r.capture.endpointDecisionAtNs)
+            assertTrue(r.logs.any { it.contains("reason=empty_stream") })
+            assertTrue(r.logs.any { it.contains("turn_endpoint_deferred reason=audio_arrived_during_recovery") })
+            r.hardwareBacklog = 0; r.finalCaption = null
+            r.caption = "What about tomorrow as well?"
+            r.recoveryText = "What is the weather today and tomorrow?"
+            repeat(3) { r.emit(.99f) }; repeat(4) { r.emit(.01f) }
+            eventually { r.backend.calls.get() == 2 }; r.result(.9f, r.wall.get() + 65)
+            r.completeWav()
+            assertEquals(r.recoveryText, r.capture.finalTranscript)
+            assertArrayEquals(r.original.toByteArray(), r.recoveredPcm)
+            assertNull(r.capture.recognitionIssue)
+        } finally { r.close() }
+    }
+
+    @Test fun whisperSpeechDuringFinalizationResumesSegmentsAndRetainsExactPcm() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = false, fixed = 1800)
+        try {
+            r.caption = "Please tell me the weather."
+            r.finishHook = { r.hardwareBacklog = 100; r.finishHook = null }
+            r.startPause(); r.result(.9f, 765)
+            assertEquals(1, r.finalCalls); assertNull(r.capture.endpointDecisionAtNs)
+            assertTrue(r.logs.any { it.contains("turn_endpoint_deferred reason=audio_arrived_during_finalization") })
+            r.hardwareBacklog = 0; r.caption = "And tomorrow as well."
+            repeat(3) { r.emit(.99f) }; repeat(4) { r.emit(.01f) }
+            eventually { r.backend.calls.get() == 2 }; r.result(.9f, r.wall.get() + 65)
+            r.completeWav()
+            assertEquals(2, r.finalCalls)
+            assertEquals("Please tell me the weather. And tomorrow as well.", r.capture.finalTranscript)
+            assertEquals("finalized", r.capture.finalAsrStatus)
+            assertTrue(r.logs.any { it.contains("turn_endpoint_invalidated reason=resumed_speech") })
+        } finally { r.close() }
+    }
+
+    @Test fun whisperFinalUnfinishedTextStillDefersAnEarlyModelComplete() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = false, fixed = 1800)
+        try {
+            r.startPause(); r.result(.9f, 765)
+            assertNull(r.capture.endpointDecisionAtNs); assertEquals(1, r.finalCalls)
+            assertTrue(r.logs.any { it.contains("native_endpoint_deferred reason=final_caption_unfinished") })
+            r.caption = "weather tomorrow?"
+            repeat(3) { r.emit(.99f) }; repeat(4) { r.emit(.01f) }
+            eventually { r.backend.calls.get() == 2 }; r.result(.9f, r.wall.get() + 65)
+            r.completeWav()
+            assertEquals("what is the weather tomorrow?", r.capture.finalTranscript)
+            assertEquals(2, r.finalCalls)
+        } finally { r.close() }
+    }
+
+    @Test fun whisperShortSpeechCannotUseModelCompleteToBypassAcousticMinimum() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = false, fixed = 1200)
+        try {
+            r.caption = "Yes."
+            r.capture.start(); repeat(2) { r.emit(.99f) }; repeat(4) { r.emit(.01f) }
+            eventually { r.backend.calls.get() == 1 }; r.result(.9f, 665)
+            assertNull(r.capture.endpointDecisionAtNs); assertEquals(0, r.finalCalls)
+            while (r.samples / 16 < 1400) r.emit(.01f)
+            r.completeWav(); assertEquals("Yes.", r.capture.finalTranscript)
+            assertEquals(1_400_000_000L, r.capture.endpointDecisionAtNs)
+        } finally { r.close() }
+    }
+
+    @Test fun whisperExplicitStopFinalizesTextWhileBusySmartTurnIsRevoked() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = false)
+        try {
+            r.startPause(); r.capture.finishNow(); r.emit(.01f); r.completeWav()
+            assertTrue(r.backend.cancellations.get() > 0)
+            assertEquals(1, r.finalCalls); assertEquals("what is the", r.capture.finalTranscript)
+            assertEquals("finalized", r.capture.finalAsrStatus)
+            assertTrue(r.logs.any { it.contains("turn_endpoint reason=explicit_stop") })
+        } finally { r.close() }
+    }
+
+    @Test fun quietSpeechCannotUseCompleteToBypassCorroborationAndStrongSpeechGate() = runBlocking<Unit> {
+        for (native in listOf(false, true)) {
+            val r = Rig(this, captions = true, native = native, fixed = 1800)
+            try {
+                r.capture.start(); repeat(5) { r.emit(.25f) }; repeat(4) { r.emit(.01f) }
+                eventually { r.backend.calls.get() == 1 }; r.result(.9f, 965)
+                assertNull(r.capture.endpointDecisionAtNs)
+                while (r.samples / 16 < 2300) r.emit(.01f)
+                r.completeWav(); assertTrue(r.finalCalls > 0)
+            } finally { r.close() }
+        }
     }
 
     @Test fun readyAndPcmOrderingAlwaysRetainsReceivedSuffixOnce() = runBlocking<Unit> {
@@ -471,12 +704,14 @@ class SmartTurnAudioEndpointTest {
     }
 
     @Test fun cancellationRevokesBusyModelAndNeverClosesItsNativeBorrowEarly() = runBlocking<Unit> {
-        val r = Rig(this)
-        try {
-            r.startPause(); r.capture.stop(); r.worker.close()
-            assertTrue(r.backend.cancellations.get() > 0); assertFalse(r.backend.closed.get())
-            assertNull(r.capture.endpointDecisionAtNs)
-            r.backend.releases.release(); eventually { r.backend.closed.get() }
-        } finally { r.close() }
+        for (native in listOf(false, true)) {
+            val r = Rig(this, captions = !native, native = native)
+            try {
+                r.startPause(); r.capture.stop(); r.worker.close()
+                assertTrue(r.backend.cancellations.get() > 0); assertFalse(r.backend.closed.get())
+                assertNull(r.capture.endpointDecisionAtNs); assertEquals(0, r.finalCalls)
+                r.backend.releases.release(); eventually { r.backend.closed.get() }
+            } finally { r.close() }
+        }
     }
 }

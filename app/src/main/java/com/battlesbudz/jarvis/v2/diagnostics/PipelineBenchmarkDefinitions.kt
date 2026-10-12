@@ -5,6 +5,18 @@ import org.json.JSONObject
 /** Exported definitions version independently from the backwards-compatible record schema. */
 object PipelineBenchmarkDefinitions {
     val notes = linkedMapOf(
+        "speech_started" to "First retained speech-confirming frame capture timestamp; not microphone-measured acoustic onset. Same Java monotonic clock as preparation.",
+        "endpoint_decided" to "Final accepted endpoint proposal observed by the capture owner, before recognizer finalization; not last speech.",
+        "early_gemma_preparation_capture_overlap_ms" to "Intersection of synchronous session/fixed-policy preparation with microphone-ready through recognition-finalized wall interval. Capture overlap alone does not prove speech overlap.",
+        "early_gemma_preparation_speech_span_overlap_ms" to "Intersection of session/fixed-policy preparation with first-to-last detected speech wall span, including internal pauses. Not voiced-frame-only overlap, GPU time or audio-LLM prefill.",
+        "early_gemma_preparation_after_speech_ms" to "Part of observed session/fixed-policy preparation after last detected speech and before turn finish. Zero only when both intervals exist and do not overlap.",
+        "early_gemma_preparation_completed_before_speech" to "1 when observed fixed-policy preparation finished by first detected speech, 0 when later. Unavailable without complete preparation and speech boundaries.",
+        "speech_end_to_endpoint_decision_ms" to "Last detected speech capture time to accepted endpoint proposal. Includes silence threshold, backlog, model advice and scheduling; not isolated endpoint-inference compute.",
+        "endpoint_decision_to_recognition_finalized_ms" to "Accepted endpoint proposal to recognition stage completion. Includes finalization, capture drain and coroutine handoff.",
+        "speech_end_to_answer_submit_ms" to "Last detected speech to unique completed answer's SDK send entry; unavailable for earlier speculative submission or ambiguous attempts.",
+        "smart_turn_first_frame_observed" to "First live-capture frame received by the Smart Turn observer on the Java clock. Observation does not mean an inference ran.",
+        "smart_turn_first_possible_speech_frame_captured" to "Capture timestamp of first hasSpeech-and-possibleSpeech frame seen by Smart Turn; conservative classification can include uncertain raw frames.",
+        "smart_turn_first_possible_speech_frame_observed" to "Wall timestamp when that first possible-speech frame reached Smart Turn; compare capture timestamp for delivery delay, not inference timing.",
         "native_audio_last_step_from_admission_lower_ms" to "Lower clock-alignment bound from native PCM admission to last validated encoder graph-step commit. Includes input/capture gaps; not cumulative encoder compute.",
         "native_audio_last_step_from_admission_upper_ms" to "Upper clock-alignment bound from native PCM admission to last validated encoder graph-step commit. Includes input/capture gaps; not cumulative encoder compute.",
         "native_audio_first_to_last_step_elapsed_lower_ms" to "Lower clock-alignment bound from first to last validated encoder graph-step commit. Includes time between calls/capture; not summed or per-step compute.",
@@ -90,7 +102,20 @@ object PipelineBenchmarkDefinitions {
         "asr_wer" to "Word edit errors / user-verified reference words. Unavailable without a verified reference.",
         "asr_cer" to "Character edit errors / user-verified reference characters. Unavailable without a verified reference.",
         "tts_playback_starvation_ms" to "Observed gap while the playback queue had no supplied answer audio. Does not measure audible silence directly."
-    )
+    ).apply {
+        repeat(8) { index ->
+            val prefix = "smart_turn_${index}_"
+            put(prefix + "request_accepted", "Turn-stage offset after the bounded Smart Turn offer confirms admission; model admission occurs only after a pause, not every voiced frame.")
+            put(prefix + "source_captured", "Turn-stage offset of the retained PCM snapshot boundary for this observation.")
+            put(prefix + "request_started", "Turn-stage offset at worker-request admission; includes queue/init before backend call.")
+            put(prefix + "request_completed", "Turn-stage offset after request worker completion, including cancelled/stale work; not current endpoint authority.")
+            put(prefix + "backend_called", "Turn-stage offset immediately before actual backend infer call, after initialization; unavailable if never called.")
+            put(prefix + "backend_returned", "Turn-stage offset when backend infer returned or threw; includes frontend and ORT inference, not isolated CPU busy time.")
+            put(prefix + "backend_call_ms", "Actual backend infer-call wall duration including frontend, inference and failure/cancellation return; excludes request queue/initialization.")
+            put(prefix + "backend_speech_span_overlap_ms", "Backend-call wall intersection with first-to-last detected speech span, including internal pauses. Does not claim inference during continuous voiced audio or endpoint knowledge before final silence.")
+            put(prefix + "backend_after_speech_ms", "Actual backend-call wall interval after last detected speech; includes cancelled/stale work and is not proof its endpoint verdict was accepted.")
+        }
+    }
     fun statuses(metrics: Map<String, Double?>) = JSONObject().also { result ->
         metrics.forEach { (name, value) ->
             val status = when { value == null -> "unavailable";
@@ -105,7 +130,7 @@ object PipelineBenchmarkDefinitions {
                 "reason" to if (value == null) "not_observed_in_this_attempt_or_not_exposed_by_runtime" else null))
         }
     }
-    fun json() = JSONObject().put("version", 5).put("definitions", JSONObject(notes))
+    fun json() = JSONObject().put("version", 6).put("definitions", JSONObject(notes))
         .put("missingValue", "unavailable_not_observed_or_not_supported; never zero-filled")
         .put("sampling", "resource snapshots only at turn boundaries; no periodic per-token polling")
         .put("privacy", "metrics-only by default; no prompt, transcript, reference text or PCM")

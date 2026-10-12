@@ -89,9 +89,9 @@ internal fun VoiceInputSettings(enabled: Boolean, onBusy: (Boolean) -> Unit) {
         Text("Whisper transcribes your voice on this phone, updates provisional captions and confirms them when you finish. The Snapdragon NPU option falls back to CPU when acceleration is unavailable.", style = MaterialTheme.typography.bodySmall)
         Text("Snapdragon NPU is experimental and targets 8 Gen 3 (SM8650). English transcription has a separate CPU fallback; speed and accuracy require device measurement.", style = MaterialTheme.typography.bodySmall)
         Text("Smart Turn turn ending: ${if (smartTurnEnabled) "On" else "Off"}")
-        Text(if (smartTurnReady) "Model installed. Smart Turn listens for whether you have finished or are continuing a native-audio turn."
+        Text(if (smartTurnReady) "Model installed. Smart Turn listens for whether you have finished or are continuing in Whisper and Gemma audio calls."
             else "Model not installed. Download 8.7 MB to use Smart Turn; ordinary pause detection is available offline.", style = MaterialTheme.typography.bodySmall)
-        Text("On by default once installed. Runs locally without a transcript. If it is busy or unavailable, ordinary pause detection takes over. Speech recognition mode keeps its existing behavior.", style = MaterialTheme.typography.bodySmall)
+        Text("On by default once installed. Runs locally without a transcript. If it is busy or unavailable, ordinary pause detection takes over. Whisper still finalizes the full transcript before sending your request.", style = MaterialTheme.typography.bodySmall)
         TextButton(enabled = enabled && !busy, modifier = Modifier.testTag("smart_turn_endpoint_toggle"), onClick = {
             smartTurnEnabled = !smartTurnEnabled
             com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnSettings.setEnabled(context, smartTurnEnabled)
@@ -106,8 +106,8 @@ internal fun VoiceInputSettings(enabled: Boolean, onBusy: (Boolean) -> Unit) {
                             scope.launch { message = value }
                         }
                         smartTurnReady = true
-                        message = if (smartTurnEnabled) "Smart Turn is ready to control native-audio turn endings on the next call."
-                            else "Smart Turn is installed. Enable it to control native-audio turn endings."
+                        message = if (smartTurnEnabled) "Smart Turn is ready to control Whisper and Gemma audio turn endings on the next call."
+                            else "Smart Turn is installed. Enable it to control Whisper and Gemma audio turn endings."
                     } catch (cancelled: CancellationException) { throw cancelled }
                     catch (_: Exception) { message = "Smart Turn setup failed. Ordinary pause detection remains available; try again when connected." }
                     finally { busy = false }

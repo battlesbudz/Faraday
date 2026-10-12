@@ -9,6 +9,7 @@ internal interface SmartTurnTelemetry {
     fun metric(name: String, value: Number?)
     fun configuration(name: String, value: String)
     fun event(message: String)
+    fun markAt(name: String, monotonicMs: Long) {}
     fun completion(index: Int, completion: SmartTurnWorkCompletion, postPriorityWorkerMs: Double?) {}
 }
 
@@ -17,6 +18,7 @@ internal class SafeSmartTurnTelemetry(private val delegate: SmartTurnTelemetry) 
     override fun metric(name: String, value: Number?) { runCatching { delegate.metric(name, value) } }
     override fun configuration(name: String, value: String) { runCatching { delegate.configuration(name, value) } }
     override fun event(message: String) { runCatching { delegate.event(message) } }
+    override fun markAt(name: String, monotonicMs: Long) { runCatching { delegate.markAt(name, monotonicMs) } }
     override fun completion(index: Int, completion: SmartTurnWorkCompletion, postPriorityWorkerMs: Double?) {
         runCatching { delegate.completion(index, completion, postPriorityWorkerMs) }
     }
@@ -44,6 +46,8 @@ internal class SmartTurnCaptureObserver(
     private var closed = false
     private var prioritized = false
     private var possibleSpeech = true
+    private var observedFrame = false
+    private var observedPossibleSpeechFrame = false
     private var attempts = 0
     private var accepted = 0
     private var busy = 0
@@ -98,6 +102,15 @@ internal class SmartTurnCaptureObserver(
     @Synchronized override fun onFrame(frame: CaptureShadowFrame) {
         if (closed) return
         if (!runCatching(ownerIsCurrent).getOrDefault(false)) { close(); return }
+        if (!observedFrame) {
+            observedFrame = true
+            evidence.markAt("smart_turn_first_frame_observed", clock() / 1_000_000)
+        }
+        if (frame.hasSpeech && frame.possibleSpeech && !observedPossibleSpeechFrame) {
+            observedPossibleSpeechFrame = true
+            evidence.markAt("smart_turn_first_possible_speech_frame_captured", frame.capturedAtNanos / 1_000_000)
+            evidence.markAt("smart_turn_first_possible_speech_frame_observed", clock() / 1_000_000)
+        }
         if (frame.possibleSpeech && !possibleSpeech) {
             resumed++
             generation = generation.copy(revision = generation.revision + 1)
@@ -152,6 +165,8 @@ internal class SmartTurnCaptureObserver(
         val offer = shadow.offer(snapshot) { completion -> finished(index, completion) }
         evidence.configuration("smart_turn_last_offer", offer.name.lowercase())
         if (offer == SmartTurnOffer.ACCEPTED) {
+            evidence.markAt("smart_turn_${index}_request_accepted", clock() / 1_000_000)
+            evidence.markAt("smart_turn_${index}_source_captured", frame.capturedAtNanos / 1_000_000)
             if (endpointEnabled) { attempts++; pauseRequests++; lastAcceptedBoundary = boundary; evidence.metric("smart_turn_observation_attempts", attempts) }
             accepted++
             requestAt = frame.capturedAtNanos
