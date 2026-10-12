@@ -1,13 +1,15 @@
-# Jarvis OS V2
+# Faraday
+
+**The local private voice agent for your phone.**
 
 ![Build](https://github.com/battlesbudz/Jarvis-OS-V2/actions/workflows/android.yml/badge.svg)
 ![Latest release](https://img.shields.io/github/v/release/battlesbudz/Jarvis-OS-V2)
 
-A fully on-device voice assistant for Android. Wake-word activation, conversational barge-in, and a fully local speech pipeline. No cloud, no account, no per-token cost.
+A fully on-device voice assistant for Android. Wake-word activation, conversational barge-in, and a fully local speech pipeline. No cloud, no account, no per-token cost. Your voice never leaves your phone.
 
-[<img src="demo/jarvis-voice-demo-thumbnail.jpg" width="320" alt="Watch the Jarvis voice demo">](https://cdn.jsdelivr.net/gh/battlesbudz/Jarvis-OS-V2@main/demo/jarvis-voice-demo.mp4)
+[<img src="demo/jarvis-voice-demo-thumbnail.jpg" width="320" alt="Watch the Faraday voice demo">](https://cdn.jsdelivr.net/gh/battlesbudz/Jarvis-OS-V2@main/demo/jarvis-voice-demo.mp4)
 
-*53-second demo: airplane mode on, phone locked, "Hey Jarvis," interrupted mid-answer. Click to watch.*
+*53-second demo: airplane mode on, phone locked, wake word, interrupted mid-answer. Click to watch.*
 
 ## How it works
 
