@@ -57,7 +57,7 @@ def validate_bindings(bindings):
               'android_source_receipt_sha256','reviewed_patch_sha256','build_command_sha256',
               'bazel_sha256','policy_sha256'}
     need(set(bindings)==expected,'Incomplete or unexpected run/build/source bindings')
-    need(bindings['repository']=='battlesbudz/Jarvis-OS-V2','Unexpected repository')
+    need(bindings['repository']=='battlesbudz/Faraday','Unexpected repository')
     for key in ('run_id','run_attempt'):
         need(isinstance(bindings[key],int) and not isinstance(bindings[key],bool) and bindings[key]>0,'Invalid run identity')
     for key in ('head_sha','source_commit'):need(bool(HEX40.fullmatch(bindings[key])),'Invalid commit binding')
