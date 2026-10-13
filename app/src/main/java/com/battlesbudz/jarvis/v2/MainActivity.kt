@@ -126,6 +126,7 @@ class MainActivity : ComponentActivity() {
                 callState = runtime.voiceSessionController.state,
                 onSendChat = runtime::sendChat,
                 onSelectConversation = runtime::selectConversation,
+                onDeleteConversation = runtime::deleteConversation,
                 onSelectModel = modelSetup::select,
                 onDeleteModel = modelSetup::delete,
                 voicePlayback = runtime.voicePlayback,
