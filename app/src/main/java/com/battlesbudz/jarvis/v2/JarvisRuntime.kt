@@ -30,7 +30,11 @@ import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkInput
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarks
 import com.battlesbudz.jarvis.v2.diagnostics.ReplyCaptureBenchmark
 import com.battlesbudz.jarvis.v2.memory.AndroidMemoryOs
+import com.battlesbudz.jarvis.v2.memory.AutoMemorySource
+import com.battlesbudz.jarvis.v2.memory.CandidateInput
 import com.battlesbudz.jarvis.v2.memory.ConversationMemory
+import com.battlesbudz.jarvis.v2.memory.HeuristicMemoryEvaluator
+import com.battlesbudz.jarvis.v2.memory.NoCancel
 import com.battlesbudz.jarvis.v2.memory.ConversationMemorySource
 import com.battlesbudz.jarvis.v2.memory.MemoryTurnContext
 import com.battlesbudz.jarvis.v2.presentation.AgentActivityMonitor
@@ -336,6 +340,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         // MobileToolCatalog.all() may run before first browser use.
         com.battlesbudz.jarvis.v2.actions.MobileToolCatalog.BrowserRuntimeGate.wired = true
         modelStore = ModelStore(applicationContext)
+        // M6: automatic memory is always on; start the background evaluation loop.
+        startAutoMemoryEvaluation()
         sessionPreferences = getSharedPreferences("chat_session", MODE_PRIVATE)
         nativeMemoryStateToken = sessionPreferences.getString("approved_memory_context_token", null)
         voiceCallStore = com.battlesbudz.jarvis.v2.voice.CoalescingVoiceCallStore(
@@ -754,11 +760,66 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         onMemoryBound: (com.battlesbudz.jarvis.v2.memory.MemoryDeliveryFence.Ticket, MemoryTurnContext) -> Unit = { _, _ -> },
         benchmarkCapture: com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkCapture? = null
     ): Job? {
+        // M6: automatic memory capture, fire-and-forget. Comparison trials are
+        // not real user turns and are never captured.
+        val autoMemoryOnComplete: (String) -> Unit = { answer ->
+            try {
+                onComplete(answer)
+            } finally {
+                if (comparison == null) {
+                    val source = if (voiceAudio != null || incrementalVoice != null) AutoMemorySource.VOICE else AutoMemorySource.CHAT
+                    val captureText = if (answer.isNotBlank()) "$prompt\n$answer" else prompt
+                    runtimeScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        try {
+                            AndroidMemoryOs.automaticMemory(this@JarvisRuntime).capture(
+                                CandidateInput(
+                                    eventId = "turn-${System.currentTimeMillis()}-${prompt.hashCode()}",
+                                    source = source,
+                                    text = captureText,
+                                    capturedAtMs = System.currentTimeMillis(),
+                                )
+                            )
+                        } catch (_: Exception) {
+                            // Auto-memory must never break a turn.
+                        }
+                    }
+                }
+            }
+        }
         return startConversation(
             ConversationInvocation(prompt, history, imageUri, incrementalVoice, voiceAudio, voiceAudioIsComplete,
                 directVoiceAudio, replyIdentity, conversationIdentity, callIdentity, comparison, audioUri,
                 frozenActionPlan, frozenVoiceFinal, callOwned, benchmarkCapture),
-            ConversationCallbacks(onToken, onComplete, onLatency, onLiveInference, onActionResult, onPhonePlanFinished, onMemoryBound))
+            ConversationCallbacks(onToken, autoMemoryOnComplete, onLatency, onLiveInference, onActionResult, onPhonePlanFinished, onMemoryBound))
+    }
+
+    /**
+     * M6: background automatic-memory evaluation. Runs on a 15-minute loop;
+     * each pass only evaluates while Jarvis is idle (no model op, no active
+     * work) and [AutomaticMemory.evaluatePending] stops the moment that
+     * changes. The queue is file-backed, so a drain on startup picks up
+     * anything queued before a process restart.
+     */
+    private fun startAutoMemoryEvaluation() {
+        runtimeScope.launch {
+            runAutoMemoryEvaluationPass()
+            while (kotlinx.coroutines.isActive) {
+                kotlinx.coroutines.delay(15 * 60 * 1000L)
+                runAutoMemoryEvaluationPass()
+            }
+        }
+    }
+
+    private fun runAutoMemoryEvaluationPass() {
+        try {
+            AndroidMemoryOs.automaticMemory(this).evaluatePending(
+                HeuristicMemoryEvaluator(),
+                isIdle = { !modelStore.isModelOperationActive() && ConversationWork.activeJobs.get() == 0 },
+                cancel = NoCancel,
+            )
+        } catch (_: Exception) {
+            // Background memory work must never crash the runtime.
+        }
     }
 
     private fun startConversation(input: ConversationInvocation, callbacks: ConversationCallbacks): Job? =
