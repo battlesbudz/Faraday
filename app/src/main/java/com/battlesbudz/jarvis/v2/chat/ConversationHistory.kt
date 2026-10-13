@@ -70,6 +70,22 @@ class ConversationHistory(private val preferences: SharedPreferences) {
         persist()
     }
     @Synchronized fun select(id: String) { threads[id]?.let { _current.value = it; persist() } }
+    /**
+     * Delete a conversation thread. Returns true if the thread existed and was
+     * removed. If the deleted thread was the current one, the newest remaining
+     * thread becomes current (or a fresh empty thread if none remain).
+     */
+    @Synchronized fun deleteConversation(id: String): Boolean {
+        val removed = threads.remove(id) != null
+        if (!removed) return false
+        if (_current.value.id == id) {
+            val next = threads.values.lastOrNull() ?: ConversationThread(UUID.randomUUID().toString())
+            threads[next.id] = next
+            _current.value = next
+        }
+        persist()
+        return true
+    }
     @Synchronized fun appendUser(text: String, attachment: ChatAttachment? = null): String {
         val id = UUID.randomUUID().toString()
         replace(_current.value.copy(messages = _current.value.messages + ConversationMessage(id, "You", text,
