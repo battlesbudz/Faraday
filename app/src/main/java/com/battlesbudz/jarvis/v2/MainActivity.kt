@@ -127,6 +127,7 @@ class MainActivity : ComponentActivity() {
                 onSendChat = runtime::sendChat,
                 onSelectConversation = runtime::selectConversation,
                 onDeleteConversation = runtime::deleteConversation,
+                onNewPrivateConversation = runtime::newPrivateConversation,
                 onSelectModel = modelSetup::select,
                 onDeleteModel = modelSetup::delete,
                 voicePlayback = runtime.voicePlayback,
