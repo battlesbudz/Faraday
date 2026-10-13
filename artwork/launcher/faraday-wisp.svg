@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<title>Faraday Wisp icon concept 2</title>
+<desc>Launcher concept derived from existing native Wisp SVG. Concept preview only.</desc>
+<defs>
+  <radialGradient id="background" cx=".42" cy=".34" r=".8"><stop stop-color="#173845"/><stop offset="1" stop-color="#06141D"/></radialGradient>
+  <linearGradient id="body-fill" gradientUnits="userSpaceOnUse" x1="45" y1="19" x2="104" y2="90">
+    <stop stop-color="#E4FCFF" stop-opacity=".85"/><stop offset=".3333333333" stop-color="#83E8FF" stop-opacity=".74"/><stop offset=".6666666667" stop-color="#229ABD" stop-opacity=".56"/><stop offset="1" stop-color="#E4FCFF" stop-opacity=".87"/>
+  </linearGradient>
+  <radialGradient id="face-light" gradientUnits="userSpaceOnUse" cx="65" cy="64" r="30"><stop stop-color="#FDF6DE" stop-opacity=".94"/><stop offset=".5" stop-color="#E4FCFF" stop-opacity=".66"/><stop offset="1" stop-color="#E4FCFF" stop-opacity="0"/></radialGradient>
+  <radialGradient id="tail-light" gradientUnits="userSpaceOnUse" cx="85" cy="83" r="18"><stop stop-color="#FDE5BB" stop-opacity=".55"/><stop offset="1" stop-color="#FDE5BB" stop-opacity="0"/></radialGradient>
+  <linearGradient id="ribbon-light" gradientUnits="userSpaceOnUse" x1="45" y1="15" x2="100" y2="96"><stop stop-color="#E4FCFF" stop-opacity=".13"/><stop offset=".3333333333" stop-color="#E4FCFF" stop-opacity=".7"/><stop offset=".6666666667" stop-color="#83E8FF" stop-opacity=".12"/><stop offset="1" stop-color="#E4FCFF" stop-opacity=".7"/></linearGradient>
+  <linearGradient id="edge-light" gradientUnits="userSpaceOnUse" x1="42" y1="25" x2="102" y2="90"><stop stop-color="#E4FCFF" stop-opacity=".9"/><stop offset=".5" stop-color="#83E8FF" stop-opacity=".4"/><stop offset="1" stop-color="#E4FCFF" stop-opacity=".85"/></linearGradient>
+  <radialGradient id="footprint" gradientUnits="userSpaceOnUse" cx="75" cy="100" r="39"><stop stop-color="#83E8FF" stop-opacity=".17"/><stop offset="1" stop-color="#83E8FF" stop-opacity="0"/></radialGradient>
+  <clipPath id="body-clip"><path d="M 73 86 C 51 87 34 75 38 56 C 41 42 57 37 71 33 C 82 29 86 27 83 22 C 79 15 86 9 94 11 C 102 13 103 20 98 23 C 96 24 94 22 95 20 C 98 22 100 19 97 16 C 91 12 86 17 90 22 C 95 28 101 31 98 40 C 96 47 90 51 92 59 C 94 66 101 71 101 79 C 102 91 91 96 81 92 C 90 93 92 88 83 87 C 80 86 76 86 73 86 Z"/></clipPath>
+  <linearGradient id="left-eye" gradientUnits="userSpaceOnUse" x1="57" y1="55.8" x2="57" y2="64.2"><stop stop-color="#041E2C"/><stop offset="1" stop-color="#246176"/></linearGradient>
+  <linearGradient id="right-eye" gradientUnits="userSpaceOnUse" x1="77" y1="57.8" x2="77" y2="66.2"><stop stop-color="#041E2C"/><stop offset="1" stop-color="#246176"/></linearGradient>
+</defs>
+<rect width="1024" height="1024" fill="url(#background)"/>
+<g transform="translate(512 512) scale(7.9) translate(-72 -53)"><ellipse cx="74" cy="100" rx="40" ry="5" fill="url(#footprint)"/>
+<path d="M 73 86 C 51 87 34 75 38 56 C 41 42 57 37 71 33 C 82 29 86 27 83 22 C 79 15 86 9 94 11 C 102 13 103 20 98 23 C 96 24 94 22 95 20 C 98 22 100 19 97 16 C 91 12 86 17 90 22 C 95 28 101 31 98 40 C 96 47 90 51 92 59 C 94 66 101 71 101 79 C 102 91 91 96 81 92 C 90 93 92 88 83 87 C 80 86 76 86 73 86 Z" fill="none" stroke="#83E8FF" stroke-opacity="0.023" stroke-width="13"/>
+<path d="M 73 86 C 51 87 34 75 38 56 C 41 42 57 37 71 33 C 82 29 86 27 83 22 C 79 15 86 9 94 11 C 102 13 103 20 98 23 C 96 24 94 22 95 20 C 98 22 100 19 97 16 C 91 12 86 17 90 22 C 95 28 101 31 98 40 C 96 47 90 51 92 59 C 94 66 101 71 101 79 C 102 91 91 96 81 92 C 90 93 92 88 83 87 C 80 86 76 86 73 86 Z" fill="none" stroke="#83E8FF" stroke-opacity="0.05" stroke-width="7"/>
+<path d="M 73 86 C 51 87 34 75 38 56 C 41 42 57 37 71 33 C 82 29 86 27 83 22 C 79 15 86 9 94 11 C 102 13 103 20 98 23 C 96 24 94 22 95 20 C 98 22 100 19 97 16 C 91 12 86 17 90 22 C 95 28 101 31 98 40 C 96 47 90 51 92 59 C 94 66 101 71 101 79 C 102 91 91 96 81 92 C 90 93 92 88 83 87 C 80 86 76 86 73 86 Z" fill="none" stroke="#83E8FF" stroke-opacity="0.16" stroke-width="3"/>
+<path d="M 73 86 C 51 87 34 75 38 56 C 41 42 57 37 71 33 C 82 29 86 27 83 22 C 79 15 86 9 94 11 C 102 13 103 20 98 23 C 96 24 94 22 95 20 C 98 22 100 19 97 16 C 91 12 86 17 90 22 C 95 28 101 31 98 40 C 96 47 90 51 92 59 C 94 66 101 71 101 79 C 102 91 91 96 81 92 C 90 93 92 88 83 87 C 80 86 76 86 73 86 Z" fill="url(#body-fill)"/>
+<g clip-path="url(#body-clip)">
+<circle cx="65" cy="64" r="30" fill="url(#face-light)"/>
+<circle cx="85" cy="83" r="18" fill="url(#tail-light)"/>
+<path d="M 89 21 C 93 34 84 37 75 40 C 85 36 93 38 94 31 Z" fill="#E4FCFF" fill-opacity=".4"/>
+<path d="M 90 8 C 76 17 94 25 70 37 C 55 43 43 53 47 67 C 49 79 68 86 79 86 C 96 88 95 96 83 96" fill="none" stroke="#E4FCFF" stroke-opacity="0.095" stroke-width="5.0" stroke-linecap="round"/>
+<path d="M 90 8 C 76 17 94 25 70 37 C 55 43 43 53 47 67 C 49 79 68 86 79 86 C 96 88 95 96 83 96" fill="none" stroke="url(#ribbon-light)" stroke-width="0.7" stroke-linecap="round"/>
+<path d="M 87 19 C 102 38 80 41 80 55 C 80 66 97 69 97 80 C 98 87 94 92 89 94" fill="none" stroke="#E4FCFF" stroke-opacity="0.104" stroke-width="4.5" stroke-linecap="round"/>
+<path d="M 87 19 C 102 38 80 41 80 55 C 80 66 97 69 97 80 C 98 87 94 92 89 94" fill="none" stroke="url(#ribbon-light)" stroke-width="0.7999999999999999" stroke-linecap="round"/>
+
+
+
+
+</g>
+<path d="M 73 86 C 51 87 34 75 38 56 C 41 42 57 37 71 33 C 82 29 86 27 83 22 C 79 15 86 9 94 11 C 102 13 103 20 98 23 C 96 24 94 22 95 20 C 98 22 100 19 97 16 C 91 12 86 17 90 22 C 95 28 101 31 98 40 C 96 47 90 51 92 59 C 94 66 101 71 101 79 C 102 91 91 96 81 92 C 90 93 92 88 83 87 C 80 86 76 86 73 86 Z" fill="none" stroke="url(#edge-light)" stroke-width=".85"/>
+<path d="M 79 31 C 67 39 48 43 44 58 C 40 73 54 82 65 84" fill="none" stroke="#E4FCFF" stroke-opacity=".92" stroke-width="1.15" stroke-linecap="round"/>
+<g transform="translate(66 65) scale(1.16) translate(-66 -65)"><ellipse cx="57" cy="60" rx="3.05" ry="4.2" fill="url(#left-eye)"/>
+<circle cx="57.85" cy="57.984" r="1.03" fill="#E4FCFF" fill-opacity=".98"/>
+<circle cx="56.35" cy="62.268" r=".43" fill="#83E8FF" fill-opacity=".75"/>
+<ellipse cx="77" cy="62" rx="3.05" ry="4.2" fill="url(#right-eye)"/>
+<circle cx="77.85" cy="59.984" r="1.03" fill="#E4FCFF" fill-opacity=".98"/>
+<circle cx="76.35" cy="64.268" r=".43" fill="#83E8FF" fill-opacity=".75"/>
+<ellipse cx="52" cy="68.85" rx="4" ry="1.85" fill="#F4C5AE" fill-opacity=".34"/>
+<ellipse cx="81.9" cy="70.8" rx="3.9" ry="1.8" fill="#F4C5AE" fill-opacity=".30"/>
+<g transform="translate(67 71) scale(2 1.5) translate(-67 -71)"><path d="M64 70 Q67 74 70 70.6" fill="none" stroke="#06394A" stroke-width="1.1" stroke-linecap="round"/></g></g>
+
+</g>
+</svg>
