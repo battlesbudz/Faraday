@@ -37,7 +37,7 @@
 - [Get started](#get-started)
 - [What you can do](#what-you-can-do)
 - [Capability comparison](#capability-comparison)
-- [In testing](#in-testing)
+- [Roadmap](#roadmap)
 - [Memory](#memory)
 - [Privacy](#privacy)
 - [Documentation and contributing](#documentation-and-contributing)
@@ -135,15 +135,22 @@ Reviewed October 13, 2026. Faraday entries cover main and the audited working br
 
 </details>
 
-## In testing
+## Roadmap
 
-These capabilities are being tested and may not work reliably yet.
+**In testing now** — working in development branches, heading for a release:
 
-- **Set reminders and check your schedule.** Create reminders, view scheduled tasks, and receive notifications.
-- **Interact with your screen.** Let Faraday read screen content, tap controls, scroll, and enter text with the required permissions.
-- **Browse the web.** Open and read pages, follow links, fill forms, and take over when you need to.
-- **Run workflows.** Schedule routines, review approvals, track progress, and cancel tasks.
-- **Connect services.** Set up MCP connections, discover available tools, and manage their permissions.
+- **On-device vision.** Ask about photos, get descriptions and object counts.
+- **Automatic memory.** Faraday remembers across conversations without being asked.
+- **Private chats and chat deletion.** Keep a conversation off the record or remove one entirely.
+- **Audio-native tool calls.** Use phone actions directly in Gemma voice mode: battery, schedule, notifications, app launch.
+
+**Coming next:**
+
+- **Reminders and schedule management.** Create reminders, view scheduled tasks, and receive notifications.
+- **Screen interaction.** Let Faraday read screen content, tap controls, scroll, and enter text with the required permissions.
+- **Web browsing.** Open and read pages, follow links, fill forms, and take over when you need to.
+- **Workflows.** Schedule routines, review approvals, track progress, and cancel tasks.
+- **Service connections.** Set up MCP connections, discover available tools, and manage their permissions.
 
 ## Memory
 
