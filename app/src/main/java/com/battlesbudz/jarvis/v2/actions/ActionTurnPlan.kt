@@ -62,7 +62,8 @@ sealed interface ActionTurnPlan {
                         ActionRequestText.browseReadRequest(clause))) ||
                 ActionRequestText.screenObserveRequest(clause) ||
                 ActionRequestText.reminderRequest(clause, nowMs) != null ||
-                ActionRequestText.scheduleRequest(clause)
+                ActionRequestText.scheduleRequest(clause) ||
+                ActionRequestText.notificationRequest(clause) != null
 
         private fun confirmation(text: String, history: List<ChatEntry>): ActionRequest? {
             val normalized = text.trim()
@@ -83,6 +84,9 @@ sealed interface ActionTurnPlan {
                     mapOf("message" to spec.message, "at_ms" to spec.atMs.toString()))
             }
             if (ActionRequestText.scheduleRequest(clause)) return ActionRequest("show_schedule")
+            ActionRequestText.notificationRequest(clause)?.let { (title, text) ->
+                return ActionRequest("post_notification", mapOf("title" to title, "text" to text))
+            }
             // Settings screens and websites are checked before appTarget: "open wifi
             // settings" and "open youtube.com" must not become open_app requests.
             ActionRequestText.settingsScreen(clause)?.let { return ActionRequest("open_settings", mapOf("screen" to it)) }
