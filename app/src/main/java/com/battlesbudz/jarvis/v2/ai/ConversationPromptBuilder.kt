@@ -1,6 +1,7 @@
 package com.battlesbudz.jarvis.v2.ai
 
 import com.battlesbudz.jarvis.v2.ChatEntry
+import com.battlesbudz.jarvis.v2.actions.ExecutionResult
 import com.battlesbudz.jarvis.v2.chat.ShortTermConversationContext
 
 class ConversationPromptBuilder(
@@ -99,16 +100,49 @@ class ConversationPromptBuilder(
         userPrompt: String,
         toolName: String,
         resultMessage: String,
-        succeeded: Boolean
+        outcome: ExecutionResult.Outcome
     ): String {
+        val statusText = when (outcome) {
+            ExecutionResult.Outcome.SUCCEEDED -> "succeeded"
+            ExecutionResult.Outcome.UNKNOWN_COMPLETION ->
+                "sent but unconfirmed: the request was handed to Android, but completion " +
+                "could not be verified"
+            ExecutionResult.Outcome.FAILED -> "failed"
+            ExecutionResult.Outcome.REJECTED_VALIDATION ->
+                "rejected before execution: the request was invalid"
+            ExecutionResult.Outcome.DENIED_PERMISSION ->
+                "failed: Android denied a required permission"
+            ExecutionResult.Outcome.NEEDS_UNLOCK ->
+                "not attempted: the device is locked"
+        }
         return """
             Native tool execution context:
             - User request: $userPrompt
             - Selected tool: $toolName
-            - Execution status: ${if (succeeded) "succeeded" else "failed"}
+            - Execution status: $statusText
             - Android result: $resultMessage
+
+            Report the execution status faithfully in your reply. "Sent but
+            unconfirmed" means the request went out but you could not verify
+            what happened: say exactly that. Never generalize it to
+            "background tasks can't be performed", "I can't do that in the
+            background", or any other blanket refusal. A "not attempted"
+            status is not a permanent limitation: suggest trying with the app
+            in the foreground, or setting Jarvis as the system assistant for
+            background launches.
         """.trimIndent()
     }
+
+    /** Legacy overload: maps the old boolean to SUCCEEDED/FAILED. */
+    fun buildToolResultContext(
+        userPrompt: String,
+        toolName: String,
+        resultMessage: String,
+        succeeded: Boolean
+    ): String = buildToolResultContext(
+        userPrompt, toolName, resultMessage,
+        if (succeeded) ExecutionResult.Outcome.SUCCEEDED else ExecutionResult.Outcome.FAILED
+    )
 
 
 }
