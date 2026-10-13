@@ -28,7 +28,12 @@ data class ConversationMessage(
     val sourceReplyId: String? = null
 )
 data class ActionReceipt(val name: String, val message: String, val succeeded: Boolean)
-data class ConversationThread(val id: String, val messages: List<ConversationMessage> = emptyList()) {
+data class ConversationThread(
+    val id: String,
+    val messages: List<ConversationMessage> = emptyList(),
+    /** Private (incognito) threads are never persisted and never feed memory writes. */
+    val isPrivate: Boolean = false,
+) {
     val title: String get() = messages.firstOrNull { it.role == "You" }?.text?.take(60) ?: "New conversation"
 }
 
@@ -69,6 +74,18 @@ class ConversationHistory(private val preferences: SharedPreferences) {
         threads[_current.value.id] = _current.value
         persist()
     }
+    /**
+     * Start a private (incognito) conversation. The thread lives only in
+     * memory: it is never written to disk, and leaving it (or the process)
+     * drops it entirely.
+     */
+    @Synchronized fun newPrivateConversation() {
+        _current.value = ConversationThread(UUID.randomUUID().toString(), isPrivate = true)
+        threads[_current.value.id] = _current.value
+        // Deliberately no persist(): private threads must never touch disk.
+    }
+    /** True when the current thread is private. */
+    @Synchronized fun isCurrentPrivate(): Boolean = _current.value.isPrivate
     @Synchronized fun select(id: String) { threads[id]?.let { _current.value = it; persist() } }
     /**
      * Delete a conversation thread. Returns true if the thread existed and was
@@ -209,7 +226,11 @@ class ConversationHistory(private val preferences: SharedPreferences) {
     }
     private fun persist() {
         val array = JSONArray()
-        threads.values.forEach { thread ->
+        // Private threads are ephemeral: never written to disk.
+        val durableThreads = threads.values.filter { !it.isPrivate }
+        val activeId = _current.value.id.takeIf { id -> durableThreads.any { it.id == id } }
+            ?: durableThreads.lastOrNull()?.id
+        durableThreads.forEach { thread ->
             val messages = JSONArray()
             thread.messages.forEach { m -> messages.put(JSONObject().put("id", m.id).put("role", m.role)
                 .put("text", m.text).put("spoken", m.spoken).put("callId", m.callId)
@@ -219,7 +240,7 @@ class ConversationHistory(private val preferences: SharedPreferences) {
                 .put("actions", JSONArray().also { actions -> m.actions.forEach { action -> actions.put(JSONObject().put("name", action.name).put("message", action.message).put("succeeded", action.succeeded)) } })) }
             array.put(JSONObject().put("id", thread.id).put("messages", messages))
         }
-        preferences.edit().putString("active", _current.value.id).putString("threads", array.toString()).apply()
+        preferences.edit().putString("active", activeId).putString("threads", array.toString()).apply()
     }
 }
 
