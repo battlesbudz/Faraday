@@ -5,6 +5,11 @@ import android.os.Handler
 import android.os.Looper
 import com.battlesbudz.jarvis.v2.actions.ActionTurnPlan
 import com.battlesbudz.jarvis.v2.actions.AndroidMobileActionExecutor
+import com.battlesbudz.jarvis.v2.actions.ExternalActionExecutor
+import com.battlesbudz.jarvis.v2.actions.ExternalAgentAccess
+import com.battlesbudz.jarvis.v2.actions.ExternalAgentGrant
+import com.battlesbudz.jarvis.v2.actions.ExternalAgentProvider
+import com.battlesbudz.jarvis.v2.actions.ToolTaskLedger
 import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngine
 import com.battlesbudz.jarvis.v2.ai.ModelStore
 import com.battlesbudz.jarvis.v2.ai.ReferenceGroundingClient
@@ -227,6 +232,38 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             browserSession = browserRuntime.session)
     }
     internal val phoneTasks get() = phoneTaskCoordinator.tasks
+
+    /**
+     * M7: external-agent access boundary. Shares the task journal with phone
+     * tasks (same store) so grants and receipts live in one durable place.
+     * Initialized once; the exported [ExternalAgentService] reads it via
+     * [ExternalAgentProvider].
+     */
+    private val externalAgentAccess: ExternalAgentAccess by lazy {
+        val ledger = ToolTaskLedger(phoneActionStore)
+        val nativeExecutor = AndroidMobileActionExecutor(this, canLaunchDirectly = { activityVisible },
+            onDiagnostic = diagnosticRecorder::recordImportant)
+        val executor = ExternalActionExecutor { action -> nativeExecutor.execute(action) }
+        ExternalAgentAccess(ledger, executor).also {
+            ExternalAgentProvider.init(ledger, executor)
+        }
+    }
+
+    /** M7: current external-agent grants, for the Settings UI. */
+    internal fun externalAgentGrants(): List<ExternalAgentGrant> =
+        try { externalAgentAccess.grants() } catch (_: Exception) { emptyList() }
+
+    /** M7: authorize a caller; returns the grant or throws with a user-safe message. */
+    internal fun authorizeExternalAgent(callerId: String, displayName: String, functions: Set<String>): ExternalAgentGrant =
+        externalAgentAccess.authorizeCaller(callerId, displayName, functions)
+
+    /** M7: revoke a caller; true if a grant was actually revoked. */
+    internal fun revokeExternalAgent(callerId: String): Boolean =
+        externalAgentAccess.revokeCaller(callerId)
+
+    /** M7: enable/disable a caller without revoking. */
+    internal fun setExternalAgentEnabled(callerId: String, enabled: Boolean): Boolean =
+        externalAgentAccess.setCallerEnabled(callerId, enabled)
     internal val phoneTaskError get() = phoneTaskCoordinator.error
     internal fun admitPhoneTask(plan: ActionTurnPlan.Ready, conversationId: String): String? =
         phoneTaskCoordinator.admitPhoneTask(plan, conversationId)
