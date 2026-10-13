@@ -12,12 +12,6 @@
   <a href="https://github.com/battlesbudz/Faraday/releases">Download for Android</a> · <a href="https://cdn.jsdelivr.net/gh/battlesbudz/Faraday@main/demo/jarvis-voice-demo.mp4">Watch the demo</a>
 </p>
 
-<p align="center">
-  <img src="demo/faraday-chat-screen.jpg" width="280" alt="Chat screen with Wisp, Memory and Settings, plus message input and voice-call controls.">
-</p>
-
-<p align="center"><em>The chat and voice-call screen.</em></p>
-
 <a href="https://cdn.jsdelivr.net/gh/battlesbudz/Faraday@main/demo/jarvis-voice-demo.mp4">
   <picture>
     <source media="(prefers-reduced-motion: reduce)" srcset="demo/faraday-demo-thumbnail.jpg">
@@ -56,6 +50,12 @@ For phone actions and natural speech interruption, select **Speech recognition**
 - **Use automatic memory.** Faraday saves relevant information from your conversations automatically. Review, correct, or erase what it remembers.
 - **Manage your conversations.** Return to saved chats, delete conversations, or start a private chat.
 - **See response timings.** Open a reply’s measurements and export conversation metrics as JSON or CSV.
+
+<p align="center">
+  <img src="demo/faraday-chat-screen.jpg" width="200" alt="Chat screen with Wisp, Memory and Settings, plus message input and voice-call controls.">
+</p>
+
+<p align="center"><em>The chat and voice-call screen.</em></p>
 
 ## Capability comparison
 
