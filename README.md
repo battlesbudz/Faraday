@@ -41,6 +41,7 @@
 - [Memory](#memory)
 - [Privacy](#privacy)
 - [Documentation and contributing](#documentation-and-contributing)
+- [FAQ](#faq)
 - [License](#license)
 
 </details>
@@ -176,6 +177,23 @@ The app uses Kotlin and Jetpack Compose, with Gemma through LiteRT-LM, Whisper f
 - [Contribution guide](https://github.com/battlesbudz/Faraday/blob/audio-pr2/CONTRIBUTING.md)
 
 Found a problem or have an idea? [Open an issue](https://github.com/battlesbudz/Faraday/issues). For bugs, include your phone, Android version, app version, selected model, and steps to reproduce. Remove private conversation content before sharing logs.
+
+## FAQ
+
+**Why does Faraday need so much storage?**
+The AI models run entirely on your phone instead of a server. That's the tradeoff for offline privacy — the models live on your device.
+
+**Can I use a different wake phrase?**
+Not yet. "Hey Jarvis" is the default for legacy reasons; customizable wake phrases are planned.
+
+**Why does the app need microphone access?**
+For wake-word listening and voice input. All audio processing happens on-device.
+
+**Does always-on listening drain the battery?**
+Wake-word listening uses the phone's low-power audio path. Heavy use — long voice calls, frequent model inference — will use more battery, like any intensive app.
+
+**What happens to my data if I uninstall?**
+Everything is stored locally on your phone. Uninstalling removes your conversations, memories, and downloaded models. There's no cloud copy.
 
 ## License
 
