@@ -8,15 +8,17 @@ package com.battlesbudz.jarvis.v2.actions
  * Four states, never conflated:
  * - local refusal: Jarvis never asked Android to launch anything because no
  *   supported route was established;
- * - submitted request: the launch was handed to the platform, but the
- *   destination was never observed in the foreground — reported as unknown
- *   completion, never as success;
+ * - submitted request: the launch was handed to the platform on a
+ *   background route, but the destination was never observed in the
+ *   foreground — reported as unknown completion, never as success;
  * - platform rejection: startActivity threw (ActivityNotFound,
  *   SecurityException);
- * - observed foreground transition: the destination package was seen in the
- *   foreground after the request — the only state that counts as a verified
- *   launch. startActivity returning is not enough: a background start can be
- *   silently dropped by Android's background-activity-start restrictions.
+ * - verified launch: the destination package was seen in the foreground
+ *   after the request, OR the launch went through the DIRECT route (Jarvis's
+ *   own activity visible) and startActivity returned without throwing.
+ *   A foreground-initiated start cannot be silently dropped by Android's
+ *   background-activity-start restrictions, so the clean return is the
+ *   verification. Background routes keep the unconfirmed receipt.
  *
  * The two recognized routes (selected assistant, overlay exemption) are not
  * an exhaustive statement of Android's background-start exceptions, so the
@@ -53,6 +55,18 @@ fun resolveBackgroundLaunchRoute(
 }
 
 /**
+ * Whether a clean startActivity return on this route counts as a verified
+ * launch. DIRECT means Jarvis's own activity was visible when it fired the
+ * intent: Android cannot silently drop a foreground-initiated start, so the
+ * platform return (no throw) is the verification. Background routes
+ * (overlay-exempt, selected-assistant) can be silently dropped by the
+ * platform's background-activity-start restrictions, so they stay
+ * unconfirmed without an actual foreground observation.
+ */
+fun isVerifiedByCleanReturn(route: BackgroundLaunchRoute): Boolean =
+    route == BackgroundLaunchRoute.DIRECT
+
+/**
  * Local-refusal receipt: Jarvis could not establish a supported
  * background-launch route, so nothing was attempted. Worded as Jarvis's own
  * limitation — never as an observed Android block, and never implying the
@@ -70,17 +84,19 @@ fun backgroundLaunchRefusal(label: String): ExecutionResult =
  * Receipt for a launch that reached the platform. The four outcomes stay
  * distinct end to end:
  * - platform rejection -> FAILED: Android threw;
- * - observed foreground transition -> SUCCEEDED: the destination was
- *   actually seen in the foreground, the only verified launch;
- * - submitted without observation -> UNKNOWN_COMPLETION: the request was
- *   handed to Android, but opening could not be confirmed. Journals record
- *   this as unknown outcome, workflows stop without repeating it, and later
- *   steps never inherit its success.
+ * - verified launch -> SUCCEEDED: the destination was seen in the
+ *   foreground, or the DIRECT route returned cleanly (a foreground start
+ *   cannot be silently dropped);
+ * - submitted without observation on a background route ->
+ *   UNKNOWN_COMPLETION: the request was handed to Android, but opening
+ *   could not be confirmed. Journals record this as unknown outcome,
+ *   workflows stop without repeating it, and later steps never inherit
+ *   its success.
  *
- * A submitted request is never promoted to a verified launch. Callers that
- * can observe the destination (e.g. instrumentation via UiDevice) pass
- * foregroundObserved = true; production paths that cannot observe leave it
- * false and report honestly.
+ * A background-route submission is never promoted to a verified launch.
+ * Callers that can observe the destination (e.g. instrumentation via
+ * UiDevice) pass foregroundObserved = true; production background paths
+ * leave it false and report honestly.
  */
 fun verifiedLaunchReceipt(
     label: String,
