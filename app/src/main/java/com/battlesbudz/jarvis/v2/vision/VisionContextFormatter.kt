@@ -12,9 +12,9 @@ object VisionContextFormatter {
                 "Treat the following as authoritative for what is visible in the attached image."
         )
         if (snapshot.detections.isEmpty()) {
-            parts += "Detected objects: none recognizable."
+            parts += "Objects detected: 0. Detected objects: none recognizable."
         } else {
-            parts += "Detected objects: " + snapshot.detections.joinToString("; ") {
+            parts += "Objects detected: ${snapshot.detections.size}. Detected objects: " + snapshot.detections.joinToString("; ") {
                 "${it.label} ${"%.2f".format(it.confidence)} at " +
                     "[${it.box.x1.toInt()},${it.box.y1.toInt()},${it.box.x2.toInt()},${it.box.y2.toInt()}]"
             }
@@ -24,8 +24,10 @@ object VisionContextFormatter {
                 "${it.label} (${it.points.size}-point outline)"
             }
         }
-        if (snapshot.poses.isNotEmpty()) {
-            parts += "People: " + snapshot.poses.joinToString("; ") {
+        if (snapshot.poses.isEmpty()) {
+            parts += "People count: 0."
+        } else {
+            parts += "People count: ${snapshot.poses.size}. People: " + snapshot.poses.joinToString("; ") {
                 "person with ${it.keypoints.size} tracked keypoints"
             }
         }
@@ -34,6 +36,16 @@ object VisionContextFormatter {
         }
         return parts.joinToString("\n")
     }
+
+    /**
+     * User-visible note when native analysis throws. Returned as the vision
+     * context (instead of null) so the failure is diagnosable instead of
+     * silently swallowed; the raw image remains attached as fallback.
+     */
+    fun failureNote(error: Throwable): String =
+        "On-device vision analysis was unavailable for this image " +
+            "(${error.message?.take(120) ?: "unknown error"}). " +
+            "Answer from the attached image alone and mention that on-device detection was unavailable."
 
     /** One-line summary for the visible magnifier reply. */
     fun summaryLine(snapshot: NativeVisionSnapshot): String =
