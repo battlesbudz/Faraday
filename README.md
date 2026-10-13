@@ -29,6 +29,13 @@
 
 *53 seconds: airplane mode, wake-word activation, and interrupting a spoken reply.*
 
+<p align="center">
+  <img src="demo/faraday-voice-call.jpg" width="300" alt="Faraday voice call: spoken transcript with response timings.">
+</p>
+
+<p align="center"><em>A voice call with live transcription and per-reply timing metrics.</em></p>
+
+
 <details>
 <summary>Table of contents</summary>
 
@@ -80,6 +87,13 @@ For phone actions and natural speech interruption, select **Speech recognition**
 </p>
 
 <p align="center"><em>The chat and voice-call screen.</em></p>
+
+<p align="center">
+  <img src="demo/faraday-vision.jpg" width="300" alt="Faraday describing a photo of a city street scene.">
+</p>
+
+<p align="center"><em>Ask about a photo and get a detailed on-device description.</em></p>
+
 
 ## Capability comparison
 
