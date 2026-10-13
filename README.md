@@ -100,11 +100,6 @@ For phone actions and natural speech interruption, select **Speech recognition**
 - **Use phone actions.** Check battery level, adjust media volume, open installed apps, and control media playback with play, pause, next, and previous.
 - **Use automatic memory.** Faraday saves relevant information from your conversations automatically. Review, correct, or erase what it remembers.
 - **Manage your conversations.** Return to saved chats, delete conversations, or start a private chat.
-
-<p align="center">
-  <img src="demo/faraday-chat-screen.jpg" width="200" alt="Chat screen with Wisp, Memory and Settings, plus message input and voice-call controls.">
-</p>
-
 - **See response timings.** Open a reply’s measurements and export conversation metrics as JSON or CSV.
 - **Ask about photos.** Send Faraday a picture and get a detailed on-device description.
 
