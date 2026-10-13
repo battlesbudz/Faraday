@@ -36,6 +36,7 @@ fun JarvisApp(
     onSendChat: (String, com.battlesbudz.jarvis.v2.chat.ChatAttachment?) -> String?,
     onSelectConversation: (String?) -> String?,
     onDeleteConversation: (String) -> String? = { "Delete is unavailable right now." },
+    onNewPrivateConversation: () -> String? = { "Private chat is unavailable right now." },
     onSelectModel: (com.battlesbudz.jarvis.v2.ai.LocalModelSpec) -> String?,
     onDeleteModel: (com.battlesbudz.jarvis.v2.ai.LocalModelSpec) -> String?,
     voicePlayback: kotlinx.coroutines.flow.StateFlow<com.battlesbudz.jarvis.v2.voice.VoicePlaybackFrame>,
@@ -154,6 +155,7 @@ fun JarvisApp(
                                         selectedModel = setup.selectedModel,
                                         onSelectConversation = onSelectConversation,
                                         onDeleteConversation = onDeleteConversation,
+                                        onNewPrivateConversation = onNewPrivateConversation,
                                         onEndVoice = onEndVoiceCall,
                                         onOpenVoiceCalls = {
                                             voiceCalls = onRefreshVoiceCalls()
