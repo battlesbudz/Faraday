@@ -108,6 +108,19 @@ class MainActivity : ComponentActivity() {
                 // M2 saved workflows (D36): settings lists them; chat stays the operating surface.
                 workflowSettings = runtime.workflowSettings,
                 onWorkflowSetEnabled = runtime::setWorkflowEnabled,
+                // M7 external agents (D06): grant management UI.
+                externalAgentGrants = runtime.externalAgentGrantsState,
+                onAuthorizeExternalAgent = { callerId, displayName, functions ->
+                    try {
+                        runtime.authorizeExternalAgent(callerId, displayName, functions)
+                        "Authorized."
+                    } catch (e: IllegalArgumentException) {
+                        e.message ?: "Could not authorize."
+                    }
+                },
+                onRevokeExternalAgent = runtime::revokeExternalAgent,
+                onSetExternalAgentEnabled = runtime::setExternalAgentEnabled,
+                onRefreshExternalAgentGrants = runtime::refreshExternalAgentGrants,
                 // M3 guided MCP setup (D07): custom server URL from the settings dialog.
                 onConnectMcpServer = runtime::connectMcpServer,
                 callState = runtime.voiceSessionController.state,
