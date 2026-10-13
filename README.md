@@ -9,6 +9,14 @@
 <p align="center">The conversation runs on your phone, including speech recognition, AI inference, and the spoken reply.</p>
 
 <p align="center">
+  <a href="https://github.com/battlesbudz/Faraday/releases"><img src="https://img.shields.io/github/v/release/battlesbudz/Faraday" alt="Latest release"></a>
+  <a href="https://github.com/battlesbudz/Faraday/actions/workflows/android.yml"><img src="https://github.com/battlesbudz/Faraday/actions/workflows/android.yml/badge.svg" alt="Build status"></a>
+  <img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue" alt="License: PolyForm Noncommercial 1.0.0">
+  <img src="https://img.shields.io/badge/platform-Android%2011%2B-green" alt="Platform: Android 11+">
+</p>
+
+
+<p align="center">
   <a href="https://github.com/battlesbudz/Faraday/releases">Download for Android</a> · <a href="https://cdn.jsdelivr.net/gh/battlesbudz/Faraday@main/demo/jarvis-voice-demo.mp4">Watch the demo</a>
 </p>
 
@@ -20,6 +28,22 @@
 </a>
 
 *53 seconds: airplane mode, wake-word activation, and interrupting a spoken reply.*
+
+<details>
+<summary>Table of contents</summary>
+
+- [Performance](#performance)
+- [Get started](#get-started)
+- [What you can do](#what-you-can-do)
+- [Capability comparison](#capability-comparison)
+- [In testing](#in-testing)
+- [Memory](#memory)
+- [Privacy](#privacy)
+- [Documentation and contributing](#documentation-and-contributing)
+- [License](#license)
+
+</details>
+
 
 ## Performance
 
