@@ -1,5 +1,6 @@
 package com.battlesbudz.jarvis.v2.ai
 
+import com.battlesbudz.jarvis.v2.actions.ExecutionResult
 import com.battlesbudz.jarvis.v2.chat.ShortTermConversationContext
 import org.junit.Assert.*
 import org.junit.Test
@@ -84,6 +85,38 @@ class ConversationPromptBuilderTest {
             assertTrue(prompt.contains("Quoted correction evidence"))
             assertFalse(prompt.startsWith(builder.voiceInputPrefix(emptyList(), compact)))
         }
+    }
+
+    @Test fun toolResultContextRendersUnknownCompletionDistinctlyFromFailure() {
+        val builder = ConversationPromptBuilder(ShortTermConversationContext())
+        val unknown = builder.buildToolResultContext(
+            "Open Facebook", "open_app",
+            "The launch request for Facebook was sent, but opening could not be confirmed.",
+            ExecutionResult.Outcome.UNKNOWN_COMPLETION)
+        assertTrue(unknown.contains("sent but unconfirmed"))
+        assertFalse(unknown.contains("Execution status: failed"))
+        // The anti-generalization instruction must be present.
+        assertTrue(unknown.contains("background tasks can't be performed"))
+    }
+
+    @Test fun toolResultContextRendersSucceededAndFailed() {
+        val builder = ConversationPromptBuilder(ShortTermConversationContext())
+        val ok = builder.buildToolResultContext(
+            "Open Facebook", "open_app", "Opened Facebook.",
+            ExecutionResult.Outcome.SUCCEEDED)
+        assertTrue(ok.contains("Execution status: succeeded"))
+        val failed = builder.buildToolResultContext(
+            "Open Facebook", "open_app", "Could not open Facebook: not found.",
+            ExecutionResult.Outcome.FAILED)
+        assertTrue(failed.contains("Execution status: failed"))
+    }
+
+    @Test fun toolResultContextLegacyBooleanOverloadStillWorks() {
+        val builder = ConversationPromptBuilder(ShortTermConversationContext())
+        val ok = builder.buildToolResultContext("req", "tool", "msg", true)
+        assertTrue(ok.contains("Execution status: succeeded"))
+        val failed = builder.buildToolResultContext("req", "tool", "msg", false)
+        assertTrue(failed.contains("Execution status: failed"))
     }
 
     @Test fun nonVoicePromptsKeepTheirOriginalContextBeforeRequestOrdering() {
