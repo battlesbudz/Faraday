@@ -1,10 +1,22 @@
-# <img src="artwork/launcher/faraday-wisp.svg" alt="" width="48" height="48" align="middle"> Faraday
+<p align="center">
+  <img src="artwork/launcher/faraday-wisp.svg" alt="" width="128" height="128">
+</p>
 
-**A private offline Android voice agent.**
+<h1 align="center">Faraday</h1>
 
-The conversation runs on your phone, including speech recognition, AI inference, and the spoken reply.
+<p align="center"><strong>A private offline Android voice agent.</strong></p>
 
-[Download for Android](https://github.com/battlesbudz/Faraday/releases) · [Watch the demo](https://cdn.jsdelivr.net/gh/battlesbudz/Faraday@main/demo/jarvis-voice-demo.mp4)
+<p align="center">The conversation runs on your phone, including speech recognition, AI inference, and the spoken reply.</p>
+
+<p align="center">
+  <a href="https://github.com/battlesbudz/Faraday/releases">Download for Android</a> · <a href="https://cdn.jsdelivr.net/gh/battlesbudz/Faraday@main/demo/jarvis-voice-demo.mp4">Watch the demo</a>
+</p>
+
+<p align="center">
+  <img src="demo/faraday-chat-screen.jpg" width="280" alt="Chat screen with Wisp, Memory and Settings, plus message input and voice-call controls.">
+</p>
+
+<p align="center"><em>The chat and voice-call screen.</em></p>
 
 <a href="https://cdn.jsdelivr.net/gh/battlesbudz/Faraday@main/demo/jarvis-voice-demo.mp4">
   <picture>
