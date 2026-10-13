@@ -38,6 +38,7 @@ internal fun ConversationScreen(
     selectedModel: LocalModelSpec,
     onSelectConversation: (String?) -> String?,
     onDeleteConversation: (String) -> String? = { "Delete is unavailable right now." },
+    onNewPrivateConversation: () -> String? = { "Private chat is unavailable right now." },
     onEndVoice: ((String) -> Unit) -> Unit,
     onOpenVoiceCalls: () -> Unit,
     resumedVoice: Boolean,
@@ -167,9 +168,21 @@ internal fun ConversationScreen(
             TextButton(enabled = !inputBusy, onClick = onOpenMemory, modifier = Modifier.testTag("memory_open")) { Text("Memory") }
             TextButton(enabled = !inputBusy, onClick = { settings = true }) { Text("Settings") }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = { showHistory = true }, enabled = !sending && !armed && !inputBusy) { Text("Conversations") }
-            TextButton(onClick = { error = onSelectConversation(null) }, enabled = !sending && !armed && !inputBusy) { Text("New") }
+            if (thread.isPrivate) {
+                // Private mode indicator: unmissable so there's never confusion about what's saved.
+                Text("PRIVATE — nothing is saved",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("private_mode_indicator"))
+            }
+            Row {
+                TextButton(onClick = { error = onNewPrivateConversation() }, enabled = !sending && !armed && !inputBusy,
+                    modifier = Modifier.testTag("new_private_chat")) { Text("Private") }
+                TextButton(onClick = { error = onSelectConversation(null) }, enabled = !sending && !armed && !inputBusy) { Text("New") }
+            }
         }
         if (pipelineBenchmarkStore != null) ConversationMetricsControls(thread, pipelineBenchmarkStore) {
             benchmarkReply = null
