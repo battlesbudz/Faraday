@@ -20,11 +20,12 @@
   <a href="https://github.com/battlesbudz/Faraday/releases">Download for Android</a> · <a href="https://cdn.jsdelivr.net/gh/battlesbudz/Faraday@main/demo/jarvis-voice-demo.mp4">Watch the demo</a>
 </p>
 
-<p align="center">
-  <a href="https://cdn.jsdelivr.net/gh/battlesbudz/Faraday@main/demo/jarvis-voice-demo.mp4">
-    <img src="demo/demo-video-thumbnail.jpg" width="320" alt="Play: 53-second Faraday demo video.">
-  </a>
-</p>
+<a href="https://cdn.jsdelivr.net/gh/battlesbudz/Faraday@main/demo/jarvis-voice-demo.mp4">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="demo/demo-video-thumbnail.jpg">
+    <img src="demo/faraday-demo-preview.gif" width="320" alt="Faraday demo preview: airplane mode and phone locked. Click to watch the full 53-second video with sound.">
+  </picture>
+</a>
 
 *53 seconds: airplane mode, wake-word activation, and interrupting a spoken reply.*
 
