@@ -577,6 +577,23 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         return null
     }
 
+    /**
+     * Start a private (incognito) conversation. Nothing from this thread is
+     * persisted: no history file, no M6 capture, no memory writes. Approved
+     * memories remain readable — only writes are blocked.
+     */
+    fun newPrivateConversation(): String? {
+        if (chatBusy.value || voiceSessionArmed || voiceTurnJob?.isCompleted == false ||
+            acceptedVoiceActions.hasUnfinished() || ConversationWork.activeJobs.get() != 0 || modelStore.isModelOperationActive())
+            return "Finish the current response or voice session first."
+        conversationHistory.newPrivateConversation()
+        shortTermContext.clear()
+        turnOrchestrator.reset()
+        nativeConversationHasContext = false
+        sessionPreferences.edit().remove(ConversationPolicy.SHORT_TERM_SUMMARY_KEY).apply()
+        return null
+    }
+
     fun selectConversation(id: String? = null): String? {
         if (chatBusy.value || voiceSessionArmed || voiceTurnJob?.isCompleted == false ||
             acceptedVoiceActions.hasUnfinished() || ConversationWork.activeJobs.get() != 0 || modelStore.isModelOperationActive())
@@ -620,8 +637,11 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     internal fun isMemoryTurnCurrent(context: MemoryTurnContext): Boolean = memoryCoordinator.isMemoryTurnCurrent(context)
     internal fun consumeMemoryHistoryCutoff(): Boolean = memoryCoordinator.consumeMemoryHistoryCutoff()
     private fun captureFinalMemory(eventId: String, conversationId: String, callId: String?,
-                                   source: ConversationMemorySource, text: String, capturedAtMs: Long): Boolean =
-        memoryCoordinator.captureFinalMemory(eventId, conversationId, callId, source, text, capturedAtMs)
+                                   source: ConversationMemorySource, text: String, capturedAtMs: Long): Boolean {
+        // Private mode: memory reads stay on, but nothing is ever written.
+        if (conversationHistory.isCurrentPrivate()) return false
+        return memoryCoordinator.captureFinalMemory(eventId, conversationId, callId, source, text, capturedAtMs)
+    }
     internal fun takeMemoryCaptureReceipt(text: String): com.battlesbudz.jarvis.v2.memory.ConversationMemoryResult? =
         memoryCoordinator.takeMemoryCaptureReceipt(text)
 
@@ -827,7 +847,7 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             try {
                 onComplete(answer)
             } finally {
-                if (comparison == null) {
+                if (comparison == null && !conversationHistory.isCurrentPrivate()) {
                     val source = if (voiceAudio != null || incrementalVoice != null) AutoMemorySource.VOICE else AutoMemorySource.CHAT
                     val captureText = if (answer.isNotBlank()) "$prompt\n$answer" else prompt
                     runtimeScope.launch(kotlinx.coroutines.Dispatchers.IO) {
