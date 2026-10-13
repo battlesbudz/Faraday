@@ -24,6 +24,16 @@ object FinalVoiceToolGuard {
             }
             "read_battery" -> true
             "show_schedule" -> true
+            "post_notification" -> {
+                // Notifications are voice-triggerable: re-parse the final
+                // spoken clause deterministically and require the spoken
+                // content to match the planned arguments, mirroring the
+                // create_reminder discipline above.
+                val spec = com.battlesbudz.jarvis.v2.actions.ActionRequestText
+                    .notificationRequest(text) ?: return false
+                spec.first.equals(arguments["title"], ignoreCase = true) &&
+                    spec.second.equals(arguments["text"], ignoreCase = true)
+            }
             "media_control" -> {
                 // Media verbs are voice-triggerable; re-parse the final spoken
                 // clause deterministically and require the spoken verb to match
