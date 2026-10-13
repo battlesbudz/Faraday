@@ -59,13 +59,11 @@ You’ll need a phone running Android 11 or later and an internet connection for
 - **Storage:** Gemma E2B is about 2.6 GB and E4B about 3.7 GB, plus roughly 280 MB for speech models. Sizes vary by model and version. Installation also needs additional temporary space.
 - **RAM:** We recommend 12 GB, matching the Samsung Galaxy Z Fold 6 used for testing.
 
-<p align="center">
-  <a href="https://cdn.jsdelivr.net/gh/battlesbudz/Faraday@main/demo/faraday-install-walkthrough.mp4">
-    <img src="demo/install-video-thumbnail.png" width="200" alt="Play: 35-second install walkthrough video.">
-  </a>
-</p>
+<a href="https://cdn.jsdelivr.net/gh/battlesbudz/Faraday@main/demo/faraday-install-walkthrough.mp4">
+  <img src="demo/setup-step1-releases.png" width="200" alt="Install walkthrough: from the releases page to a working install. Click to watch the video.">
+</a>
 
-<p align="center"><em>▶ Video (35 sec): from the releases page to tapping “Download selected model.” Click to watch.</em></p>
+*Watch: releases page to model download in 35 seconds.*
 
 1. Download and install the APK from the [releases page](https://github.com/battlesbudz/Faraday/releases).
 
@@ -92,32 +90,27 @@ For phone actions and natural speech interruption, select **Speech recognition**
 ## What you can do
 
 - **Voice and text chat.** Talk to Faraday hands-free or type your messages in the chat.
-- **Keep talking hands-free.** Wake-word listening works with the screen off or another app open while the voice service is active.
-- **Full-duplex audio and barge-in.** Faraday listens while it speaks, so you can interrupt a reply and redirect the conversation.
-- **Use phone actions.** Check battery level, adjust media volume, open installed apps, and control media playback with play, pause, next, and previous.
-- **Use automatic memory.** Faraday saves relevant information from your conversations automatically. Review, correct, or erase what it remembers.
-- **Manage your conversations.** Return to saved chats, delete conversations, or start a private chat.
-- **See response timings.** Open a reply’s measurements and export conversation metrics as JSON or CSV.
 
 <p align="center">
   <img src="demo/faraday-voice-call.jpg" width="280" alt="Faraday voice call: spoken transcript with response timings.">
 </p>
 
-<p align="center"><em>A voice call with live transcription and per-reply timing metrics.</em></p>
+- **Keep talking hands-free.** Wake-word listening works with the screen off or another app open while the voice service is active.
+- **Full-duplex audio and barge-in.** Faraday listens while it speaks, so you can interrupt a reply and redirect the conversation.
+- **Use phone actions.** Check battery level, adjust media volume, open installed apps, and control media playback with play, pause, next, and previous.
+- **Use automatic memory.** Faraday saves relevant information from your conversations automatically. Review, correct, or erase what it remembers.
+- **Manage your conversations.** Return to saved chats, delete conversations, or start a private chat.
 
 <p align="center">
   <img src="demo/faraday-chat-screen.jpg" width="200" alt="Chat screen with Wisp, Memory and Settings, plus message input and voice-call controls.">
 </p>
 
-<p align="center"><em>The chat and voice-call screen.</em></p>
-
-Send Faraday a photo and ask about it — vision runs on-device alongside the chat.
+- **See response timings.** Open a reply’s measurements and export conversation metrics as JSON or CSV.
+- **Ask about photos.** Send Faraday a picture and get a detailed on-device description.
 
 <p align="center">
   <img src="demo/faraday-vision.jpg" width="280" alt="Faraday describing a photo of a city street scene.">
 </p>
-
-<p align="center"><em>Ask about a photo and get a detailed on-device description.</em></p>
 
 
 ## Capability comparison
