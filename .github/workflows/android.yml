@@ -6,6 +6,13 @@ on:
     # Every successful opted-in build publishes test APKs after verification.
     # PR runs separately verify GitHub's combined merge candidate.
     branches: [main, PR1, feature-tools, 'feature/**']
+    # Skip builds when only docs or demo assets changed.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'demo/**'
+      - 'artwork/**'
+      - 'LICENSE*' 
 
 permissions:
   contents: read
