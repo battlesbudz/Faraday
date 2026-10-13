@@ -12,11 +12,15 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.battlesbudz.jarvis.v2.chat.*
 import com.battlesbudz.jarvis.v2.ai.LocalModelSpec
@@ -33,6 +37,7 @@ internal fun ConversationScreen(
     onSend: (String, ChatAttachment?) -> String?,
     selectedModel: LocalModelSpec,
     onSelectConversation: (String?) -> String?,
+    onDeleteConversation: (String) -> String? = { "Delete is unavailable right now." },
     onEndVoice: ((String) -> Unit) -> Unit,
     onOpenVoiceCalls: () -> Unit,
     resumedVoice: Boolean,
@@ -295,13 +300,35 @@ internal fun ConversationScreen(
                 voiceContent(effectiveVoiceVisible, settings, { settings = false }, callStartRequest)
         }
     }
+    var deleteTarget by remember { mutableStateOf<com.battlesbudz.jarvis.v2.chat.ConversationThread?>(null) }
     if (showHistory) AlertDialog(onDismissRequest = { showHistory = false }, title = { Text("Conversations") },
         text = { LazyColumn(Modifier.heightIn(max = 400.dp)) {
             items(history.list(), key = { it.id }) { saved ->
-                TextButton(onClick = { error = onSelectConversation(saved.id); if (error == null) showHistory = false }) {
-                    Text(saved.title)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(
+                        onClick = { error = onSelectConversation(saved.id); if (error == null) showHistory = false },
+                        modifier = Modifier.weight(1f),
+                    ) { Text(saved.title, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    IconButton(
+                        onClick = { deleteTarget = saved },
+                        modifier = Modifier.testTag("delete_conversation_${saved.id}"),
+                    ) { Icon(Icons.Default.Delete, contentDescription = "Delete conversation") }
                 }
             }
             item { TextButton(onClick = { showHistory = false; onOpenVoiceCalls() }) { Text("Saved voice calls") } }
         } }, confirmButton = { TextButton(onClick = { showHistory = false }) { Text("Done") } })
+    deleteTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("Delete this conversation?") },
+            text = { Text("\"${target.title}\" will be permanently deleted. This cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val deleteError = onDeleteConversation(target.id)
+                    if (deleteError == null) deleteTarget = null else error = deleteError
+                }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } },
+        )
+    }
 }
