@@ -73,7 +73,10 @@ internal class ConversationGeneration(
                 VisionContextFormatter.format(snapshot)
             }.getOrElse { error ->
                 diagnostics.summary("Native vision failed: ${error.message?.take(200)}")
-                null
+                // Surface the failure instead of swallowing it: the model (and
+                // user) should know the structured on-device analysis did not
+                // run. The raw image remains attached as fallback.
+                VisionContextFormatter.failureNote(error)
             }
         } else null
         val submission = turnPrompt.assemble(invocation.prompt, visionContext, promptHistory, !modelSession.hasContext,
