@@ -226,4 +226,52 @@ class ConversationHistoryTest {
             }
         } as SharedPreferences
     }
+
+    @Test fun deleteConversationRemovesThreadAndPersists() {
+        val prefs = preferences()
+        val history = ConversationHistory(prefs)
+        history.appendUser("First topic")
+        val firstId = history.current.value.id
+        history.newConversation()
+        history.appendUser("Second topic")
+        val secondId = history.current.value.id
+        assertEquals(2, history.list().size)
+
+        assertTrue(history.deleteConversation(firstId))
+        assertEquals(1, history.list().size)
+        assertEquals(secondId, history.list().single().id)
+
+        // Persists across restart.
+        val restored = ConversationHistory(prefs)
+        assertEquals(1, restored.list().size)
+        assertEquals(secondId, restored.list().single().id)
+    }
+
+    @Test fun deleteCurrentConversationFallsBackToNewestRemaining() {
+        val history = ConversationHistory(preferences())
+        history.appendUser("First")
+        val firstId = history.current.value.id
+        history.newConversation()
+        history.appendUser("Second")
+        val secondId = history.current.value.id
+        history.select(firstId)
+
+        assertTrue(history.deleteConversation(firstId))
+        // Current moves to the newest remaining thread.
+        assertEquals(secondId, history.current.value.id)
+    }
+
+    @Test fun deleteLastConversationLeavesFreshEmptyThread() {
+        val history = ConversationHistory(preferences())
+        history.appendUser("Only topic")
+        val id = history.current.value.id
+        assertTrue(history.deleteConversation(id))
+        assertEquals(1, history.list().size)
+        assertTrue(history.current.value.messages.isEmpty())
+    }
+
+    @Test fun deleteUnknownConversationReturnsFalse() {
+        val history = ConversationHistory(preferences())
+        assertFalse(history.deleteConversation("does-not-exist"))
+    }
 }
