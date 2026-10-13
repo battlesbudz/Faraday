@@ -140,6 +140,7 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         }
     }
     internal val referenceGrounding = ReferenceGroundingClient(
+        isPrivate = { conversationHistory.isCurrentPrivate() },
         onReadStarted = { publicActivity ->
             val lease = agentActivityMonitor.beginTurnReferences(conversationHistory.current.value.id, publicActivity)
             val finish: () -> Unit = { lease.close() }
@@ -229,7 +230,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             },
             silentWork = silentWork,
             recordDiagnostic = diagnosticRecorder::recordImportant,
-            browserSession = browserRuntime.session)
+            browserSession = browserRuntime.session,
+            isPrivate = { conversationHistory.isCurrentPrivate() })
     }
     internal val phoneTasks get() = phoneTaskCoordinator.tasks
 
@@ -714,6 +716,7 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         val references = object : ConversationReferences {
             override suspend fun fetch(query: String) = referenceGrounding.fetchIfRequested(query)?.context
             override fun isInsufficientAnswer(answer: String) = referenceGrounding.isInsufficientAnswer(answer)
+            override fun isPrivateLookupBlocked() = conversationHistory.isCurrentPrivate()
         }
         val history = { conversationHistory.contextAfterMemoryCutoff() }
         ConversationCoordinator(runtimeScope, { mainHandler.post(it) }, { conversationHistory.current.value.id }, models,
