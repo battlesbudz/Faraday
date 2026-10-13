@@ -11,8 +11,8 @@
 <p align="center">
   <a href="https://github.com/battlesbudz/Faraday/releases"><img src="https://img.shields.io/github/v/release/battlesbudz/Faraday" alt="Latest release"></a>
   <a href="https://github.com/battlesbudz/Faraday/actions/workflows/android.yml"><img src="https://github.com/battlesbudz/Faraday/actions/workflows/android.yml/badge.svg" alt="Build status"></a>
-  <img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue" alt="License: PolyForm Noncommercial 1.0.0">
-  <img src="https://img.shields.io/badge/platform-Android%2011%2B-green" alt="Platform: Android 11+">
+  <a href="https://github.com/battlesbudz/Faraday/blob/main/LICENSE.md"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue" alt="License: PolyForm Noncommercial 1.0.0"></a>
+  <a href="https://github.com/battlesbudz/Faraday/releases"><img src="https://img.shields.io/badge/platform-Android%2011%2B-green" alt="Platform: Android 11+"></a>
 </p>
 
 
