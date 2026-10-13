@@ -349,4 +349,74 @@ class AutomaticMemoryTest {
                 it.confidence >= EvaluationThresholds.SAVE_CONFIDENCE
         })
     }
+
+    // ---------- FileCandidateStore: queue survives restarts ----------
+
+    @Test fun fileCandidateStoreRoundTrip() {
+        val dir = tempDir()
+        val store = FileCandidateStore(File(dir, "queue.json"))
+        assertEquals(0, store.load().size)
+        val candidates = listOf(
+            MemoryCandidate("id-1", "I live in Watertown", MemoryCategory.FACT,
+                AutoMemorySource.CHAT, "evt-1", now, AutomaticMemory.contentFingerprint("I live in Watertown")),
+            MemoryCandidate("id-2", "My favorite color is blue", MemoryCategory.PREFERENCE,
+                AutoMemorySource.VOICE, "evt-2", now, AutomaticMemory.contentFingerprint("My favorite color is blue")),
+        )
+        store.save(candidates)
+        val loaded = store.load()
+        assertEquals(2, loaded.size)
+        assertEquals("id-1", loaded[0].id)
+        assertEquals("I live in Watertown", loaded[0].content)
+        assertEquals(MemoryCategory.FACT, loaded[0].category)
+        assertEquals(AutoMemorySource.CHAT, loaded[0].source)
+        assertEquals("id-2", loaded[1].id)
+        assertEquals(MemoryCategory.PREFERENCE, loaded[1].category)
+    }
+
+    @Test fun fileCandidateStoreCorruptFileFailsClosedToEmpty() {
+        val dir = tempDir()
+        val file = File(dir, "queue.json")
+        file.writeText("not valid json {{{")
+        val store = FileCandidateStore(file)
+        assertEquals(0, store.load().size)
+    }
+
+    @Test fun fileCandidateStoreMissingFileLoadsEmpty() {
+        val dir = tempDir()
+        val store = FileCandidateStore(File(dir, "does-not-exist.json"))
+        assertEquals(0, store.load().size)
+    }
+
+    @Test fun queuedCandidatesSurvivePipelineRestart() {
+        val dir = tempDir()
+        val memoryOs = os(dir)
+        val store = FileCandidateStore(File(dir, "queue.json"))
+        val first = AutomaticMemory(memoryOs, { AutomaticMemorySettings() }, { true }, { now },
+            InMemoryFenceStore(), store)
+        first.capture(input("I live in Watertown, New York"))
+        assertEquals(1, first.pendingCount)
+        // Simulate a process restart: a new pipeline instance with the same store file.
+        val second = AutomaticMemory(memoryOs, { AutomaticMemorySettings() }, { true }, { now },
+            InMemoryFenceStore(), store)
+        assertEquals(1, second.pendingCount)
+        // And evaluation still works after the restart.
+        val evaluated = second.evaluatePending(evaluator, idle)
+        assertEquals(1, evaluated)
+        assertEquals(0, second.pendingCount)
+        // Queue file is now empty on disk.
+        assertEquals(0, store.load().size)
+    }
+
+    @Test fun inMemoryCandidateStoreRoundTrip() {
+        val store = InMemoryCandidateStore()
+        assertEquals(0, store.load().size)
+        val candidate = MemoryCandidate("id-1", "Test content", MemoryCategory.FACT,
+            AutoMemorySource.TOOL, "evt-1", now, "fingerprint")
+        store.save(listOf(candidate))
+        val loaded = store.load()
+        assertEquals(1, loaded.size)
+        assertEquals("id-1", loaded[0].id)
+        store.save(emptyList())
+        assertEquals(0, store.load().size)
+    }
 }
