@@ -81,6 +81,10 @@ real-device numbers exist. No enable/retain verdict is recorded here.
 M8 remaining: the physical Fold 6 benchmark run to produce the enable/retain
 verdict. The harness is complete; no further framework work is pending.
 
+## Status update — October 12, 2026 (M7 ON HOLD)
+
+Per Battles (2026-10-12): M7 follow-up work (service binding, caller-management UI) is ON HOLD — not useful enough right now to prioritize. The existing M7 library code (provider boundary, caller authorization, journal persistence) stays in place; nothing is ripped out. Focus redirected to M6 always-on wiring, chat deletion, and incognito/private chat mode. Resume M7 only on his explicit say-so.
+
 ## Implementation checkpoint — October 11, 2026 (M7 external-agent access)
 
 M7 is implemented on `feature/muse-tools` (no PR, no merge). The implementation
