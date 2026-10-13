@@ -1,4 +1,4 @@
-# Faraday
+# <img src="artwork/launcher/faraday-wisp.svg" alt="" width="48" height="48" align="middle"> Faraday
 
 **A private offline Android voice agent.**
 
