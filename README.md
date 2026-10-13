@@ -1,92 +1,108 @@
-# Jarvis OS V2
+# Faraday
 
-![Build](https://github.com/battlesbudz/Jarvis-OS-V2/actions/workflows/android.yml/badge.svg)
-![Latest release](https://img.shields.io/github/v/release/battlesbudz/Jarvis-OS-V2)
+**A private offline Android voice agent.**
 
-A native Android assistant written in Kotlin and Jetpack Compose. Conversation,
-speech recognition and speech output run on the device. Model downloads and
-explicit reference lookup use the network; there is no required conversation backend.
+The conversation runs on your phone, including speech recognition, AI inference, and the spoken reply.
 
-[<img src="demo/jarvis-voice-demo-thumbnail.jpg" width="320" alt="Watch the Jarvis voice demo">](https://cdn.jsdelivr.net/gh/battlesbudz/Jarvis-OS-V2@main/demo/jarvis-voice-demo.mp4)
+[Download for Android](https://github.com/battlesbudz/Faraday/releases) · [Watch the demo](https://cdn.jsdelivr.net/gh/battlesbudz/Faraday@main/demo/jarvis-voice-demo.mp4)
 
-*53-second demo: airplane mode on, phone locked, "Hey Jarvis," interrupted mid-answer. Click to watch.*
+<a href="https://cdn.jsdelivr.net/gh/battlesbudz/Faraday@main/demo/jarvis-voice-demo.mp4">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="demo/faraday-demo-thumbnail.jpg">
+    <img src="demo/faraday-demo-preview.gif" width="320" alt="Faraday demo preview: airplane mode and phone locked. Click to watch the full 53-second video with sound.">
+  </picture>
+</a>
 
-Jarvis implements a **system-level full-duplex voice pipeline**: microphone
-capture can continue while Piper plays the assistant's reply. In speech-recognition
-mode, bounded Moonshine/Whisper probes verify natural barge-in, stop the reply and
-retain the interruption audio for the next turn. Wake-word activation, Gemma through
-LiteRT-LM and Piper output keep the core assistant loop on the device. See the
-[duplex architecture and validation limits](docs/verification/voice-audio-and-metrics.md#system-level-full-duplex).
+*53 seconds: airplane mode, wake-word activation, and interrupting a spoken reply.*
 
-## Reported device measurements
+## Performance
 
-| Metric | Value |
-| --- | --- |
-| First-token latency (median) | 740 ms |
-| Time to first spoken word (median) | 3.6 s |
-| Generation speed (average) | 32.8 tokens/sec |
-| Test setup | Hundreds of voice turns on a Galaxy Z Fold 6 |
+Measured median response time<br>
+**2.5 seconds from speech end to playback**<br>
+Samsung Galaxy Z Fold 6 · Gemma E2B
 
-These reported phone measurements are separate from the emulator release gate.
+## Get started
 
-## Start here
+You’ll need a phone running Android 11 or later and an internet connection for the initial downloads.
 
-| Goal | Read |
-| --- | --- |
-| Understand the application and its owners | [Architecture](docs/architecture/README.md) |
-| Set up a checkout, build or install | [Development setup](docs/architecture/development.md) |
-| Find the right place to change a feature | [Change guide](docs/architecture/change-guide.md) |
-| Make a maintainable contribution | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| Run checks and understand release evidence | [Verification workflow](docs/verification/README.md) and [feature coverage](docs/verification/features.md) |
-| Find feature notes, plans and measurements | [Documentation index](docs/README.md) |
+- **Storage:** Gemma E2B is about 2.6 GB and E4B about 3.7 GB, plus roughly 280 MB for speech models. Sizes vary by model and version. Installation also needs additional temporary space.
+- **RAM:** We recommend 12 GB, matching the Samsung Galaxy Z Fold 6 used for testing. Compatibility with 8 GB phones hasn’t been verified.
 
-For a quick source map and environment check, run from the repository root:
+1. Download and install the APK.
+2. Open the app, choose a Gemma model, and select **“Download selected model and voice setup.”**
+3. When the downloads finish, select **“Check selected model”** and allow microphone access when prompted.
+4. Start a voice call. When wake-word listening is active, say **“Hey Jarvis,”** Faraday’s current wake phrase, and ask a question.
 
-```bash
-python3 scripts/dev.py map
-python3 scripts/dev.py doctor
-```
+For phone actions and natural speech interruption, select **Speech recognition** in voice settings.
 
-The app is one Android Gradle module, `:app`, divided into responsibility-focused
-packages and collaborators. [The module decision](docs/architecture/adr-001-package-boundaries.md)
-explains the native and release-test constraints. [The refactoring map](docs/app-modularization.md)
-records the typed stage owners and justified cohesive components.
+## What you can do
 
-## Current stack
+- **Voice and text chat.** Talk to Faraday hands-free or type your messages in the chat.
+- **Keep talking hands-free.** Wake-word listening works with the screen off or another app open while the voice service is active.
+- **Full-duplex audio and barge-in.** Faraday listens while it speaks, so you can interrupt a reply and redirect the conversation.
+- **Use phone actions.** Check battery level, adjust media volume, open installed apps, and control media playback with play, pause, next, and previous.
+- **Use automatic memory.** Faraday saves relevant information from your conversations automatically. Review, correct, or erase what it remembers.
+- **Manage your conversations.** Return to saved chats, delete conversations, or start a private chat.
+- **See response timings.** Open a reply’s measurements and export conversation metrics as JSON or CSV.
 
-| Role | Implementation |
-| --- | --- |
-| UI | Jetpack Compose; conversation surface with voice overlay, setup, history and diagnostics |
-| Local inference | LiteRT-LM 0.16.0; Gemma E2B/E4B and curated experimental Qwen bundles |
-| Recognition | Moonshine Small Streaming or Whisper base.en |
-| Speech output | Piper Northern English Male medium |
-| Phone actions | Validated battery, media-volume and installed-app actions with durable receipts |
-| Memory | Device-local SQLite store and source archive; retrieval, review and mutation fences |
+## Capability comparison
 
-[`ModelCatalog.kt`](app/src/main/java/com/battlesbudz/jarvis/v2/ai/ModelCatalog.kt)
-is the authority for selectable model capabilities, filenames and pinned downloads.
-Model availability is separate from measured accuracy or speed on a particular
-phone. See [model selection](docs/qwen-model-selection.md),
-[Gemma switching](docs/ai-model-switching.md) and [voice acceptance notes](docs/verification/voice-audio-and-metrics.md).
-Kokoro and Pocket/Paul are retired; historical evidence keeps its original labels.
+| Capability | Faraday | PocketPal AI | Off Grid AI Mobile | Google AI Edge Gallery |
+|---|---|---|---|---|
+| Local AI and model choice | Yes | Yes | Yes | Yes |
+| Offline spoken conversation | Speech input and output | Spoken output; no built-in speech input found | Local speech input; Pro adds spoken output | Local audio input; no spoken-response loop found |
+| Wake word while locked or in the background | Yes, while listening is active | Not found | Not found; background speech pauses | Not found |
+| Speak over a reply to interrupt | Yes | Tap-to-stop speech | Spoken interruption unverified | Not found |
+| Phone and media controls | Battery, volume, app launch, play/pause/next/previous | No phone/media controls found | Battery and device information | Flashlight, contacts, maps, calendar and settings actions |
+| Automatic personal memory across chats | Yes, with an editable local memory wiki | Not found; saved chats and personas | Pro advertises persona memory; automatic capture unverified | Not found; saved sessions |
+| Saved conversation history | Yes | Yes | Yes | Yes |
+| Performance measurements | Voice-pipeline timings and exports | Generation timings and benchmarks | Generation timings | Inference metrics and benchmark CSV |
 
-## Build and release
+“Not found” means absent from the Android implementation reviewed, rather than an assumption based on the marketing page. This is a source-code comparison, not a new side-by-side device test.
 
-The hosted `Android APK` workflow runs native/helper checks, release JVM tests,
-signed normal and compact ARM64 builds, recorded speech, native page-size checks,
-API 30/35/36, foldable and Android 16 16 KB emulator journeys, and an
-exact-build evidence receipt before publishing GitHub Release APKs.
-The app supports Android 11+ (API 30); the shipped native ABI is `arm64-v8a`.
+<details>
+<summary>Comparison sources and scope</summary>
 
-Use the [GitHub Releases page](https://github.com/battlesbudz/Jarvis-OS-V2/releases)
-for installable APKs. A green emulator run is a release candidate: real model,
-microphone, speaker, Bluetooth and Fold 6 performance still require device evidence.
+Reviewed October 13, 2026. Faraday entries cover main and the audited working branches, including the automatic-memory additions in the tools branch. Source branches can contain capabilities newer than a published APK.
 
-Work continues on `audio-pr2` under existing PR #6. Read [AGENTS.md](AGENTS.md)
-before automated work; creation or merging of a PR requires Justin's explicit permission.
+- **Faraday:** [wake-word listening](https://github.com/battlesbudz/Faraday/blob/2921c2f91e7f5d39d36c9c69ce350e7e2505e3b7/app/src/main/java/com/battlesbudz/jarvis/v2/voice/PassiveWakeListener.kt), [interruption during playback](https://github.com/battlesbudz/Faraday/blob/2921c2f91e7f5d39d36c9c69ce350e7e2505e3b7/app/src/main/java/com/battlesbudz/jarvis/v2/voice/ReplyVoiceCapture.kt), [phone and media actions](https://github.com/battlesbudz/Faraday/blob/68e6426a940b9b42b4f9fe7500fdfa93e0c62fd4/app/src/main/java/com/battlesbudz/jarvis/v2/actions/AndroidMobileActionExecutor.kt), [automatic memory](https://github.com/battlesbudz/Faraday/blob/7465c6e43c03ee3d4454fa348b5d63019a6c63e4/app/src/main/java/com/battlesbudz/jarvis/v2/memory/AutomaticMemory.kt), [editable memory wiki](https://github.com/battlesbudz/Faraday/blob/7465c6e43c03ee3d4454fa348b5d63019a6c63e4/app/src/main/java/com/battlesbudz/jarvis/v2/ui/MemoryScreen.kt), [benchmark exports](https://github.com/battlesbudz/Faraday/blob/2921c2f91e7f5d39d36c9c69ce350e7e2505e3b7/app/src/main/java/com/battlesbudz/jarvis/v2/ui/PipelineBenchmarkScreen.kt).
+- **PocketPal AI:** [project overview](https://github.com/a-ghorbani/pocketpal-ai/blob/951ad1bc562bd4c383fc638e6a3a63fef12358dd/README.md), [Android manifest](https://github.com/a-ghorbani/pocketpal-ai/blob/951ad1bc562bd4c383fc638e6a3a63fef12358dd/android/app/src/main/AndroidManifest.xml), [speech output](https://github.com/a-ghorbani/pocketpal-ai/blob/951ad1bc562bd4c383fc638e6a3a63fef12358dd/src/store/TTSStore.ts), [tool registry](https://github.com/a-ghorbani/pocketpal-ai/blob/951ad1bc562bd4c383fc638e6a3a63fef12358dd/src/services/talents/index.ts), [chat context](https://github.com/a-ghorbani/pocketpal-ai/blob/951ad1bc562bd4c383fc638e6a3a63fef12358dd/src/hooks/useChatSession.ts), [metrics](https://github.com/a-ghorbani/pocketpal-ai/blob/951ad1bc562bd4c383fc638e6a3a63fef12358dd/src/components/AssistantTurnFooter/AssistantTurnFooter.tsx).
+- **Off Grid AI Mobile:** [product and Pro features](https://getoffgridai.co/mobile/), [project overview](https://github.com/off-grid-ai/OGAM/blob/0ecd4be7d50fc2c73025e7bb6bacfcf0e9cd9a12/README.md), [voice settings](https://github.com/off-grid-ai/OGAM/blob/0ecd4be7d50fc2c73025e7bb6bacfcf0e9cd9a12/src/components/settings/voiceSections.tsx), [listening/speaking behavior](https://github.com/off-grid-ai/OGAM/blob/0ecd4be7d50fc2c73025e7bb6bacfcf0e9cd9a12/src/components/ChatInput/useSilenceEndpoint.ts), [background behavior](https://github.com/off-grid-ai/OGAM/blob/0ecd4be7d50fc2c73025e7bb6bacfcf0e9cd9a12/src/bootstrap/hookRegistry.ts), [tool registry](https://github.com/off-grid-ai/OGAM/blob/0ecd4be7d50fc2c73025e7bb6bacfcf0e9cd9a12/src/services/tools/registry.ts), [metrics](https://github.com/off-grid-ai/OGAM/blob/0ecd4be7d50fc2c73025e7bb6bacfcf0e9cd9a12/src/components/ChatMessage/components/GenerationMeta.tsx). Pro advertises persona memory; automatic mobile capture was not verified from the available public implementation.
+- **Google AI Edge Gallery:** [project overview](https://github.com/google-ai-edge/gallery/blob/4928788ef07cdf2194fc435a0f446cf3b997bd5d/README.md), [audio recording](https://github.com/google-ai-edge/gallery/blob/4928788ef07cdf2194fc435a0f446cf3b997bd5d/Android/src/app/src/main/java/com/google/ai/edge/gallery/ui/common/chat/AudioRecorderPanel.kt), [Android manifest](https://github.com/google-ai-edge/gallery/blob/4928788ef07cdf2194fc435a0f446cf3b997bd5d/Android/src/app/src/main/AndroidManifest.xml), [mobile actions](https://github.com/google-ai-edge/gallery/blob/4928788ef07cdf2194fc435a0f446cf3b997bd5d/Android/src/app/src/main/java/com/google/ai/edge/gallery/customtasks/mobileactions/MobileActionsViewModel.kt), [saved sessions](https://github.com/google-ai-edge/gallery/blob/4928788ef07cdf2194fc435a0f446cf3b997bd5d/Android/src/app/src/main/java/com/google/ai/edge/gallery/agent/sessions/DefaultLlmSessionManager.kt), [live metrics](https://github.com/google-ai-edge/gallery/blob/4928788ef07cdf2194fc435a0f446cf3b997bd5d/Android/src/app/src/main/java/com/google/ai/edge/gallery/ui/common/chat/LiveMetricsBar.kt), [benchmark CSV](https://github.com/google-ai-edge/gallery/blob/4928788ef07cdf2194fc435a0f446cf3b997bd5d/Android/src/app/src/main/java/com/google/ai/edge/gallery/ui/benchmark/BenchmarkResultsViewer.kt).
+
+</details>
+
+## In testing
+
+These capabilities are being tested and may not work reliably yet.
+
+- **Set reminders and check your schedule.** Create reminders, view scheduled tasks, and receive notifications.
+- **Interact with your screen.** Let Faraday read screen content, tap controls, scroll, and enter text with the required permissions.
+- **Browse the web.** Open and read pages, follow links, fill forms, and take over when you need to.
+- **Run workflows.** Schedule routines, review approvals, track progress, and cancel tasks.
+- **Connect services.** Set up MCP connections, discover available tools, and manage their permissions.
+
+## Memory
+
+Faraday can remember information across conversations automatically, without you having to ask it to save each detail. You can review what it remembers, make corrections, or erase it.
+
+## Privacy
+
+Faraday runs entirely on your phone. Your voice, AI processing, conversations, and memories stay on the device during offline use. Once the models are downloaded, you can talk to Faraday in airplane mode with no internet connection.
+
+When online, Faraday can look things up through Wikipedia or Wikidata, or open a website link you provide. Those requests send the search query or request to the relevant website. Any external services you choose to connect also receive the information needed to carry out your requests.
+
+## Documentation and contributing
+
+The app uses Kotlin and Jetpack Compose, with Gemma through LiteRT-LM, Whisper for speech recognition, and Piper for speech output.
+
+- [Setup and build instructions](https://github.com/battlesbudz/Faraday/blob/audio-pr2/docs/architecture/development.md)
+- [Architecture](https://github.com/battlesbudz/Faraday/blob/audio-pr2/docs/architecture/README.md)
+- [Measurements and benchmarks](https://github.com/battlesbudz/Faraday/blob/audio-pr2/docs/verification/pipeline-benchmarks.md)
+- [Contribution guide](https://github.com/battlesbudz/Faraday/blob/audio-pr2/CONTRIBUTING.md)
+
+Found a problem or have an idea? [Open an issue](https://github.com/battlesbudz/Faraday/issues). For bugs, include your phone, Android version, app version, selected model, and steps to reproduce. Remove private conversation content before sharing logs.
 
 ## License
 
-Source-available under the PolyForm Noncommercial License 1.0.0: free for personal,
-study, research, and other noncommercial use. Commercial use needs permission.
-See [LICENSE.md](LICENSE.md).
+Faraday is source-available under the [PolyForm Noncommercial License 1.0.0](https://github.com/battlesbudz/Faraday/blob/audio-pr2/LICENSE.md). Commercial use requires permission. Model and dependency licenses apply separately.
