@@ -59,11 +59,13 @@ You’ll need a phone running Android 11 or later and an internet connection for
 - **Storage:** Gemma E2B is about 2.6 GB and E4B about 3.7 GB, plus roughly 280 MB for speech models. Sizes vary by model and version. Installation also needs additional temporary space.
 - **RAM:** We recommend 12 GB, matching the Samsung Galaxy Z Fold 6 used for testing.
 
-<a href="https://cdn.jsdelivr.net/gh/battlesbudz/Faraday@main/demo/faraday-install-walkthrough.mp4">
-  <img src="demo/setup-step1-releases.png" width="200" alt="Install walkthrough: from the releases page to a working install. Click to watch the video.">
-</a>
+<p align="center">
+  <a href="https://cdn.jsdelivr.net/gh/battlesbudz/Faraday@main/demo/faraday-install-walkthrough.mp4">
+    <img src="demo/install-video-thumbnail.png" width="200" alt="Play: 35-second install walkthrough video.">
+  </a>
+</p>
 
-*Watch: releases page to model download in 35 seconds.*
+<p align="center"><em>▶ Video (35 sec): from the releases page to tapping “Download selected model.” Click to watch.</em></p>
 
 1. Download and install the APK from the [releases page](https://github.com/battlesbudz/Faraday/releases).
 
