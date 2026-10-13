@@ -340,7 +340,7 @@ object MobileToolCatalog {
         ),
         Tool(
             name = "post_notification",
-            description = "Post a notification to the user with a title and text. Used by scheduled reminders when they fire; not for ordinary chat.",
+            description = "Post a notification to the user with a title and text. Use when the user asks to post, send, or show a notification.",
             parameters = listOf(
                 Parameter(
                     name = "title",
