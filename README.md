@@ -32,7 +32,7 @@ Samsung Galaxy Z Fold 6 · Gemma E2B
 You’ll need a phone running Android 11 or later and an internet connection for the initial downloads.
 
 - **Storage:** Gemma E2B is about 2.6 GB and E4B about 3.7 GB, plus roughly 280 MB for speech models. Sizes vary by model and version. Installation also needs additional temporary space.
-- **RAM:** We recommend 12 GB, matching the Samsung Galaxy Z Fold 6 used for testing. Compatibility with 8 GB phones hasn’t been verified.
+- **RAM:** We recommend 12 GB, matching the Samsung Galaxy Z Fold 6 used for testing.
 
 1. Download and install the APK.
 2. Open the app, choose a Gemma model, and select **“Download selected model and voice setup.”**
