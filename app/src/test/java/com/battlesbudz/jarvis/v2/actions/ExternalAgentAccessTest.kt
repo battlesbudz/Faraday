@@ -245,4 +245,44 @@ class ExternalAgentAccessTest {
         val journal = ToolTaskLedger(FileToolTaskStore(file)).journal()
         assertTrue(journal.externalAgentGrants.isEmpty())
     }
+
+    // ---------- M7 service/provider layer ----------
+
+    @Test fun providerHoldsSingletonAcrossInit() {
+        val ledger = ToolTaskLedger(InMemoryToolTaskStore())
+        val executor = ExternalActionExecutor { ExecutionResult(true, "ok") }
+        ExternalAgentProvider.init(ledger, executor)
+        assertNotNull(ExternalAgentProvider.get())
+        // Second init does not replace the instance.
+        val first = ExternalAgentProvider.get()
+        ExternalAgentProvider.init(ToolTaskLedger(InMemoryToolTaskStore()), executor)
+        assertSame(first, ExternalAgentProvider.get())
+    }
+
+    @Test fun serviceDeniesUnlistedFunctionsHonestly() {
+        // The boundary refuses anything outside the exposed five.
+        val access = accessFor()
+        access.authorizeCaller("com.example.agent", "Example", setOf("read_battery"))
+        val result = denied(access.call("com.example.agent", ActionRequest("browse_submit", mapOf("token" to "x"))))
+        assertEquals(ExternalDenialCode.FUNCTION_NOT_EXPOSED, result.code)
+        assertTrue(result.message.contains("never exposed"))
+    }
+
+    @Test fun grantRoundTripThroughProviderBackedBoundary() {
+        val access = accessFor()
+        val grant = access.authorizeCaller("com.example.agent", "Example Agent",
+            setOf("read_battery", "set_volume"))
+        assertEquals("com.example.agent", grant.callerId)
+        assertEquals(setOf("read_battery", "set_volume"), grant.allowedFunctions)
+        assertTrue(access.grants().any { it.callerId == "com.example.agent" })
+        assertTrue(access.revokeCaller("com.example.agent"))
+        assertTrue(access.grants().first { it.callerId == "com.example.agent" }.revoked)
+    }
+
+    @Test fun exposedSetIsExactlyTheFive() {
+        assertEquals(
+            setOf("read_battery", "show_schedule", "media_control", "set_volume", "post_notification"),
+            ExternalAgentFunctions.EXPOSED,
+        )
+    }
 }
