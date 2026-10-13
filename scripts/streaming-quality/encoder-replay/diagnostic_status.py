@@ -94,7 +94,7 @@ def integer(value, minimum=0, maximum=2**63-1):
 def validate_context(context):
     require(type(context) is dict and set(context) == {
         'repository', 'run_id', 'run_attempt', 'head_sha', 'source_commit'})
-    require(context['repository'] == 'battlesbudz/Jarvis-OS-V2')
+    require(context['repository'] == 'battlesbudz/Faraday')
     for key in ('run_id', 'run_attempt'):
         require(integer(context[key], 1))
     for key in ('head_sha', 'source_commit'):
