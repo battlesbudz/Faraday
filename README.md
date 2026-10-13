@@ -29,12 +29,6 @@
 
 *53 seconds: airplane mode, wake-word activation, and interrupting a spoken reply.*
 
-<p align="center">
-  <img src="demo/faraday-voice-call.jpg" width="300" alt="Faraday voice call: spoken transcript with response timings.">
-</p>
-
-<p align="center"><em>A voice call with live transcription and per-reply timing metrics.</em></p>
-
 
 <details>
 <summary>Table of contents</summary>
@@ -83,13 +77,21 @@ For phone actions and natural speech interruption, select **Speech recognition**
 - **See response timings.** Open a reply’s measurements and export conversation metrics as JSON or CSV.
 
 <p align="center">
+  <img src="demo/faraday-voice-call.jpg" width="280" alt="Faraday voice call: spoken transcript with response timings.">
+</p>
+
+<p align="center"><em>A voice call with live transcription and per-reply timing metrics.</em></p>
+
+<p align="center">
   <img src="demo/faraday-chat-screen.jpg" width="200" alt="Chat screen with Wisp, Memory and Settings, plus message input and voice-call controls.">
 </p>
 
 <p align="center"><em>The chat and voice-call screen.</em></p>
 
+Send Faraday a photo and ask about it — vision runs on-device alongside the chat.
+
 <p align="center">
-  <img src="demo/faraday-vision.jpg" width="300" alt="Faraday describing a photo of a city street scene.">
+  <img src="demo/faraday-vision.jpg" width="280" alt="Faraday describing a photo of a city street scene.">
 </p>
 
 <p align="center"><em>Ask about a photo and get a detailed on-device description.</em></p>
