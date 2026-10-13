@@ -59,7 +59,9 @@ internal class PhoneTaskCoordinator(
     private val recordDiagnostic: (String) -> Unit,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main,
     /** M4: the shared browser session; null when the browser runtime path is not installed. */
-    private val browserSession: com.battlesbudz.jarvis.v2.actions.BrowserSession? = null
+    private val browserSession: com.battlesbudz.jarvis.v2.actions.BrowserSession? = null,
+    /** Private/incognito mode: blocks web-browsing tools at the capability probe. */
+    private val isPrivate: () -> Boolean = { false }
 ) {
     private val ledger by lazy(ledgerFactory)
     val tasks = MutableStateFlow<ToolTaskJournal?>(null)
@@ -139,7 +141,7 @@ internal class PhoneTaskCoordinator(
             ledger,
             executor,
             sourceAccess = ToolSourceAccess(ledger),
-            capabilityProbe = AndroidToolCapabilityProbe(appContext),
+            capabilityProbe = AndroidToolCapabilityProbe(appContext, isPrivate = isPrivate),
             lockGate = androidLockGate(appContext),
             onJournalChanged = ::refreshPhoneTasks,
             onStorageFailure = ::storageFailure
