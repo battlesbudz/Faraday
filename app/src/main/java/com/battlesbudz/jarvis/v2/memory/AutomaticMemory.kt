@@ -3,6 +3,8 @@ package com.battlesbudz.jarvis.v2.memory
 import java.io.File
 import java.security.MessageDigest
 import java.util.UUID
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * M6: automatic memory (D45-D49).
@@ -74,6 +76,80 @@ class InMemoryFenceStore : FenceStore {
     }
 }
 
+/**
+ * Persistence for the queued evaluation candidates, so the pending queue
+ * survives process death. The file-backed implementation is required for
+ * production; the in-memory one is for tests.
+ */
+interface CandidateStore {
+    fun load(): List<MemoryCandidate>
+    fun save(candidates: List<MemoryCandidate>)
+}
+
+class InMemoryCandidateStore : CandidateStore {
+    private var state: List<MemoryCandidate> = emptyList()
+    override fun load(): List<MemoryCandidate> = state.toList()
+    override fun save(candidates: List<MemoryCandidate>) {
+        state = candidates.toList()
+    }
+}
+
+/**
+ * File-backed candidate store: a JSON array with one object per candidate.
+ * Corrupt or unreadable files fail closed to an empty queue; writes are
+ * atomic via temp-file rename.
+ */
+class FileCandidateStore(private val file: File) : CandidateStore {
+    override fun load(): List<MemoryCandidate> {
+        if (!file.exists()) return emptyList()
+        return try {
+            val raw = file.readText()
+            if (raw.isBlank()) return emptyList()
+            val arr = JSONArray(raw)
+            (0 until arr.length()).mapNotNull { i ->
+                try {
+                    decodeCandidate(arr.getJSONObject(i))
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    override fun save(candidates: List<MemoryCandidate>) {
+        file.parentFile?.mkdirs()
+        val arr = JSONArray()
+        candidates.forEach { arr.put(encodeCandidate(it)) }
+        val tmp = File(file.parentFile, "${file.name}.tmp")
+        tmp.writeText(arr.toString())
+        if (!tmp.renameTo(file)) {
+            file.writeText(tmp.readText())
+            tmp.delete()
+        }
+    }
+
+    private fun encodeCandidate(c: MemoryCandidate): JSONObject = JSONObject()
+        .put("id", c.id)
+        .put("content", c.content)
+        .put("category", c.category.name)
+        .put("source", c.source.name)
+        .put("eventId", c.eventId)
+        .put("capturedAtMs", c.capturedAtMs)
+        .put("contentFingerprint", c.contentFingerprint)
+
+    private fun decodeCandidate(j: JSONObject): MemoryCandidate = MemoryCandidate(
+        id = j.getString("id"),
+        content = j.getString("content"),
+        category = MemoryCategory.valueOf(j.getString("category")),
+        source = AutoMemorySource.valueOf(j.getString("source")),
+        eventId = j.getString("eventId"),
+        capturedAtMs = j.getLong("capturedAtMs"),
+        contentFingerprint = j.getString("contentFingerprint"),
+    )
+}
+
 /** File-backed fence store: one line per entry, `fingerprint \t memoryId`. */
 class FileFenceStore(private val file: File) : FenceStore {
     override fun load(): Map<String, String> {
@@ -127,10 +203,20 @@ class AutomaticMemory(
     private val sourceAuthorizer: (AutoMemorySource) -> Boolean = { true },
     private val clock: () -> Long = { System.currentTimeMillis() },
     fenceStore: FenceStore = InMemoryFenceStore(),
+    private val candidateStore: CandidateStore = InMemoryCandidateStore(),
 ) {
     private val pending = ArrayDeque<MemoryCandidate>()
     private val evaluationLog = mutableListOf<MemoryEvaluation>()
     private val fence = AutomaticMemoryFence(fenceStore)
+
+    init {
+        // Restore any candidates queued before a process restart.
+        pending.addAll(candidateStore.load())
+    }
+
+    private fun persistQueue() {
+        candidateStore.save(pending.toList())
+    }
 
     val pendingCount: Int get() = pending.size
     val evaluations: List<MemoryEvaluation> get() = evaluationLog.toList()
@@ -178,6 +264,7 @@ class AutomaticMemory(
             contentFingerprint = fingerprint,
         )
         pending.addLast(candidate)
+        persistQueue()
         return CaptureResult(SelfReview(SelfReviewDecision.ACCEPT, "Candidate queued for evaluation."), candidate)
     }
 
@@ -195,6 +282,7 @@ class AutomaticMemory(
             if (cancel.isCancelled) break
             if (!isIdle()) break
             val candidate = pending.removeFirst()
+            persistQueue()
             val snapshot = memoryOs.read().snapshot
             // Queued-evaluation race: the content was deleted while waiting; fence it.
             if (fence.isFenced(candidate.contentFingerprint, snapshot)) {
