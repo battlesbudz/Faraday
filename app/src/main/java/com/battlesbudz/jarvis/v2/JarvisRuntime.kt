@@ -253,17 +253,28 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     internal fun externalAgentGrants(): List<ExternalAgentGrant> =
         try { externalAgentAccess.grants() } catch (_: Exception) { emptyList() }
 
+    private val externalAgentGrantsFlow =
+        kotlinx.coroutines.flow.MutableStateFlow<List<ExternalAgentGrant>>(emptyList())
+
+    /** M7: observable grants for the Settings UI; refresh on open. */
+    internal val externalAgentGrantsState: kotlinx.coroutines.flow.StateFlow<List<ExternalAgentGrant>>
+        get() = externalAgentGrantsFlow
+
+    internal fun refreshExternalAgentGrants() {
+        externalAgentGrantsFlow.value = externalAgentGrants()
+    }
+
     /** M7: authorize a caller; returns the grant or throws with a user-safe message. */
     internal fun authorizeExternalAgent(callerId: String, displayName: String, functions: Set<String>): ExternalAgentGrant =
-        externalAgentAccess.authorizeCaller(callerId, displayName, functions)
+        externalAgentAccess.authorizeCaller(callerId, displayName, functions).also { refreshExternalAgentGrants() }
 
     /** M7: revoke a caller; true if a grant was actually revoked. */
     internal fun revokeExternalAgent(callerId: String): Boolean =
-        externalAgentAccess.revokeCaller(callerId)
+        externalAgentAccess.revokeCaller(callerId).also { if (it) refreshExternalAgentGrants() }
 
     /** M7: enable/disable a caller without revoking. */
     internal fun setExternalAgentEnabled(callerId: String, enabled: Boolean): Boolean =
-        externalAgentAccess.setCallerEnabled(callerId, enabled)
+        externalAgentAccess.setCallerEnabled(callerId, enabled).also { if (it) refreshExternalAgentGrants() }
     internal val phoneTaskError get() = phoneTaskCoordinator.error
     internal fun admitPhoneTask(plan: ActionTurnPlan.Ready, conversationId: String): String? =
         phoneTaskCoordinator.admitPhoneTask(plan, conversationId)
@@ -576,6 +587,19 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         nativeConversationHasContext = false
         sessionPreferences.edit().remove(ConversationPolicy.SHORT_TERM_SUMMARY_KEY).apply()
         return null
+    }
+
+    /**
+     * Delete a conversation thread. Blocked while a turn is in flight so a
+     * delete can never race an in-progress write. Returns an error message,
+     * or null on success.
+     */
+    fun deleteConversation(id: String): String? {
+        if (chatBusy.value || voiceSessionArmed || voiceTurnJob?.isCompleted == false ||
+            acceptedVoiceActions.hasUnfinished() || ConversationWork.activeJobs.get() != 0 || modelStore.isModelOperationActive())
+            return "Finish the current response or voice session first."
+        return if (conversationHistory.deleteConversation(id)) null
+        else "That conversation is already gone."
     }
 
     private val runtimeVoiceResources by lazy {
