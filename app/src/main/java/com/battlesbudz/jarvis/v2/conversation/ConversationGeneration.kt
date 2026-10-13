@@ -93,6 +93,7 @@ internal class ConversationGeneration(
             runawayLoopStopped = stoppedLoop)
         executeNativeActions(draft, phoneActions)
         retryInvalidToolDraft(draft, input)
+        retryHallucinatedActionClaim(draft, input)
         return draft
     }
 
@@ -178,5 +179,27 @@ internal class ConversationGeneration(
         answer.engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
         draft.generated = input.retry(answer.engine, prompt, answer.streamFilter::accept)
         answer.telemetry.record("invalid tool retry", draft.generated, answer.submittedPrompt.length)
+    }
+
+    /**
+     * Catches the model claiming a phone action succeeded when no tool was
+     * executed (e.g. "I have watered your notifications. This action has
+     * been executed successfully." with no [Tool outcome:]). Retries with an
+     * honest correction. Defense-in-depth: the router fixes above should
+     * make this rare, but the model must never lie about execution.
+     */
+    private suspend fun retryHallucinatedActionClaim(draft: ConversationDraft, input: ConversationInput) {
+        if (draft.generated.toolCalls.isNotEmpty()) return
+        val text = AssistantText.forDisplay(draft.generated.text)
+        if (text.isBlank() || !AnswerQualityPolicy.claimsUnauthenticatedAction(text)) return
+        val answer = draft.answer
+        modelSession.reset()
+        diagnostics.summary("Rejected hallucinated action claim reason=claims_action_without_tool_execution")
+        val prompt = answer.submittedPrompt + "\nThe previous output falsely claimed a phone action was performed, but no tool was executed. " +
+            "Answer honestly: ask what the user wants, or explain what you can actually do. " +
+            "Never claim an action succeeded unless a verified tool result is included in this prompt. Do not call a tool."
+        answer.engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
+        draft.generated = input.retry(answer.engine, prompt, answer.streamFilter::accept)
+        answer.telemetry.record("hallucinated action retry", draft.generated, answer.submittedPrompt.length)
     }
 }
