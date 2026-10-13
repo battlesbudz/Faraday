@@ -114,6 +114,12 @@ fun JarvisApp(
                 }) {
                     if (setup.modelsReady && setup.smokeTestPassed) {
                         Box(Modifier.fillMaxSize()) {
+                            Box(
+                                Modifier.fillMaxWidth()
+                                    .align(androidx.compose.ui.Alignment.TopCenter)
+                            ) {
+                                AssistantStatusBanner()
+                            }
                             Box(Modifier.fillMaxSize().then(if (showingMemory) Modifier.clearAndSetSemantics { } else Modifier)) {
                                 when {
                                     selectedVoiceCall != null -> {
