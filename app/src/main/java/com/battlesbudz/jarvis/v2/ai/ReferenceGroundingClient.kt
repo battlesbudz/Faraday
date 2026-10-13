@@ -10,6 +10,8 @@ class ReferenceGroundingClient(
     private val readBytes: ((URL) -> ByteArray)? = null,
     private val onReadStarted: (publicActivity: String) -> (() -> Unit) = { {} },
     private val pdfText: (ByteArray) -> String = { "" },
+    /** Private/incognito mode: no external network call may leak what the user is asking. */
+    private val isPrivate: () -> Boolean = { false },
 ) {
     private companion object {
         const val MAX_EVIDENCE_CHARS = 4_500
@@ -160,6 +162,9 @@ class ReferenceGroundingClient(
     }
 
     suspend fun fetchIfRequested(query: String): ReferenceGrounding? {
+        // Private mode: skip every external lookup (Wikipedia, Wikidata,
+        // supplied URLs). The caller reports the block honestly; nothing is fetched.
+        if (isPrivate()) return null
         val supplied = requestSuppliedSources(query)
         val mediaWiki = if (supplied.context.isBlank()) requestMediaWiki(query) else ReferenceGrounding("", emptyList())
         val wikidata = if (supplied.context.isBlank()) requestWikidata(query) else ReferenceGrounding("", emptyList())
