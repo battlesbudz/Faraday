@@ -274,4 +274,41 @@ class ConversationHistoryTest {
         val history = ConversationHistory(preferences())
         assertFalse(history.deleteConversation("does-not-exist"))
     }
+
+    @Test fun privateConversationIsNeverPersisted() {
+        val prefs = preferences()
+        val history = ConversationHistory(prefs)
+        history.appendUser("Normal topic")
+        history.newPrivateConversation()
+        assertTrue(history.isCurrentPrivate())
+        history.appendUser("Secret topic")
+        // Private thread exists in memory...
+        assertEquals(2, history.list().size)
+        // ...but a restart sees only the normal thread.
+        val restored = ConversationHistory(prefs)
+        assertEquals(1, restored.list().size)
+        assertFalse(restored.isCurrentPrivate())
+        assertTrue(restored.list().single().messages.any { it.text == "Normal topic" })
+        assertTrue(restored.list().none { thread -> thread.messages.any { it.text == "Secret topic" } })
+    }
+
+    @Test fun leavingPrivateConversationDropsIt() {
+        val history = ConversationHistory(preferences())
+        history.newPrivateConversation()
+        history.appendUser("Secret")
+        val privateId = history.current.value.id
+        history.newConversation()
+        assertFalse(history.isCurrentPrivate())
+        assertTrue(history.list().none { it.id == privateId })
+    }
+
+    @Test fun privateThreadNotShownAsActiveAfterRestart() {
+        val prefs = preferences()
+        val history = ConversationHistory(prefs)
+        history.newPrivateConversation()
+        // Even though "active" would point at the private thread, persist()
+        // falls back to the newest durable thread (or nothing).
+        val restored = ConversationHistory(prefs)
+        assertFalse(restored.isCurrentPrivate())
+    }
 }
