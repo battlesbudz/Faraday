@@ -1,0 +1,1352 @@
+{
+  "audited": "2026-09-21",
+  "removed": [
+    "Qwen3-8B",
+    "Qwen2-1.5B-Instruct",
+    "Llama-3.2-1B",
+    "Llama-3.2-3B",
+    "MedGemma-1.5-4B-IT",
+    "MiniCPM5-1B",
+    "Qwen3-0.6B-int4",
+    "Qwen3-14B",
+    "SmolLM2-1.7B-Instruct",
+    "SmolLM2-135M-Instruct",
+    "SmolLM2-360M-Instruct",
+    "Ternary-Bonsai-1.7B",
+    "Ternary-Bonsai-8B",
+    "TinySwallow-1.5B-Instruct",
+    "gemma-3-270m-it",
+    "gemma-4-26B-A4B-it-litert-lm",
+    "gemma-4-31B-it-litert-lm",
+    "granite-4.0-350m-litert-lm"
+  ],
+  "models": [
+    {
+      "id": "Gemma-4-E2B-it",
+      "repo": "litert-community/gemma-4-E2B-it-litert-lm",
+      "revision": "6e5c4f1",
+      "artifact": "gemma-4-E2B-it.litertlm",
+      "bytes": 2588147712,
+      "backend": "GPU",
+      "context": null,
+      "sha256": "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Your Fold 6 report: runs fast. Publisher also provides S26 Ultra GPU measurements. Strongest practical Jarvis evidence here; no captured reproducible benchmark supplied.",
+      "source": "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm",
+      "confirm": false
+    },
+    {
+      "id": "Gemma-4-E4B-it",
+      "repo": "litert-community/gemma-4-E4B-it-litert-lm",
+      "revision": "1fc8912676889ed3aeec478c92c1e239bed08928",
+      "artifact": "gemma-4-E4B-it.litertlm",
+      "bytes": 3659530240,
+      "backend": "GPU",
+      "context": null,
+      "sha256": "f335f2bfd1b758dc6476db16c0f41854bd6237e2658d604cbe566bcefd00a7bc",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Your Fold 6 report: runs, with longer waits. Publisher has S26 Ultra GPU results. Published bundle size differs slightly from catalog metadata; do not treat speed on S26 Ultra as Fold 6 speed.",
+      "source": "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm",
+      "confirm": false
+    },
+    {
+      "id": "Qwen2.5-Coder-1.5B-Instruct",
+      "repo": "litert-community/Qwen2.5-Coder-1.5B-Instruct",
+      "revision": "ddb8ab66e162dd89328da9bc144d1d626d3f2c9f",
+      "artifact": "Qwen2.5-Coder-1.5B-Instruct_int4.litertlm",
+      "bytes": 1117385648,
+      "backend": "CPU",
+      "context": "4096",
+      "sha256": "273ecc7771ba2dd5fe1bb6d4d4726ad0353102f04ad094082ccf59bca9f21213",
+      "record_matches": [
+        {
+          "record": "qwen25-coder-1.5b-int4",
+          "rows": [
+            "| galaxy-s26 | cpu | fallback | no | - | 223 | - | 106.0 | 29.73 | 2140.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-05 | measured |",
+            "| galaxy-s26 | gpu | pass | yes | - | 223 | - | 205.89 | 10.07 | 1180.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-08-24 | measured |",
+            "| pixel-8a | cpu | pass | - | - | 38 | - | 16.09 | 12.57 | 2440.0 | - | Pixel 8a \u00b7 Tensor G3 \u00b7 litert-lm 0.16.0 | 2026-08-19 | measured |",
+            "| pixel-8a | gpu | pass | yes | - | 38 | - | 83.7 | 12.0 | 540.0 | - | Pixel 8a \u00b7 Tensor G3 \u00b7 litert-lm 0.16.0 | 2026-08-19 | measured |"
+          ]
+        }
+      ],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Galaxy S26 and Pixel 8a CPU/GPU measurements; Jarvis selects CPU. Android result is tied to the catalog checksum.",
+      "source": "https://huggingface.co/litert-community/Qwen2.5-Coder-1.5B-Instruct",
+      "confirm": false
+    },
+    {
+      "id": "Qwen2.5-Coder-3B-Instruct",
+      "repo": "litert-community/Qwen2.5-Coder-3B-Instruct",
+      "revision": "f02778f1b0bb06315051c1e212abd19a389bff34",
+      "artifact": "Qwen2.5_Coder_3B_It.litertlm",
+      "bytes": 3433083824,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "78d23da074383f52f852b945b8090870e6c9dded02a842f535ee3ccb9e2874f3",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Publisher reports real generation on Galaxy S26 CPU and OpenCL GPU with LiteRT-LM 0.16.0 and this filename.",
+      "source": "https://huggingface.co/litert-community/Qwen2.5-Coder-3B-Instruct",
+      "confirm": false
+    },
+    {
+      "id": "Qwen3-0.6B",
+      "repo": "litert-community/Qwen3-0.6B",
+      "revision": "8414150f2e9dcc82449bcc9c5abc404b399a4d06",
+      "artifact": "Qwen3-0.6B_dynamic_wi4b32_afp32.litertlm",
+      "bytes": 344437808,
+      "backend": "GPU",
+      "context": "2048",
+      "sha256": "e3e290109da4388d65a17510a0c66af91c8039f52d2c465868dbc43c09a776cf",
+      "record_matches": [],
+      "status": "EXPERIMENTAL",
+      "summary": "Android operation of this exact download and setup is not yet verified.",
+      "details": "Android tables cover qwen3_0_6b_mixed_int4 and Qwen3-0.6B.litertlm; Jarvis pins Qwen3-0.6B_dynamic_wi4b32_afp32.litertlm. Related model evidence, not an established identity match.",
+      "source": "https://huggingface.co/litert-community/Qwen3-0.6B",
+      "confirm": false
+    },
+    {
+      "id": "Qwen3-1.7B",
+      "repo": "litert-community/Qwen3-1.7B",
+      "revision": "73fbc3fe8271c162a603ee66f6e7ed25b6211195",
+      "artifact": "Qwen3-1.7B_dynamic_wi4b32_afp32.litertlm",
+      "bytes": 977184032,
+      "backend": "GPU",
+      "context": "2048",
+      "sha256": "2eeffef7b51bc3e1225ea69fe7aa5f417397934b56a5b6c20cc068d6fd2c918b",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Galaxy S26 0.16.0 GPU/CPU generation explicitly includes the dynamic_wi4b32_afp32 artifact.",
+      "source": "https://huggingface.co/litert-community/Qwen3-1.7B",
+      "confirm": false
+    },
+    {
+      "id": "Qwen3-4B",
+      "repo": "litert-community/Qwen3-4B",
+      "revision": "84cc5a35c9c65cd18fcd65bb1f3a7d77a4acfe6e",
+      "artifact": "qwen3_4b_mixed_int4.litertlm",
+      "bytes": 2659057664,
+      "backend": "GPU",
+      "context": "2048",
+      "sha256": "f0794bc77efeaaf4f7af815f04c483b19b8f2ae4a102cef1b7b760a25848a18e",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Samsung SM-S937U1, vivo V2502A and TECNO LJ9 OpenCL GPU results, runtime 0.13.1. Older runtime and different phones; not Jarvis validation.",
+      "source": "https://huggingface.co/litert-community/Qwen3-4B",
+      "confirm": false
+    },
+    {
+      "id": "Qwen3-4B-Instruct-2507",
+      "repo": "litert-community/Qwen3-4B-Instruct-2507",
+      "revision": "4d409771b414d86b270ca54d27ffc45032a81142",
+      "artifact": "qwen3_4b_instruct_2507_mixed_int4.litertlm",
+      "bytes": 2659057664,
+      "backend": "GPU",
+      "context": "2048",
+      "sha256": "9e48b165836256f5344d9d044930607b9c47f6ef34e27f82e96881664f3ba2fd",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Same mixed INT4 filename has named Android GPU results, including Galaxy S26 0.16.0 generation and an older multi-device table.",
+      "source": "https://huggingface.co/litert-community/Qwen3-4B-Instruct-2507",
+      "confirm": false
+    },
+    {
+      "id": "Qwen3-4B-Thinking-2507",
+      "repo": "litert-community/Qwen3-4B-Thinking-2507",
+      "revision": "92751be3c03156438ba11699fffbd314002ade5d",
+      "artifact": "model.litertlm",
+      "bytes": 2474357680,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "356b2d7778d27d55fbb0d2e0c5e8801e9de136db59849c41c882bd97333840d5",
+      "record_matches": [
+        {
+          "record": "qwen3-4b-thinking",
+          "rows": [
+            "| galaxy-s26 | cpu | fallback | no | - | 204 | - | 63.02 | 5.99 | 3400.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-05 | measured |"
+          ]
+        }
+      ],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Publisher says both block variants generate on Galaxy S26 GPU. Checksum-linked record for Jarvis model.litertlm contains CPU measurements; do not quote the other block-32 artifact\u2019s GPU speed for this one.",
+      "source": "https://huggingface.co/litert-community/Qwen3-4B-Thinking-2507",
+      "confirm": false
+    },
+    {
+      "id": "Qwen3.5-0.8B",
+      "repo": "litert-community/Qwen3.5-0.8B",
+      "revision": "c23b16e43ada6ead533b12593fe500bbe268014f",
+      "artifact": "Qwen3.5-0.8B_int8.litertlm",
+      "bytes": 963184864,
+      "backend": "CPU",
+      "context": "4096",
+      "sha256": "684d4d34adf7176eb47f6026ff65c33d42584737254e5524a8d1ad62edc21b98",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Text-only INT8 has Pixel 8a CPU measurements, matching Jarvis backend. GPU startup can be very costly; the separate VL bundle\u2019s results are not this download.",
+      "source": "https://huggingface.co/litert-community/Qwen3.5-0.8B",
+      "confirm": false
+    },
+    {
+      "id": "Qwen3.5-2B",
+      "repo": "litert-community/Qwen3.5-2B",
+      "revision": "0d50110e55d80ac7be6233d047e0d5f0fb8394c4",
+      "artifact": "Qwen3.5-2B_int8.litertlm",
+      "bytes": 2116592816,
+      "backend": "CPU",
+      "context": "4096",
+      "sha256": "86c97baba6d3fb4109588562f0b9411e502c883be7fc2479f93ce3a6ea3efb6b",
+      "record_matches": [],
+      "status": "EXPERIMENTAL",
+      "summary": "Android operation of this exact download and setup is not yet verified.",
+      "details": "Top Galaxy S26 results refer to the VL artifact, while Jarvis downloads text-only INT8. Text-only Pixel GPU ran out of memory; Pixel CPU test was blocked by storage. Positive Android CPU result for this exact text-only file not established here.",
+      "source": "https://huggingface.co/litert-community/Qwen3.5-2B",
+      "confirm": false
+    },
+    {
+      "id": "Qwen3.5-4B",
+      "repo": "litert-community/Qwen3.5-4B",
+      "revision": "f06d1275eb219ff140d11d08b586cf9bb55b8fd6",
+      "artifact": "Qwen3.5-4B_mixed_int4.litertlm",
+      "bytes": 2754365536,
+      "backend": "CPU",
+      "context": "4096",
+      "sha256": "176b5a2b6c20bde7739fba98e653a04f5d5b4a753a4b9dd0ff529aba7c35be99",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Mixed INT4 text file runs on Pixel 8a CPU: published 6.3 tok/s, 4.43 GB process peak, 30\u201350 s initialization. Matches Jarvis CPU choice; substantial extra cache storage is needed.",
+      "source": "https://huggingface.co/litert-community/Qwen3.5-4B",
+      "confirm": false
+    },
+    {
+      "id": "Qwen2.5-1.5B-Instruct",
+      "repo": "litert-community/Qwen2.5-1.5B-Instruct",
+      "revision": "19edb84c69a0212f29a6ef17ba0d6f278b6a1614",
+      "artifact": "Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.litertlm",
+      "bytes": 1597931520,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "faa60663b333290c1496c499828b21d3e3254a788cacd8cce917ce0f761a2dc9",
+      "record_matches": [],
+      "status": "EXPERIMENTAL",
+      "summary": "Android operation of this exact download and setup is not yet verified.",
+      "details": "Samsung S25 Ultra CPU/GPU benchmarks exist for INT8 4096, but table download links point to .task artifacts, not Jarvis\u2019s .litertlm. Good family/conversion evidence; exact bundle identity unproven.",
+      "source": "https://huggingface.co/litert-community/Qwen2.5-1.5B-Instruct",
+      "confirm": false
+    },
+    {
+      "id": "Qwen2-0.5B-Instruct",
+      "repo": "litert-community/Qwen2-0.5B-Instruct",
+      "revision": "13aab3e522828d85fa178d885716ab858a715149",
+      "artifact": "Qwen2_0.5B_Instruct.litertlm",
+      "bytes": 647377840,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "0f01cc004b8eb62b92ba6be85ed05a248ba0d2f78af94c4949b313eccfb4c157",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Galaxy S26 0.16.0 CPU and OpenCL GPU generation/measurements for the published file.",
+      "source": "https://huggingface.co/litert-community/Qwen2-0.5B-Instruct",
+      "confirm": false
+    },
+    {
+      "id": "Qwen2-VL-2B",
+      "repo": "litert-community/Qwen2-VL-2B",
+      "revision": "5a03c8597ec02ec3c84cde3f1fd043688396bde5",
+      "artifact": "Qwen2-VL-2B.litertlm",
+      "bytes": 1783424544,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "cf481776bcb16fe539a38c924a67fc213bb5ee55e6fa600729f060e64849066b",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Galaxy S26 GPU text generation; Pixel 8a image test uses GPU vision plus CPU decoder. Text support is better established than Jarvis\u2019s combined GPU image path.",
+      "source": "https://huggingface.co/litert-community/Qwen2-VL-2B",
+      "confirm": false
+    },
+    {
+      "id": "DeepSeek-R1-Distill-Qwen-1.5B",
+      "repo": "litert-community/DeepSeek-R1-Distill-Qwen-1.5B",
+      "revision": "2f8b8ee90d8f93b15305b699e8772b277d074a9a",
+      "artifact": "DeepSeek-R1-Distill-Qwen-1.5B_multi-prefill-seq_q8_ekv4096.litertlm",
+      "bytes": 1833451520,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "69b35f01759eed765641ab4af589bbe98131fd2825662a086d9037409b8c1295",
+      "record_matches": [],
+      "status": "EXPERIMENTAL",
+      "summary": "Android operation of this exact download and setup is not yet verified.",
+      "details": "Samsung S24 Ultra INT8 CPU/GPU measurements exist. Card\u2019s prose mentions 1280 context while table says 4096, and lacks a checksum-linked runtime/bundle result. Related Android evidence, not exact Jarvis certification.",
+      "source": "https://huggingface.co/litert-community/DeepSeek-R1-Distill-Qwen-1.5B",
+      "confirm": false
+    },
+    {
+      "id": "DeepSeek-R1-Distill-Qwen-7B",
+      "repo": "litert-community/DeepSeek-R1-Distill-Qwen-7B",
+      "revision": "96991f3653cefd99ebb408255b227d4935dea1d1",
+      "artifact": "DeepSeek-R1-Distill-Qwen-7B_q4_block32_ekv4096.litertlm",
+      "bytes": 4531978224,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "511d59c11704f7ab39b9cb3a0eef1a88f8c05673d0b74bcb4b19c15845ab4a7f",
+      "record_matches": [
+        {
+          "record": "deepseek-r1-distill-qwen-7b-q4-block32-ekv4096",
+          "rows": [
+            "| galaxy-s26 | gpu | pass | yes | - | 197 | - | 107.53 | 8.43 | 1950.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-08-24 | measured |"
+          ]
+        }
+      ],
+      "status": "EXPERIMENTAL",
+      "summary": "Tested by its publisher on Android, but experimental in Jarvis. Available for your testing.",
+      "details": "Exact checksum, Galaxy S26, LiteRT-LM 0.16.0 GPU: 8.43 tok/s decode. Clear counterexample to banning every roughly 4\u20135 GB bundle.",
+      "source": "https://huggingface.co/litert-community/DeepSeek-R1-Distill-Qwen-7B",
+      "confirm": false
+    },
+    {
+      "id": "Falcon-H1-0.5B-Instruct",
+      "repo": "litert-community/Falcon-H1-0.5B-Instruct",
+      "revision": "b4a862c3fa996d8ef43cb8c6e5a23a95daf37a6c",
+      "artifact": "Falcon-H1-0.5B-Instruct_int8.litertlm",
+      "bytes": 650163952,
+      "backend": "GPU",
+      "context": "1280",
+      "sha256": "b8d1e5298bc3c8ed69b1f1f33a344fb9f992b033043f5438778b14477902fad8",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Galaxy S26 GPU generation and Pixel 8a GPU/CPU tests. CPU may be preferable for some phone workloads; GPU is not automatically faster.",
+      "source": "https://huggingface.co/litert-community/Falcon-H1-0.5B-Instruct",
+      "confirm": false
+    },
+    {
+      "id": "Falcon-H1-1.5B-Deep-Instruct",
+      "repo": "litert-community/Falcon-H1-1.5B-Deep-Instruct",
+      "revision": "f91ae50b6adbb53cd36a7d462eb09b814c24a82e",
+      "artifact": "Falcon-H1-1.5B-Deep-Instruct_int8.litertlm",
+      "bytes": 1833084896,
+      "backend": "GPU",
+      "context": "1280",
+      "sha256": "759b3b361ccd9b6138767fe1771f35d3be64301308b9a178d3edd43819447526",
+      "record_matches": [
+        {
+          "record": "falcon-h1-1.5b-deep-instruct-int8",
+          "rows": [
+            "| galaxy-s26 | cpu | fallback | no | - | 212 | - | 103.14 | 11.97 | 2140.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-05 | measured |",
+            "| galaxy-s26 | gpu | pass | yes | - | 212 | - | 120.58 | 6.0 | 1920.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-08-24 | measured |"
+          ]
+        }
+      ],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Exact checksum has Galaxy S26 GPU result. GPU decode about 6 tok/s in linked record; CPU measurement is faster in its separate run.",
+      "source": "https://huggingface.co/litert-community/Falcon-H1-1.5B-Deep-Instruct",
+      "confirm": false
+    },
+    {
+      "id": "Falcon-H1-1.5B-Instruct",
+      "repo": "litert-community/Falcon-H1-1.5B-Instruct",
+      "revision": "972bf1777202caf538af00aeac605dde823f3c16",
+      "artifact": "Falcon-H1-1.5B-Instruct_int8.litertlm",
+      "bytes": 1725449600,
+      "backend": "GPU",
+      "context": "1280",
+      "sha256": "f499623a4d6fb6df8c2cf6ce388a0d460bcb81f416fd5c69e4281906f48fb931",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Publisher reports Galaxy S26 GPU generation for this INT8 file, runtime 0.16.0.",
+      "source": "https://huggingface.co/litert-community/Falcon-H1-1.5B-Instruct",
+      "confirm": false
+    },
+    {
+      "id": "Falcon-H1-3B-Instruct",
+      "repo": "litert-community/Falcon-H1-3B-Instruct",
+      "revision": "182c11f09f2a91d75a9c72f6e1ccbbad10a7f3e4",
+      "artifact": "Falcon-H1-3B-Instruct_int8.litertlm",
+      "bytes": 3385302368,
+      "backend": "GPU",
+      "context": "1280",
+      "sha256": "add075d24b309a68ba7312bb89410345c06ff1a6628e42785f45f57045795d2b",
+      "record_matches": [
+        {
+          "record": "falconh1-3b",
+          "rows": [
+            "| galaxy-s26 | gpu | pass | yes | - | 212 | - | 109.22 | 11.49 | 2030.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-08-24 | measured |"
+          ]
+        }
+      ],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Exact checksum has Galaxy S26 GPU measurements, around 11.5 tok/s decode. A relatively large 3B INT8 download can run.",
+      "source": "https://huggingface.co/litert-community/Falcon-H1-3B-Instruct",
+      "confirm": false
+    },
+    {
+      "id": "Falcon-H1-Tiny-R-0.6B",
+      "repo": "litert-community/Falcon-H1-Tiny-R-0.6B",
+      "revision": "7978351a57b60003d61aa55350821aa2122074c7",
+      "artifact": "Falcon-H1-Tiny-R-0.6B_int8.litertlm",
+      "bytes": 873254788,
+      "backend": "GPU",
+      "context": "1280",
+      "sha256": "66b9e6a5fa630d453d59516cc362e44fff3943eb7c63d07b116cf9a525a1bb94",
+      "record_matches": [
+        {
+          "record": "falcon-h1-tiny-r-0.6b-int8",
+          "rows": [
+            "| galaxy-s26 | cpu | fallback | no | - | 215 | - | 123.96 | 23.9 | 1780.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-05 | measured |",
+            "| galaxy-s26 | gpu | pass | yes | - | 215 | - | 309.77 | 16.13 | 760.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-05 | measured |",
+            "| pixel-8a | cpu | fallback | no | - | 215 | - | 71.16 | 14.02 | 3090.0 | - | Pixel 8a \u00b7 Tensor G3 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-05 | measured |",
+            "| pixel-8a | gpu | pass | yes | - | 215 | - | 108.77 | 9.98 | 2080.0 | - | Pixel 8a \u00b7 Tensor G3 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-05 | measured |"
+          ]
+        }
+      ],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Exact checksum has Galaxy S26 and Pixel 8a GPU runs. Reasoning still adds latency before the final answer.",
+      "source": "https://huggingface.co/litert-community/Falcon-H1-Tiny-R-0.6B",
+      "confirm": false
+    },
+    {
+      "id": "FastContext-1.0-4B-SFT",
+      "repo": "litert-community/FastContext-1.0-4B-SFT",
+      "revision": "87f983be62fa2eca43b0e4c7171a7fc61207583e",
+      "artifact": "model_block128.litertlm",
+      "bytes": 2474357680,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "3842a564a1f8db2ed53992ec6e2d5e2579aff72131dfac664c19cf2ec90542ce",
+      "record_matches": [
+        {
+          "record": "fastcontext-1.0-4b-sft-model-block128",
+          "rows": [
+            "| galaxy-s26 | gpu | pass | yes | - | 202 | - | 86.28 | 7.49 | 2470.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-08-24 | measured |"
+          ]
+        }
+      ],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Exact block128 checksum has Galaxy S26 GPU result, 7.49 tok/s. Repository-exploration model; its intended tools are a separate integration question.",
+      "source": "https://huggingface.co/litert-community/FastContext-1.0-4B-SFT",
+      "confirm": false
+    },
+    {
+      "id": "FastVLM-0.5B",
+      "repo": "litert-community/FastVLM-0.5B",
+      "revision": "460013246392191f8532e45e518576bb6513eace",
+      "artifact": "FastVLM-0.5B.litertlm",
+      "bytes": 1156342768,
+      "backend": "GPU",
+      "context": "1280",
+      "sha256": "ccba1e8bfa0bab78345f5d009fdffd20bd8c907cf39b4bc632e391b0a96f3b18",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Xiaomi 17 Pro Max GPU benchmark directly links FastVLM-0.5B.litertlm. NPU numbers belong to another file. Jarvis\u2019s catalog currently disables vision for this entry.",
+      "source": "https://huggingface.co/litert-community/FastVLM-0.5B",
+      "confirm": false
+    },
+    {
+      "id": "Gemma3-1B-IT",
+      "repo": "litert-community/Gemma3-1B-IT",
+      "revision": "a6306a4e292016480083b73b8dc6f3f939ae04c3",
+      "artifact": "Gemma3-1B-IT_multi-prefill-seq_q4_ekv4096.litertlm",
+      "bytes": 584417280,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "1325ae366d31950f137c9c357b9fa89448b176d76998180c08ceaca78bba98be",
+      "record_matches": [],
+      "status": "EXPERIMENTAL",
+      "summary": "Android operation of this exact download and setup is not yet verified.",
+      "details": "Named S24 Ultra LiteRT-LM QAT GPU benchmarks exist, but table context is 2048 while Jarvis configures 4096 and pins a differently sized artifact. Exact configuration is not established.",
+      "source": "https://huggingface.co/litert-community/Gemma3-1B-IT",
+      "confirm": false
+    },
+    {
+      "id": "Hy-MT2-1.8B",
+      "repo": "litert-community/Hy-MT2-1.8B",
+      "revision": "617f1ef202586cd6d4e9db718e17a53db655f1c4",
+      "artifact": "Hy-MT2-1.8B_int8.litertlm",
+      "bytes": 1815622960,
+      "backend": "GPU",
+      "context": "1280",
+      "sha256": "7bbd0b65d7e69c8d92b8ab3033e353536ef40c77f4dc5f4c32f2931417c13eda",
+      "record_matches": [
+        {
+          "record": "hy-mt2-1.8b-int8",
+          "rows": [
+            "| galaxy-s26 | cpu | fallback | no | - | 197 | - | 126.34 | 12.27 | 1640.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-05 | measured |",
+            "| galaxy-s26 | gpu | pass | yes | - | 197 | - | 385.67 | 20.84 | 560.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-05 | measured |",
+            "| pixel-8a | cpu | fallback | no | - | 197 | - | 50.78 | 8.3 | 4000.0 | - | Pixel 8a \u00b7 Tensor G3 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-05 | measured |"
+          ]
+        }
+      ],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Exact checksum has Galaxy S26 GPU measurement. Translation specialization; not a general chat quality guarantee.",
+      "source": "https://huggingface.co/litert-community/Hy-MT2-1.8B",
+      "confirm": false
+    },
+    {
+      "id": "InternVL3-1B",
+      "repo": "litert-community/InternVL3-1B",
+      "revision": "1750633fd6d028d3f2d1cf733860f5a52926bb5f",
+      "artifact": "InternVL3-1B.litertlm",
+      "bytes": 737314160,
+      "backend": "GPU",
+      "context": "2048",
+      "sha256": "7cf87c35cf364d04bd2e6f957e3a0366830ad0b46eca3dd81e0000891fd1284a",
+      "record_matches": [
+        {
+          "record": "internvl3-1b",
+          "rows": [
+            "| galaxy-s26 | cpu | fallback | no | - | 239 | - | 358.66 | 81.7 | 680.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-05 | measured |",
+            "| galaxy-s26 | gpu | pass | yes | - | 203 | - | 1455.95 | 85.42 | 150.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-08-24 | measured |"
+          ]
+        }
+      ],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Exact checksum has Galaxy S26 GPU text generation/benchmark. That alone does not validate image handling inside Jarvis.",
+      "source": "https://huggingface.co/litert-community/InternVL3-1B",
+      "confirm": false
+    },
+    {
+      "id": "InternVL3-2B",
+      "repo": "litert-community/InternVL3-2B",
+      "revision": "6960f534f0c95569baa29c72cbd7b3238046a67c",
+      "artifact": "InternVL3-2B.litertlm",
+      "bytes": 1429640560,
+      "backend": "GPU",
+      "context": "2048",
+      "sha256": "cb7d63cbf2f5d9b3eb307012b54dc4fc4d68fef78dc3a5d4fbba41c59812f9b6",
+      "record_matches": [
+        {
+          "record": "internvl3-2b",
+          "rows": [
+            "| galaxy-s26 | cpu | fallback | no | - | 239 | - | 207.94 | 43.67 | 1170.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-05 | measured |",
+            "| galaxy-s26 | gpu | pass | yes | - | 203 | - | 573.22 | 34.4 | 380.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-08-24 | measured |"
+          ]
+        }
+      ],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Exact checksum has Galaxy S26 GPU text generation/benchmark. Treat image support separately.",
+      "source": "https://huggingface.co/litert-community/InternVL3-2B",
+      "confirm": false
+    },
+    {
+      "id": "InternVL3_5-1B",
+      "repo": "litert-community/InternVL3_5-1B",
+      "revision": "d786967d292b7f76578b0c7a52a912b021436cf6",
+      "artifact": "model.litertlm",
+      "bytes": 817517936,
+      "backend": "GPU",
+      "context": "2048",
+      "sha256": "df984928897c84aa2d6603651850a809dc1fbb2ec5f42c048b988b2d1bd1d456",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Publisher reports model.litertlm generates on Galaxy S26 GPU with 0.16.0. Text smoke test, not sustained multimodal validation.",
+      "source": "https://huggingface.co/litert-community/InternVL3_5-1B",
+      "confirm": false
+    },
+    {
+      "id": "InternVL3_5-2B",
+      "repo": "litert-community/InternVL3_5-2B",
+      "revision": "4886a33c6439f3d1df00c9565cf472b7bc8211a1",
+      "artifact": "model.litertlm",
+      "bytes": 1613223280,
+      "backend": "GPU",
+      "context": "2048",
+      "sha256": "0f288a1cca1674ca3c0c0ee1705aefd78e9bf163594d00f012c9a7817c3679e1",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Publisher reports model.litertlm generates on Galaxy S26 GPU with 0.16.0. Text smoke test, not sustained multimodal validation.",
+      "source": "https://huggingface.co/litert-community/InternVL3_5-2B",
+      "confirm": false
+    },
+    {
+      "id": "InternVL3_5-4B",
+      "repo": "litert-community/InternVL3_5-4B",
+      "revision": "5acea476065132d64ed79f48b13c869f420f7af7",
+      "artifact": "model.litertlm",
+      "bytes": 2992182640,
+      "backend": "GPU",
+      "context": "2048",
+      "sha256": "2721a08faaa12dfb3af5f336c76b56274093468c1e25c1b35edfddfdcc8cb649",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Publisher reports model.litertlm generates on Galaxy S26 GPU with 0.16.0. Larger visual model; no Fold 6 evidence found.",
+      "source": "https://huggingface.co/litert-community/InternVL3_5-4B",
+      "confirm": false
+    },
+    {
+      "id": "Jan-nano",
+      "repo": "litert-community/Jan-nano",
+      "revision": "db917094ba91c059653d1d684968ea22d35f56fe",
+      "artifact": "model_block32.litertlm",
+      "bytes": 2662888368,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "74712688d25de50a1b3ad5ed95e96be05d2445cbca8e684fb6490a4e446b7d40",
+      "record_matches": [
+        {
+          "record": "jan-nano-model-block32",
+          "rows": [
+            "| galaxy-s26 | cpu | fallback | no | - | 202 | - | 28.97 | 5.94 | 7140.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-05 | measured |",
+            "| galaxy-s26 | gpu | pass | yes | - | 202 | - | 102.41 | 9.3 | 2080.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-08-24 | measured |"
+          ]
+        }
+      ],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Exact block32 checksum has Galaxy S26 GPU result. Intended agent/tool behavior is not proven by text generation.",
+      "source": "https://huggingface.co/litert-community/Jan-nano",
+      "confirm": false
+    },
+    {
+      "id": "LFM2.5-1.2B-Instruct",
+      "repo": "litert-community/LFM2.5-1.2B-Instruct",
+      "revision": "eb5e75a985a46b5d5707282539d985fdd34e2a10",
+      "artifact": "LFM2.5-1.2B-Instruct_int4_gpu.litertlm",
+      "bytes": 736220768,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "36f7f0221bcc42c75291da1d7e3422901024a5b06b9bfa3c02d7feface04f70a",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "The selected int4_gpu export has named Pixel 8a and Galaxy S26 GPU tests. Failures of old int4/int8 exports do not apply automatically to this GPU-specific export.",
+      "source": "https://huggingface.co/litert-community/LFM2.5-1.2B-Instruct",
+      "confirm": false
+    },
+    {
+      "id": "LFM2.5-1.2B-JP",
+      "repo": "litert-community/LFM2.5-1.2B-JP",
+      "revision": "8bd3bb3c434e47b12d4789608e100bf8144d5ec5",
+      "artifact": "LFM2.5-1.2B-JP_int4_gpu.litertlm",
+      "bytes": 736220768,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "2c826a9cdeefc614c9b7de1d1c5565c9a64f704e5f3291ad2cd5d7da396790d5",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Selected int4_gpu export has Pixel 8a and Galaxy S26 GPU generation. Older CPU-only files fail GPU initialization; Jarvis pins the repaired GPU variant.",
+      "source": "https://huggingface.co/litert-community/LFM2.5-1.2B-JP",
+      "confirm": false
+    },
+    {
+      "id": "LFM2.5-1.2B-Thinking",
+      "repo": "litert-community/LFM2.5-1.2B-Thinking",
+      "revision": "b90f25aa2059cba530c4bf254d266a5f7c9cb330",
+      "artifact": "LFM2.5-1.2B-Thinking_int4_gpu.litertlm",
+      "bytes": 736220768,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "75408d4047f15f054403e3d29826b2324c4b8709648c99221daab571f70a6bfd",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Selected int4_gpu export has Pixel 8a and Galaxy S26 GPU generation. Do not confuse it with failing older int4/int8 files.",
+      "source": "https://huggingface.co/litert-community/LFM2.5-1.2B-Thinking",
+      "confirm": false
+    },
+    {
+      "id": "LFM2.5-2.6B",
+      "repo": "litert-community/LFM2.5-2.6B",
+      "revision": "9a25770a7517a24551917b5beabbd3c3e7cba214",
+      "artifact": "LFM2.5-2.6B_int4.litertlm",
+      "bytes": 1668151680,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "f4797d5a16812231deb6d505b4f417dd835b9b3dc47bb74d9ec71facfd0c91a4",
+      "record_matches": [
+        {
+          "record": "lfm2.5-2.6b-int4",
+          "rows": [
+            "| galaxy-s26 | gpu | pass | yes | - | 206 | - | 297.42 | 25.31 | 730.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-08-24 | measured |"
+          ]
+        }
+      ],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Exact checksum has Galaxy S26 GPU test; Pixel 8a GPU generation also documented.",
+      "source": "https://huggingface.co/litert-community/LFM2.5-2.6B",
+      "confirm": false
+    },
+    {
+      "id": "LFM2.5-230M",
+      "repo": "litert-community/LFM2.5-230M",
+      "revision": "bd9c98b7627e2c4b745bd77aa948a4094dcb382b",
+      "artifact": "LFM2.5-230M_int4.litertlm",
+      "bytes": 176756720,
+      "backend": "GPU",
+      "context": "1280",
+      "sha256": "a4683cdafbf7b0ae526ba688fa905fd3db8546fc58221d10082443d4d0a6315c",
+      "record_matches": [
+        {
+          "record": "lfm2.5-230m-int4",
+          "rows": [
+            "| galaxy-s26 | cpu | fallback | no | - | 205 | - | 262.9 | 50.68 | 800.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-01 | measured |",
+            "| galaxy-s26 | gpu | pass | yes | - | 205 | - | 1101.08 | 41.62 | 210.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-01 | measured |"
+          ]
+        }
+      ],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Exact INT4 checksum has Galaxy S26 GPU result. Publisher finds INT8 faster on that handset; smallest download is not necessarily fastest.",
+      "source": "https://huggingface.co/litert-community/LFM2.5-230M",
+      "confirm": false
+    },
+    {
+      "id": "LFM2.5-VL-1.6B",
+      "repo": "litert-community/LFM2.5-VL-1.6B",
+      "revision": "9f4ac757b88ffcd58510e590ef30c98603795c92",
+      "artifact": "LFM2.5-VL-1.6B_int4_fixB.litertlm",
+      "bytes": 1298139472,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "79ca9db8af91e40486a5dfcaf26549180fd6c811ad85f826e3aef20ad0bd565c",
+      "record_matches": [],
+      "status": "EXPERIMENTAL",
+      "summary": "Android operation of this exact download and setup is not yet verified.",
+      "details": "Android tests cover original INT4 bundle; Jarvis pins later fixB vision repair. Publisher says text weights unchanged, but a matching Android test of the repaired full bundle is not established.",
+      "source": "https://huggingface.co/litert-community/LFM2.5-VL-1.6B",
+      "confirm": false
+    },
+    {
+      "id": "LFM2.5-VL-3B",
+      "repo": "litert-community/LFM2.5-VL-3B",
+      "revision": "3797245190aa4ae67f524481ed3d9657a3423e04",
+      "artifact": "LFM2.5-VL-3B_int4_fixB.litertlm",
+      "bytes": 2352023888,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "2393cfba9d78e930bca56e92a752b222bc8b0cb111356faf6c5f23d021a3fa5e",
+      "record_matches": [],
+      "status": "EXPERIMENTAL",
+      "summary": "Android operation of this exact download and setup is not yet verified.",
+      "details": "Original INT4 has Pixel 8a/S26 GPU text evidence; catalog uses later fixB vision repair. Do not transfer full multimodal verification without retest.",
+      "source": "https://huggingface.co/litert-community/LFM2.5-VL-3B",
+      "confirm": false
+    },
+    {
+      "id": "LFM2.5-VL-450M",
+      "repo": "litert-community/LFM2.5-VL-450M",
+      "revision": "be196f4fa88b2dfba8cdbbbff07b641df794f977",
+      "artifact": "LFM2.5-VL-450M_int4_fixB.litertlm",
+      "bytes": 406817104,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "6854cd9677a34e680070b60076793e49aeb3224de7cb4101076b261cb9bf6033",
+      "record_matches": [],
+      "status": "EXPERIMENTAL",
+      "summary": "Android operation of this exact download and setup is not yet verified.",
+      "details": "Original INT4 has Pixel 8a/S26 GPU text evidence; catalog uses later fixB vision repair. Small size does not establish corrected image behavior on Android.",
+      "source": "https://huggingface.co/litert-community/LFM2.5-VL-450M",
+      "confirm": false
+    },
+    {
+      "id": "LLaVA-OneVision-0.5B",
+      "repo": "litert-community/LLaVA-OneVision-0.5B",
+      "revision": "681d5fea488c40a1dce3c6df52fc18c853e1dd39",
+      "artifact": "LLaVA-OneVision-0.5B.litertlm",
+      "bytes": 828590400,
+      "backend": "GPU",
+      "context": "2048",
+      "sha256": "7f7cd7ae3d2ae435a1f69651de02a9d51e916be60fdfef5cadc721725310971a",
+      "record_matches": [
+        {
+          "record": "llava-onevision-0.5b",
+          "rows": [
+            "| galaxy-s26 | cpu | fallback | no | - | 213 | - | 302.52 | 69.52 | 720.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-05 | measured |",
+            "| galaxy-s26 | gpu | pass | yes | - | 203 | - | 1376.31 | 86.45 | 160.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-08-24 | measured |"
+          ]
+        }
+      ],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Exact checksum has Galaxy S26 GPU text result. Image path needs its own app test.",
+      "source": "https://huggingface.co/litert-community/LLaVA-OneVision-0.5B",
+      "confirm": false
+    },
+    {
+      "id": "Mage-VL",
+      "repo": "litert-community/Mage-VL",
+      "revision": "392b2a700f34bb6cc405764af62e494c858b3e87",
+      "artifact": "Mage-VL.litertlm",
+      "bytes": 2811977104,
+      "backend": "GPU",
+      "context": "2048",
+      "sha256": "4231ea9f88ef2bd3aca92fd4554531f17717225418c4527ac858a8a9184dad72",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Galaxy S26 GPU engine/text generation reported. Publisher explicitly limits Android claim to text/engine bring-up, not image validation in Gallery or Jarvis.",
+      "source": "https://huggingface.co/litert-community/Mage-VL",
+      "confirm": false
+    },
+    {
+      "id": "MiniCPM-V-4",
+      "repo": "litert-community/MiniCPM-V-4",
+      "revision": "2d05ab8722280bd1f5e654c6a1a5e39c0e2bfc8c",
+      "artifact": "MiniCPM-V-4-int8.litertlm",
+      "bytes": 4214021104,
+      "backend": "GPU",
+      "context": "1280",
+      "sha256": "d45ef0cd8141597d731d002b72a152ab1a0f8b9cda8d9a0f5e1bc3a4689dcbd0",
+      "record_matches": [],
+      "status": "EXPERIMENTAL",
+      "summary": "Experimental: published tests use CPU, but Jarvis uses GPU. This setup may not work.",
+      "details": "Publisher reports Snapdragon 8850 on-device CPU inference, 16.6 tok/s and image evaluation. Handset/OS/runtime not fully specified. Jarvis selects GPU, so this does not validate the configured path.",
+      "source": "https://huggingface.co/litert-community/MiniCPM-V-4",
+      "confirm": false
+    },
+    {
+      "id": "MiniCPM5-2B",
+      "repo": "litert-community/MiniCPM5-2B",
+      "revision": "f6dd64ef6e117fc6e8af6891ae2096caa3e85a4e",
+      "artifact": "MiniCPM5-2B_int4.litertlm",
+      "bytes": 1553670064,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "9858563beafbc6d5e0d25fcee3827541515296a9302ed3d088b16a58d4fbe7b8",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Galaxy S26 0.16.0 GPU and CPU generation explicitly reported for INT4 and INT8, including reasoning-channel separation.",
+      "source": "https://huggingface.co/litert-community/MiniCPM5-2B",
+      "confirm": false
+    },
+    {
+      "id": "Ministral-3-3B-Instruct-2512",
+      "repo": "litert-community/Ministral-3-3B-Instruct-2512",
+      "revision": "35f7dc34f20ceecf72c58c880e6091ea817a6acc",
+      "artifact": "Ministral-3-3B-Instruct-2512_q4_block32_ekv4096.litertlm",
+      "bytes": 2340982768,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "df5f84608e8db475edb74cac2549eb03727e4941b65980c1d95e310bad996ada",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Galaxy S26 and Pixel 8a GPU generation; exact INT4 filename documented. Gallery UI accelerator restrictions are distinct from runtime capability.",
+      "source": "https://huggingface.co/litert-community/Ministral-3-3B-Instruct-2512",
+      "confirm": false
+    },
+    {
+      "id": "Ministral-3-3B-Reasoning-2512",
+      "repo": "litert-community/Ministral-3-3B-Reasoning-2512",
+      "revision": "2176ce9dd89f6d5e3808bc571fc5db0e494896b5",
+      "artifact": "model.litertlm",
+      "bytes": 2340982768,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "f01c4ed43bbca0441c4a8d47925d4288e1e3cc8c6bf8ecc09c3b9f8cd5b92448",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Publisher reports model.litertlm generation on Galaxy S26 GPU with 0.16.0. Reasoning increases end-to-end wait.",
+      "source": "https://huggingface.co/litert-community/Ministral-3-3B-Reasoning-2512",
+      "confirm": false
+    },
+    {
+      "id": "Nanbeige4.1-3B",
+      "repo": "litert-community/Nanbeige4.1-3B",
+      "revision": "d184d4a36d432612399470addd503c67fbca7af8",
+      "artifact": "model.litertlm",
+      "bytes": 2409326576,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "1a2b741bd39edb9de665d42e11cf137a586eb517e7f4e10eb1e802e80a68369e",
+      "record_matches": [
+        {
+          "record": "nanbeige4.1-3b",
+          "rows": [
+            "| galaxy-s26 | cpu | fallback | no | - | 223 | - | 39.32 | 10.58 | 5770.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-05 | measured |"
+          ]
+        }
+      ],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Publisher reports model.litertlm GPU generation on S26. Checksum-linked measurement retrieved is CPU; do not quote it as GPU throughput.",
+      "source": "https://huggingface.co/litert-community/Nanbeige4.1-3B",
+      "confirm": false
+    },
+    {
+      "id": "Nanbeige4.2-3B",
+      "repo": "litert-community/Nanbeige4.2-3B",
+      "revision": "d958ce354e27235a5540c62d17dc676772a69a9a",
+      "artifact": "model_fp32act.litertlm",
+      "bytes": 2579277808,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "2a3388f958ad22faabc306856bfa026515b2352ca9564964f3e5e9129f22f289",
+      "record_matches": [],
+      "status": "EXPERIMENTAL",
+      "summary": "Android operation of this exact download and setup is not yet verified.",
+      "details": "Older fp32act artifact generated on Galaxy S26 GPU. Publisher explicitly says device test was not repeated after chat-template metadata repair. The CPU-only model.litertlm failure is a different file.",
+      "source": "https://huggingface.co/litert-community/Nanbeige4.2-3B",
+      "confirm": false
+    },
+    {
+      "id": "Nemotron-3-Nano-4B",
+      "repo": "litert-community/Nemotron-3-Nano-4B",
+      "revision": "c8febc96e163c4c008b60cde2f3c490a663517e1",
+      "artifact": "Nemotron-3-Nano-4B_int8.litertlm",
+      "bytes": 4126697184,
+      "backend": "CPU",
+      "context": "1280",
+      "sha256": "ba73d2ad1d878bc2b796eb3a1d993eb1b3bd5105743cd85bd6fa9d86e58a013d",
+      "record_matches": [
+        {
+          "record": "nemotron-3-nano-4b-int8",
+          "rows": [
+            "| galaxy-s26 | cpu | fallback | no | - | 211 | - | 52.94 | 12.87 | 4060.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-05 | measured |",
+            "| galaxy-s26 | gpu | run_failed | yes | - | - | - | - | - | - | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-05 | measured |"
+          ]
+        }
+      ],
+      "status": "ISSUE",
+      "summary": "GPU execution failed on a Galaxy S26. Jarvis uses CPU, which has a published successful test; your phone may differ.",
+      "details": "Exact checksum has S26 CPU result, 12.87 tok/s, matching Jarvis. Same record has GPU run failure. Heavy but not unsupported on Android CPU.",
+      "source": "https://huggingface.co/litert-community/Nemotron-3-Nano-4B",
+      "confirm": false
+    },
+    {
+      "id": "Nemotron-H-4B-Instruct-128K",
+      "repo": "litert-community/Nemotron-H-4B-Instruct-128K",
+      "revision": "ef6d699062d686c61a61d76cc7dc7eeed4dea9dc",
+      "artifact": "Nemotron-H-4B-Instruct-128K_int8.litertlm",
+      "bytes": 4806777392,
+      "backend": "CPU",
+      "context": "1280",
+      "sha256": "30d3e92e8da419cd3d7c0fb7be00c13f716fa05ce6f7d1d2b9402f957bd723ba",
+      "record_matches": [],
+      "status": "ISSUE",
+      "summary": "GPU execution failed on a Galaxy S26. Jarvis uses CPU, but successful use on a 12 GB Android phone is unconfirmed.",
+      "details": "Galaxy S26 GPU produces no usable output; Pixel 8a initialization fails on CPU/GPU. Jarvis already chooses CPU; successful 12 GB Android CPU execution was not established in reviewed sources.",
+      "source": "https://huggingface.co/litert-community/Nemotron-H-4B-Instruct-128K",
+      "confirm": false
+    },
+    {
+      "id": "North-Micro-Vision-Instruct",
+      "repo": "litert-community/North-Micro-Vision-Instruct",
+      "revision": "dcc265605b6195c333819439acc73b6d4652012a",
+      "artifact": "North-Micro-Vision-Instruct_int4.litertlm",
+      "bytes": 2190562720,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "098c7f7a3d20985136d7cc7311a2477943e5d00a51a6d8d1042cd903d48a9e45",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Publisher reports selected INT4 and alternate WI8 both generate on S26 GPU. Detailed Pixel vision benchmark is WI8, not this INT4 download.",
+      "source": "https://huggingface.co/litert-community/North-Micro-Vision-Instruct",
+      "confirm": false
+    },
+    {
+      "id": "OLMo-2-1B-Instruct",
+      "repo": "litert-community/OLMo-2-1B-Instruct",
+      "revision": "f9b3581cb9384080336422dc8b69edc92eba5e03",
+      "artifact": "OLMo-2-1B-Instruct_q4_block32_ekv4096.litertlm",
+      "bytes": 931241056,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "8d2457b54397731c5f451babb6bebfb9877545b4b070ac76914aab348fd954b0",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Galaxy S26 GPU generation; Pixel 8a Gallery run also reported. No Fold 6 benchmark.",
+      "source": "https://huggingface.co/litert-community/OLMo-2-1B-Instruct",
+      "confirm": false
+    },
+    {
+      "id": "Ovis2.5-2B",
+      "repo": "litert-community/Ovis2.5-2B",
+      "revision": "0e4c75b24c56f2b09ba6a359b09162805d8c7059",
+      "artifact": "Ovis2.5-2B.litertlm",
+      "bytes": 2148712880,
+      "backend": "GPU",
+      "context": "2048",
+      "sha256": "b8c5cb82e2a8b945e8f2b72576745acf22e61393074b345a2575245d21ab8e4b",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Galaxy S26 GPU text generation reported. Do not infer full vision support from the text prompt gate.",
+      "source": "https://huggingface.co/litert-community/Ovis2.5-2B",
+      "confirm": false
+    },
+    {
+      "id": "Phi-4-mini-instruct",
+      "repo": "litert-community/Phi-4-mini-instruct",
+      "revision": "8cd368be75fdb94d5a6f6f5b40f1ab22a6c2543e",
+      "artifact": "Phi-4-mini-instruct_multi-prefill-seq_q8_ekv4096.litertlm",
+      "bytes": 3910090752,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "7764d4deb53800578307be33039476b38a6c370fff71bedb3c0552563e23ab02",
+      "record_matches": [],
+      "status": "EXPERIMENTAL",
+      "summary": "Android operation of this exact download and setup is not yet verified.",
+      "details": "S24 Ultra INT8 GPU table reports 10.39 tok/s, but prose/table context conflict and exact .litertlm/runtime identity is not linked. Strong related Android evidence, weaker exact-artifact evidence.",
+      "source": "https://huggingface.co/litert-community/Phi-4-mini-instruct",
+      "confirm": false
+    },
+    {
+      "id": "Phi-4-mini-reasoning",
+      "repo": "litert-community/Phi-4-mini-reasoning",
+      "revision": "23b4ae1472970a7672696d35c7007a93a33f0d4d",
+      "artifact": "model.litertlm",
+      "bytes": 2783974384,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "ee46dec376e1aee8190c41bce5f29d3b891db3eaa0e92ce5a6a28e24f04067ba",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Selected model.litertlm has Galaxy S26 and Pixel 8a CPU/GPU measurements; text reasoning operation documented.",
+      "source": "https://huggingface.co/litert-community/Phi-4-mini-reasoning",
+      "confirm": false
+    },
+    {
+      "id": "Polaris-4B-Preview",
+      "repo": "litert-community/Polaris-4B-Preview",
+      "revision": "e7526d68fdfe0b5cf779c9d22a3b4f20d376bd13",
+      "artifact": "model.litertlm",
+      "bytes": 2474357680,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "e1edad5042c8354bec1d6187c22cad9e460a38428da517fc7ef22b3aa828eb3b",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Galaxy S26 GPU generation reported. Throughput in linked desktop record is not an Android speed estimate.",
+      "source": "https://huggingface.co/litert-community/Polaris-4B-Preview",
+      "confirm": false
+    },
+    {
+      "id": "SmolLM3-3B",
+      "repo": "litert-community/SmolLM3-3B",
+      "revision": "f14a1ad45627c6f11f9db53aa241870ebe2efebd",
+      "artifact": "SmolLM3-3B_q4_block32_ekv4096.litertlm",
+      "bytes": 2002257840,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "2d989ddf434a25682e580eb45dcf65c2cbd6a57f76278b8f651a8cf195c2273e",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Selected INT4 file has Pixel 8a and Galaxy S26 GPU generation and measurements. Alternate INT8 rows must be kept separate.",
+      "source": "https://huggingface.co/litert-community/SmolLM3-3B",
+      "confirm": false
+    },
+    {
+      "id": "SmolVLM2-2.2B",
+      "repo": "litert-community/SmolVLM2-2.2B",
+      "revision": "4a18e38c5bfde31eb25d015471c122d73bf7bcbe",
+      "artifact": "SmolVLM2-2.2B.litertlm",
+      "bytes": 1511123888,
+      "backend": "GPU",
+      "context": "2048",
+      "sha256": "fab0ba947699ab405ff8fb9ea2de6c9af3cdfb598ea93f57631a268f3d631da2",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Galaxy S26 GPU text generation reported for this filename. Image performance is a separate claim.",
+      "source": "https://huggingface.co/litert-community/SmolVLM2-2.2B",
+      "confirm": false
+    },
+    {
+      "id": "SmolVLM2-500M",
+      "repo": "litert-community/SmolVLM2-500M",
+      "revision": "dad030b6e56756201d670cfb4d042736a2ce3a5c",
+      "artifact": "SmolVLM2-500M.litertlm",
+      "bytes": 360822960,
+      "backend": "GPU",
+      "context": "2048",
+      "sha256": "b808b328d845a600a33c5295f93d9217487317bd334dbc91b2a8d50e26e60ad0",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Galaxy S26 GPU text generation reported. macOS GPU corruption described on the card is a different platform/runtime and should not become an Android failure label.",
+      "source": "https://huggingface.co/litert-community/SmolVLM2-500M",
+      "confirm": false
+    },
+    {
+      "id": "Spark-X2.5-1.7B",
+      "repo": "litert-community/Spark-X2.5-1.7B",
+      "revision": "fc07edeb77f20cf5f717cb8527a1f271287714cc",
+      "artifact": "Spark-X2.5-1.7B_int4.litertlm",
+      "bytes": 1263128496,
+      "backend": "GPU",
+      "context": "1280",
+      "sha256": "72075d8d46c74457c7883d0c3e3a60a5bfe406d324fd1155ffbcb04dd81d24ea",
+      "record_matches": [
+        {
+          "record": "spark-x2.5-1.7b-int4",
+          "rows": [
+            "| galaxy-s26 | cpu | fallback | no | - | 213 | - | 82.78 | 13.6 | 2650.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-07 | measured |",
+            "| galaxy-s26 | gpu | pass | yes | - | 213 | - | 458.65 | 17.77 | 520.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-07 | measured |"
+          ]
+        }
+      ],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Exact checksum has Galaxy S26 GPU result. Jarvis configures 1280 context; export uses 4096, so this is not a complete app-configuration reproduction.",
+      "source": "https://huggingface.co/litert-community/Spark-X2.5-1.7B",
+      "confirm": false
+    },
+    {
+      "id": "Spark-X2.5-4B",
+      "repo": "litert-community/Spark-X2.5-4B",
+      "revision": "453039c2968e01cbbb304fe871e6b4c541bf58d5",
+      "artifact": "Spark-X2.5-4B_int4.litertlm",
+      "bytes": 2482196400,
+      "backend": "GPU",
+      "context": "1280",
+      "sha256": "0b9ab47c1e65214995dc10f9833728941a73c05cfb219e3ddb05b0fe623b16a1",
+      "record_matches": [
+        {
+          "record": "spark-x2.5-4b-int4",
+          "rows": [
+            "| galaxy-s26 | cpu | fallback | no | - | 213 | - | 34.77 | 5.47 | 6310.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-07 | measured |",
+            "| galaxy-s26 | gpu | pass | yes | - | 213 | - | 56.36 | 4.89 | 3980.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-07 | measured |"
+          ]
+        }
+      ],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Exact checksum has Galaxy S26 GPU result around 4.89 tok/s. Runs, but published pace is slow for voice. Jarvis\u2019s 1280 context differs from export\u2019s 4096.",
+      "source": "https://huggingface.co/litert-community/Spark-X2.5-4B",
+      "confirm": false
+    },
+    {
+      "id": "VibeThinker-1.5B",
+      "repo": "litert-community/VibeThinker-1.5B",
+      "revision": "24367f44117d086d513ad41f08fa145df8807fd4",
+      "artifact": "VibeThinker-1.5B.litertlm",
+      "bytes": 1567604736,
+      "backend": "GPU",
+      "context": "1280",
+      "sha256": "2b954abf0df11deb7bea9c4ce779566918dd81f4e578d673e7f618b10799e412",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Galaxy S26 0.16.0 GPU and CPU generation measured, with thermal variation across long reasoning runs.",
+      "source": "https://huggingface.co/litert-community/VibeThinker-1.5B",
+      "confirm": false
+    },
+    {
+      "id": "VibeThinker-3B",
+      "repo": "litert-community/VibeThinker-3B",
+      "revision": "aa00b39df5b7ed9c93898c3b4fa410d14c7690d9",
+      "artifact": "model.litertlm",
+      "bytes": 2057106352,
+      "backend": "GPU",
+      "context": "4096",
+      "sha256": "df27fe62ddcec6ef8220bbd7d6998a65cff550719dbc4eeb7d26a5056f4f8c18",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Galaxy S26 and Pixel 8a GPU generation. Math specialization and long thinking can be poor fit for quick general voice replies.",
+      "source": "https://huggingface.co/litert-community/VibeThinker-3B",
+      "confirm": false
+    },
+    {
+      "id": "Zamba2-1.2B-instruct",
+      "repo": "litert-community/Zamba2-1.2B-instruct",
+      "revision": "ab211f0c7d9532cedeae5e2d42c87db49029ae0a",
+      "artifact": "Zamba2-1.2B-instruct_int8.litertlm",
+      "bytes": 1430400528,
+      "backend": "CPU",
+      "context": "1280",
+      "sha256": "af51316bd21f96c3766e81deba1ccc935ec0b1e7dedcfee2d23acc7686e49b0d",
+      "record_matches": [
+        {
+          "record": "zamba2-1.2b-instruct-int8",
+          "rows": [
+            "| galaxy-s26 | cpu | fallback | no | - | 213 | - | 87.79 | 12.21 | 2510.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-05 | measured |",
+            "| galaxy-s26 | gpu | pass | yes | - | 214 | - | 115.54 | 11.68 | 1940.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-08-24 | measured |"
+          ]
+        }
+      ],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Exact checksum has Galaxy S26 CPU result matching Jarvis. GPU also runs there; architecture alone is not the blocker in larger sibling.",
+      "source": "https://huggingface.co/litert-community/Zamba2-1.2B-instruct",
+      "confirm": false
+    },
+    {
+      "id": "Zamba2-2.7B-instruct",
+      "repo": "litert-community/Zamba2-2.7B-instruct",
+      "revision": "0fc6e8c871250de6c4bd4337e3923f6c6808f18d",
+      "artifact": "Zamba2-2.7B-instruct_int8.litertlm",
+      "bytes": 2803107344,
+      "backend": "CPU",
+      "context": "1280",
+      "sha256": "601e96057ddeb6fc1a7451f193e475419c7b121408d841c08cef391f051835f1",
+      "record_matches": [],
+      "status": "ISSUE",
+      "summary": "Warning: GPU startup reportedly rebooted a Galaxy S26 twice. No data wipe was reported. Jarvis uses CPU, but Android CPU operation is unconfirmed.",
+      "details": "S26 GPU initialization reportedly rebooted the phone twice. Jarvis selects CPU; reviewed positive CPU evidence is iPhone/Raspberry Pi, not a successful named Android CPU run.",
+      "source": "https://huggingface.co/litert-community/Zamba2-2.7B-instruct",
+      "confirm": true
+    },
+    {
+      "id": "codegemma-7b-it-int4-litertlm",
+      "repo": "litert-community/codegemma-7b-it-int4-litertlm",
+      "revision": "aac118626c8170a2dd617cfe9dc1995fed6f0d34",
+      "artifact": "codegemma-7b-it-int4-litertlm.litertlm",
+      "bytes": 4724446544,
+      "backend": "GPU",
+      "context": "1280",
+      "sha256": "895b4ef975512d67d3a9160305f1e9d7525bf87bbfa01ec33225325b35983f5b",
+      "record_matches": [],
+      "status": "EXPERIMENTAL",
+      "summary": "Android operation of this exact download and setup is not yet verified.",
+      "details": "Android integration instructions only; no named-device benchmark. Card lists roughly 3.85 GB and 512 context, unlike catalog 4.72 GB and 1280. Needs artifact/configuration validation.",
+      "source": "https://huggingface.co/litert-community/codegemma-7b-it-int4-litertlm",
+      "confirm": false
+    },
+    {
+      "id": "granite-4.0-h-1b",
+      "repo": "litert-community/granite-4.0-h-1b",
+      "revision": "3feed8ef9a47a493c79b01b7e973a589359ab2a2",
+      "artifact": "granite-4.0-h-1b_int8.litertlm",
+      "bytes": 1683129664,
+      "backend": "CPU",
+      "context": "1280",
+      "sha256": "060bae024d59546dfd2ed9fba856b5a8adcf8b83b16f919c2637a7fcd88840c5",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Pixel 8a CPU generation and measurements match Jarvis backend. Some published quality/device results predate metadata fixes, so exact-current-bundle quality remains unverified.",
+      "source": "https://huggingface.co/litert-community/granite-4.0-h-1b",
+      "confirm": false
+    },
+    {
+      "id": "granite-4.0-h-350m",
+      "repo": "litert-community/granite-4.0-h-350m",
+      "revision": "3b1cb048cbf915abaebf4cd1ba21802ea00d79bb",
+      "artifact": "granite-4.0-h-350m_int8_gpu.litertlm",
+      "bytes": 481218880,
+      "backend": "GPU",
+      "context": "1280",
+      "sha256": "f85136cfd308676e8da5182ca4f29a5d4d63d9bb3d230d9c6e837d5b39a05086",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Selected int8_gpu export runs on S26 and Pixel 8a. Older int8 failures are a different artifact; publisher nevertheless recommends CPU for lower startup/memory cost.",
+      "source": "https://huggingface.co/litert-community/granite-4.0-h-350m",
+      "confirm": false
+    },
+    {
+      "id": "granite-4.1-3b",
+      "repo": "litert-community/granite-4.1-3b",
+      "revision": "01f885d5ee82bdc4b5d43425784bb761cc2213b2",
+      "artifact": "granite-4.1-3b_int4.litertlm",
+      "bytes": 2191445936,
+      "backend": "GPU",
+      "context": "1280",
+      "sha256": "ba60c191fd33b1ac9d1ab245d4a24fe81e1a520a0dd9720a435a9cc4773d80a9",
+      "record_matches": [
+        {
+          "record": "granite-4.1-3b-int4",
+          "rows": [
+            "| galaxy-s26 | gpu | pass | yes | - | 202 | - | 243.48 | 15.28 | 900.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-08-24 | measured |",
+            "| pixel-8a | gpu | pass | yes | - | 17 | - | 20.03 | 7.07 | 990.0 | - | Pixel 8a \u00b7 Tensor G3 \u00b7 litert-lm 0.16.0 | 2026-08-17 | measured |"
+          ]
+        }
+      ],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Exact INT4 checksum has Galaxy S26 and Pixel 8a GPU results. Catalog 1280 context differs from export\u2019s 4096; no Jarvis end-to-end proof.",
+      "source": "https://huggingface.co/litert-community/granite-4.1-3b",
+      "confirm": false
+    },
+    {
+      "id": "granite-4.2-3b",
+      "repo": "litert-community/granite-4.2-3b",
+      "revision": "3b7f1338ee26a06d016a72a7d5c64f3ed022a466",
+      "artifact": "granite-4.2-3b_int4.litertlm",
+      "bytes": 2190708656,
+      "backend": "GPU",
+      "context": "1280",
+      "sha256": "9859901f6050df5c4616e31462643b76d0aa2bd395a8863cb6162495c1ef517d",
+      "record_matches": [],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Publisher reports INT4 on Galaxy S26 GPU/CPU. Matched filename, but linked record checksum does not establish the catalog bytes; metadata/runtime differences need checking.",
+      "source": "https://huggingface.co/litert-community/granite-4.2-3b",
+      "confirm": false
+    },
+    {
+      "id": "sarashina2.2-0.5b-instruct-v0.1",
+      "repo": "litert-community/sarashina2.2-0.5b-instruct-v0.1",
+      "revision": "0ca987c8289fcfc67a771a210d5f427796dd60ff",
+      "artifact": "sarashina2.2-0.5b-instruct-v0.1_int4.litertlm",
+      "bytes": 534488128,
+      "backend": "GPU",
+      "context": "1280",
+      "sha256": "e5e873fdc7d31e5040e218ecf1af71bf9d8a27779715af30436edb3b4cbc3b5f",
+      "record_matches": [
+        {
+          "record": "sarashina2.2-0.5b-instruct-v0.1-int4",
+          "rows": [
+            "| galaxy-s26 | cpu | fallback | no | - | 321 | - | 132.63 | 19.53 | 2470.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-02 | measured |",
+            "| galaxy-s26 | gpu | pass | yes | - | 321 | - | 903.16 | 40.3 | 380.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-02 | measured |"
+          ]
+        }
+      ],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Exact checksum has Galaxy S26 GPU result with Japanese output. Catalog 1280 context differs from export\u2019s 4096.",
+      "source": "https://huggingface.co/litert-community/sarashina2.2-0.5b-instruct-v0.1",
+      "confirm": false
+    },
+    {
+      "id": "sarashina2.2-1b-instruct-v0.1",
+      "repo": "litert-community/sarashina2.2-1b-instruct-v0.1",
+      "revision": "32b71555d88e8be9663e94582a77500a6c5ef354",
+      "artifact": "sarashina2.2-1b-instruct-v0.1_int4.litertlm",
+      "bytes": 903657808,
+      "backend": "GPU",
+      "context": "1280",
+      "sha256": "7313d5f3442f0b412d975ba6fbc4567a5c2c076f6cd49038e55a3f82522f02b7",
+      "record_matches": [
+        {
+          "record": "sarashina2.2-1b-instruct-v0.1-int4",
+          "rows": [
+            "| galaxy-s26 | cpu | fallback | no | - | 321 | - | 83.89 | 13.53 | 3900.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-02 | measured |",
+            "| galaxy-s26 | gpu | pass | yes | - | 321 | - | 592.05 | 27.45 | 580.0 | - | Galaxy S26 (SM-S942Q) \u00b7 Qualcomm SM8850 \u00b7 litert-lm 0.16.0 \u00b7 Android 16 | 2026-09-02 | measured |"
+          ]
+        }
+      ],
+      "status": "TESTED",
+      "summary": "Shown to work on an Android phone. Performance on yours may vary.",
+      "details": "Exact checksum has Galaxy S26 GPU result with Japanese output. Pixel INT8 CPU numbers belong to another artifact; catalog 1280 differs from export\u2019s 4096.",
+      "source": "https://huggingface.co/litert-community/sarashina2.2-1b-instruct-v0.1",
+      "confirm": false
+    }
+  ]
+}

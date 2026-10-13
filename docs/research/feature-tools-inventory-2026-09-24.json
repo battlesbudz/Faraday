@@ -1,0 +1,1340 @@
+{
+  "audit_date": "2026-09-24",
+  "v2_base": "33a4ac3f957bc34eb1e1ab93831bc026b049be84",
+  "original_jarvis_commit": "d8018e4b4ce263a9d03aef41cb864a66e45e331d",
+  "android_mcp_commit": "16f39717ce0969aa81a4ec132ba1cad861ba46cc",
+  "methodology": {
+    "original": "Static scan of exported const declarations typed AgentTool in server/agent/tools/*.ts; manually excluded example_tool inside TOOL_CODE_TEMPLATE. Not a runtime registration count; factories, dynamic MCP discovery and tools elsewhere may add more. Presence is not device verification.",
+    "android_mcp": "All TOOL_NAME string constants in mcp/tools/*Tools.kt, cross-checked with docs/MCP_TOOLS.md; runtime permissions can disable tools.",
+    "runtime_testing": "None. Research-only inventory."
+  },
+  "original_static_declared_tools": [
+    {
+      "name": "android_open_app_by_name",
+      "symbol": "androidOpenAppByNameTool",
+      "path": "server/agent/tools/androidAppRuntime.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/androidAppRuntime.ts"
+    },
+    {
+      "name": "android_youtube_search",
+      "symbol": "androidYoutubeSearchTool",
+      "path": "server/agent/tools/androidAppRuntime.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/androidAppRuntime.ts"
+    },
+    {
+      "name": "android_open_phone_url",
+      "symbol": "androidOpenPhoneUrlTool",
+      "path": "server/agent/tools/androidAppRuntime.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/androidAppRuntime.ts"
+    },
+    {
+      "name": "android_capture_screen",
+      "symbol": "androidCaptureScreenTool",
+      "path": "server/agent/tools/androidAppRuntime.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/androidAppRuntime.ts"
+    },
+    {
+      "name": "android_read_screen_context",
+      "symbol": "androidReadScreenContextTool",
+      "path": "server/agent/tools/androidAppRuntime.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/androidAppRuntime.ts"
+    },
+    {
+      "name": "android_tap_screen",
+      "symbol": "androidTapScreenTool",
+      "path": "server/agent/tools/androidAppRuntime.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/androidAppRuntime.ts"
+    },
+    {
+      "name": "android_type_text",
+      "symbol": "androidTypeTextTool",
+      "path": "server/agent/tools/androidAppRuntime.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/androidAppRuntime.ts"
+    },
+    {
+      "name": "android_swipe_screen",
+      "symbol": "androidSwipeScreenTool",
+      "path": "server/agent/tools/androidAppRuntime.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/androidAppRuntime.ts"
+    },
+    {
+      "name": "android_press_phone_key",
+      "symbol": "androidPressPhoneKeyTool",
+      "path": "server/agent/tools/androidAppRuntime.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/androidAppRuntime.ts"
+    },
+    {
+      "name": "android_wait_for_ui",
+      "symbol": "androidWaitForUiTool",
+      "path": "server/agent/tools/androidAppRuntime.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/androidAppRuntime.ts"
+    },
+    {
+      "name": "android_read_notifications",
+      "symbol": "androidReadNotificationsTool",
+      "path": "server/agent/tools/androidAppRuntime.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/androidAppRuntime.ts"
+    },
+    {
+      "name": "android_open_notification",
+      "symbol": "androidOpenNotificationTool",
+      "path": "server/agent/tools/androidAppRuntime.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/androidAppRuntime.ts"
+    },
+    {
+      "name": "android_notify_user",
+      "symbol": "androidNotifyUserTool",
+      "path": "server/agent/tools/androidAppRuntime.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/androidAppRuntime.ts"
+    },
+    {
+      "name": "android_return_to_jarvis_chat",
+      "symbol": "androidReturnToJarvisChatTool",
+      "path": "server/agent/tools/androidAppRuntime.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/androidAppRuntime.ts"
+    },
+    {
+      "name": "apply_code_change",
+      "symbol": "applyCodeChangeTool",
+      "path": "server/agent/tools/applyCodeChangeTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/applyCodeChangeTool.ts"
+    },
+    {
+      "name": "assign_agent_task",
+      "symbol": "assignAgentTaskTool",
+      "path": "server/agent/tools/assignAgentTask.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/assignAgentTask.ts"
+    },
+    {
+      "name": "browser_navigate",
+      "symbol": "browserNavigateTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_click",
+      "symbol": "browserClickTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_type",
+      "symbol": "browserTypeTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_screenshot",
+      "symbol": "browserScreenshotTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_extract",
+      "symbol": "browserExtractTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_snapshot",
+      "symbol": "browserSnapshotTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_wait_for",
+      "symbol": "browserWaitForTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_select",
+      "symbol": "browserSelectTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_clear_session",
+      "symbol": "browserClearSessionTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_close",
+      "symbol": "browserCloseTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_evaluate",
+      "symbol": "browserEvaluateTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_scroll",
+      "symbol": "browserScrollTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_hover",
+      "symbol": "browserHoverTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_drag",
+      "symbol": "browserDragTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_check",
+      "symbol": "browserCheckTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_uncheck",
+      "symbol": "browserUncheckTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_choose_file",
+      "symbol": "browserChooseFileTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_navigate_back",
+      "symbol": "browserNavigateBackTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_navigate_forward",
+      "symbol": "browserNavigateForwardTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_reload",
+      "symbol": "browserReloadTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_get_cookies",
+      "symbol": "browserGetCookiesTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_set_cookies",
+      "symbol": "browserSetCookiesTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_delete_cookies",
+      "symbol": "browserDeleteCookiesTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_network_requests",
+      "symbol": "browserNetworkRequestsTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_console_messages",
+      "symbol": "browserConsoleMessagesTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_tab_new",
+      "symbol": "browserTabNewTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_tab_list",
+      "symbol": "browserTabListTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_tab_select",
+      "symbol": "browserTabSelectTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_tab_close",
+      "symbol": "browserTabCloseTool",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "browser_tool",
+      "symbol": "browserToolPassthrough",
+      "path": "server/agent/tools/browserTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/browserTools.ts"
+    },
+    {
+      "name": "build_feature",
+      "symbol": "buildFeatureTool",
+      "path": "server/agent/tools/buildFeatureTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/buildFeatureTool.ts"
+    },
+    {
+      "name": "test_tool",
+      "symbol": "testToolTool",
+      "path": "server/agent/tools/buildFeatureTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/buildFeatureTool.ts"
+    },
+    {
+      "name": "fetch_calendar",
+      "symbol": "fetchCalendarTool",
+      "path": "server/agent/tools/calendar.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/calendar.ts"
+    },
+    {
+      "name": "create_calendar_event",
+      "symbol": "createCalendarEventTool",
+      "path": "server/agent/tools/calendarCreate.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/calendarCreate.ts"
+    },
+    {
+      "name": "run_python",
+      "symbol": "codeExecutionTool",
+      "path": "server/agent/tools/codeExecution.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/codeExecution.ts"
+    },
+    {
+      "name": "exec_in_workspace",
+      "symbol": "execInWorkspaceTool",
+      "path": "server/agent/tools/codeExecution.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/codeExecution.ts"
+    },
+    {
+      "name": "connect_channel",
+      "symbol": "connectChannelTool",
+      "path": "server/agent/tools/connectChannel.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/connectChannel.ts"
+    },
+    {
+      "name": "connected_accounts_list",
+      "symbol": "connectedAccountsListTool",
+      "path": "server/agent/tools/connectedAccounts.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/connectedAccounts.ts"
+    },
+    {
+      "name": "connected_accounts_connect_link",
+      "symbol": "connectedAccountsConnectLinkTool",
+      "path": "server/agent/tools/connectedAccounts.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/connectedAccounts.ts"
+    },
+    {
+      "name": "connected_accounts_search_tools",
+      "symbol": "connectedAccountsSearchToolsTool",
+      "path": "server/agent/tools/connectedAccounts.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/connectedAccounts.ts"
+    },
+    {
+      "name": "connected_accounts_get_tool_schema",
+      "symbol": "connectedAccountsGetToolSchemaTool",
+      "path": "server/agent/tools/connectedAccounts.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/connectedAccounts.ts"
+    },
+    {
+      "name": "connected_accounts_execute",
+      "symbol": "connectedAccountsExecuteTool",
+      "path": "server/agent/tools/connectedAccounts.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/connectedAccounts.ts"
+    },
+    {
+      "name": "check_connections",
+      "symbol": "checkConnectionsTool",
+      "path": "server/agent/tools/connections.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/connections.ts"
+    },
+    {
+      "name": "generate_reconnect_link",
+      "symbol": "generateReconnectLinkTool",
+      "path": "server/agent/tools/connections.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/connections.ts"
+    },
+    {
+      "name": "create_presentation",
+      "symbol": "createPresentationTool",
+      "path": "server/agent/tools/createPresentation.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/createPresentation.ts"
+    },
+    {
+      "name": "cron_create",
+      "symbol": "cronCreateTool",
+      "path": "server/agent/tools/cronTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/cronTools.ts"
+    },
+    {
+      "name": "cron_list",
+      "symbol": "cronListTool",
+      "path": "server/agent/tools/cronTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/cronTools.ts"
+    },
+    {
+      "name": "cron_delete",
+      "symbol": "cronDeleteTool",
+      "path": "server/agent/tools/cronTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/cronTools.ts"
+    },
+    {
+      "name": "cron_update",
+      "symbol": "cronUpdateTool",
+      "path": "server/agent/tools/cronTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/cronTools.ts"
+    },
+    {
+      "name": "daemon_action",
+      "symbol": "daemonActionTool",
+      "path": "server/agent/tools/daemon.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/daemon.ts"
+    },
+    {
+      "name": "android_screen_understand",
+      "symbol": "androidScreenUnderstandTool",
+      "path": "server/agent/tools/daemonShellTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/daemonShellTool.ts"
+    },
+    {
+      "name": "android_search_in_app",
+      "symbol": "androidSearchInAppTool",
+      "path": "server/agent/tools/daemonShellTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/daemonShellTool.ts"
+    },
+    {
+      "name": "android_type_in_field",
+      "symbol": "androidTypeInFieldTool",
+      "path": "server/agent/tools/daemonShellTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/daemonShellTool.ts"
+    },
+    {
+      "name": "android_swipe_element",
+      "symbol": "androidSwipeElementTool",
+      "path": "server/agent/tools/daemonShellTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/daemonShellTool.ts"
+    },
+    {
+      "name": "android_pinch_element",
+      "symbol": "androidPinchElementTool",
+      "path": "server/agent/tools/daemonShellTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/daemonShellTool.ts"
+    },
+    {
+      "name": "android_scroll_to_top",
+      "symbol": "androidScrollToTopTool",
+      "path": "server/agent/tools/daemonShellTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/daemonShellTool.ts"
+    },
+    {
+      "name": "android_tap_element",
+      "symbol": "androidTapElementTool",
+      "path": "server/agent/tools/daemonShellTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/daemonShellTool.ts"
+    },
+    {
+      "name": "android_long_press_element",
+      "symbol": "androidLongPressElementTool",
+      "path": "server/agent/tools/daemonShellTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/daemonShellTool.ts"
+    },
+    {
+      "name": "android_select_option",
+      "symbol": "androidSelectOptionTool",
+      "path": "server/agent/tools/daemonShellTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/daemonShellTool.ts"
+    },
+    {
+      "name": "android_drag_element",
+      "symbol": "androidDragElementTool",
+      "path": "server/agent/tools/daemonShellTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/daemonShellTool.ts"
+    },
+    {
+      "name": "android_drag_coordinates",
+      "symbol": "androidDragCoordinatesTool",
+      "path": "server/agent/tools/daemonShellTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/daemonShellTool.ts"
+    },
+    {
+      "name": "android_pinch_coordinates",
+      "symbol": "androidPinchCoordinatesTool",
+      "path": "server/agent/tools/daemonShellTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/daemonShellTool.ts"
+    },
+    {
+      "name": "android_train_button",
+      "symbol": "androidTrainButtonTool",
+      "path": "server/agent/tools/daemonShellTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/daemonShellTool.ts"
+    },
+    {
+      "name": "android_find_trained_button",
+      "symbol": "androidFindTrainedButtonTool",
+      "path": "server/agent/tools/daemonShellTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/daemonShellTool.ts"
+    },
+    {
+      "name": "android_type_into_element",
+      "symbol": "androidTypeIntoElementTool",
+      "path": "server/agent/tools/daemonShellTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/daemonShellTool.ts"
+    },
+    {
+      "name": "android_fill_form",
+      "symbol": "androidFillFormTool",
+      "path": "server/agent/tools/daemonShellTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/daemonShellTool.ts"
+    },
+    {
+      "name": "daemon_status",
+      "symbol": "daemonStatusTool",
+      "path": "server/agent/tools/daemonStatusTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/daemonStatusTool.ts"
+    },
+    {
+      "name": "delegate_to_codex",
+      "symbol": "delegateToCodexTool",
+      "path": "server/agent/tools/delegateToCodex.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/delegateToCodex.ts"
+    },
+    {
+      "name": "deploy_app",
+      "symbol": "deployAppTool",
+      "path": "server/agent/tools/deployApp.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/deployApp.ts"
+    },
+    {
+      "name": "daemon_shell",
+      "symbol": "daemonShellTool",
+      "path": "server/agent/tools/desktopDaemonShellTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/desktopDaemonShellTool.ts"
+    },
+    {
+      "name": "discord_create_channel",
+      "symbol": "discordCreateChannelTool",
+      "path": "server/agent/tools/discordCreateChannel.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/discordCreateChannel.ts"
+    },
+    {
+      "name": "discord_delete_channel",
+      "symbol": "discordDeleteChannelTool",
+      "path": "server/agent/tools/discordDeleteChannel.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/discordDeleteChannel.ts"
+    },
+    {
+      "name": "discord_list_channels",
+      "symbol": "discordListChannelsTool",
+      "path": "server/agent/tools/discordListChannels.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/discordListChannels.ts"
+    },
+    {
+      "name": "discord_pin_message",
+      "symbol": "discordPinMessageTool",
+      "path": "server/agent/tools/discordPinMessage.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/discordPinMessage.ts"
+    },
+    {
+      "name": "discord_post",
+      "symbol": "discordPostTool",
+      "path": "server/agent/tools/discordPost.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/discordPost.ts"
+    },
+    {
+      "name": "discord_request_confirm",
+      "symbol": "discordRequestConfirmTool",
+      "path": "server/agent/tools/discordRequestConfirm.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/discordRequestConfirm.ts"
+    },
+    {
+      "name": "discord_send_to_channel",
+      "symbol": "discordSendToChannelTool",
+      "path": "server/agent/tools/discordSendToChannel.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/discordSendToChannel.ts"
+    },
+    {
+      "name": "create_document",
+      "symbol": "createDocumentTool",
+      "path": "server/agent/tools/documents.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/documents.ts"
+    },
+    {
+      "name": "list_documents",
+      "symbol": "listDocumentsTool",
+      "path": "server/agent/tools/documents.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/documents.ts"
+    },
+    {
+      "name": "read_document",
+      "symbol": "readDocumentTool",
+      "path": "server/agent/tools/documents.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/documents.ts"
+    },
+    {
+      "name": "export_document_pdf",
+      "symbol": "exportDocumentPdfTool",
+      "path": "server/agent/tools/exportPdf.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/exportPdf.ts"
+    },
+    {
+      "name": "fetch_emails",
+      "symbol": "fetchEmailsTool",
+      "path": "server/agent/tools/fetchEmails.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/fetchEmails.ts"
+    },
+    {
+      "name": "get_capability_gaps",
+      "symbol": "getCapabilityGapsTool",
+      "path": "server/agent/tools/getCapabilityGaps.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/getCapabilityGaps.ts"
+    },
+    {
+      "name": "list_github_prs",
+      "symbol": "listGithubPrsTool",
+      "path": "server/agent/tools/githubPrTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/githubPrTools.ts"
+    },
+    {
+      "name": "get_github_pr",
+      "symbol": "getGithubPrTool",
+      "path": "server/agent/tools/githubPrTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/githubPrTools.ts"
+    },
+    {
+      "name": "merge_github_pr",
+      "symbol": "mergeGithubPrTool",
+      "path": "server/agent/tools/githubPrTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/githubPrTools.ts"
+    },
+    {
+      "name": "gmail_action",
+      "symbol": "gmailActionTool",
+      "path": "server/agent/tools/gmailActions.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/gmailActions.ts"
+    },
+    {
+      "name": "create_gmail_draft",
+      "symbol": "gmailDraftTool",
+      "path": "server/agent/tools/gmailActions.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/gmailActions.ts"
+    },
+    {
+      "name": "drive_create_file",
+      "symbol": "driveCreateFileTool",
+      "path": "server/agent/tools/googleDriveTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/googleDriveTools.ts"
+    },
+    {
+      "name": "drive_list_files",
+      "symbol": "driveListFilesTool",
+      "path": "server/agent/tools/googleDriveTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/googleDriveTools.ts"
+    },
+    {
+      "name": "drive_read_file",
+      "symbol": "driveReadFileTool",
+      "path": "server/agent/tools/googleDriveTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/googleDriveTools.ts"
+    },
+    {
+      "name": "image_generate",
+      "symbol": "imageGenerateTool",
+      "path": "server/agent/tools/imageGenerate.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/imageGenerate.ts"
+    },
+    {
+      "name": "list_custom_agents",
+      "symbol": "listCustomAgentsTool",
+      "path": "server/agent/tools/listCustomAgents.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/listCustomAgents.ts"
+    },
+    {
+      "name": "manage_tasks",
+      "symbol": "manageTasksTool",
+      "path": "server/agent/tools/manageTasks.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/manageTasks.ts"
+    },
+    {
+      "name": "memory_search",
+      "symbol": "memorySearchTool",
+      "path": "server/agent/tools/memorySearch.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/memorySearch.ts"
+    },
+    {
+      "name": "memory_save",
+      "symbol": "memorySaveTool",
+      "path": "server/agent/tools/memorySearch.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/memorySearch.ts"
+    },
+    {
+      "name": "memory_get",
+      "symbol": "memoryGetTool",
+      "path": "server/agent/tools/memorySearch.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/memorySearch.ts"
+    },
+    {
+      "name": "project_shell",
+      "symbol": "projectShellTool",
+      "path": "server/agent/tools/projectShellTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/projectShellTool.ts"
+    },
+    {
+      "name": "project_write_file",
+      "symbol": "projectWriteFileTool",
+      "path": "server/agent/tools/projectShellTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/projectShellTool.ts"
+    },
+    {
+      "name": "queue_background_job",
+      "symbol": "queueBackgroundJobTool",
+      "path": "server/agent/tools/queueBackgroundJob.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/queueBackgroundJob.ts"
+    },
+    {
+      "name": "register_approval",
+      "symbol": "registerApprovalTool",
+      "path": "server/agent/tools/registerApproval.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/registerApproval.ts"
+    },
+    {
+      "name": "review_agent_task",
+      "symbol": "reviewAgentTaskTool",
+      "path": "server/agent/tools/reviewAgentTask.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/reviewAgentTask.ts"
+    },
+    {
+      "name": "run_capability_gap_analysis",
+      "symbol": "runGapAnalysisTool",
+      "path": "server/agent/tools/runGapAnalysisTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/runGapAnalysisTool.ts"
+    },
+    {
+      "name": "run_shell",
+      "symbol": "runShellTool",
+      "path": "server/agent/tools/runShellTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/runShellTool.ts"
+    },
+    {
+      "name": "run_tournament",
+      "symbol": "runTournamentTool",
+      "path": "server/agent/tools/runTournamentTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/runTournamentTool.ts"
+    },
+    {
+      "name": "schedule_channel_report",
+      "symbol": "scheduleChannelReportTool",
+      "path": "server/agent/tools/scheduleChannelReport.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/scheduleChannelReport.ts"
+    },
+    {
+      "name": "list_channel_schedules",
+      "symbol": "listChannelSchedulesTool",
+      "path": "server/agent/tools/scheduleChannelReport.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/scheduleChannelReport.ts"
+    },
+    {
+      "name": "delete_channel_schedule",
+      "symbol": "deleteChannelScheduleTool",
+      "path": "server/agent/tools/scheduleChannelReport.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/scheduleChannelReport.ts"
+    },
+    {
+      "name": "schedule_jarvis_task",
+      "symbol": "scheduleJarvisTaskTool",
+      "path": "server/agent/tools/scheduleJarvisTask.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/scheduleJarvisTask.ts"
+    },
+    {
+      "name": "jarvis_self_diagnose",
+      "symbol": "selfDiagnoseTool",
+      "path": "server/agent/tools/selfDiagnoseTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/selfDiagnoseTool.ts"
+    },
+    {
+      "name": "list_source_files",
+      "symbol": "listSourceFilesTool",
+      "path": "server/agent/tools/selfEditTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/selfEditTools.ts"
+    },
+    {
+      "name": "read_source_file",
+      "symbol": "readSourceFileTool",
+      "path": "server/agent/tools/selfEditTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/selfEditTools.ts"
+    },
+    {
+      "name": "read_recent_errors",
+      "symbol": "readRecentErrorsTool",
+      "path": "server/agent/tools/selfEditTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/selfEditTools.ts"
+    },
+    {
+      "name": "propose_code_change",
+      "symbol": "proposeCodeChangeTool",
+      "path": "server/agent/tools/selfEditTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/selfEditTools.ts"
+    },
+    {
+      "name": "self_heal",
+      "symbol": "selfHealTool",
+      "path": "server/agent/tools/selfHealTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/selfHealTool.ts"
+    },
+    {
+      "name": "send_email",
+      "symbol": "sendEmailTool",
+      "path": "server/agent/tools/sendEmail.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/sendEmail.ts"
+    },
+    {
+      "name": "sessions_list",
+      "symbol": "sessionsListTool",
+      "path": "server/agent/tools/sessionTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/sessionTools.ts"
+    },
+    {
+      "name": "sessions_history",
+      "symbol": "sessionsHistoryTool",
+      "path": "server/agent/tools/sessionTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/sessionTools.ts"
+    },
+    {
+      "name": "sessions_send",
+      "symbol": "sessionsSendTool",
+      "path": "server/agent/tools/sessionTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/sessionTools.ts"
+    },
+    {
+      "name": "sessions_cancel",
+      "symbol": "sessionsCancelTool",
+      "path": "server/agent/tools/sessionTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/sessionTools.ts"
+    },
+    {
+      "name": "setup_content_pipeline",
+      "symbol": "setupContentPipelineTool",
+      "path": "server/agent/tools/setupContentPipeline.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/setupContentPipeline.ts"
+    },
+    {
+      "name": "setup_discord_workspace",
+      "symbol": "setupDiscordWorkspaceTool",
+      "path": "server/agent/tools/setupDiscordWorkspace.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/setupDiscordWorkspace.ts"
+    },
+    {
+      "name": "setup_named_agent",
+      "symbol": "setupNamedAgentTool",
+      "path": "server/agent/tools/setupNamedAgent.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/setupNamedAgent.ts"
+    },
+    {
+      "name": "soul_edit_propose",
+      "symbol": "soulEditProposeTool",
+      "path": "server/agent/tools/soulEdit.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/soulEdit.ts"
+    },
+    {
+      "name": "spawn_subagent",
+      "symbol": "spawnSubagentTool",
+      "path": "server/agent/tools/spawnSubagent.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/spawnSubagent.ts"
+    },
+    {
+      "name": "start_project",
+      "symbol": "startProjectTool",
+      "path": "server/agent/tools/startProject.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/startProject.ts"
+    },
+    {
+      "name": "speak",
+      "symbol": "speakTool",
+      "path": "server/agent/tools/tts.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/tts.ts"
+    },
+    {
+      "name": "generate_video",
+      "symbol": "videoGenerateTool",
+      "path": "server/agent/tools/videoGenerate.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/videoGenerate.ts"
+    },
+    {
+      "name": "transcribe_video_url",
+      "symbol": "videoTranscriptTool",
+      "path": "server/agent/tools/videoTranscript.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/videoTranscript.ts"
+    },
+    {
+      "name": "weather_lookup",
+      "symbol": "weatherLookupTool",
+      "path": "server/agent/tools/weatherLookup.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/weatherLookup.ts"
+    },
+    {
+      "name": "web_fetch",
+      "symbol": "webFetchTool",
+      "path": "server/agent/tools/webFetch.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/webFetch.ts"
+    },
+    {
+      "name": "search_web",
+      "symbol": "webSearchTool",
+      "path": "server/agent/tools/webSearch.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/webSearch.ts"
+    },
+    {
+      "name": "research_topic",
+      "symbol": "researchTopicTool",
+      "path": "server/agent/tools/webSearch.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/webSearch.ts"
+    },
+    {
+      "name": "workflow_create",
+      "symbol": "workflowCreateTool",
+      "path": "server/agent/tools/workflowTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/workflowTools.ts"
+    },
+    {
+      "name": "workflow_run",
+      "symbol": "workflowRunTool",
+      "path": "server/agent/tools/workflowTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/workflowTools.ts"
+    },
+    {
+      "name": "workflow_status",
+      "symbol": "workflowStatusTool",
+      "path": "server/agent/tools/workflowTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/workflowTools.ts"
+    },
+    {
+      "name": "workflow_pause",
+      "symbol": "workflowPauseTool",
+      "path": "server/agent/tools/workflowTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/workflowTools.ts"
+    },
+    {
+      "name": "workflow_resume",
+      "symbol": "workflowResumeTool",
+      "path": "server/agent/tools/workflowTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/workflowTools.ts"
+    },
+    {
+      "name": "workflow_list",
+      "symbol": "workflowListTool",
+      "path": "server/agent/tools/workflowTools.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/workflowTools.ts"
+    },
+    {
+      "name": "workspace_update",
+      "symbol": "workspaceUpdateTool",
+      "path": "server/agent/tools/workspaceUpdateTool.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/workspaceUpdateTool.ts"
+    },
+    {
+      "name": "x_search",
+      "symbol": "xSearchTool",
+      "path": "server/agent/tools/xSearch.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/xSearch.ts"
+    },
+    {
+      "name": "search_youtube",
+      "symbol": "youtubeSearchTool",
+      "path": "server/agent/tools/youtubeSearch.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/youtubeSearch.ts"
+    },
+    {
+      "name": "get_youtube_transcript",
+      "symbol": "youtubeTranscriptTool",
+      "path": "server/agent/tools/youtubeTranscript.ts",
+      "source": "https://github.com/battlesbudz/jarvis-os/blob/d8018e4b4ce263a9d03aef41cb864a66e45e331d/server/agent/tools/youtubeTranscript.ts"
+    }
+  ],
+  "original_phone_runtime_surface": [
+    "android_open_app_by_name",
+    "android_youtube_search",
+    "android_open_phone_url",
+    "android_capture_screen",
+    "android_read_screen_context",
+    "android_tap_screen",
+    "android_type_text",
+    "android_swipe_screen",
+    "android_press_phone_key",
+    "android_wait_for_ui",
+    "android_read_notifications",
+    "android_open_notification",
+    "android_search_in_app",
+    "android_notify_user",
+    "android_return_to_jarvis_chat"
+  ],
+  "original_builtin_instruction_skills": [
+    "Morning Ritual",
+    "Finance Awareness",
+    "Stoic Guide",
+    "Deadline Hawk",
+    "Deep Work Mode",
+    "Weekly Review",
+    "Gratitude Practice",
+    "Fitness Check-in",
+    "Communication Filter",
+    "Energy Management"
+  ],
+  "android_mcp_tools": [
+    {
+      "name": "android_open_app",
+      "group_file": "AppManagementTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/AppManagementTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/AppManagementTools.kt"
+    },
+    {
+      "name": "android_list_apps",
+      "group_file": "AppManagementTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/AppManagementTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/AppManagementTools.kt"
+    },
+    {
+      "name": "android_close_app",
+      "group_file": "AppManagementTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/AppManagementTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/AppManagementTools.kt"
+    },
+    {
+      "name": "android_list_cameras",
+      "group_file": "CameraTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/CameraTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/CameraTools.kt"
+    },
+    {
+      "name": "android_list_camera_photo_resolutions",
+      "group_file": "CameraTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/CameraTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/CameraTools.kt"
+    },
+    {
+      "name": "android_list_camera_video_resolutions",
+      "group_file": "CameraTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/CameraTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/CameraTools.kt"
+    },
+    {
+      "name": "android_take_camera_photo",
+      "group_file": "CameraTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/CameraTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/CameraTools.kt"
+    },
+    {
+      "name": "android_save_camera_photo",
+      "group_file": "CameraTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/CameraTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/CameraTools.kt"
+    },
+    {
+      "name": "android_save_camera_video",
+      "group_file": "CameraTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/CameraTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/CameraTools.kt"
+    },
+    {
+      "name": "android_list_storage_locations",
+      "group_file": "FileTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/FileTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/FileTools.kt"
+    },
+    {
+      "name": "android_list_files",
+      "group_file": "FileTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/FileTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/FileTools.kt"
+    },
+    {
+      "name": "android_read_file",
+      "group_file": "FileTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/FileTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/FileTools.kt"
+    },
+    {
+      "name": "android_write_file",
+      "group_file": "FileTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/FileTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/FileTools.kt"
+    },
+    {
+      "name": "android_append_file",
+      "group_file": "FileTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/FileTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/FileTools.kt"
+    },
+    {
+      "name": "android_file_replace",
+      "group_file": "FileTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/FileTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/FileTools.kt"
+    },
+    {
+      "name": "android_download_from_url",
+      "group_file": "FileTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/FileTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/FileTools.kt"
+    },
+    {
+      "name": "android_delete_file",
+      "group_file": "FileTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/FileTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/FileTools.kt"
+    },
+    {
+      "name": "android_pinch",
+      "group_file": "GestureTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/GestureTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/GestureTools.kt"
+    },
+    {
+      "name": "android_custom_gesture",
+      "group_file": "GestureTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/GestureTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/GestureTools.kt"
+    },
+    {
+      "name": "android_send_intent",
+      "group_file": "IntentTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/IntentTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/IntentTools.kt"
+    },
+    {
+      "name": "android_open_uri",
+      "group_file": "IntentTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/IntentTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/IntentTools.kt"
+    },
+    {
+      "name": "android_get_location",
+      "group_file": "LocationTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/LocationTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/LocationTools.kt"
+    },
+    {
+      "name": "android_find_nodes",
+      "group_file": "NodeActionTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NodeActionTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NodeActionTools.kt"
+    },
+    {
+      "name": "android_click_node",
+      "group_file": "NodeActionTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NodeActionTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NodeActionTools.kt"
+    },
+    {
+      "name": "android_long_click_node",
+      "group_file": "NodeActionTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NodeActionTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NodeActionTools.kt"
+    },
+    {
+      "name": "android_tap_node",
+      "group_file": "NodeActionTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NodeActionTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NodeActionTools.kt"
+    },
+    {
+      "name": "android_scroll_to_node",
+      "group_file": "NodeActionTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NodeActionTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NodeActionTools.kt"
+    },
+    {
+      "name": "android_notification_list",
+      "group_file": "NotificationTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NotificationTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NotificationTools.kt"
+    },
+    {
+      "name": "android_notification_open",
+      "group_file": "NotificationTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NotificationTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NotificationTools.kt"
+    },
+    {
+      "name": "android_notification_dismiss",
+      "group_file": "NotificationTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NotificationTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NotificationTools.kt"
+    },
+    {
+      "name": "android_notification_snooze",
+      "group_file": "NotificationTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NotificationTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NotificationTools.kt"
+    },
+    {
+      "name": "android_notification_action",
+      "group_file": "NotificationTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NotificationTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NotificationTools.kt"
+    },
+    {
+      "name": "android_notification_reply",
+      "group_file": "NotificationTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NotificationTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/NotificationTools.kt"
+    },
+    {
+      "name": "android_get_screen_state",
+      "group_file": "ScreenIntrospectionTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/ScreenIntrospectionTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/ScreenIntrospectionTools.kt"
+    },
+    {
+      "name": "android_get_shared_content",
+      "group_file": "SharingTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/SharingTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/SharingTools.kt"
+    },
+    {
+      "name": "android_share_file_via_web",
+      "group_file": "SharingTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/SharingTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/SharingTools.kt"
+    },
+    {
+      "name": "android_press_back",
+      "group_file": "SystemActionTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/SystemActionTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/SystemActionTools.kt"
+    },
+    {
+      "name": "android_press_home",
+      "group_file": "SystemActionTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/SystemActionTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/SystemActionTools.kt"
+    },
+    {
+      "name": "android_press_recents",
+      "group_file": "SystemActionTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/SystemActionTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/SystemActionTools.kt"
+    },
+    {
+      "name": "android_open_notifications",
+      "group_file": "SystemActionTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/SystemActionTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/SystemActionTools.kt"
+    },
+    {
+      "name": "android_open_quick_settings",
+      "group_file": "SystemActionTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/SystemActionTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/SystemActionTools.kt"
+    },
+    {
+      "name": "android_dismiss_keyboard",
+      "group_file": "SystemActionTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/SystemActionTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/SystemActionTools.kt"
+    },
+    {
+      "name": "android_type_append_text",
+      "group_file": "TextInputTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/TextInputTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/TextInputTools.kt"
+    },
+    {
+      "name": "android_type_insert_text",
+      "group_file": "TextInputTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/TextInputTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/TextInputTools.kt"
+    },
+    {
+      "name": "android_type_replace_text",
+      "group_file": "TextInputTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/TextInputTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/TextInputTools.kt"
+    },
+    {
+      "name": "android_type_clear_text",
+      "group_file": "TextInputTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/TextInputTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/TextInputTools.kt"
+    },
+    {
+      "name": "android_press_key",
+      "group_file": "TextInputTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/TextInputTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/TextInputTools.kt"
+    },
+    {
+      "name": "android_tap",
+      "group_file": "TouchActionTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/TouchActionTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/TouchActionTools.kt"
+    },
+    {
+      "name": "android_long_press",
+      "group_file": "TouchActionTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/TouchActionTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/TouchActionTools.kt"
+    },
+    {
+      "name": "android_double_tap",
+      "group_file": "TouchActionTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/TouchActionTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/TouchActionTools.kt"
+    },
+    {
+      "name": "android_swipe",
+      "group_file": "TouchActionTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/TouchActionTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/TouchActionTools.kt"
+    },
+    {
+      "name": "android_scroll",
+      "group_file": "TouchActionTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/TouchActionTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/TouchActionTools.kt"
+    },
+    {
+      "name": "android_get_clipboard",
+      "group_file": "UtilityTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/UtilityTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/UtilityTools.kt"
+    },
+    {
+      "name": "android_set_clipboard",
+      "group_file": "UtilityTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/UtilityTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/UtilityTools.kt"
+    },
+    {
+      "name": "android_wait_for_node",
+      "group_file": "UtilityTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/UtilityTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/UtilityTools.kt"
+    },
+    {
+      "name": "android_wait_for_idle",
+      "group_file": "UtilityTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/UtilityTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/UtilityTools.kt"
+    },
+    {
+      "name": "android_get_node_details",
+      "group_file": "UtilityTools.kt",
+      "path": "app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/UtilityTools.kt",
+      "source": "https://github.com/danielealbano/android-remote-control-mcp/blob/16f39717ce0969aa81a4ec132ba1cad861ba46cc/app/src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools/UtilityTools.kt"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "status": "authorized_task_owned_cleanup_complete",
+  "independent_review_sha256": "0ce4c9cf7ffb56e2f60abdeed3db74ceceaeef70e724afdab013315610b9eb5f",
+  "raw_receipt_sha256": "5806234b80caa3328e9a84a49258ded742a881a1d85fbe55c9cc3b4eed199cdf",
+  "only_task_owned_directories": true,
+  "preserved_candidate_and_shared_caches": true,
+  "removed": [
+    {
+      "directory_name": "smartturn-host-inputs-20261009-2019",
+      "file_entries_before": 2,
+      "regular_file_bytes_before_excluding_symlink_aliases": 17508074,
+      "absence_verified": true
+    },
+    {
+      "directory_name": "smartturn-host-run-20261009-2019",
+      "file_entries_before": 66,
+      "regular_file_bytes_before_excluding_symlink_aliases": 31398981,
+      "absence_verified": true
+    }
+  ],
+  "attempts": 1,
+  "source_commit": "165ffbb46af313d51e3947a2e70cab3eaef3a543",
+  "source_tree": "bd90286517b045508d2b2b778eb89322fac5920d",
+  "source_clean_after_cleanup": true,
+  "recorded_at_utc": "2026-10-09T20:25:26.062649+00:00"
+}

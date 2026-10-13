@@ -24,7 +24,7 @@ class AssistantStreamFilter(
         pending.append(chunk)
         val candidate = pending.toString()
         val trimmed = candidate.trimStart()
-        val isControl = Regex("""(?i)(tool_call|function_call|call:MobileActions:)""")
+        val isControl = Regex("""(?i)(tool_call|function_call)""")
             .containsMatchIn(trimmed)
         if (isControl) {
             suppressControl = true

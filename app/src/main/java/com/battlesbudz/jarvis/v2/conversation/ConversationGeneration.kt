@@ -1,0 +1,183 @@
+package com.battlesbudz.jarvis.v2.conversation
+
+import android.net.Uri
+import com.battlesbudz.jarvis.v2.ChatEntry
+import com.battlesbudz.jarvis.v2.actions.ActionRequest
+import com.battlesbudz.jarvis.v2.actions.ActionTurnPlan
+import com.battlesbudz.jarvis.v2.actions.ExecutionResult
+import com.battlesbudz.jarvis.v2.ai.ConversationPromptBuilder
+import com.battlesbudz.jarvis.v2.ai.GenerationResult
+import com.battlesbudz.jarvis.v2.ai.ToolCall
+import com.battlesbudz.jarvis.v2.ai.TurnKind
+import com.battlesbudz.jarvis.v2.chat.AnswerQualityPolicy
+import com.battlesbudz.jarvis.v2.chat.AssistantStreamFilter
+import com.battlesbudz.jarvis.v2.chat.AssistantText
+import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkPurpose
+import com.battlesbudz.jarvis.v2.voice.FinalVoiceToolGuard
+import com.battlesbudz.jarvis.v2.voice.VoiceRepetitionGuard
+import com.battlesbudz.jarvis.v2.voice.comparison.LiveComparison
+import java.io.InputStream
+import org.json.JSONObject
+
+/** Owns draft streaming, native input selection and strictly journaled compatibility tool calls. */
+internal class ConversationGeneration(
+    private val modelSession: ConversationModelSession,
+    private val references: ConversationReferences,
+    private val promptBuilder: ConversationPromptBuilder,
+    private val openAttachment: (Uri) -> InputStream?,
+    private val diagnostics: ConversationDiagnostics,
+    /**
+     * M1d: model-proposed screen mutations never auto-dispatch (D23); the
+     * runtime parks them for the user's explicit approval instead.
+     */
+    private val onNeedsApproval: (suspend (ActionRequest) -> ExecutionResult)? = null
+) {
+    suspend fun generate(invocation: ConversationInvocation, contextLimit: Int,
+                         routed: RoutedConversation, prepared: PreparedConversation,
+                         promptHistory: List<ChatEntry>, turnPrompt: ConversationPrompt,
+                         engine: ConversationBackend, reply: ConversationReply,
+                         phoneActions: ConversationActions,
+                         telemetry: ConversationInferenceTelemetry): ConversationDraft {
+        telemetry.attach(engine, prepared.history, prepared.captureReceipt)
+        val allowTools = invocation.comparison == null && modelSession.selectedModel().supportsTools &&
+            routed.actionPlan is ActionTurnPlan.Ready
+        if (allowTools) invocation.nativeSpeculation?.beforeNativeMutation()
+        if (engine.setToolsEnabled(allowTools)) modelSession.clearContextAccounting()
+        diagnostics.record("Generation tool policy allowed=$allowTools source=current_action_intent")
+        val groundedVoice = invocation.voiceAudio != null && !prepared.referenceContext.isNullOrBlank()
+        val guard = repetitionGuard(invocation, routed, prepared, reply, groundedVoice)
+        if (invocation.voiceAudio != null) diagnostics.record("Voice sentence streaming: " +
+            "suppliedReference=$groundedVoice actionGuard=$allowTools")
+        val stream = AssistantStreamFilter { safe ->
+            if ((routed.plan.kind == TurnKind.NORMAL_CHAT || groundedVoice) && routed.actionPlan !is ActionTurnPlan.Ready) {
+                if (guard != null) guard.accept(safe) else reply.postToken(safe)
+            }
+        }
+        val submission = turnPrompt.assemble(invocation.prompt, null, promptHistory, !modelSession.hasContext,
+            routed.plan.activeSubject, routed.plan.resolvedQuestion, prepared.referenceContext, contextLimit)
+        validatePrompt(invocation, routed, prepared, promptHistory, turnPrompt, submission, contextLimit)
+        val attachments = readConversationAttachments(invocation.imageUri, invocation.audioUri, reply.benchmark, openAttachment)
+        val directAudio = invocation.directVoiceAudio || invocation.comparison?.request?.path == LiveComparison.Path.GEMMA_DIRECT
+        check(invocation.sealedVoiceAudio == null || invocation.voiceAudioIsComplete) { "Incomplete native audio cannot be submitted" }
+        val input = ConversationInput(invocation.voiceAudio, directAudio, prepared.textInput, attachments.image, attachments.audio, invocation.sealedVoiceAudio, invocation.nativeSpeculation)
+        if (invocation.sealedVoiceAudio != null) {
+            reply.benchmark.configuration("native_audio_input_path", "incremental_encoder_sealed_conversation_v1")
+            reply.benchmark.metric("native_audio_pcm_samples", invocation.sealedVoiceAudio.pcmSampleCount)
+            reply.benchmark.metric("native_audio_token_rows", invocation.sealedVoiceAudio.audioTokenCount)
+        }
+        telemetry.begin(engine)
+        diagnostics.summary("Inference input: mode=" +
+            (if (directAudio) if (invocation.directVoiceAudio) "gemma_direct_audio" else "diagnostic_direct_audio"
+                else if (prepared.textInput != null) "incremental_text" else if (invocation.voiceAudio != null) "voice_text"
+                else if (attachments.image != null) "image_text" else if (attachments.audio != null) "audio_file_text" else "text") +
+            " audioBytes=${if (directAudio) invocation.voiceAudio?.size ?: 0 else attachments.audio?.size ?: 0} retainedAudioBytes=${invocation.voiceAudio?.size ?: 0} promptChars=${submission.text.length}" +
+            " nativeAudioEncodeMs=${if (directAudio || attachments.audio != null) "unavailable" else "not_used"} queueMs=unavailable")
+        var stoppedLoop = false
+        val generated = try {
+            input.generate(engine, submission.text, { token -> telemetry.token(token); stream.accept(token) }) { error ->
+                diagnostics.summary("Voice incremental fallback: reason=${error.javaClass.simpleName} " +
+                    "message=${error.message?.take(300)} policy=final_text_once audioBytes=0")
+            }
+        } catch (loop: VoiceRepetitionGuard.RunawayLoop) {
+            // Native cancellation/join completes before this boundary; retain only accepted opening.
+            stoppedLoop = true
+            reply.benchmark.configuration("generation_recovery_reason", "runaway_repetition")
+            diagnostics.important("Runaway repetition cancelled before speech publication; preserving valid opening.")
+            GenerationResult(guard?.text.orEmpty(), -1L, null)
+        }
+        if (!stoppedLoop) telemetry.record("answer", generated, submission.text.length)
+        telemetry.terminal(generated)
+        val answer = ConversationAnswer(invocation, routed, prepared, promptHistory, turnPrompt,
+            engine, reply, submission.text, attachments.image, directAudio, stream, guard, telemetry)
+        val draft = ConversationDraft(answer, generated, input.nativeConversationContainsTurn,
+            runawayLoopStopped = stoppedLoop)
+        executeNativeActions(draft, phoneActions)
+        retryInvalidToolDraft(draft, input)
+        return draft
+    }
+
+    private fun repetitionGuard(invocation: ConversationInvocation, routed: RoutedConversation,
+                                prepared: PreparedConversation, reply: ConversationReply,
+                                groundedVoice: Boolean): VoiceRepetitionGuard? {
+        if (routed.actionPlan !is ActionTurnPlan.NotAction || invocation.imageUri != null || invocation.audioUri != null) return null
+        val previous = prepared.history.lastOrNull { it.role == "Jarvis" }?.text
+        return VoiceRepetitionGuard(invocation.prompt, previous, emit = { safe ->
+            if (invocation.voiceAudio != null && safe.isNotBlank()) reply.benchmark.mark("first_guard_release")
+            reply.postToken(if (invocation.voiceAudio != null) VoiceRepetitionGuard.speechReady(safe) else safe)
+        }).also { guard ->
+            guard.preserveFormatting = invocation.voiceAudio == null
+            guard.isPublishable = { candidate ->
+                val reason = AnswerQualityPolicy.rejection(invocation.prompt, candidate, previous)
+                if (reason != null) diagnostics.summary("Answer draft suppressed reason=$reason turn=${reply.id}")
+                reason == null && (!groundedVoice || !references.isInsufficientAnswer(candidate))
+            }
+        }
+    }
+
+    private fun validatePrompt(invocation: ConversationInvocation, routed: RoutedConversation,
+                               prepared: PreparedConversation, history: List<ChatEntry>, prompt: ConversationPrompt,
+                               submission: ConversationPrompt.Submission, limit: Int) {
+        val text = submission.text
+        if (text.length + ConversationPolicy.GENERATION_HEADROOM > limit) {
+            check(modelSession.selectedModel().contextTokens == null) {
+                "This request exceeds ${modelSession.selectedModel().id}'s small context budget. Please send a shorter request."
+            }
+            diagnostics.record("Turn context remains near budget\\n" +
+                "userLength=${invocation.prompt.length}\\nsubmittedPromptLength=${text.length}\\naction=continue with concise response")
+        }
+        if (invocation.voiceAudio == null) return
+        val base = prompt.build(invocation.prompt, null, emptyList(), false)
+        val subjectChars = routed.plan.activeSubject?.let { ("\n\nResolved subject for this turn: $it").length } ?: 0
+        val referenceChars = prepared.referenceContext?.let { it.length + 2 } ?: 0
+        val contextChars = (text.length - base.length - subjectChars - referenceChars).coerceAtLeast(0)
+        diagnostics.summary("Voice prompt parts totalChars=${text.length} baseAndRequestChars=${base.length} " +
+            "contextAndDialogueChars=$contextChars subjectChars=$subjectChars referenceChars=$referenceChars " +
+            "audioComplete=${invocation.voiceAudioIsComplete} scope=assembled_answer_prompt prepared=false")
+        val latestReply = history.lastOrNull { it.role == "Jarvis" }?.text?.trim()?.take(450)
+        val latestUser = history.lastOrNull { it.role == "You" }?.text?.trim()?.take(300)
+        diagnostics.summary("Voice context evidence policy=newest_first_v1 seeded=${submission.seeded} historyEntries=${history.size} " +
+            "latestUserIncluded=${latestUser?.takeIf { it.isNotBlank() }?.let(text::contains)} " +
+            "latestReplyIncluded=${latestReply?.takeIf { it.isNotBlank() }?.let(text::contains)} " +
+            "latestReplyChars=${latestReply?.length ?: 0} scope=assembled_prompt nativeContext=${modelSession.hasContext}")
+    }
+
+    private suspend fun executeNativeActions(draft: ConversationDraft, phoneActions: ConversationActions) {
+        val answer = draft.answer
+        val plan = answer.routed.actionPlan as? ActionTurnPlan.Ready ?: return
+        val invocation = answer.invocation
+        if (draft.generated.toolCalls.isEmpty()) {
+            draft.actionResultMessage = "I couldn't verify the requested phone actions."
+            return
+        }
+        val allowed = (invocation.voiceAudio == null && !invocation.frozenVoiceFinal) || plan.steps.all { step ->
+            FinalVoiceToolGuard.allows(step.sourceClause, step.request.name, step.request.arguments)
+        }
+        if (!allowed) { draft.actionResultMessage = "I couldn't verify the requested phone actions."; return }
+        val outcome = phoneActions.runNative(plan, draft.generated.toolCalls, nextCalls = { batch ->
+            val results = batch.map { receipt ->
+                ToolCall(receipt.request.name, JSONObject(receipt.request.arguments).toString()) to
+                    promptBuilder.buildToolResultContext(invocation.prompt, receipt.request.name, receipt.result.message, receipt.result.succeeded)
+            }
+            draft.generated = answer.engine.sendToolResults(results, answer.streamFilter::accept)
+            answer.telemetry.record("tool response", draft.generated, answer.submittedPrompt.length)
+            draft.generated.toolCalls
+        }, onNeedsApproval = onNeedsApproval)
+        draft.actionName = plan.steps.joinToString(",") { it.request.name }
+        draft.actionResultMessage = outcome.message
+        diagnostics.important("Action turn\nuser=${invocation.prompt.take(500)}\nsteps=${plan.steps.map { it.request }}\n" +
+            "receipts=${outcome.receipts}\ncompleted=${outcome.completed} result=${outcome.message}")
+    }
+
+    private suspend fun retryInvalidToolDraft(draft: ConversationDraft, input: ConversationInput) {
+        if (draft.generated.toolCalls.isEmpty() || draft.actionResultMessage != null ||
+            AssistantText.forDisplay(draft.generated.text).isNotBlank()) return
+        val answer = draft.answer
+        modelSession.reset()
+        answer.engine.setToolsEnabled(false)
+        diagnostics.summary("Rejected tool response reason=does_not_match_current_intent retryToolsEnabled=false")
+        val prompt = answer.submittedPrompt + "\nThe previous output contained an invalid tool call. Answer the user's current message directly as normal text. Do not call a tool."
+        answer.engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
+        draft.generated = input.retry(answer.engine, prompt, answer.streamFilter::accept)
+        answer.telemetry.record("invalid tool retry", draft.generated, answer.submittedPrompt.length)
+    }
+}

@@ -1,0 +1,37 @@
+{
+  "classification": "production_asset_packaging",
+  "repair_attempt": 3,
+  "baseline": "fe9feeccdd15583864c290cd029da83e21cb7ed1",
+  "failed_run": 38118615319,
+  "failed_job": 114413717254,
+  "jvm_tests_passed": 2240,
+  "helper_tests_passed": 124,
+  "verification_tests_passed": 101,
+  "runtime_adapter_android_api_compile": "passed",
+  "actual_pinned_agp_and_aapt2_reproduction": "passed synthetic and five real vendor streams",
+  "actual_gzip_bytes": 9306959,
+  "expanded_elf_bytes": 31814372,
+  "acceptance_weakened": false,
+  "new_tests_reject": [
+    "raw Android-expanded names",
+    "legacy .gz names",
+    "missing entry",
+    "duplicate entry",
+    "unexpected entry"
+  ],
+  "source_sha256": {
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/whisper/WhisperQnnRuntime.kt": "2b7a096d0d2485ae24b43d7c3aaba736e2401ef9fad08f093b26aa5cf1d31923",
+    "scripts/check_asr_apk.py": "7f015c7c93e688ddb1a0284cc6fac02b187480aade080e46fa1f454b5baf431a",
+    "scripts/prepare_whisper_qnn.py": "1d2cfd3bc4f570a8e7f5bedb5417f55f18521c1d1ac6e6cd103aa5057a6d3c90",
+    "scripts/test_native_dependencies.py": "270d29bf18671d295b5b4f75adc260146d0859b35a5fca3f4c971f82ad679892",
+    "scripts/test_whisper_qnn_package.py": "3a90435ef4f7600e4b070ec3d9a2a75c5673b97f44efe4f2419e2eea81194491"
+  },
+  "size_artifact_id": 11695131703,
+  "size_artifact_sha256": "5d41ff19fa50ecd5a8559495ee7c66a2491c69ce24be551e6bb8813ca9744355",
+  "not_covered": [
+    "Complete repaired-revision Gradle release gate",
+    "Final APK normal/compact net size",
+    "Android sandbox",
+    "Physical NPU and audio behavior"
+  ]
+}

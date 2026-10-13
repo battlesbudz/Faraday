@@ -1,0 +1,20 @@
+{
+  "status": "passed",
+  "tests": 58,
+  "reviewed_sdk_classes_sha256": "dbb65a34071c5b16c0abbf20c69d83140b3d4ddf6f19d96ef91a3d503ebdf98e",
+  "source_sha256": {
+    "app/src/main/java/com/battlesbudz/jarvis/v2/ai/LiteRtLmEngine.kt": "4c8e5f26a231a7896cba36ae83b1e70cc84df02040effe254ec0e20d1523eccc",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/ai/ModelConversationConfig.kt": "22f6529ecee25a0452628f22c1ea92d62a68cd26ef30af102f768db207dd83e6",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/ai/CheckedConversationLifecycle.kt": "870d05a3987589d2503998b46c53686888c09ab2c0820d203b4955c961c13f5b",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/EarlyGemmaPreparationGate.kt": "5a29e98f62ccc77f7435f4e40957f3d028546de14a7296206d966e031c6e78c8",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/RetainedPcmEncoderWorker.kt": "d58d7735f6f4a7f5da11c4af670bae9b4443f3f80a439a097b5d7498c9c38082",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/conversation/ConversationModelSession.kt": "c5f5f80fdc24b466d0265e9b5342c5baa5ce7e88261b19505c14561395bee8a2"
+  },
+  "scope": "actual scoped SDK API compilation and host lifecycle/mode/queue tests; independent rerun",
+  "not_covered": [
+    "Complete Android orchestration build",
+    "Physical model behavior",
+    "Device latency",
+    "Bounded abort of hung synchronous prefill"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "url": "https://dl.google.com/dl/android/maven2/com/google/ai/edge/litertlm/litertlm-android/0.16.0/litertlm-android-0.16.0.aar",
+  "bytes": 20192711,
+  "sha1": "c638e7d4b7c62dfff666b29be9397bcb5578af7b",
+  "checksum_source": "https://dl.google.com/dl/android/maven2/com/google/ai/edge/litertlm/litertlm-android/0.16.0/litertlm-android-0.16.0.aar.sha1",
+  "manifest": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    package=\"com.google.ai.edge.litertlm\">\n    <uses-sdk android:minSdkVersion=\"24\" />\n    <application>\n    </application>\n</manifest>",
+  "inventory_source": "two HTTP206 range reads; no complete AAR downloaded",
+  "aar_contains": [
+    "AndroidManifest.xml",
+    "classes.jar",
+    "res/",
+    "R.txt",
+    "jni/arm64-v8a/liblitertlm_jni.so",
+    "jni/x86_64/liblitertlm_jni.so",
+    "LICENSE",
+    "THIRD_PARTY_NOTICE.txt"
+  ]
+}

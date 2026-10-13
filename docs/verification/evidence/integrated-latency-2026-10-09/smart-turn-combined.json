@@ -1,0 +1,641 @@
+{
+  "timestamp_utc": "2026-10-09T19:35:04.667659+00:00",
+  "head": "68a96943f2ab78bf5494c54812e70707c1aea727",
+  "tree": "c36fcfcb4a9002c121bb51a1dd84ca33af9f19b9",
+  "checkout_clean": true,
+  "scope": "Exact integrated candidate; host JVM/API tests only; no app source edits, publication, model weights, model downloads or credentials. Existing local dependency jars reused.",
+  "results": {
+    "jvm-receipt.json": {
+      "test_count": 37,
+      "result": "JUnit version 4.13.2\n.....................................\nTime: 0.547\n\nOK (37 tests)\n\n",
+      "sha256": "9ad70fb08b4b49f3af9dc315a4de067d8917bcae560c7bc78e47186a0cede146"
+    },
+    "fresh-capture-receipt.json": {
+      "test_count": 5,
+      "result": "JUnit version 4.13.2\n.....\nTime: 0.317\n\nOK (5 tests)\n\n",
+      "sha256": "20966821214077afbe654f36a8c456d433dde25617129de75ef8822195720bac"
+    }
+  },
+  "compiled_sources": {
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnSettings.kt": {
+      "sha256": "6ce93a441160c82484b11e029b7e76db09cf5978042d9fd263c7afe14c6a9d87",
+      "git_blob": "ff59e3d756ad4f4daf753612d78ecf098cb382dd"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnCallOwner.kt": {
+      "sha256": "e84036c62b946bcb922ae395b17407522269c471fa0e95ef5ffe2f0c2c0bb28b",
+      "git_blob": "50d1f9da2cbd8dbd92332dfcfab8dc0cb9b6d718"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/NativeSmartTurnBackend.kt": {
+      "sha256": "65747069d7261ec0ba17cf726c117257f20252550b477b1267e494817a45a4ba",
+      "git_blob": "d43c2e7f27ae0525c04c99c19e69a2738e2c6920"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnAudioSnapshot.kt": {
+      "sha256": "44d450881c85241fffe8e623d143aa3ea08aa2d5147730ccbab8bfac8964cd7d",
+      "git_blob": "c047693c1f7007d7ce3a96b8f072ff3e097d23ed"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnModelStore.kt": {
+      "sha256": "b448b2aaa41b614071e2401e6b987bf306f9beba119ee9645796369678aa354e",
+      "git_blob": "b017b1029534cdf01fde2ae25e06996ad50751f2"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnShadow.kt": {
+      "sha256": "0a2537b27a7fa1eba9176603bf75a781f4837fc3c4fad39c8673990582ca2483",
+      "git_blob": "15bfcba2130e3b14dce16a01a8e366a6362e8ec0"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnCaptureObserver.kt": {
+      "sha256": "639434f32e6f69421c710c7c2ad8a089a53ce309a1b34fe4e0a40ad581014d99",
+      "git_blob": "aaf6d228ff1e62d5265ca957215e639991bcc00e"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnModelSpec.kt": {
+      "sha256": "4d8fd2398be40f0642ef8dfb275c2d240b48ea7e1faaa05a142f268f91c0ce6a",
+      "git_blob": "475b6afc569c07b608f7c2cfe42078e3afd011a8"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptureShadowObserver.kt": {
+      "sha256": "ec4a0817815cb68a96aa03ade73f0fd03e111ebf180d5e88419e141dfa0a0167",
+      "git_blob": "1ceada65f93886db624b2a59f047ddee0a4873f0"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/ai/storage/ModelDownloader.kt": {
+      "sha256": "8b687fe8991c79cf4b9afbcd1fd664db8c027ec399cb8b4bc5f01e5aea66a49d",
+      "git_blob": "c6eafaf4590e91aaecdbd9de7b72a84824ea37d7"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/ai/storage/ModelFileHash.kt": {
+      "sha256": "a1bff68186ea10ebd88d180c223af10601413ac442c7eded70dc16d99a58843a",
+      "git_blob": "6e34408990e933a67b95079832ec2663548567a7"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmark.kt": {
+      "sha256": "cfc229403c833dc7e3581170f500384246406e38f6c82e4a40fb0edd5c1ef486",
+      "git_blob": "054dc9cf72ebf5397d12a0890a2bec7bf091b189"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmarkCapture.kt": {
+      "sha256": "bb01924c998a0f0601a249350174f7ba5f2e8cc3dcaa99c3f1c0bf98279ae3fd",
+      "git_blob": "67fc28996fe6e2fd49f992296c7f383e7ea7d1b6"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmarkAccuracy.kt": {
+      "sha256": "e523ee3450e86eb2096b28600f57292a6bba8a356d402f955d95860fa9581dc0",
+      "git_blob": "6a186049f021a7bf9483679a3759038a48a97c28"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmarkDefinitions.kt": {
+      "sha256": "d54f9930620431b2b575ce80e6aa54e199c259e1d8edcef3cf47f1f8b7cee286",
+      "git_blob": "26f926d859bd19074e769d6fe2d476139d7d6421"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/SmartTurnBenchmarkTelemetry.kt": {
+      "sha256": "69ece9aab8de6595e46b5387326ccf7f86fa033ac567ebf5b37a2bd51765ca16",
+      "git_blob": "204ac10e97a47cf70bfd0d7682b6a8ac4577c7db"
+    },
+    "app/src/test/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnShadowTest.kt": {
+      "sha256": "89e863e9f22ca0cb29339489dbeb7c0ea6f1e4c1bd5a09d963ace9c86300c5b2",
+      "git_blob": "c26c9c4bed56ea98fb66a0cb16daa353e8a482c5"
+    },
+    "app/src/test/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnCaptureObserverTest.kt": {
+      "sha256": "38973f69030fcfa9804c071c0a0d1ff6bf5056c23996dd3b8df13bd08da6d74b",
+      "git_blob": "fe442d0dc2f5ef73ce5e7640cf2edb0f370faadc"
+    },
+    "app/src/test/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnModelStoreTest.kt": {
+      "sha256": "345019883503843bd29f657b83b0051d5e349bb65fd1ef401e7362cf8143038b",
+      "git_blob": "fd2041300e89d558898d0bc71cd67c2dc0615fb5"
+    },
+    "app/src/test/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnLateTelemetryTest.kt": {
+      "sha256": "4b18cae21b2594adf05e71d89ee7282521d8dcf7a71382a811546c28bead8af8",
+      "git_blob": "1558a1ba5e2b321aa6a9df560440d7e12c10a848"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptionInputAdmission.kt": {
+      "sha256": "f49f11979e459b9e990df53c1a2cad33c12186c9f6ac6bb682f4c80734ca55df",
+      "git_blob": "e7d1dc95a34a71a27161fce8ff9b065fe5e2a12f"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/GemmaAudioInputPolicy.kt": {
+      "sha256": "8276b14a801611895f8842ba2d76c5a6a364c1ced46548e9b391c6a8e79f6ec7",
+      "git_blob": "a459f509262086a860157d99272777f452a7d564"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptionPublicationFence.kt": {
+      "sha256": "21586d147c0d599c7e96dcab98a286fa7f3b3ed325843ff474c1feece522585b",
+      "git_blob": "f7e4b3e90485290789b1671c14267a1f00377d05"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/AudioInput.kt": {
+      "sha256": "cb82557bfd90963f2b2f0ed764c3017fb186ba7719c8d706cb00ff5834ea2b5a",
+      "git_blob": "ac126e7706ada977483e3f1f63b1396e204f868a"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptureSpeechGate.kt": {
+      "sha256": "253bf0b8e20f4fc33c36727daaeb877efc893997be2947517b66c3186479c261",
+      "git_blob": "8e71e6b2ab207f5115f49029849175d28d4a3799"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/SpeechDetector.kt": {
+      "sha256": "bb6c1d49c49ad974cc285d5d976b1c79be209bca7376d6566216cfc6bb0d09af",
+      "git_blob": "191d8ca015459b5b58c5ce4467352695dcb0ce88"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/PcmChunkAssembler.kt": {
+      "sha256": "79abc6c3a02215547fef853efda245c865b35b0af3e843e91218f73e7034df72",
+      "git_blob": "f8d349a9f86071ea7cafbe7e76d05918912a5cbb"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/RollingAudioBuffer.kt": {
+      "sha256": "6c957d0cddbf53d8b55b657c47b90ad0e390455f06445c2a0b49ba9532d584ea",
+      "git_blob": "3a442d0b9dbc8dbe333c2d1bf7a2788cfdf23bc7"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/LiveCallAudioEvidence.kt": {
+      "sha256": "6452555d2efbaf2d0b6d220a2cb735085250965fb777840ba30c5c587cd4dd80",
+      "git_blob": "ae686ab918b9eb0a0277e28b5316d102d1b0602b"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/WavEncoder.kt": {
+      "sha256": "df8860ab7976a318ba179272f578c86bee0bcc7b341111c1ff353eeb3a17a97e",
+      "git_blob": "8d95b7354bac68238a51f51d4ad8e01cca7ae1ec"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/VoiceAudioSession.kt": {
+      "sha256": "242a8bffd6be658f5a3c13d2949bd738fb737885987e595b42a1141ed4c52868",
+      "git_blob": "689ed6c0b2985e74341d63afcfcd814ece87e2a5"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptureFirstAudioInput.kt": {
+      "sha256": "656d43fc71d1901dedd277aadda184c7f1f4623a75dc6db011e6cf38d559c49b",
+      "git_blob": "31a88b41969ede84386b3ab5d8b32126a760ba5e"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptureFirstReplyHandoff.kt": {
+      "sha256": "69ecbf432927726f4b2a21fbed1217d9bedb5137e79ad8bb36290e28d31fdb4d",
+      "git_blob": "411450a4d1cc8574ed34c67c7ce70d7d82a9583b"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/PostAnswerCaptionContinuation.kt": {
+      "sha256": "aeabbfa2ff721275f77879b50f8e80f3113f936a7bed6435bf44b9c8ba060dd7",
+      "git_blob": "fc959a00fa72b7c71908f64ca9626b24572bb48b"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/SpeechDeliveryLedger.kt": {
+      "sha256": "9e8da1aa3b34e7abd0979671d122abdb4086efec0abdbdf18470a3619f9e7b85",
+      "git_blob": "9fb95e1427b20f6c154726c34efcface2cc01c32"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/ReplyInterruption.kt": {
+      "sha256": "b581f357ffb2ca74061482ae2a3cad084dcec61b6b7d1106314424f920797de0",
+      "git_blob": "8d8e7d47bcbc5cb1fb482ce3190579295a7bb23a"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/VoiceCaptureHandoff.kt": {
+      "sha256": "217dbfcbf23ad131eacd3c66c4ee2e4901b3400f40562b44a3d7067e22dd82c9",
+      "git_blob": "8d3a74c2fe2bc39c7ac16880ad37923c83c7771c"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/VoiceSessionUi.kt": {
+      "sha256": "f56f31f37b6e2565ce802ea3d101f8922f8c70080bd3cbc27c7ec0dab5c9cb4b",
+      "git_blob": "4cf93590c55a733f51069b0b624a5f175bb0b3e6"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/VoiceSession.kt": {
+      "sha256": "1bbe72441d34d9c54fdbe9c9f039207a37427cecc901d927d97ef1a46ad52b73",
+      "git_blob": "fdce3ee1231a4717b7b4b955f4b235e0c5299aaa"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/LiveReplyMetrics.kt": {
+      "sha256": "c88b09f0cdfbee1bb4ea49e76742fe5307c2781e340f107356186cf7baf4d5d7",
+      "git_blob": "837362a3e834a63c1ecc24c3c305ebce9534ba0a"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CallLifetimePolicy.kt": {
+      "sha256": "03feb67ea66155a72e90b3df2d26153731a5b31dc4bc7a577f04f033fdc38607",
+      "git_blob": "ff5386fdacec0c081234931579c8b3f507f728c8"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/VoiceCallPolicy.kt": {
+      "sha256": "ca550ce3c7f68330d2c3c91ec9e32df05f14106551f3d246a8480c2b6364f88d",
+      "git_blob": "d1adb8fae50a635576d4d709c308d1446b589cdb"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/AudioTurnCapture.kt": {
+      "sha256": "5470c5f3bb6437ba498db36f876d581fc3f911319a237f48d7fe52e7b76f5303",
+      "git_blob": "bc969cda6e22b1712e420b3fe79b97a5899c2ece"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptureSpeechQueue.kt": {
+      "sha256": "66016fd01a22357abd3da6672f98b685d5d576c4b7e3b125443794ebcd2836ac",
+      "git_blob": "c1fc802026c73b43334747d8768046222cbf84dd"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/Pcm16Signal.kt": {
+      "sha256": "a04c6b59cabc959cd64cb398a1e2388b9b6c6eb147826651287ef3d604ed7ac0",
+      "git_blob": "4e3808c1ca29baf2b4562ac5f8f0f085e100fd49"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/AdaptiveTurnEnd.kt": {
+      "sha256": "af1224da528229db259e547942e4c301587cc3c450e0ea64236d9bea04d81b18",
+      "git_blob": "77a9ec5573ef53f6be95b46fc17a25347a163cc6"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/TurnEndDetector.kt": {
+      "sha256": "5b7c0f82e2b3ba94205d78f75654e13c8b873ce77db797f65dc551ac772d20e4",
+      "git_blob": "4ed96a60821d87e0a0a8eaeba0a5b26a5362bcec"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/QuietSpeechEvidence.kt": {
+      "sha256": "70da2958d3e435efe8cadf9e22c6c8a3962d99e0adb850ba1a1d32748df586e4",
+      "git_blob": "bb806f59f20d0417056fd4f90537df809e2cf899"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/FollowupSpeechEvidence.kt": {
+      "sha256": "fc34ed52517d3acb2f8fcda4501a76bc34c11be276d55c1eafacd2c19d854886",
+      "git_blob": "ee32444a038560c49a9922687c1361ad5546a958"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptureRecognitionBudget.kt": {
+      "sha256": "3346a5b65d5bc16fca40554e468250b653f81e85e813b37437183a7c495e2fc5",
+      "git_blob": "135dbc2ac21d0572edd6972306ceda2fb5b27ebc"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptureAcousticMetrics.kt": {
+      "sha256": "1c11343de9485c595e46e814f71bfb9de48773fb92284291f9596ac0d0cf10f1",
+      "git_blob": "f738364e12e561754aee8a3f3f0ccf5d77101fab"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/AsrCaptureMetrics.kt": {
+      "sha256": "1529ac2fc715763196da338d886751e3550648b64aac696124b5fbc5f06cf752",
+      "git_blob": "817edb61e0d32abcd39b555af01a3f70cca3764a"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/AsrRecognitionWorkMetrics.kt": {
+      "sha256": "6d2457d80a02d06ae4549c5e481486c91a44bfdedc6ec40ef1b6f38f2966310b",
+      "git_blob": "f18c86700657a52e33d2065a424f8e8ff3f43cdd"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/StreamingTranscriber.kt": {
+      "sha256": "886ff991c08acda9eab1755c4a6041cb596409011caedcda17a1df62f454f3da",
+      "git_blob": "f925e9488e209adb38764ebb434ca262c9bc3c4a"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/SegmentedTranscriber.kt": {
+      "sha256": "6772bab34ba75d828270e15ed5f0e22c2227cd59854366f81b00302888eaaf45",
+      "git_blob": "ba9ed46336c57f0dd7e53f57ddb06fcc4f387295"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/UtteranceAccumulator.kt": {
+      "sha256": "87a6acbec2e0a1709dd071432594451e48fb0a8cdd35b1fb4eeab3711cbc66a5",
+      "git_blob": "9abddd466d1207afe0330ae62bcbfc5e9dcd422a"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/TranscriptContent.kt": {
+      "sha256": "7cb13728e27b96cc13c583749025f9f5ee4f07e381473bfa58c7c9587d64679a",
+      "git_blob": "8b769f375e5a1a8da73abd449f8a00dfdb167bd8"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/NativePauseCapture.kt": {
+      "sha256": "237431b94fc9606a6aa3ac297e1fea48d90810f9fc4c8ffbd299b8d1dc4e99cb",
+      "git_blob": "755f737e78cc754df609ef123913e0960bce0b4d"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/NativePauseEndpointPolicy.kt": {
+      "sha256": "c446a358bcb2b03ca5bffce8414d9012d81d5256fef77c2108dff5d117472559",
+      "git_blob": "31dc1789452e33106be2d3345f65d4a6e09f0895"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CandidateSpeechEvidence.kt": {
+      "sha256": "20a9f04ca7851a906a920b8e5a90ef6dc22fbaeb652e147da1dfe1253019713b",
+      "git_blob": "007d59c2a5b4dcad6dcd1e2ae4065a0d98888365"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/RetainedPcmObserver.kt": {
+      "sha256": "f5f0cbe92ca3e54f8c1256a7fda57da106070b98c55b13200b83c855c0265d61",
+      "git_blob": "87f8a10b05e430eb602da1fa7185463933103aeb"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/MicrophonePolicy.kt": {
+      "sha256": "20012bd0885abb1ffc2dbf927c351e5470dc7a29acd04db9a828a0ba5ce19833",
+      "git_blob": "d7e066625ca736b31c90b4ca9102ccf4c6a43919"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/PlaybackEchoText.kt": {
+      "sha256": "dab1b685537e89dac2e7f11a63cba6dc8e2fccec810b1fc6a64ac8c832032799",
+      "git_blob": "dc2661eb05388c7ec53b399d99f3600b6a445599"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/TurnLatency.kt": {
+      "sha256": "34305506e845d06ff3e05261438de9799f5dceb34b1a709079859039c89f68a2",
+      "git_blob": "3c896f4a1ccc02e8faa9fb036e27a567015b1717"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/ReplyMetrics.kt": {
+      "sha256": "7dc92db31158ccc96372ed25364388b032e7b01254f3f7a90566d9fdf0ebab8b",
+      "git_blob": "efebed7a3e788f25fe7b13aa9cfab41fe2df7ec1"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/NativeAudioTimingMetrics.kt": {
+      "sha256": "35fa08de72d517e0568770c45a9991a4b39ca302408986f843db605f55110337",
+      "git_blob": "9c035fc4fbab2436c6129193b47e1f9199887ba5"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/ai/LocalModelEngine.kt": {
+      "sha256": "61e47492d2bd1c674cb21377f99e326e8528328692a20173423d5deac6d61509",
+      "git_blob": "ddc2f9ef2559f55dab77394dbe0f4612caa285f6"
+    },
+    "app/src/test/java/com/battlesbudz/jarvis/v2/voice/CaptureShadowWiringTest.kt": {
+      "sha256": "b85aeace6b3d691fde0187cff68d031c3c6bb16bbf0f61b940911e0959ea6a3e",
+      "git_blob": "eb71c6474814de2c561e0536eeac556294c50a58"
+    },
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/QuietSpeechAudioInput.kt": {
+      "sha256": "01661055472b5c173c9ec437281cde2b1d542b9482daa480f77afab0d811e001",
+      "git_blob": "24abc17856d73a187d4b16f199c94cafa92678ec"
+    }
+  },
+  "dependency_jars": {
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/animation-android-1.7.6.jar": {
+      "sha256": "1d695f326f63c1dbc59080ef3e49cd1b449873ecf629e30f095e495a957a3bad",
+      "bytes": 447353
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/savedstate-1.2.1.jar": {
+      "sha256": "f4f41ae607c65ef27ec592c092fe733b952147301a390008ab7ed36fd2ea9b88",
+      "bytes": 19555
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/junit-4.13.2.jar": {
+      "sha256": "8e495b634469d64fb8acfa3495a065cbacc8a0fff55ce1e31007be4c16dc57d3",
+      "bytes": 384581
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/lifecycle-viewmodel-savedstate-2.8.7.jar": {
+      "sha256": "81e9f7cd7e4221dc5e48eb81e63ff33a81fb4f0189e6cc6f31291ef2bf934912",
+      "bytes": 39025
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/trove4j-1.0.20200330.jar": {
+      "sha256": "c5fd725bffab51846bf3c77db1383c60aaaebfe1b7fe2f00d23fe1b7df0a439d",
+      "bytes": 572985
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/ui-android-1.7.6.jar": {
+      "sha256": "83346f5e42f5738a1cb277d52f2c2d5d1c9de765f37d6b538fe243fd7c1640d0",
+      "bytes": 2712567
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/uiautomator-2.3.0.jar": {
+      "sha256": "94c3c658c9627107c9eee0eb01f7e45e2eff72b16e8aac2d95cac7f5a1e2fc0b",
+      "bytes": 139403
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/foundation-android-1.7.6.jar": {
+      "sha256": "91909bdd0c60559c526733a36b1468dd1ed0cac3be876c7a056c23c1e077890f",
+      "bytes": 4116117
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/lifecycle-common-jvm-2.8.7.jar": {
+      "sha256": "61c873a7327c946ec033c310bb98f3f92eeabcede0e1a5200ab8a1896483c7bf",
+      "bytes": 57238
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/kotlin-reflect-2.3.21.jar": {
+      "sha256": "33e37d9dfa86c7a29ab34e975b5f4a1287b458878611051f3485652220c1a2cb",
+      "bytes": 3633922
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/ui-text-android-1.7.6.jar": {
+      "sha256": "99c8f97a161a92bed95c3b950efc7bb4e6a49c9775752571c5a1390de9d7ccea",
+      "bytes": 902614
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/core-1.15.0.jar": {
+      "sha256": "e4d3c02d3d3cc92f0c6d59df0a7c7d8faa04936aeabaa4f5f3e55c050f076d9b",
+      "bytes": 1357224
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/kotlin-compose-compiler-plugin-embeddable-2.3.21.jar": {
+      "sha256": "6658edfd25de3dec89bdedc0308014a2ebd97731c6f749df0827c5be1ef95515",
+      "bytes": 941028
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/foundation-layout-android-1.7.6.jar": {
+      "sha256": "911b9031843265c3bdd6b840decd6a7e6d2edc86712c511c66bb9dfddd15dfdb",
+      "bytes": 719183
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/runtime-android-1.7.6.jar": {
+      "sha256": "aeb2a678f6ce36634e12716be30bd2e8ea768b0e534687983d7fea703142978b",
+      "bytes": 1374893
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/lifecycle-runtime-android-2.8.7.jar": {
+      "sha256": "5ebbe28bbfe9da92040fe7b94021cb2981caf2e4c7df6a4bc3b4a0a81faef66c",
+      "bytes": 53840
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/ui-graphics-android-1.7.6.jar": {
+      "sha256": "c8e4fa4920ecc5cbce4df60967f11ff7f9803b52ad2bb3e0dda6af1e7b1136e7",
+      "bytes": 611949
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/kotlin-stdlib-2.3.21.jar": {
+      "sha256": "6f64eac736db9434dd6925b4a518b9d1d17177652320c37916cf9ba3ce7d7d7a",
+      "bytes": 1804721
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/annotations-13.0.jar": {
+      "sha256": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478",
+      "bytes": 17536
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/material3-android-1.3.1.jar": {
+      "sha256": "c0b099abe90c54853f27ba4deea7006b4fa8da481c80934ec4c4ba111163ce06",
+      "bytes": 3985343
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/kotlinx-coroutines-core-jvm-1.9.0.jar": {
+      "sha256": "ad89c2892235e670f222d819cb3d81188143cb19a05b59df9889ae4269f5c70a",
+      "bytes": 1463587
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/activity-1.10.0.jar": {
+      "sha256": "df62a5e8df0818756e10eed86fef04fd3cd6e8437f513c4480d3807980506b7b",
+      "bytes": 232242
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/annotation-jvm-1.9.1.jar": {
+      "sha256": "1e343917ebf27ba96fe4dc52b1cad7fd32b738fbc6355bb6cd5b3b305d7212d0",
+      "bytes": 60577
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/ui-geometry-android-1.7.6.jar": {
+      "sha256": "0625c05354bbdb66e6097acefea4adc2f24e9d4f424a475323b10f9b827e4b03",
+      "bytes": 41757
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/android-all-14-robolectric-10818077.jar": {
+      "sha256": "6be2218c6a53fe3c57bc22ebdc723edcb7270a8a6f187545708aa5c0ed813977",
+      "bytes": 137666235
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/kotlin-daemon-embeddable-2.3.21.jar": {
+      "sha256": "222fc10a3c22e74d30369bf8a0ca6c4f9372eac7d4a0081e290c256fa4d30fb2",
+      "bytes": 368344
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/animation-core-android-1.7.6.jar": {
+      "sha256": "afc740a456b01d5879605982a4c1223c5aacbe02c1db67a1bedd85e56b18b89a",
+      "bytes": 428740
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/ui-util-android-1.7.6.jar": {
+      "sha256": "6c35a2d572ec444c31a2231aabe3dcd544e66ee9d1b58c5ed2b9f8f351140f11",
+      "bytes": 15677
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/kotlin-compiler-embeddable-2.3.21.jar": {
+      "sha256": "d3e70fb011675e77ef00f1a68918d3cd91eed26058977d1e3ea2a37a293233af",
+      "bytes": 59720376
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/activity-compose-1.10.0.jar": {
+      "sha256": "66e855031a026023d937444572b7f596f3246f1e674960e4f1b0ca03ff3aed04",
+      "bytes": 76970
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/runtime-saveable-android-1.7.6.jar": {
+      "sha256": "a9dcfc34048f704781525e07a4e4caaadfbc4810becb8f2816ebc21a68874211",
+      "bytes": 54941
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/kotlin-script-runtime-2.3.21.jar": {
+      "sha256": "ec61bf1229c837fa9f4255f34ca69816138b73158e7ae9b8d964cf92ca6dfd2e",
+      "bytes": 44972
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/hamcrest-core-1.3.jar": {
+      "sha256": "66fdef91e9739348df7a096aa384a5685f4e875584cce89386a7a47251c4d8e9",
+      "bytes": 45024
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/ui-unit-android-1.7.6.jar": {
+      "sha256": "0982f87811ca9fe258b0fbb6c8e9c95d118a444ed2fa20579e022308597455b8",
+      "bytes": 95320
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/collection-jvm-1.4.0.jar": {
+      "sha256": "d5cf7b72647c7995071588fe870450ff9c8f127f253d2d4851e161b800f67ae0",
+      "bytes": 767379
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/lifecycle-viewmodel-android-2.8.7.jar": {
+      "sha256": "6fbb150054da900de5a88e5bf64b8bf2ba2d10805fc5cea0a9a26245792d7244",
+      "bytes": 62097
+    },
+    "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/selector-evidence/deps/lifecycle-runtime-compose-android-2.8.7.jar": {
+      "sha256": "7b8e83af9e4141109eacc45aac8a6a9a64bd4acc78fdd3d037eec5bcdbea1d17",
+      "bytes": 64097
+    }
+  },
+  "reviewed_smart_turn_comparison": [
+    {
+      "path": "app/src/androidTest/java/com/battlesbudz/jarvis/v2/verification/ReleaseJourneyTest.kt",
+      "sha256": "64bb32d8d412801cc7cedc9c0cdd203c538e6e8151952e6d4ecb9993ebddf0bd",
+      "matches_frozen_smart_turn": true,
+      "matches_reviewed_rearm": null
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/JarvisRuntime.kt",
+      "sha256": "489c03164f5146704d2a1ed9fd962f6b820b8938391e9ae86f3e83e523f374ad",
+      "matches_frozen_smart_turn": true,
+      "matches_reviewed_rearm": null
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/SmartTurnBenchmarkTelemetry.kt",
+      "sha256": "69ece9aab8de6595e46b5387326ccf7f86fa033ac567ebf5b37a2bd51765ca16",
+      "matches_frozen_smart_turn": true,
+      "matches_reviewed_rearm": null
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/runtime/RuntimeVoiceResources.kt",
+      "sha256": "aa420d6aab016fcaafed84a7ec014958815f4fe62bdf1d3c087eee604281e4fc",
+      "matches_frozen_smart_turn": true,
+      "matches_reviewed_rearm": null
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/runtime/VoiceTurnCaptureFactory.kt",
+      "sha256": "435b8961c67639af54eec6f953d6abbc2401225109e898100dfdb9f49913d431",
+      "matches_frozen_smart_turn": false,
+      "matches_reviewed_rearm": true
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/runtime/turn/VoiceTurnFinalizer.kt",
+      "sha256": "60efca09444e9c13f911d32cd8e2c4be8d406983d953f5933fe7246e8e108a99",
+      "matches_frozen_smart_turn": false,
+      "matches_reviewed_rearm": true
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/runtime/turn/VoiceTurnPreparation.kt",
+      "sha256": "74629cd1c1302e3d77e69211ccc7d42adf70da5c20ad926d11479a6f1cc0d62a",
+      "matches_frozen_smart_turn": false,
+      "matches_reviewed_rearm": true
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/ui/VoiceInputSettings.kt",
+      "sha256": "b0b0d08cbf7d17dc913f0c73efb38f7fc9537e3d5bdd34679996133aaefdd972",
+      "matches_frozen_smart_turn": true,
+      "matches_reviewed_rearm": null
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/AudioTurnCapture.kt",
+      "sha256": "5470c5f3bb6437ba498db36f876d581fc3f911319a237f48d7fe52e7b76f5303",
+      "matches_frozen_smart_turn": false,
+      "matches_reviewed_rearm": true
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptureShadowObserver.kt",
+      "sha256": "ec4a0817815cb68a96aa03ade73f0fd03e111ebf180d5e88419e141dfa0a0167",
+      "matches_frozen_smart_turn": true,
+      "matches_reviewed_rearm": null
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/NativeSmartTurnBackend.kt",
+      "sha256": "65747069d7261ec0ba17cf726c117257f20252550b477b1267e494817a45a4ba",
+      "matches_frozen_smart_turn": true,
+      "matches_reviewed_rearm": null
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnAudioSnapshot.kt",
+      "sha256": "44d450881c85241fffe8e623d143aa3ea08aa2d5147730ccbab8bfac8964cd7d",
+      "matches_frozen_smart_turn": true,
+      "matches_reviewed_rearm": null
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnCallOwner.kt",
+      "sha256": "e84036c62b946bcb922ae395b17407522269c471fa0e95ef5ffe2f0c2c0bb28b",
+      "matches_frozen_smart_turn": true,
+      "matches_reviewed_rearm": null
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnCaptureObserver.kt",
+      "sha256": "639434f32e6f69421c710c7c2ad8a089a53ce309a1b34fe4e0a40ad581014d99",
+      "matches_frozen_smart_turn": true,
+      "matches_reviewed_rearm": null
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnModelSpec.kt",
+      "sha256": "4d8fd2398be40f0642ef8dfb275c2d240b48ea7e1faaa05a142f268f91c0ce6a",
+      "matches_frozen_smart_turn": true,
+      "matches_reviewed_rearm": null
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnModelStore.kt",
+      "sha256": "b448b2aaa41b614071e2401e6b987bf306f9beba119ee9645796369678aa354e",
+      "matches_frozen_smart_turn": true,
+      "matches_reviewed_rearm": null
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnSettings.kt",
+      "sha256": "6ce93a441160c82484b11e029b7e76db09cf5978042d9fd263c7afe14c6a9d87",
+      "matches_frozen_smart_turn": true,
+      "matches_reviewed_rearm": null
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnShadow.kt",
+      "sha256": "0a2537b27a7fa1eba9176603bf75a781f4837fc3c4fad39c8673990582ca2483",
+      "matches_frozen_smart_turn": true,
+      "matches_reviewed_rearm": null
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/ui/VoiceInputSettingsTest.kt",
+      "sha256": "93c5a0c42cabc4cfa4a376555aceb43a6e4e864b4d8a4bab547588268e5b7047",
+      "matches_frozen_smart_turn": true,
+      "matches_reviewed_rearm": null
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/voice/CaptureShadowWiringTest.kt",
+      "sha256": "b85aeace6b3d691fde0187cff68d031c3c6bb16bbf0f61b940911e0959ea6a3e",
+      "matches_frozen_smart_turn": true,
+      "matches_reviewed_rearm": null
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnCaptureObserverTest.kt",
+      "sha256": "38973f69030fcfa9804c071c0a0d1ff6bf5056c23996dd3b8df13bd08da6d74b",
+      "matches_frozen_smart_turn": true,
+      "matches_reviewed_rearm": null
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnLateTelemetryTest.kt",
+      "sha256": "4b18cae21b2594adf05e71d89ee7282521d8dcf7a71382a811546c28bead8af8",
+      "matches_frozen_smart_turn": true,
+      "matches_reviewed_rearm": null
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnModelStoreTest.kt",
+      "sha256": "345019883503843bd29f657b83b0051d5e349bb65fd1ef401e7362cf8143038b",
+      "matches_frozen_smart_turn": true,
+      "matches_reviewed_rearm": null
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnShadowTest.kt",
+      "sha256": "89e863e9f22ca0cb29339489dbeb7c0ea6f1e4c1bd5a09d963ace9c86300c5b2",
+      "matches_frozen_smart_turn": true,
+      "matches_reviewed_rearm": null
+    }
+  ],
+  "reviewed_rearm_app_files": {
+    "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/ReplyCaptureBenchmark.kt": "2cb3111e398a1d975f2f92128e1b0a45e2fc9f158d1e74a6413fd28e54b41a39",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/runtime/VoiceTurnCaptureFactory.kt": "435b8961c67639af54eec6f953d6abbc2401225109e898100dfdb9f49913d431",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/runtime/turn/OrdinaryVoiceReplyStage.kt": "f68fe677be3e35ee645c0d0c03078920269da5e3dcd611705c2f1eec423d9f6a",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/runtime/turn/VoiceTurnFinalizer.kt": "60efca09444e9c13f911d32cd8e2c4be8d406983d953f5933fe7246e8e108a99",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/runtime/turn/VoiceTurnLifetime.kt": "535f23c89592d57a023e81a8a497fe378b39d612d624ac35b022bfce12de401c",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/runtime/turn/VoiceTurnPreparation.kt": "74629cd1c1302e3d77e69211ccc7d42adf70da5c20ad926d11479a6f1cc0d62a",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/runtime/turn/VoiceTurnRecognition.kt": "7159f9b451ba8ab6fd4b775039dadd84bc9dba291301872ccfefb47a38ef6d48",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/AudioTurnCapture.kt": "5470c5f3bb6437ba498db36f876d581fc3f911319a237f48d7fe52e7b76f5303",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CallInputQueue.kt": "b7158c147180c06de9c9a395c5566683680ab08f1b9a7366bb0feabf179e43c2",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptionInputAdmission.kt": "f49f11979e459b9e990df53c1a2cad33c12186c9f6ac6bb682f4c80734ca55df",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptionPublicationFence.kt": "21586d147c0d599c7e96dcab98a286fa7f3b3ed325843ff474c1feece522585b",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptureFirstAudioInput.kt": "656d43fc71d1901dedd277aadda184c7f1f4623a75dc6db011e6cf38d559c49b",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptureFirstReplyHandoff.kt": "69ecbf432927726f4b2a21fbed1217d9bedb5137e79ad8bb36290e28d31fdb4d",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/FinalWhisperFarewellSnapshot.kt": "be61f1fc5164b5f57e9e157b4b8759d68c9133bb5c81ab8153d06fff65c7ba6e",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/NaturalBargeInAudioInput.kt": "3e759abb341cfc4e1fa0203d831b5b0bdb3871ec10831782612d621d3f8f9a51",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/PostAnswerCaptionContinuation.kt": "aeabbfa2ff721275f77879b50f8e80f3113f936a7bed6435bf44b9c8ba060dd7",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/ReplyInterruption.kt": "b581f357ffb2ca74061482ae2a3cad084dcec61b6b7d1106314424f920797de0",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/ReplyVoiceCapture.kt": "b02698ba57c5e8357971de4746b6f4c7e6394d1abf9592798629f503c5be324f",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/VoiceCallPolicy.kt": "ca550ce3c7f68330d2c3c91ec9e32df05f14106551f3d246a8480c2b6364f88d",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/VoiceCaptureHandoff.kt": "217dbfcbf23ad131eacd3c66c4ee2e4901b3400f40562b44a3d7067e22dd82c9",
+    "app/src/main/java/com/battlesbudz/jarvis/v2/voice/VoiceSessionController.kt": "10b107e8f0ad27805e21bb28a2c2ea5cf0f8ea5020e0d2ed91fafac73aa09453",
+    "app/src/test/java/com/battlesbudz/jarvis/v2/voice/CaptionInputAdmissionTest.kt": "6f26b4c43d6354bbc1dcafd29dcef5c1fa0500a57a63cfe5b3481ee22bd7d555",
+    "app/src/test/java/com/battlesbudz/jarvis/v2/voice/CaptionPublicationFenceTest.kt": "3b0cfeb415f84628701d9aa0624eeab75083770a0274125433dde49ba70ff6b1",
+    "app/src/test/java/com/battlesbudz/jarvis/v2/voice/CaptionPublicationOwnershipTest.kt": "cf6386c3fe764c36078e16fde8d88623f507ca6921532774d510dad5eb96f082",
+    "app/src/test/java/com/battlesbudz/jarvis/v2/voice/CaptureFinalVerdictTest.kt": "55ffa3c2705f7ce371b932e786bd970c3c41c62019f7b88e639dfb126d41a461",
+    "app/src/test/java/com/battlesbudz/jarvis/v2/voice/CaptureFirstAudioInputTest.kt": "2dc0c8bfe53975f8e98cb657694156ef7299fbfd290066b6fb94338f2643c0b0",
+    "app/src/test/java/com/battlesbudz/jarvis/v2/voice/CaptureFirstReplyHandoffTest.kt": "c35765986bb326a128c0f8d3346b2c8d2b98671b455f293df2e0c38aeb3b20b4",
+    "app/src/test/java/com/battlesbudz/jarvis/v2/voice/FinalWhisperFarewellSnapshotTest.kt": "5d788b7eaa247d0d49138a36c78a72d00d36c3cd01171e9b8782847c377f6980",
+    "app/src/test/java/com/battlesbudz/jarvis/v2/voice/PostAnswerCaptionContinuationTest.kt": "bc7bf38b22c6c348a1336df50adcf9908598f6192981dc17fee9b3727dd756ad",
+    "app/src/test/java/com/battlesbudz/jarvis/v2/voice/VoiceCallPolicyTest.kt": "07b1896b342787df964d75db9a581753d8b99eab014e0ac559631bca82aa34d4",
+    "app/src/test/java/com/battlesbudz/jarvis/v2/voice/VoiceCaptureHandoffTest.kt": "9fc7dac320cab168c862bc1b808458e846ce828728258d6dc0f36cb7b65270ef"
+  },
+  "compile_stack": "-Xss8m",
+  "known_limits": [
+    "No APK, NDK/JNI integration, R8/minification, Android instrumentation, real models, physical audio, performance or device validation.",
+    "42 test total comprises existing 37 SmartTurn and 5 actual capture-hook tests, not a newly added end-to-end combined final-verdict/SmartTurn test.",
+    "The rearm final-verdict reset path was independently inspected at source level; its dedicated runtime tests belong to the separate rearm check.",
+    "SmartTurn observation stays revoked after the first priority event for the remainder of that capture, even when endpoint rejection continues on the same reader; this is intentional priority protection."
+  ],
+  "interaction_review": {
+    "conclusion": "No source-level integration blocker found within the requested SmartTurn/rearm ownership and cancellation scope.",
+    "final_verdict": "AudioTurnCapture receives final evidence only after finalized recognition, recovery and pending hardware-audio checks. A rejection reuses the existing candidate-discard/reset path, preserving the reader and advancing the shadow generation through onInvalidated(candidate_discarded).",
+    "priority_protection": "AudioTurnCapture calls onPriority(endpoint_finalization) before the final verdict. SmartTurnCaptureObserver keeps prioritized=true through onInvalidated, so SmartTurn remains revoked for the rest of that capture, including rejected-candidate reset/continue. This is intentional priority protection; the next beginCapture gets a fresh observer. No code change requested or made.",
+    "wiring": "The current rearm follow-up path in ReplyCaptureBenchmark supplies rejectFinalCandidate and leaves shadowObserver null. The ordinary VoiceTurnPreparation path supplies the SmartTurn observer and leaves rejectFinalCandidate at its false default. The shared AudioTurnCapture API supports both; no new dynamic combined-hook coverage is claimed.",
+    "ownership": "SmartTurnCallOwner closes the previous observer before replacing it, rejects stale beginCapture owners, ignores stale closeCall IDs, and retains a closing worker until awaitClosed(0) proves actual thread exit. Existing tests cover old capture close versus replacement and undrained budget retention.",
+    "cancellation": "Capture stop/failure/cancellation closes or invalidates the observer without joining inference. Generation changes cancel publication while a busy worker remains owned until inference returns. Backend close remains on its own worker. Completion callbacks publish old-request metadata only, outside the worker lock. Existing tests cover cancellation, late completion, priority overlap, and throwing telemetry."
+  }
+}

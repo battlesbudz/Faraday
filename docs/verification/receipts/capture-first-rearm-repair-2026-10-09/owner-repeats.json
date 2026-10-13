@@ -1,0 +1,102 @@
+[
+  {
+    "iteration": 1,
+    "exit_code": 0,
+    "output": "JUnit version 4.13.2\n.............................................\nTime: 0.626\n\nOK (45 tests)\n\n"
+  },
+  {
+    "iteration": 2,
+    "exit_code": 0,
+    "output": "JUnit version 4.13.2\n.............................................\nTime: 0.644\n\nOK (45 tests)\n\n"
+  },
+  {
+    "iteration": 3,
+    "exit_code": 0,
+    "output": "JUnit version 4.13.2\n.............................................\nTime: 0.644\n\nOK (45 tests)\n\n"
+  },
+  {
+    "iteration": 4,
+    "exit_code": 0,
+    "output": "JUnit version 4.13.2\n.............................................\nTime: 0.669\n\nOK (45 tests)\n\n"
+  },
+  {
+    "iteration": 5,
+    "exit_code": 0,
+    "output": "JUnit version 4.13.2\n.............................................\nTime: 0.724\n\nOK (45 tests)\n\n"
+  },
+  {
+    "iteration": 6,
+    "exit_code": 0,
+    "output": "JUnit version 4.13.2\n.............................................\nTime: 0.603\n\nOK (45 tests)\n\n"
+  },
+  {
+    "iteration": 7,
+    "exit_code": 0,
+    "output": "JUnit version 4.13.2\n.............................................\nTime: 0.618\n\nOK (45 tests)\n\n"
+  },
+  {
+    "iteration": 8,
+    "exit_code": 0,
+    "output": "JUnit version 4.13.2\n.............................................\nTime: 0.643\n\nOK (45 tests)\n\n"
+  },
+  {
+    "iteration": 9,
+    "exit_code": 0,
+    "output": "JUnit version 4.13.2\n.............................................\nTime: 0.626\n\nOK (45 tests)\n\n"
+  },
+  {
+    "iteration": 10,
+    "exit_code": 0,
+    "output": "JUnit version 4.13.2\n.............................................\nTime: 0.588\n\nOK (45 tests)\n\n"
+  },
+  {
+    "iteration": 11,
+    "exit_code": 0,
+    "output": "JUnit version 4.13.2\n.............................................\nTime: 0.612\n\nOK (45 tests)\n\n"
+  },
+  {
+    "iteration": 12,
+    "exit_code": 0,
+    "output": "JUnit version 4.13.2\n.............................................\nTime: 0.618\n\nOK (45 tests)\n\n"
+  },
+  {
+    "iteration": 13,
+    "exit_code": 0,
+    "output": "JUnit version 4.13.2\n.............................................\nTime: 0.641\n\nOK (45 tests)\n\n"
+  },
+  {
+    "iteration": 14,
+    "exit_code": 0,
+    "output": "JUnit version 4.13.2\n.............................................\nTime: 0.611\n\nOK (45 tests)\n\n"
+  },
+  {
+    "iteration": 15,
+    "exit_code": 0,
+    "output": "JUnit version 4.13.2\n.............................................\nTime: 0.705\n\nOK (45 tests)\n\n"
+  },
+  {
+    "iteration": 16,
+    "exit_code": 0,
+    "output": "JUnit version 4.13.2\n.............................................\nTime: 0.665\n\nOK (45 tests)\n\n"
+  },
+  {
+    "iteration": 17,
+    "exit_code": 0,
+    "output": "JUnit version 4.13.2\n.............................................\nTime: 0.637\n\nOK (45 tests)\n\n"
+  },
+  {
+    "iteration": 18,
+    "exit_code": 0,
+    "output": "JUnit version 4.13.2\n.............................................\nTime: 0.606\n\nOK (45 tests)\n\n"
+  },
+  {
+    "iteration": 19,
+    "exit_code": 0,
+    "output": "JUnit version 4.13.2\n.............................................\nTime: 0.602\n\nOK (45 tests)\n\n"
+  },
+  {
+    "iteration": 20,
+    "exit_code": 0,
+    "output": "JUnit version 4.13.2\n.............................................\nTime: 0.569\n\nOK (45 tests)\n\n"
+  }
+]

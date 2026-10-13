@@ -1,0 +1,187 @@
+{
+  "purpose": "Independently reconstruct publication test fixtures from synthetic/public PCM and a pinned signal-processing frontend; no model files or inference",
+  "inputs": [
+    {
+      "path": "scripts/smart-turn/generate_goldens.py",
+      "bytes": 3314,
+      "sha256": "fc8e649ffa00791d8dc128240ad297c1491d573c8e5c197da769aba6de0bea34"
+    },
+    {
+      "path": "third_party/smart-turn/reference_whisper_features.py",
+      "bytes": 7221,
+      "sha256": "139b047d10dee42ad5b4894489012e515a882d8f5e2bffe8ad27b30728fc9968"
+    },
+    {
+      "path": "app/src/test/resources/recorded-audio/librispeech-1089-134686-0000.wav",
+      "bytes": 333964,
+      "sha256": "0b1785dba56f22af426ccb25d318f7e103558fd40e1c3ab064b455dba2afae12"
+    }
+  ],
+  "model_files_read": [],
+  "model_inference": false,
+  "private_audio": false,
+  "fixture_count": 16,
+  "elapsed_seconds": 0.34807214200009184,
+  "fixtures": [
+    {
+      "path": "scripts/smart-turn/fixtures/chirp_9s.features.f32le.gz",
+      "compressed_bytes": 72551,
+      "compressed_sha256": "23f5ce930f7c31a8959e5aaecfbafced8bb0290656618c91cbee9188e06ac566",
+      "git_blob_sha1": "3f2d97fe59fedea6e74b0d487d613625cbc73549",
+      "decoded_bytes": 256000,
+      "decoded_sha256": "b2efa03bfd17e66f7f93819ef95da04375b8e3071dfc01748af3ad277a6e76be",
+      "reproduced_compressed_exactly": true,
+      "reproduced_decoded_exactly": true
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/chirp_9s.pcm16le.gz",
+      "compressed_bytes": 263479,
+      "compressed_sha256": "044ece38a1ded51e21dcbad8ce4902d94372b536ecc1a45537369d8fc6ae706f",
+      "git_blob_sha1": "637a6f58d5b1a51784f541c93c4f1db5e8aad769",
+      "decoded_bytes": 288000,
+      "decoded_sha256": "9f51960580f5751d34d0938de6ee42bdec6b06dde8fe7ba2c3f0fb05c0126d84",
+      "reproduced_compressed_exactly": true,
+      "reproduced_decoded_exactly": true
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/dc_short.features.f32le.gz",
+      "compressed_bytes": 1129,
+      "compressed_sha256": "8907a6cc3f1dd681ebd77596573a714842b36a94b2e5e63e3bb60731d939865b",
+      "git_blob_sha1": "dd2ced0336c943c9cc0cd4adf49b7c9ac9e4ac62",
+      "decoded_bytes": 256000,
+      "decoded_sha256": "486c3097a19a693a11dc61c8e3639407d90a26588bd283ef028098eb3a6f646c",
+      "reproduced_compressed_exactly": true,
+      "reproduced_decoded_exactly": true
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/dc_short.pcm16le.gz",
+      "compressed_bytes": 26,
+      "compressed_sha256": "99c1f176e91249dac0b88d844ef90594f9d2405f02d7b5fef1f2c70d4ddeb2ea",
+      "git_blob_sha1": "593e2af537ebb4ae897de88c71d99831b0936d9e",
+      "decoded_bytes": 318,
+      "decoded_sha256": "754279cd32b871efc1cf5a834a7d4d9fae844f7686319f2bf021419f0b8ccd84",
+      "reproduced_compressed_exactly": true,
+      "reproduced_decoded_exactly": true
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/impulse_one_sample.features.f32le.gz",
+      "compressed_bytes": 660,
+      "compressed_sha256": "cbe186ce1721edd243fce2456d90ea57f7a56d6fb919f54ee599e3d04e84f717",
+      "git_blob_sha1": "41c1bc8ac71b9599831d6e7335c58b8e377937fb",
+      "decoded_bytes": 256000,
+      "decoded_sha256": "2396d10c5b4d740d949453c1be29105fd4e41ee4d948fd76affaf61a2f98df3f",
+      "reproduced_compressed_exactly": true,
+      "reproduced_decoded_exactly": true
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/impulse_one_sample.pcm16le.gz",
+      "compressed_bytes": 22,
+      "compressed_sha256": "377bfba130779122d81873ca4d414b114083297f67bc2026a857af1759bc06d4",
+      "git_blob_sha1": "616320aa9a0d0bf835cfb696f6ccb71bda4a22af",
+      "decoded_bytes": 2,
+      "decoded_sha256": "8f96c15501bef61baf5bd943201979595736b66b6a7e3b35c353729ab8d9a561",
+      "reproduced_compressed_exactly": true,
+      "reproduced_decoded_exactly": true
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/noise_lcg_8s.features.f32le.gz",
+      "compressed_bytes": 211270,
+      "compressed_sha256": "f4d1cbc4e170fc33e1fcb436d73f6589de8cbdafd87f262b53510708eacae4d1",
+      "git_blob_sha1": "5493c788654904c000002e216d86e4dc451907eb",
+      "decoded_bytes": 256000,
+      "decoded_sha256": "c5938c6cf6e5e3824b4d5714696973a81b5cabacc9306c0297668ebc8f0da543",
+      "reproduced_compressed_exactly": true,
+      "reproduced_decoded_exactly": true
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/noise_lcg_8s.pcm16le.gz",
+      "compressed_bytes": 256098,
+      "compressed_sha256": "2bf9b17529c8145b474b51911ff865c433fe5f9354fae183a0fb0bd135261716",
+      "git_blob_sha1": "d93282c3e751d2124d6a661f3c6038662dbf08b4",
+      "decoded_bytes": 256000,
+      "decoded_sha256": "be992466e78fd0b1d1a71c93d1b79eedadddc75387d3169fab238b766c4eae70",
+      "reproduced_compressed_exactly": true,
+      "reproduced_decoded_exactly": true
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/public_librispeech_last8s.features.f32le.gz",
+      "compressed_bytes": 217935,
+      "compressed_sha256": "de89e8208d869ecb0db63744a46630b9039f198c8d2aac790b9b2b0ab0ef87e2",
+      "git_blob_sha1": "cbdbed94d2805f44112813717a7cf652cb248bd9",
+      "decoded_bytes": 256000,
+      "decoded_sha256": "1dcec365564615ee454bf4138ef31649014a1369d37e81529ececb512ca6bf5d",
+      "reproduced_compressed_exactly": true,
+      "reproduced_decoded_exactly": true
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/public_librispeech_last8s.pcm16le.gz",
+      "compressed_bytes": 267992,
+      "compressed_sha256": "15d650c33c631c8a8c40c252bb229732de786cb29b79af99f98e41174431e5dd",
+      "git_blob_sha1": "fe6095c1ba97f7ae29937fcc751729127ea97c1f",
+      "decoded_bytes": 333920,
+      "decoded_sha256": "06b3e22db20760452d503a01d24cd7a7a23ddbeab07919c58e22eccb68cc03fb",
+      "reproduced_compressed_exactly": true,
+      "reproduced_decoded_exactly": true
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/quiet_one_lsb.features.f32le.gz",
+      "compressed_bytes": 9051,
+      "compressed_sha256": "146178346812de10ccd182f48fdceeec3ed4b65dcb13610791c458b21d11575b",
+      "git_blob_sha1": "90a8fd9293d4d854f9ba3b08b2442896fd5a6b9c",
+      "decoded_bytes": 256000,
+      "decoded_sha256": "c081ba3fb168d3a0bcf2fe5551ccb5faf703e9c7a44b69f96276acb243e402e3",
+      "reproduced_compressed_exactly": true,
+      "reproduced_decoded_exactly": true
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/quiet_one_lsb.pcm16le.gz",
+      "compressed_bytes": 151,
+      "compressed_sha256": "a7e28befb6ce9042c6ad5d2102815a981331b626d65acbeb1c4b9841244595c7",
+      "git_blob_sha1": "df438f88a2690a6110be1b1eade6e186d8dd1e9b",
+      "decoded_bytes": 32000,
+      "decoded_sha256": "92eee892974d5c0d751f298455a3dd677ede81104f46c55e6e6ea67136e041ca",
+      "reproduced_compressed_exactly": true,
+      "reproduced_decoded_exactly": true
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/silence_8s.features.f32le.gz",
+      "compressed_bytes": 287,
+      "compressed_sha256": "4403562d0442ae03f4da9e3fed2eda145ee07aef092174539332e03ed31d5122",
+      "git_blob_sha1": "6e543557cdda9b4efc60b08d5dc8ad4951e14381",
+      "decoded_bytes": 256000,
+      "decoded_sha256": "c4a1d90bbbdc1c49cf89b8f73360019b1b0fe01ae48a9dfd6fc2c4a3228b8859",
+      "reproduced_compressed_exactly": true,
+      "reproduced_decoded_exactly": true
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/silence_8s.pcm16le.gz",
+      "compressed_bytes": 283,
+      "compressed_sha256": "3cbea0db3d7c7ced78be73748eb6a66dbd2860c860a5063c82b5fae48ae2d7fa",
+      "git_blob_sha1": "768ef41e4d155bc22661d2d9c80530b58496dcdf",
+      "decoded_bytes": 256000,
+      "decoded_sha256": "24a046dc04fefdb652e4077b41162490b344a4dd45f918505477f84c592f3070",
+      "reproduced_compressed_exactly": true,
+      "reproduced_decoded_exactly": true
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/tone_440hz_1s.features.f32le.gz",
+      "compressed_bytes": 1842,
+      "compressed_sha256": "6557e1287df3ff245ee4cea6ae85131f8a26aca0b4cd71d0ef907f6c584fb59d",
+      "git_blob_sha1": "0b34f2a917ce0c7bfa8f12bb0b5c4f7158bec390",
+      "decoded_bytes": 256000,
+      "decoded_sha256": "0f5e01ac3f012259a096168d842eee34b65b7daf246b94091220c9165eef4602",
+      "reproduced_compressed_exactly": true,
+      "reproduced_decoded_exactly": true
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/tone_440hz_1s.pcm16le.gz",
+      "compressed_bytes": 1031,
+      "compressed_sha256": "39441df1135de73c487e7116fef1305b3f804304681260e22a923cb44bc77541",
+      "git_blob_sha1": "346955e8e77cbaed961d8c234c6a0d3cff0b2953",
+      "decoded_bytes": 32000,
+      "decoded_sha256": "97baea0a56c5b48504ea4b65b41148c6d55dc494d22652b3db7cedb295876efe",
+      "reproduced_compressed_exactly": true,
+      "reproduced_decoded_exactly": true
+    }
+  ]
+}

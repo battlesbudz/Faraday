@@ -1,0 +1,18 @@
+app/src/main/java/com/battlesbudz/jarvis/v2/ai/storage/ModelDownloader.kt:104:27: warning: 'constructor(p0: String!): URL' is deprecated. Deprecated in Java.
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                          ^^^
+app/src/main/java/com/battlesbudz/jarvis/v2/ai/storage/ModelDownloader.kt:134:27: warning: 'constructor(p0: String!): URL' is deprecated. Deprecated in Java.
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                          ^^^
+app/src/main/java/com/battlesbudz/jarvis/v2/ai/storage/ModelDownloader.kt:191:27: warning: 'constructor(p0: String!): URL' is deprecated. Deprecated in Java.
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                          ^^^
+app/src/main/java/com/battlesbudz/jarvis/v2/runtime/turn/VoiceTurnPreparation.kt:108:70: warning: unnecessary safe call on a non-null receiver of type 'LiveComparison.Trial'.
+        request.comparison?.put("capture_asr", if (request.comparison?.request?.path?.usesAudio == true) "none_Gemma_audio" else request.asrEngine.id)
+                                                                     ^^
+app/src/main/java/com/battlesbudz/jarvis/v2/voice/AudioTurnCapture.kt:604:78: warning: unnecessary non-null assertion (!!) on a non-null receiver of type 'Boolean'.
+                if (acceptedTurn != null) turnCompleted.complete(acceptedTurn!!)
+                                                                             ^^
+app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnShadow.kt:56:24: warning: this class is not recommended for use in Kotlin. Use 'kotlin.Any' instead.
+    private val lock = Object()
+                       ^^^^^^

@@ -1,0 +1,43 @@
+{
+  "created_utc": "2026-10-09T20:44:31.718819+00:00",
+  "commit": "f9e16c03332a6bcf2efefd7fe9e9e11392e6164b",
+  "tree": "968c18fc7463fd92027105e07af90958aaae0dc7",
+  "parent": "165ffbb46af313d51e3947a2e70cab3eaef3a543",
+  "branch": "recovery/kotlin-stack-20261009",
+  "worktree": "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/kotlin-stack-work",
+  "changed_files": [
+    "gradle.properties"
+  ],
+  "worktree_clean": true,
+  "published": false,
+  "production_and_acceptance_sources_unchanged": true,
+  "gradle_properties_git_blob": "27a8277e8d6ced3231f14cf75af51610b2a8ad3e",
+  "gradle_properties_sha256": "f189b5df154325b8dc238d39b956c3f25480f0fbc66853d7ae4d4b7c9f3fbd7f",
+  "patch_sha256": "bad5325b85de725f4685dbba79db54c4dfbccfa3c64f59f9f55c2293d00378e5",
+  "comparison": {
+    "baseline": "Retained default-stack failure plus source-bound successful rerun receipt from the same unchanged source set; failure output preserved verbatim. No new default-stack compile was run.",
+    "current": "One fresh -Xss8m compile of all 52 exact frozen production/test sources, exit 0, no source hash changes.",
+    "all_52_source_hashes_match_retained_manifest": true,
+    "retained_default_failure_sha256": "d080a797c4cd83e7db85f31120b451889ac534d36a08fd0fb284d43f10d8460b",
+    "fresh_compile_receipt_sha256": "da0647f74214ff495f60a1ba13ba07ced28cf9a0d0f6f9f9cf3f7325b7afb72f",
+    "strict_fresh_single_variable_ab": "Not claimed: the baseline is retained, not a new same-session paired invocation.",
+    "baseline_limitation": "Retained failure does not have its own fail-time source manifest. Matching all 52 current/retained-success source hashes and retained traceback support the diagnosis; a newly controlled same-session A/B is not claimed."
+  },
+  "gradle_scope": "Only JVM thread-stack capacity is changed for build tooling. Existing 2 GiB Gradle heap, 4 GiB Kotlin heap, two Gradle workers, execution/fallback strategy, acceptance infrastructure, and all app sources are preserved. JVM per-thread stack reservation increases; app-runtime stack size is not configured here.",
+  "verification": [
+    "Java Properties parser accepts both exact JVM argument strings",
+    "Both actual JVM launch argument sets yield ThreadStackSize=8192 KiB and preserve configured heap limits",
+    "52-file focused source compile passed",
+    "git diff --check passed",
+    "Independent source/config review passed with no blocking findings for frozen commit f9e16c03332a6bcf2efefd7fe9e9e11392e6164b"
+  ],
+  "not_verified": [
+    "Full Gradle compile/daemon startup/fallback execution in CI",
+    "Release JVM test execution for next exact combined revision",
+    "NDK/JNI, signed/minified APK, R8, compact equivalence and Android sandbox",
+    "Real model inference, physical audio and device performance"
+  ],
+  "ci_action": "None. Existing Build 1245 has not been canceled, restarted or written to. The integration owner must combine this frozen commit with the separate shadow repair before the next authorized CI publication.",
+  "review_file": "independent-review.md",
+  "review_sha256": "ddef46bef92c5683a70fb10c1fe7f6fcd9aa2652e213b4652f8312ebb4c7f8c0"
+}

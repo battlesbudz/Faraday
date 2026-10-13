@@ -1,0 +1,19 @@
+Architecture dependency boundaries passed.
+
+[check] Python helper tests: scripts
+.............................................................................................................
+----------------------------------------------------------------------
+Ran 109 tests in 17.172s
+
+OK
+Compact APK preserves identical native, DEX and asset payloads.
+
+[check] Python helper tests: scripts/verification
+..................................................................................
+----------------------------------------------------------------------
+Ran 82 tests in 4.867s
+
+OK
+Downloaded verified artifact IDs: 10707864350
+Downloaded verified artifact IDs: 10707864350
+Downloaded verified artifact IDs: 10707864350

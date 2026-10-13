@@ -1,0 +1,11 @@
+{
+  "run_url": "https://github.com/battlesbudz/Jarvis-OS-V2/actions/runs/38229044414",
+  "artifact_id": 11739859331,
+  "artifact_name": "jarvis-verification-30-phone-normal-app-release",
+  "artifact_sha256": "b8fc8d666ceb5c292815edae652be570652a26889f690643b03fb2c04f61ac60",
+  "artifact_bytes": 20463887,
+  "reviewed_screenshot": "tests/test45_pipelineBenchmarksScoreOriginalAsrPersistAndExportRedactedEvidence.png",
+  "screenshot_sha256": "1f026e680e58993c2924a216fe065a714e214375e95dc7a3dc3b6df21d1705e1",
+  "screenshot_observation": "Expanded timing metric rows visible. XML after cleanup is a different screen state and cannot substantiate the screenshot viewport.",
+  "classification": "Bounded harness discovery overshoot; accompanying product grouping limits avoidable page growth. Manual usability is not proven by this artifact."
+}

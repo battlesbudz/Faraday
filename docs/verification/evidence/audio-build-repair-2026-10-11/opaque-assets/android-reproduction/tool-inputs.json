@@ -1,0 +1,23 @@
+{
+  "sdk-common-31.7.3.jar": {
+    "url": "https://dl.google.com/dl/android/maven2/com/android/tools/sdk-common/31.7.3/sdk-common-31.7.3.jar",
+    "bytes": 1491331,
+    "sha256": "4fa44a7d9675df13da614dee512df90ad3e4308d0addb32ead99f57ce58f675f"
+  },
+  "common-31.7.3.jar": {
+    "url": "https://dl.google.com/dl/android/maven2/com/android/tools/common/31.7.3/common-31.7.3.jar",
+    "bytes": 569070,
+    "sha256": "abb5b2f28954ac09dcfb5d192e355af41236c8337afc08b16aa1adc0e8aebf63"
+  },
+  "guava-32.0.1-jre.jar": {
+    "url": "https://repo.maven.apache.org/maven2/com/google/guava/guava/32.0.1-jre/guava-32.0.1-jre.jar",
+    "bytes": 3037368,
+    "sha256": "bd7fa227591fb8509677d0d1122cf95158f3b8a9f45653f58281d879f6dc48c5"
+  },
+  "aapt2": {
+    "url": "https://dl.google.com/dl/android/maven2/com/android/tools/build/aapt2/8.7.3-12006047/aapt2-8.7.3-12006047-linux.jar",
+    "bytes": 6448048,
+    "sha256": "5c2d1f8c7a78809bddac9be986b28f1d59c5d7bc6d3c28ce58a6dd13ff328bd5",
+    "note": "Hash identifies extracted aapt2 binary, not the containing JAR."
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "filename": "patchelf-0.18.0-x86_64.tar.gz",
+  "url": "https://github.com/NixOS/patchelf/releases/download/0.18.0/patchelf-0.18.0-x86_64.tar.gz",
+  "bytes": 457219,
+  "sha256": "ce84f2447fb7a8679e58bc54a20dc2b01b37b5802e12c57eece772a6f14bf3f0",
+  "binary_path": "bin/patchelf",
+  "binary_bytes": 1202328,
+  "binary_sha256": "b699cb82300dfd08ea6c895d8829b46bea970cfa737fa34188d8256ca89404e5",
+  "version": "0.18.0",
+  "license": "GPL-3.0-or-later",
+  "license_url": "https://github.com/NixOS/patchelf/blob/0.18.0/COPYING",
+  "scope": "Pinned official host build tool only; not distributed in the Android APK or AAR"
+}

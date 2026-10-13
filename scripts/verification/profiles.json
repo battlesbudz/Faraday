@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "profiles": [
+    {"id": "30-phone-normal", "api": 30, "apk": "app-release", "device_profile": "pixel_2", "screen_profile": "phone", "page_size": 4096, "target": "google_apis", "runner": "ubuntu-latest", "arch": "x86_64", "acceleration": "kvm", "boot_timeout": 300, "job_timeout": 40, "instrumentation_timeout": 900},
+    {"id": "35-phone-compact", "api": 35, "apk": "app-compact", "device_profile": "pixel_2", "screen_profile": "phone", "page_size": 4096, "target": "google_apis", "runner": "ubuntu-latest", "arch": "x86_64", "acceleration": "kvm", "boot_timeout": 300, "job_timeout": 40, "instrumentation_timeout": 900},
+    {"id": "36-phone-normal", "api": 36, "apk": "app-release", "device_profile": "pixel_2", "screen_profile": "phone", "page_size": 4096, "target": "google_apis", "runner": "ubuntu-latest", "arch": "x86_64", "acceleration": "kvm", "boot_timeout": 300, "job_timeout": 40, "instrumentation_timeout": 900},
+    {"id": "36-foldable-compact", "api": 36, "apk": "app-compact", "device_profile": "pixel_fold", "screen_profile": "foldable", "page_size": 4096, "target": "google_apis", "runner": "ubuntu-latest", "arch": "x86_64", "acceleration": "kvm", "boot_timeout": 300, "job_timeout": 40, "instrumentation_timeout": 1200},
+    {"id": "36-16k-normal", "api": 36, "apk": "app-release", "device_profile": "pixel_2", "screen_profile": "phone", "page_size": 16384, "target": "google_apis_ps16k", "runner": "ubuntu-latest", "arch": "x86_64", "acceleration": "kvm", "boot_timeout": 300, "job_timeout": 40, "instrumentation_timeout": 900}
+  ]
+}

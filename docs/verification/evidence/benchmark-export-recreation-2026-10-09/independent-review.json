@@ -1,0 +1,374 @@
+{
+  "schema": 1,
+  "review_passed": true,
+  "baseline_commit": "13a62a8374610fefda9b93c3213c559a9f97bef7",
+  "current_source_sha256": "f95bf6209095264ba3a55db564782a95d9477a469cb599c0a3d922031451362a",
+  "baseline_source_sha256": "64bb32d8d412801cc7cedc9c0cdd203c538e6e8151952e6d4ecb9993ebddf0bd",
+  "exact_compile_receipt": {
+    "path": "<repo>/docs/verification/evidence/benchmark-export-recreation-2026-10-09/journey-receipt.json",
+    "sha256": "499053e0cb9c6eb4ec6e8395d207f738483d8a0b5fd159470a81a73a4aa65eb9",
+    "exit": 0,
+    "source_bound": true
+  },
+  "original_compile_receipt": {
+    "path": "<evidence>/export-linkage-evidence/journey-receipt.json",
+    "sha256": "32c61a31d7963da8c196f5d4dbb0e951473850d9a6163f7876d9dfdad4bbfc7a",
+    "original_different_commit_same_exact_source_verified": true
+  },
+  "classfile_audit": {
+    "baseline": {
+      "files": {
+        "com/battlesbudz/jarvis/v2/verification/Test45CompileFixture$test45_pipelineBenchmarksScoreOriginalAsrPersistAndExportRedactedEvidence$1$1$1.class": "28c4401b2225c274757fc220dae34a2e3a1147cf17be89ae38f1406648297446",
+        "com/battlesbudz/jarvis/v2/verification/Test45CompileFixture$test45_pipelineBenchmarksScoreOriginalAsrPersistAndExportRedactedEvidence$1$1.class": "c5222aabf1d5eeb741274891588df8f5692da675d2a6e91cf90c9c6928457c4f",
+        "com/battlesbudz/jarvis/v2/verification/Test45CompileFixture$test45_pipelineBenchmarksScoreOriginalAsrPersistAndExportRedactedEvidence$1$fixtureContext$1.class": "30a59114b76df63609b0f0b6a0b2fa5dc09e19406e2f1591b5a52bc8b76141ee",
+        "com/battlesbudz/jarvis/v2/verification/Test45CompileFixture$test45_pipelineBenchmarksScoreOriginalAsrPersistAndExportRedactedEvidence$1.class": "2ce369ed8ae5b37085d543af71955f83e32ec3244564562fd519cecb49242565",
+        "com/battlesbudz/jarvis/v2/verification/Test45CompileFixture.class": "d721d3e2eb86076fa5ceaf55660f7d9887321318242db5282ded6aa57907d5b0"
+      },
+      "javap": {
+        "path": "independent-baseline-bytecode.txt",
+        "sha256": "59e54ccd6c920ea428874d6c24d385a882646ac06c709a4670c303a7e8d54357"
+      },
+      "scope": "Reachable exact test45 fixture classes only, traversed through classfile constant pool; stale unreachable output classes excluded."
+    },
+    "repaired": {
+      "files": {
+        "com/battlesbudz/jarvis/v2/verification/Test45CompileFixture$test45_pipelineBenchmarksScoreOriginalAsrPersistAndExportRedactedEvidence$1$1$1.class": "6348244bd3870e3b99a097d3c1b727f1854d151af945c0a5fa55ecc6afd5f12a",
+        "com/battlesbudz/jarvis/v2/verification/Test45CompileFixture$test45_pipelineBenchmarksScoreOriginalAsrPersistAndExportRedactedEvidence$1$1.class": "58893f7899c525e575dc02e2608a44178e439af5cd849702e48605dc8c1b867b",
+        "com/battlesbudz/jarvis/v2/verification/Test45CompileFixture$test45_pipelineBenchmarksScoreOriginalAsrPersistAndExportRedactedEvidence$1$fixtureContext$1.class": "4a42014a6c5163bcb4deb106976842befe47053f9754cc69e51ad01ea7f11a4f",
+        "com/battlesbudz/jarvis/v2/verification/Test45CompileFixture$test45_pipelineBenchmarksScoreOriginalAsrPersistAndExportRedactedEvidence$1.class": "2fc89240c97bcfa199fdc19b942786e6d3449c403d3a8494d665ae2fc16972ef",
+        "com/battlesbudz/jarvis/v2/verification/Test45CompileFixture.class": "a1220926b9e72dc3996ad03ec6ec88480c062cb56f8ee1ffc69109c2cda547f7"
+      },
+      "javap": {
+        "path": "independent-repaired-bytecode.txt",
+        "sha256": "72fb8c8b7d006c73d73ca02e8e6fec4164faad8e2288220ecda8bd6f3ea0f9d5"
+      },
+      "scope": "Reachable exact test45 fixture classes only, traversed through classfile constant pool; stale unreachable output classes excluded."
+    },
+    "new_external_method_references": [
+      {
+        "owner": "androidx/compose/runtime/Composer",
+        "name": "changed",
+        "descriptor": "(I)Z",
+        "compiled_callsite_lines": [
+          "73: invokeinterface #1326,  2         // InterfaceMethod androidx/compose/runtime/Composer.changed:(I)Z"
+        ],
+        "baseline_instrumentation_method_table_refs": [],
+        "actual1248_app_definitions": {
+          "normal": [
+            {
+              "owner": "Landroidx/compose/runtime/Composer;",
+              "name": "changed",
+              "descriptor": "(I)Z",
+              "dex": "classes.dex",
+              "method_id": 3393,
+              "definition": true,
+              "access_flags": 1,
+              "method_group": "virtual",
+              "code_offset": 1772888
+            }
+          ],
+          "compact": [
+            {
+              "owner": "Landroidx/compose/runtime/Composer;",
+              "name": "changed",
+              "descriptor": "(I)Z",
+              "dex": "classes.dex",
+              "method_id": 3393,
+              "definition": true,
+              "access_flags": 1,
+              "method_group": "virtual",
+              "code_offset": 1772888
+            }
+          ]
+        },
+        "finding": "Already protected by existing -keep class androidx.compose.runtime.Composer { *; }; exact definitions found in both1248 app variants."
+      },
+      {
+        "owner": "androidx/compose/runtime/Composer",
+        "name": "changedInstance",
+        "descriptor": "(Ljava/lang/Object;)Z",
+        "compiled_callsite_lines": [
+          "65: invokeinterface #1322,  2         // InterfaceMethod androidx/compose/runtime/Composer.changedInstance:(Ljava/lang/Object;)Z"
+        ],
+        "baseline_instrumentation_method_table_refs": [
+          {
+            "owner": "Landroidx/compose/runtime/Composer;",
+            "name": "changedInstance",
+            "descriptor": "(Ljava/lang/Object;)Z",
+            "dex": "classes.dex",
+            "method_id": 540
+          }
+        ],
+        "actual1248_app_definitions": {
+          "normal": [
+            {
+              "owner": "Landroidx/compose/runtime/Composer;",
+              "name": "changedInstance",
+              "descriptor": "(Ljava/lang/Object;)Z",
+              "dex": "classes.dex",
+              "method_id": 3398,
+              "definition": true,
+              "access_flags": 1,
+              "method_group": "virtual",
+              "code_offset": 1772972
+            }
+          ],
+          "compact": [
+            {
+              "owner": "Landroidx/compose/runtime/Composer;",
+              "name": "changedInstance",
+              "descriptor": "(Ljava/lang/Object;)Z",
+              "dex": "classes.dex",
+              "method_id": 3398,
+              "definition": true,
+              "access_flags": 1,
+              "method_group": "virtual",
+              "code_offset": 1772972
+            }
+          ]
+        },
+        "finding": "Already protected by existing -keep class androidx.compose.runtime.Composer { *; }; exact definitions found in both1248 app variants."
+      },
+      {
+        "owner": "androidx/compose/runtime/EffectsKt",
+        "name": "SideEffect",
+        "descriptor": "(Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;I)V",
+        "compiled_callsite_lines": [
+          "150: invokestatic  #1338               // Method androidx/compose/runtime/EffectsKt.SideEffect:(Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;I)V"
+        ],
+        "baseline_instrumentation_method_table_refs": [],
+        "actual1248_app_definitions": {
+          "normal": [
+            {
+              "owner": "Landroidx/compose/runtime/v0;",
+              "name": "h",
+              "descriptor": "(Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;)V",
+              "dex": "classes.dex",
+              "method_id": 4266,
+              "definition": true,
+              "access_flags": 25,
+              "method_group": "direct",
+              "code_offset": 1797984
+            }
+          ],
+          "compact": [
+            {
+              "owner": "Landroidx/compose/runtime/v0;",
+              "name": "h",
+              "descriptor": "(Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;)V",
+              "dex": "classes.dex",
+              "method_id": 4266,
+              "definition": true,
+              "access_flags": 25,
+              "method_group": "direct",
+              "code_offset": 1797984
+            }
+          ]
+        },
+        "finding": "New direct test ABI; old R8 SideEffect dropped int parameter. Exact descriptor keep required. Fresh fixed R8 APK remains unverified."
+      },
+      {
+        "owner": "java/util/concurrent/atomic/AtomicInteger",
+        "name": "<init>",
+        "descriptor": "(I)V",
+        "compiled_callsite_lines": [
+          "184: invokespecial #179                // Method java/util/concurrent/atomic/AtomicInteger.\"<init>\":(I)V"
+        ],
+        "baseline_instrumentation_method_table_refs": [
+          {
+            "owner": "Ljava/util/concurrent/atomic/AtomicInteger;",
+            "name": "<init>",
+            "descriptor": "(I)V",
+            "dex": "classes.dex",
+            "method_id": 7239
+          }
+        ],
+        "actual1248_app_method_table_refs": {
+          "normal": [
+            {
+              "owner": "Ljava/util/concurrent/atomic/AtomicInteger;",
+              "name": "<init>",
+              "descriptor": "(I)V",
+              "dex": "classes.dex",
+              "method_id": 23566
+            }
+          ],
+          "compact": [
+            {
+              "owner": "Ljava/util/concurrent/atomic/AtomicInteger;",
+              "name": "<init>",
+              "descriptor": "(I)V",
+              "dex": "classes.dex",
+              "method_id": 23566
+            }
+          ]
+        },
+        "finding": "Android boot-class AtomicInteger API; outside application R8 ownership. Constructor/get references already occur in baseline full test DEX; set is newly referenced by this acknowledgement."
+      },
+      {
+        "owner": "java/util/concurrent/atomic/AtomicInteger",
+        "name": "get",
+        "descriptor": "()I",
+        "compiled_callsite_lines": [
+          "1: invokevirtual #1408               // Method java/util/concurrent/atomic/AtomicInteger.get:()I"
+        ],
+        "baseline_instrumentation_method_table_refs": [
+          {
+            "owner": "Ljava/util/concurrent/atomic/AtomicInteger;",
+            "name": "get",
+            "descriptor": "()I",
+            "dex": "classes.dex",
+            "method_id": 7241
+          }
+        ],
+        "actual1248_app_method_table_refs": {
+          "normal": [
+            {
+              "owner": "Ljava/util/concurrent/atomic/AtomicInteger;",
+              "name": "get",
+              "descriptor": "()I",
+              "dex": "classes.dex",
+              "method_id": 23570
+            }
+          ],
+          "compact": [
+            {
+              "owner": "Ljava/util/concurrent/atomic/AtomicInteger;",
+              "name": "get",
+              "descriptor": "()I",
+              "dex": "classes.dex",
+              "method_id": 23570
+            }
+          ]
+        },
+        "finding": "Android boot-class AtomicInteger API; outside application R8 ownership. Constructor/get references already occur in baseline full test DEX; set is newly referenced by this acknowledgement."
+      },
+      {
+        "owner": "java/util/concurrent/atomic/AtomicInteger",
+        "name": "set",
+        "descriptor": "(I)V",
+        "compiled_callsite_lines": [
+          "2: invokevirtual #1151               // Method java/util/concurrent/atomic/AtomicInteger.set:(I)V"
+        ],
+        "baseline_instrumentation_method_table_refs": [],
+        "actual1248_app_method_table_refs": {
+          "normal": [
+            {
+              "owner": "Ljava/util/concurrent/atomic/AtomicInteger;",
+              "name": "set",
+              "descriptor": "(I)V",
+              "dex": "classes.dex",
+              "method_id": 23575
+            }
+          ],
+          "compact": [
+            {
+              "owner": "Ljava/util/concurrent/atomic/AtomicInteger;",
+              "name": "set",
+              "descriptor": "(I)V",
+              "dex": "classes.dex",
+              "method_id": 23575
+            }
+          ]
+        },
+        "finding": "Android boot-class AtomicInteger API; outside application R8 ownership. Constructor/get references already occur in baseline full test DEX; set is newly referenced by this acknowledgement."
+      }
+    ],
+    "removed_external_method_references": [],
+    "new_external_field_references": [],
+    "new_external_type_references": [
+      "androidx/compose/runtime/EffectsKt",
+      "java/util/concurrent/atomic/AtomicInteger"
+    ]
+  },
+  "actual1248": {
+    "apps": {
+      "normal": {
+        "path": "<evidence>/build1248-evidence/unpacked/jarvis-os-v2-release-apk/app-release.apk",
+        "sha256": "05bb16918a0c614c939001058cdd67579132b4c573902a8a71d17049a77ec84c",
+        "dex_sha256": {
+          "classes.dex": "6e34595352e6894b8a35af850210555909af03d72ab6c8320f8b3648acec453c"
+        }
+      },
+      "compact": {
+        "path": "<evidence>/build1248-evidence/unpacked/jarvis-os-v2-release-apk/app-compact.apk",
+        "sha256": "095916925028af5b4fd5379d187305cb2d1b9740e962891842bea0383992863f",
+        "dex_sha256": {
+          "classes.dex": "6e34595352e6894b8a35af850210555909af03d72ab6c8320f8b3648acec453c"
+        }
+      }
+    },
+    "test": {
+      "path": "<evidence>/build1248-evidence/unpacked/jarvis-verification-test-apk/app-release-androidTest.apk",
+      "sha256": "820e1791884db330413876e38f775d9ac17ed8413aa8a924a980024f44eecdec",
+      "dex_sha256": {
+        "classes.dex": "45acbaa2194c28e04fa5a561b8f9a0fadca1ca871108f6d42eee17c547dc9f1c"
+      }
+    },
+    "mapping": {
+      "path": "<evidence>/build1248-evidence/unpacked/jarvis-os-v2-release-r8-reports/mapping.txt",
+      "sha256": "028ca93b5bf1f9590eeb148f9313f7852b7af236a3839eaa7ae2378176ef9cf4",
+      "EffectsKt": "androidx.compose.runtime.v0",
+      "sideeffect_residual_signature": "(Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;)V"
+    },
+    "baseline_test_effects_refs": [
+      {
+        "owner": "Landroidx/compose/runtime/v0;",
+        "name": "f",
+        "descriptor": "(Ljava/lang/Object;Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;I)V",
+        "dex": "classes.dex",
+        "method_id": 573
+      }
+    ],
+    "missing_original_three_argument_sideeffect": true
+  },
+  "keep_rule": {
+    "path": "app/proguard-rules.pro",
+    "sha256": "e5b151f91c92e2706e9e16bb34d88b669ed3e5a3f57161b8c4682b170bf9eaa1",
+    "exact_text": "-keep class androidx.compose.runtime.EffectsKt {\n    public static void SideEffect(kotlin.jvm.functions.Function0, androidx.compose.runtime.Composer, int);\n}",
+    "validated": "Retains class and only public static SideEffect(Function0, Composer, int), with optimization disabled for that method; existing keep rules retain Function0 and Composer. No broad Effects/runtime keep added."
+  },
+  "preserved_assertion_lines": 57,
+  "limits": [
+    "Static classfile/DEX/mapping audit, not new R8 execution.",
+    "Existing1248 APKs prove the previous descriptor transformation; they do not verify repaired APK bytes.",
+    "Method-table entries are encoded references, not dynamic call counts.",
+    "Fixture compiles exact test45 method and production benchmark sources, with activity/navigation TODO seams; not full ReleaseJourneyTest compilation or Android instrumentation."
+  ],
+  "runtime_review": {
+    "host_receipt": {
+      "path": "<repo>/docs/verification/evidence/benchmark-export-recreation-2026-10-09/host-receipt.json",
+      "sha256": "cab543b11892396a114e34c6a50c16fb65f3795d40b332413a94256641f38019"
+    },
+    "harness_sha256": {
+      "Trace.kt": "7013d2913ec86c4b93c67ab140d1791410305784217e83434b691a67fb73a4f6",
+      "Build.kt": "b9a20581f297efe20b99b2cbe6b2c49d8073d811ac220338725ea47b64c99cee",
+      "ContentResolver.kt": "450f7f5168e70501ce1d7fb17b8a72195ccc155ad2de4ca7714a7080c619e4c2",
+      "RuntimeProbe.kt": "7b6288959b1c31a74102936e03c4c58c7f56de6e9fe474e2f9b83189cc63428b",
+      "run_host.py": "533201201fe5f4a39f90bd6a42349fb546073367b228b1639a79bc3a4b02e0bd"
+    },
+    "logs": {
+      "runtime-tests.log": "2b033a449dbe25f01769cc40af018aab5b71a7ad776364322f87b1d999456e21",
+      "focused-unit-tests.log": "62c47caf03e32a62952e03540e579169189a4bfc20072c73327c8d585576c7f8",
+      "compile-runtime.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "journey-compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "result": "Six lifecycle cases and eleven existing focused JVM tests pass. Current harness/source hashes match reviewed-host receipt.",
+    "case_review": [
+      "The two negative cases deliberately admit callback before replacement commit and control transport truncation/write timing. They reproduce both observed failure states but do not prove unique device schedules.",
+      "Eight replacement iterations deliver a real old raw registry result while a fresh same-scope payload is pending; zero old URI opens, untouched fresh busy/payload state and exact fresh output are checked.",
+      "Pre-coroutine-start disposal verifies zero provider opens.",
+      "Queued IO case occupies both configured IO workers, snapshots nonempty owner job children, disposes the composition, releases workers, awaits owner completion and joins workers plus owner jobs before asserting zero opens. No FIFO-dispatch assumption remains.",
+      "Picker cancellation releases the gate; a new save frozen at epoch1 survives same-owner recomposition to epoch99 and writes exactly its original payload."
+    ],
+    "limits": [
+      "Host invokes actual Compose1.7.6, Activity1.10.0 registry and exact production composable/transport classes.",
+      "ContentResolver is a controlled stream adapter; Trace and Build.VERSION are explicit host replacements.",
+      "Manual coroutine dispatcher, frame clock and blocking latches impose legal schedules; no real Android ContentResolver/FileProvider IPC, Activity.setContent UI scheduling, accessibility, or external picker executes.",
+      "Fresh R8 APK, full release instrumentation and five-profile matrix remain required."
+    ]
+  },
+  "audit_script_sha256": "b3967c26fa772e35538aefa90414f187896dd88997071856672efe579ab84c85",
+  "dex_parser_sha256": "b3bf1f65d8a4c3aba911cb64d5915f400548a63fdfee7b571fd0f6121f7fbc29",
+  "new_reference_count": 6
+}

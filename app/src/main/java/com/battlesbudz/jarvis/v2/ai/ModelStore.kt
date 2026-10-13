@@ -1,27 +1,30 @@
 package com.battlesbudz.jarvis.v2.ai
 
+import com.battlesbudz.jarvis.v2.ai.storage.modelFiles
+import com.battlesbudz.jarvis.v2.ai.storage.removeModelFiles
+import com.battlesbudz.jarvis.v2.ai.storage.ModelDownloader
+import com.battlesbudz.jarvis.v2.ai.storage.DownloadedModelLookup
+import com.battlesbudz.jarvis.v2.ai.storage.sha256
 import android.content.Context
-import android.content.ContentUris
-import android.os.CancellationSignal
-import android.os.Environment
 import android.net.Uri
-import android.provider.DocumentsContract
 import android.provider.OpenableColumns
-import android.provider.MediaStore
 import java.io.File
-import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
-import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicInteger
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.coroutines.resume
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
+import com.battlesbudz.jarvis.v2.work.ProcessConversationAdmission
 
-class ModelStore(context: Context) {
+class ModelStore @JvmOverloads constructor(
+    context: Context,
+    private val conversationActive: () -> Boolean = ProcessConversationAdmission::isActive
+) {
+    private val downloader = ModelDownloader()
+    private val downloadedModels = DownloadedModelLookup(context)
+
     private companion object {
         val activeImports = AtomicInteger(0)
-        val activeModelOperation = AtomicInteger(0)
+        val operations = ModelOperationGate()
     }
 
     private val preferences = context.getSharedPreferences("model_setup", Context.MODE_PRIVATE)
@@ -31,24 +34,76 @@ class ModelStore(context: Context) {
         if (activeImports.get() == 0 && preferences.getBoolean("import_in_progress", false)) {
             preferences.edit().putBoolean("import_in_progress", false).apply()
             modelDirectory.listFiles()
-                ?.filter { it.name.endsWith(".part") }
+                ?.filter { it.name.endsWith(".part") && ModelCatalog.all.none { spec -> it.name == "${spec.fileName}.part" } }
                 ?.forEach { it.delete() }
         }
     }
 
+    fun selectedModel(): LocalModelSpec = ModelCatalog.resolve(preferences.getString("selected_model", null))
+
+    /** Caller owns the model-operation lock and has released the idle native engine. */
+    fun selectModel(spec: LocalModelSpec) {
+        require(ModelCatalog.find(spec.id) == spec) { "Unsupported model." }
+        check(isModelOperationActive()) { "Model selection requires exclusive ownership." }
+        check(!operations.downloading(spec.id)) { "This model is still downloading. Choose an installed model or cancel its download." }
+        check(preferences.edit().putString("selected_model", spec.id).commit()) {
+            "Could not save the selected model."
+        }
+    }
+
+    private fun smokeTestKey(spec: LocalModelSpec) = "smoke_test_passed_${spec.id}"
+
     fun fileFor(spec: LocalModelSpec): File = File(modelDirectory, spec.fileName)
+
+    /** Caller holds the model-operation lock and has closed the idle engine. */
+    fun deleteModel(spec: LocalModelSpec) {
+        require(ModelCatalog.find(spec.id) == spec) { "Unsupported model." }
+        check(isModelOperationActive()) { "Model deletion requires exclusive ownership." }
+        check(!operations.downloading(spec.id)) { "Cancel this model's download before deleting it." }
+        removeModelFiles(modelDirectory, spec.fileName, File(context.cacheDir, spec.id))
+        val key = fingerprintKey(spec)
+        val editor = preferences.edit()
+        listOf(key, "${key}_length", "${key}_modified", "${key}_invalid",
+            "${key}_enforce_catalog_hash", smokeTestKey(spec), "smoke_test_attempted_${spec.id}")
+            .forEach { editor.remove(it) }
+        if (spec == ModelCatalog.gemma4E2b) editor.remove("smoke_test_passed")
+        check(editor.commit()) { "Model removed, but its test state could not be cleared." }
+    }
+
+    fun storedBytes(spec: LocalModelSpec): Long = modelFiles(modelDirectory, spec.fileName)
+        .sumOf { it.length() } + File(modelDirectory, "${spec.fileName}.part.chunks").let { chunks ->
+            if (chunks.exists()) chunks.walkTopDown().filter { it.isFile }.sumOf { it.length() } else 0L
+        } + File(context.cacheDir, spec.id).let { cache ->
+            if (cache.exists()) cache.walkTopDown().filter { it.isFile }.sumOf { it.length() } else 0L
+        }
 
     fun hasModel(spec: LocalModelSpec): Boolean =
         fileFor(spec).let { it.isFile && it.length() > 0L }
 
     fun isReady(): Boolean =
-        hasModel(ModelCatalog.gemma4E2b)
+        hasModel(selectedModel())
 
-    fun isUsable(): Boolean {
-        val spec = ModelCatalog.gemma4E2b
+    /**
+     * Pinned SHA-256 of the installed model file, or null when the file is
+     * missing, replaced, or failed integrity verification. Saved reliability
+     * scores bind to this, so only a score measured against the exact current
+     * valid bytes is ever presented as current — a stale cached digest is
+     * never returned for a file that no longer matches it.
+     */
+    fun modelFingerprint(spec: LocalModelSpec): String? {
+        val key = fingerprintKey(spec)
+        val file = fileFor(spec)
+        if (!file.isFile || file.length() == 0L) return null
+        if (preferences.getBoolean("${key}_invalid", false)) return null
+        if (preferences.getLong("${key}_length", -1L) != file.length()) return null
+        if (preferences.getLong("${key}_modified", -1L) != file.lastModified()) return null
+        return preferences.getString(key, null)
+    }
+
+    fun isUsable(spec: LocalModelSpec = selectedModel()): Boolean {
         val file = fileFor(spec)
         val key = fingerprintKey(spec)
-        return isReady() &&
+        return hasModel(spec) &&
             !preferences.getBoolean("${key}_invalid", false) &&
             preferences.contains(key) &&
             preferences.getLong("${key}_length", -1L) == file.length() &&
@@ -79,7 +134,8 @@ class ModelStore(context: Context) {
         }
         onProgress(0L, length)
         val actual = file.sha256(onProgress)
-        spec.expectedSha256?.let { expected ->
+        val enforceCatalogHash = preferences.getBoolean("${key}_enforce_catalog_hash", pinned == null)
+        if (enforceCatalogHash) spec.expectedSha256?.let { expected ->
             if (!actual.equals(expected, ignoreCase = true)) {
                 markIntegrityInvalid(key, length, modified)
                 return false
@@ -98,17 +154,42 @@ class ModelStore(context: Context) {
         return true
     }
 
-    fun smokeTestPassed(): Boolean = preferences.getBoolean("smoke_test_passed", false)
+    fun smokeTestPassed(spec: LocalModelSpec = selectedModel()): Boolean {
+        return preferences.getBoolean(smokeTestKey(spec),
+            spec == ModelCatalog.gemma4E2b && preferences.getBoolean("smoke_test_passed", false))
+    }
+
+    /** Exact installed-byte identity, including user imports. Call while owning
+     * the existing model-operation lease; catalog selection alone is insufficient
+     * for a separately derived native audio encoder. */
+    internal fun matchesVerifiedArtifact(spec: LocalModelSpec, expectedSha256: String): Boolean =
+        verifyIntegrity(spec) &&
+            preferences.getString(fingerprintKey(spec), null)?.equals(expectedSha256, ignoreCase = true) == true
+
+    fun smokeTestAttempted(): Boolean =
+        preferences.getBoolean("smoke_test_attempted_${selectedModel().id}", false)
+
+    // Persist before native initialization: a process death must leave setup recoverable.
+    fun markSmokeTestStarted() {
+        val spec = selectedModel()
+        check(preferences.edit()
+            .putBoolean("smoke_test_attempted_${spec.id}", true)
+            .putBoolean(smokeTestKey(spec), false).commit()) { "Could not save model test state." }
+    }
 
     fun importInProgress(): Boolean = preferences.getBoolean("import_in_progress", false)
 
-    fun tryBeginModelOperation(): Boolean = activeModelOperation.compareAndSet(0, 1)
+    fun tryBeginModelOperation(): Boolean = operations.tryBeginRuntime(selectedModel().id)
+
+    fun tryBeginModelSelection(spec: LocalModelSpec): Boolean = operations.tryBeginRuntime(spec.id)
 
     fun endModelOperation() {
-        activeModelOperation.set(0)
+        operations.endRuntime()
     }
 
-    fun isModelOperationActive(): Boolean = activeModelOperation.get() > 0
+    fun isModelOperationActive(): Boolean = operations.runtimeActive() || operations.downloading(selectedModel().id)
+
+    fun isDownloading(spec: LocalModelSpec): Boolean = operations.downloading(spec.id)
 
     /** Reuses a verified app copy, imports a matching local file, or downloads the pinned model. */
     suspend fun downloadOrReuse(
@@ -116,10 +197,18 @@ class ModelStore(context: Context) {
         onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit = { _, _ -> },
         onStatus: (String) -> Unit = {}
     ): Result<File> = runCatching {
-        check(tryBeginModelOperation()) { "Another model operation is still running." }
+        check(operations.tryBeginDownload(spec.id, selectedModel().id,
+            conversationActive())) {
+            "This model is currently in use or already downloading. Other models can still be used."
+        }
+        val transferContext = kotlinx.coroutines.currentCoroutineContext()
+        val reportProgress: (Long, Long) -> Unit = { bytes, total ->
+            transferContext.ensureActive()
+            onProgress(bytes, total)
+        }
         try {
             onStatus("Checking Jarvis’s app storage…")
-            if (verifyIntegrity(spec, onProgress)) {
+            if (verifyIntegrity(spec, reportProgress)) {
                 onProgress(fileFor(spec).length(), fileFor(spec).length())
                 return@runCatching fileFor(spec)
             }
@@ -128,14 +217,14 @@ class ModelStore(context: Context) {
             // from the app's background provider query.
             onStatus("Searching Downloads for the exact filename: ${spec.fileName}")
             val firstLookup = withTimeoutOrNull(30_000L) {
-                DownloadLookupResult.Completed(findExactDownloadedModel(spec))
+                DownloadLookupResult.Completed(downloadedModels.find(spec))
             }
             val exactDownload = when (firstLookup) {
                 is DownloadLookupResult.Completed -> firstLookup.uri
                 null -> {
                     onStatus("The Downloads index is slow. Retrying the exact filename check…")
                     when (val retry = withTimeoutOrNull(30_000L) {
-                        DownloadLookupResult.Completed(findExactDownloadedModel(spec))
+                        DownloadLookupResult.Completed(downloadedModels.find(spec))
                     }) {
                         is DownloadLookupResult.Completed -> retry.uri
                         null -> error("Could not finish checking Downloads for ${spec.fileName}. No download was started.")
@@ -144,60 +233,34 @@ class ModelStore(context: Context) {
             }
             if (exactDownload != null) {
                 onStatus("Found ${spec.fileName} in Downloads. Verifying that exact file…")
-                onStatus("Importing the existing Gemma model from Downloads…")
-                val imported = importExactDownloadedModel(exactDownload, spec, onProgress, onStatus)
+                onStatus("Importing the existing AI model from Downloads…")
+                val imported = importExactDownloadedModel(exactDownload, spec, reportProgress, onStatus)
                 if (imported != null) return@runCatching imported
             }
             onStatus("No exact ${spec.fileName} file was found in Downloads. Starting the verified download…")
-            onStatus("Downloading Gemma from the verified model source…")
+            onStatus("Downloading the selected AI model from the verified model source…")
             val url = requireNotNull(spec.downloadUrl) { "No automatic download is configured for ${spec.id}." }
             val destination = fileFor(spec)
             val temporary = File(modelDirectory, "${spec.fileName}.part")
-            val existingBytes = temporary.length()
-            val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 30_000
-                readTimeout = 60_000
-                instanceFollowRedirects = true
-                if (existingBytes > 0L) setRequestProperty("Range", "bytes=$existingBytes-")
-            }
-            try {
-                val responseCode = connection.responseCode
-                val append = existingBytes > 0L && responseCode == HttpURLConnection.HTTP_PARTIAL
-                check(responseCode in 200..299) { "Model download failed with HTTP $responseCode." }
-                val startingBytes = if (append) existingBytes else 0L
-                if (!append && existingBytes > 0L) temporary.delete()
-                val totalBytes = connection.contentLengthLong
-                    .takeIf { it > 0L }
-                    ?.let { it + startingBytes }
-                    ?: -1L
-                var downloadedBytes = startingBytes
-                connection.inputStream.use { input ->
-                    FileOutputStream(temporary, append).use { output ->
-                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE * 16)
-                        var count: Int
-                        while (input.read(buffer).also { count = it } >= 0) {
-                            if (count == 0) continue
-                            output.write(buffer, 0, count)
-                            downloadedBytes += count
-                            onProgress(downloadedBytes, totalBytes)
-                        }
-                        output.fd.sync()
-                    }
-                }
-            } finally {
-                connection.disconnect()
-            }
+            // A stopped worker may already have assembled the complete file.
+            // Verify it before contacting the host or restarting its transfer.
+            val completedDownload = temporary.isFile && spec.downloadBytes != null &&
+                temporary.length() == spec.downloadBytes && spec.expectedSha256 != null &&
+                temporary.sha256(reportProgress) == spec.expectedSha256
+            if (!completedDownload) downloader.download(
+                url = url,
+                temporary = temporary,
+                onProgress = reportProgress,
+                onStatus = onStatus
+            )
             check(temporary.isFile && temporary.length() > 0L) { "The downloaded model is empty." }
-            onStatus("Verifying the downloaded Gemma model…")
-            val actualSha256 = temporary.sha256(onProgress)
+            onStatus("Verifying the downloaded AI model…")
+            val actualSha256 = temporary.sha256(reportProgress)
             spec.expectedSha256?.let { expected ->
-                check(actualSha256.equals(expected, ignoreCase = true)) {
-                    "The downloaded model failed integrity verification."
+                if (!actualSha256.equals(expected, ignoreCase = true)) {
+                    temporary.delete()
+                    error("The downloaded model failed integrity verification. It was not installed. Retry the download.")
                 }
-            }
-            if (destination.exists()) check(destination.delete()) {
-                "Unable to replace the previous model file."
             }
             check(temporary.renameTo(destination)) { "Unable to finalize the downloaded model." }
             val key = fingerprintKey(spec)
@@ -206,165 +269,15 @@ class ModelStore(context: Context) {
                 .putLong("${key}_length", destination.length())
                 .putLong("${key}_modified", destination.lastModified())
                 .putBoolean("${key}_invalid", false)
-                .putBoolean("smoke_test_passed", false)
-                .apply()
+                .putBoolean("${key}_enforce_catalog_hash", true)
+                .putBoolean(smokeTestKey(spec), false)
+                .putBoolean("smoke_test_attempted_${spec.id}", false)
+                .commit().also { check(it) { "The model was installed but its verification state could not be saved. Check the installed model again." } }
             destination
         } finally {
-            endModelOperation()
+            operations.endDownload(spec.id)
         }
-    }
-
-    private suspend fun findExactDownloadedModel(spec: LocalModelSpec): Uri? =
-        suspendCancellableCoroutine { continuation ->
-            val cancellationSignal = CancellationSignal()
-            continuation.invokeOnCancellation { cancellationSignal.cancel() }
-            val result = runCatching {
-                val projection = arrayOf(
-                    MediaStore.Downloads._ID,
-                    MediaStore.Downloads.RELATIVE_PATH
-                )
-                context.contentResolver.query(
-                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                    projection,
-                    "${MediaStore.Downloads.DISPLAY_NAME} = ?",
-                    arrayOf(spec.fileName),
-                    null,
-                    cancellationSignal
-                )?.use { cursor ->
-                    val idIndex = cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID)
-                    val pathIndex = cursor.getColumnIndexOrThrow(MediaStore.Downloads.RELATIVE_PATH)
-                    while (cursor.moveToNext()) {
-                        if (cursor.getString(pathIndex).equals(
-                                "${Environment.DIRECTORY_DOWNLOADS}/",
-                                ignoreCase = true
-                            )
-                        ) {
-                            return@use ContentUris.withAppendedId(
-                                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                                cursor.getLong(idIndex)
-                            )
-                        }
-                    }
-                    null
-                }
-            }.getOrNull()
-                ?: findExactFileInMediaStore(spec, cancellationSignal)
-                ?: findExactDownloadsDocument(spec)
-            if (continuation.isActive) continuation.resume(result)
-        }
-
-    /**
-     * Some Android builds expose Downloads files through Files rather than
-     * MediaStore.Downloads. Keep this an exact display-name/path query; it is
-     * not a storage scan.
-     */
-    private fun findExactFileInMediaStore(
-        spec: LocalModelSpec,
-        cancellationSignal: CancellationSignal
-    ): Uri? = runCatching {
-        val collection = MediaStore.Files.getContentUri("external")
-        val projection = arrayOf(
-            MediaStore.Files.FileColumns._ID,
-            MediaStore.Files.FileColumns.RELATIVE_PATH
-        )
-        context.contentResolver.query(
-            collection,
-            projection,
-            "${MediaStore.Files.FileColumns.DISPLAY_NAME} = ?",
-            arrayOf(spec.fileName),
-            null,
-            cancellationSignal
-        )?.use { cursor ->
-            val idIndex = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
-            val pathIndex = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.RELATIVE_PATH)
-            while (cursor.moveToNext()) {
-                if (cursor.getString(pathIndex).equals(
-                        "${Environment.DIRECTORY_DOWNLOADS}/",
-                        ignoreCase = true
-                    )
-                ) {
-                    return@use ContentUris.withAppendedId(collection, cursor.getLong(idIndex))
-                }
-            }
-            null
-        }
-    }.getOrNull()
-
-    /**
-     * The system picker reads the Downloads DocumentsProvider, which can contain
-     * files that are not yet represented by the MediaStore Downloads table.
-     * Query that same provider as an exact-name fallback so setup agrees with
-     * what the user sees when manually importing from Downloads.
-     */
-    private fun findExactDownloadsDocument(spec: LocalModelSpec): Uri? {
-        // DocumentsUI exposes the phone's public Downloads folder through the
-        // external-storage provider as primary:Download. This is the provider
-        // shown by the picker in the setup screenshots.
-        findExactDocumentInChildren(
-            authority = "com.android.externalstorage.documents",
-            parentDocumentId = "primary:Download",
-            spec = spec
-        )?.let { return it }
-
-        return runCatching {
-            val authority = "com.android.providers.downloads.documents"
-            val rootProjection = arrayOf(
-                DocumentsContract.Root.COLUMN_DOCUMENT_ID,
-                DocumentsContract.Root.COLUMN_TITLE
-            )
-            val rootDocumentId = context.contentResolver.query(
-                DocumentsContract.buildRootsUri(authority),
-                rootProjection,
-                null,
-                null,
-                null
-            )?.use { cursor ->
-                var selected: String? = null
-                val documentIdIndex = cursor.getColumnIndex(DocumentsContract.Root.COLUMN_DOCUMENT_ID)
-                val titleIndex = cursor.getColumnIndex(DocumentsContract.Root.COLUMN_TITLE)
-                while (cursor.moveToNext()) {
-                    val documentId = cursor.getString(documentIdIndex)
-                    val title = cursor.getString(titleIndex)
-                    if (title.equals(Environment.DIRECTORY_DOWNLOADS, ignoreCase = true) ||
-                        documentId.equals(Environment.DIRECTORY_DOWNLOADS, ignoreCase = true)
-                    ) {
-                        selected = documentId
-                        break
-                    }
-                }
-                selected
-            } ?: return@runCatching null
-
-            findExactDocumentInChildren(authority, rootDocumentId, spec)
-        }.getOrNull()
-    }
-
-    private fun findExactDocumentInChildren(
-        authority: String,
-        parentDocumentId: String,
-        spec: LocalModelSpec
-    ): Uri? = runCatching {
-        val projection = arrayOf(
-            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-            DocumentsContract.Document.COLUMN_DISPLAY_NAME
-        )
-        context.contentResolver.query(
-            DocumentsContract.buildChildDocumentsUri(authority, parentDocumentId),
-            projection,
-            null,
-            null,
-            null
-        )?.use { cursor ->
-            val idIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
-            val nameIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-            while (cursor.moveToNext()) {
-                if (cursor.getString(nameIndex) == spec.fileName) {
-                    return@use DocumentsContract.buildDocumentUri(authority, cursor.getString(idIndex))
-                }
-            }
-            null
-        }
-    }.getOrNull()
+    }.onFailure { if (it is CancellationException) throw it }
 
     private sealed interface DownloadLookupResult {
         data class Completed(val uri: Uri?) : DownloadLookupResult
@@ -376,7 +289,8 @@ class ModelStore(context: Context) {
         onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit,
         onStatus: (String) -> Unit
     ): File? {
-        val temporary = File(modelDirectory, "${spec.fileName}.part")
+        // Imports must never erase a resumable HTTP checkpoint.
+        val temporary = File.createTempFile("${spec.fileName}.import.", ".part", modelDirectory)
         return runCatching {
             temporary.delete()
             context.contentResolver.openInputStream(uri)?.use { input ->
@@ -398,13 +312,12 @@ class ModelStore(context: Context) {
                 }
             } ?: return@runCatching null
             if (!temporary.isFile || temporary.length() == 0L) return@runCatching null
-            onStatus("Verifying the Gemma model copied from Downloads…")
+            onStatus("Verifying the selected AI model copied from Downloads…")
             val actualSha256 = temporary.sha256(onProgress)
             if (spec.expectedSha256 != null &&
                 !actualSha256.equals(spec.expectedSha256, ignoreCase = true)
             ) return@runCatching null
             val destination = fileFor(spec)
-            if (destination.exists()) check(destination.delete())
             check(temporary.renameTo(destination)) { "Unable to finalize the existing model file." }
             val key = fingerprintKey(spec)
             preferences.edit()
@@ -412,20 +325,22 @@ class ModelStore(context: Context) {
                 .putLong("${key}_length", destination.length())
                 .putLong("${key}_modified", destination.lastModified())
                 .putBoolean("${key}_invalid", false)
-                .putBoolean("smoke_test_passed", false)
+                .putBoolean("${key}_enforce_catalog_hash", true)
+                .putBoolean(smokeTestKey(spec), false)
+                .putBoolean("smoke_test_attempted_${spec.id}", false)
                 .apply()
             destination
-        }.getOrNull().also {
+        }.onFailure { if (it is CancellationException) throw it }.getOrNull().also {
             if (it == null) temporary.delete()
         }
     }
 
-    fun markSmokeTestPassed() {
-        preferences.edit().putBoolean("smoke_test_passed", true).apply()
+    fun markSmokeTestPassed(spec: LocalModelSpec = selectedModel()) {
+        preferences.edit().putBoolean(smokeTestKey(spec), true).apply()
     }
 
     fun clearSmokeTest() {
-        preferences.edit().putBoolean("smoke_test_passed", false).apply()
+        preferences.edit().putBoolean(smokeTestKey(selectedModel()), false).apply()
     }
 
     suspend fun importModel(uri: Uri, spec: LocalModelSpec): Result<File> {
@@ -433,7 +348,8 @@ class ModelStore(context: Context) {
         return runCatching {
             // Create the temporary file inside runCatching so storage errors
             // are returned through the UI callback instead of escaping launch.
-            check(tryBeginModelOperation()) { "Another model operation is still running." }
+            check(!conversationActive() &&
+                operations.tryBeginRuntime(spec.id)) { "Another model operation is still running." }
             val temporary = try {
                 File.createTempFile("${spec.fileName}.", ".part", modelDirectory)
             } catch (error: Throwable) {
@@ -452,8 +368,8 @@ class ModelStore(context: Context) {
                 )?.use { cursor ->
                     if (cursor.moveToFirst()) cursor.getString(0) else null
                 }
-                require(selectedName == null || selectedName == spec.fileName) {
-                    "Select the ${spec.fileName} model file."
+                require(selectedName == null || selectedName in spec.importFileNames()) {
+                    "Select ${spec.importFileNames().joinToString(" or ")}."
                 }
                 val resolver = context.contentResolver
                 resolver.openInputStream(uri)?.use { input ->
@@ -461,11 +377,14 @@ class ModelStore(context: Context) {
                 } ?: error("Unable to open selected model file.")
                 require(temporary.length() > 0L) { "The selected model file is empty." }
                 val actualSha256 = temporary.sha256()
-                spec.expectedSha256?.let { expected ->
-                    require(actualSha256.equals(expected, ignoreCase = true)) {
-                        "The selected model failed integrity verification."
+                if (selectedName != null && selectedName != spec.fileName) {
+                    require(actualSha256.equals(spec.expectedSha256, ignoreCase = true)) {
+                        "The publisher file does not match the selected model. Select its exact model bundle."
                     }
                 }
+                // An explicitly selected model is validated by the native
+                // Gemma smoke test below, not forced to match the catalog's
+                // download hash. This makes “import your own compatible Gemma” supported.
                 check(temporary.renameTo(destination)) { "Unable to finalize model file." }
                 val fingerprint = fingerprintKey(spec)
                 preferences.edit()
@@ -473,7 +392,9 @@ class ModelStore(context: Context) {
                     .putLong("${fingerprint}_length", destination.length())
                     .putLong("${fingerprint}_modified", destination.lastModified())
                     .putBoolean("${fingerprint}_invalid", false)
-                    .putBoolean("smoke_test_passed", false)
+                    .putBoolean("${fingerprint}_enforce_catalog_hash", false)
+                    .putBoolean(smokeTestKey(spec), false)
+                .putBoolean("smoke_test_attempted_${spec.id}", false)
                     .apply()
                 destination
             } finally {
@@ -499,31 +420,5 @@ class ModelStore(context: Context) {
             .apply()
     }
 
-    private fun File.sha256(
-        onProgress: (processedBytes: Long, totalBytes: Long) -> Unit = { _, _ -> }
-    ): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        inputStream().use { input ->
-            val totalBytes = length()
-            var processedBytes = 0L
-            var lastReportedBytes = -1L
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE * 16)
-            var count: Int
-            while (input.read(buffer).also { count = it } >= 0) {
-                if (count > 0) {
-                    digest.update(buffer, 0, count)
-                    processedBytes += count
-                    if (processedBytes == totalBytes ||
-                        lastReportedBytes < 0L ||
-                        processedBytes - lastReportedBytes >= 1L * 1024L * 1024L
-                    ) {
-                        lastReportedBytes = processedBytes
-                        onProgress(processedBytes, totalBytes)
-                    }
-                }
-            }
-        }
-        return digest.digest().joinToString("") { "%02x".format(it) }
-    }
 
 }

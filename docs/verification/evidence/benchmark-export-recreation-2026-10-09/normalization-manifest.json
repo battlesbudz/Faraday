@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "purpose": "Portable repository-facing receipt representation; no test rerun or changed test outcome.",
+  "source_commit_before_normalization": "84c8efdacbe8669f11d22e64187147647ca2ca99",
+  "path_aliases": {
+    "<repo>": "Checkout root supplied by --repo.",
+    "<dependency-cache>": "Digest-verified Maven cache supplied by --deps.",
+    "<evidence>": "Retained investigation root containing named baseline, Build1248 and current run evidence directories."
+  },
+  "transformation": "Replace only recorded absolute root prefixes in JSON strings. Redirect references to rewritten receipts to the portable repository copy and refresh their hashes. All source/harness/dependency/APK/test-log hashes and test outcomes are unchanged. Command arrays retain original argument order; placeholders require local path substitution before execution.",
+  "raw_receipts": {
+    "journey-receipt.json": {
+      "path": "<evidence>/export-recreation-evidence/normalization-raw/journey-receipt.json",
+      "sha256": "586242d4376b97a7b6c574853a52f6123e362f03d8ee3df8c0996b538d1af23b"
+    },
+    "host-receipt.json": {
+      "path": "<evidence>/export-recreation-evidence/normalization-raw/host-receipt.json",
+      "sha256": "4cb359e9c30015f9b373dff64fe0681162c72aac05f95571a43edadc01ec6918"
+    },
+    "independent-review.json": {
+      "path": "<evidence>/export-recreation-evidence/normalization-raw/independent-review.json",
+      "sha256": "c3244da94226b9340bfa504ef63bdb7c3682d4b5413976c5abca98e220fe5531"
+    },
+    "summary.json": {
+      "path": "<evidence>/export-recreation-evidence/normalization-raw/summary.json",
+      "sha256": "6e4bb57f427203785fdb96489b205ec13f3b65275d34a214f20550b56c295be7"
+    }
+  },
+  "portable_receipts": {
+    "journey-receipt.json": {
+      "path": "journey-receipt.json",
+      "sha256": "499053e0cb9c6eb4ec6e8395d207f738483d8a0b5fd159470a81a73a4aa65eb9"
+    },
+    "host-receipt.json": {
+      "path": "host-receipt.json",
+      "sha256": "cab543b11892396a114e34c6a50c16fb65f3795d40b332413a94256641f38019"
+    },
+    "independent-review.json": {
+      "path": "independent-review.json",
+      "sha256": "7768253303183e9968366ad91cec3225ffc1646da46db48abcb4028a224af0f9"
+    }
+  },
+  "updated_cross_hashes": {
+    "host-receipt.json": [
+      "api_compile_receipt_sha256"
+    ],
+    "independent-review.json": [
+      "exact_compile_receipt.sha256",
+      "runtime_review.host_receipt.sha256"
+    ],
+    "summary.json": [
+      "evidence_sha256"
+    ]
+  },
+  "summary_note": "summary.json hashes this normalization manifest; its own final hash is provided separately in the handoff to avoid self-reference.",
+  "updated_receipt_paths": {
+    "independent-review.json": [
+      "exact_compile_receipt.path",
+      "runtime_review.host_receipt.path"
+    ]
+  }
+}

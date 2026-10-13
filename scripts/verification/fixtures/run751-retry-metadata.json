@@ -1,0 +1,52 @@
+{
+  "_fixture": "Minimal synthetic GitHub API metadata for the documented build-751 retry regression. Artifact IDs preserve the observed reverse ordering; SHA, run ID and timestamps are synthetic. This is a regression fixture, not retained CI evidence.",
+  "run": {
+    "id": 751,
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "run_attempt": 2
+  },
+  "jobs": {
+    "jobs": [
+      {
+        "name": "Verify signed release in Android sandbox / Release journeys / API 35 / app-compact",
+        "run_attempt": 1,
+        "run_id": 751,
+        "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "status": "completed",
+        "conclusion": "failure",
+        "started_at": "2026-09-22T16:00:00Z",
+        "completed_at": "2026-09-22T16:02:00Z"
+      },
+      {
+        "name": "Verify signed release in Android sandbox / Release journeys / API 35 / app-compact",
+        "run_attempt": 2,
+        "run_id": 751,
+        "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-09-22T16:03:00Z",
+        "completed_at": "2026-09-22T16:05:00Z"
+      }
+    ]
+  },
+  "artifacts": {
+    "artifacts": [
+      {
+        "id": 10708303736,
+        "name": "jarvis-verification-api-35-app-compact",
+        "workflow_run": {"id": 751, "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+        "created_at": "2026-09-22T16:01:58Z",
+        "expired": false,
+        "archive_download_url": "https://api.github.com/repos/battlesbudz/Jarvis-OS-V2/actions/artifacts/10708303736/zip"
+      },
+      {
+        "id": 10707864350,
+        "name": "jarvis-verification-api-35-app-compact",
+        "workflow_run": {"id": 751, "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+        "created_at": "2026-09-22T16:04:58Z",
+        "expired": false,
+        "archive_download_url": "https://api.github.com/repos/battlesbudz/Jarvis-OS-V2/actions/artifacts/10707864350/zip"
+      }
+    ]
+  }
+}

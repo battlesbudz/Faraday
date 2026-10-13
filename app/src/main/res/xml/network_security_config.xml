@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M3 MCP: plain http is only ever allowed for loopback servers, per
+     McpUrlPolicy (https everywhere else; no credentials in URLs). Permit
+     cleartext to 127.0.0.1 and nothing else — local test servers and
+     on-device loopback MCP servers stay reachable without opening
+     cleartext to the network. -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>

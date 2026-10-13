@@ -1,0 +1,2 @@
+# Preserve the pinned upstream model card verbatim, including its final blank line.
+third_party/smart-turn/MODEL_CARD.md whitespace=-blank-at-eof

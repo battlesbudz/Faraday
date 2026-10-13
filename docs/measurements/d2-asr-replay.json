@@ -1,0 +1,436 @@
+{
+  "scope": "Linux offline replay; not Android timing or full live endpoint/scheduling acceptance",
+  "runtime": {
+    "moonshine-voice": "0.1.5",
+    "sherpa-onnx": "1.13.7",
+    "onnxruntime": "1.23.2"
+  },
+  "sourceCommit": "13a5bb813eb58b82ba5cb470d0f25197f04c2523",
+  "inputs": [
+    {
+      "file": "jarvis-echo-communication_speaker-double_talk-1789690522268.zip",
+      "zipSha256": "45d9c722f9eb3ee47cf770c797a39e2cc0c462504d5e75687612f7b633a94022",
+      "microphoneWavSha256": "db4ede91e88491370dcfa2c3ea53370d8455a4d033f7c6161c2705f98d68d454"
+    },
+    {
+      "file": "jarvis-echo-communication_speaker-jarvis_only-1789690469259.zip",
+      "zipSha256": "5bf923b26b420bc2ac77831e1b1ea36286c39edd50713da4de7a2855486b5b35",
+      "microphoneWavSha256": "83963ad76b1449fa192dd22916f711b88f3f490cc6daef2f4c5339a9fcdea7af"
+    },
+    {
+      "file": "jarvis-echo-communication_speaker-user_only-1789690502150.zip",
+      "zipSha256": "4b28c5df62f4f946143be03e19fe19c92cc16403397225c0fcc2170cd12ef067",
+      "microphoneWavSha256": "4ff85cbfbc0647def486f5668733c5183eace356162e40d3c08720107bc54677"
+    }
+  ],
+  "moonshine": [
+    {
+      "file": "jarvis-echo-communication_speaker-double_talk-1789690522268.zip",
+      "mode": "final_only",
+      "events": [
+        {
+          "kind": "LineStarted",
+          "text": ""
+        },
+        {
+          "kind": "LineTextChanged",
+          "text": ""
+        },
+        {
+          "kind": "LineCompleted",
+          "text": ""
+        }
+      ],
+      "text": "",
+      "final": "[0.00s] ",
+      "elapsed": 1.4198012930028199
+    },
+    {
+      "file": "jarvis-echo-communication_speaker-double_talk-1789690522268.zip",
+      "mode": "periodic",
+      "events": [
+        {
+          "kind": "LineStarted",
+          "text": "you"
+        },
+        {
+          "kind": "LineTextChanged",
+          "text": "you"
+        },
+        {
+          "kind": "LineUpdated",
+          "text": "You"
+        },
+        {
+          "kind": "LineTextChanged",
+          "text": "You"
+        },
+        {
+          "kind": "LineUpdated",
+          "text": "You"
+        },
+        {
+          "kind": "LineUpdated",
+          "text": "You"
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineTextChanged",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineCompleted",
+          "text": ""
+        }
+      ],
+      "text": "",
+      "final": "[0.00s] ",
+      "elapsed": 3.906840690997342
+    },
+    {
+      "file": "jarvis-echo-communication_speaker-jarvis_only-1789690469259.zip",
+      "mode": "final_only",
+      "events": [
+        {
+          "kind": "LineStarted",
+          "text": ""
+        },
+        {
+          "kind": "LineTextChanged",
+          "text": ""
+        },
+        {
+          "kind": "LineCompleted",
+          "text": ""
+        }
+      ],
+      "text": "",
+      "final": "[0.00s] ",
+      "elapsed": 0.671785345999524
+    },
+    {
+      "file": "jarvis-echo-communication_speaker-jarvis_only-1789690469259.zip",
+      "mode": "periodic",
+      "events": [
+        {
+          "kind": "LineStarted",
+          "text": "you"
+        },
+        {
+          "kind": "LineTextChanged",
+          "text": "you"
+        },
+        {
+          "kind": "LineUpdated",
+          "text": "You"
+        },
+        {
+          "kind": "LineTextChanged",
+          "text": "You"
+        },
+        {
+          "kind": "LineUpdated",
+          "text": "You"
+        },
+        {
+          "kind": "LineUpdated",
+          "text": "You"
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineTextChanged",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineCompleted",
+          "text": ""
+        }
+      ],
+      "text": "",
+      "final": "[0.00s] ",
+      "elapsed": 4.1483963370010315
+    },
+    {
+      "file": "jarvis-echo-communication_speaker-user_only-1789690502150.zip",
+      "mode": "final_only",
+      "events": [
+        {
+          "kind": "LineStarted",
+          "text": ""
+        },
+        {
+          "kind": "LineTextChanged",
+          "text": ""
+        },
+        {
+          "kind": "LineCompleted",
+          "text": ""
+        }
+      ],
+      "text": "",
+      "final": "[0.00s] ",
+      "elapsed": 0.6238858100005018
+    },
+    {
+      "file": "jarvis-echo-communication_speaker-user_only-1789690502150.zip",
+      "mode": "periodic",
+      "events": [
+        {
+          "kind": "LineStarted",
+          "text": "you"
+        },
+        {
+          "kind": "LineTextChanged",
+          "text": "you"
+        },
+        {
+          "kind": "LineUpdated",
+          "text": "You"
+        },
+        {
+          "kind": "LineTextChanged",
+          "text": "You"
+        },
+        {
+          "kind": "LineUpdated",
+          "text": "You"
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineTextChanged",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineUpdated",
+          "text": ""
+        },
+        {
+          "kind": "LineCompleted",
+          "text": ""
+        }
+      ],
+      "text": "",
+      "final": "[0.00s] ",
+      "elapsed": 3.8080899089982267
+    }
+  ],
+  "gated": [
+    {
+      "file": "jarvis-echo-communication_speaker-double_talk-1789690522268.zip",
+      "mode": "native_gate_final_only",
+      "text": "No, Yes. Bye. Stop. Hey, John.",
+      "final": "[2.37s] No,\n[3.71s] Yes.\n[5.31s] Bye.\n[7.14s] Stop.\n[8.22s] Hey, John."
+    },
+    {
+      "file": "jarvis-echo-communication_speaker-double_talk-1789690522268.zip",
+      "mode": "native_gate_periodic",
+      "text": "No, Yes Bye. Stop. Hey, John.",
+      "final": "[2.37s] No,\n[3.74s] Yes\n[5.31s] Bye.\n[7.14s] Stop.\n[8.22s] Hey, John."
+    },
+    {
+      "file": "jarvis-echo-communication_speaker-jarvis_only-1789690469259.zip",
+      "mode": "native_gate_final_only",
+      "text": "",
+      "final": ""
+    },
+    {
+      "file": "jarvis-echo-communication_speaker-jarvis_only-1789690469259.zip",
+      "mode": "native_gate_periodic",
+      "text": "",
+      "final": ""
+    },
+    {
+      "file": "jarvis-echo-communication_speaker-user_only-1789690502150.zip",
+      "mode": "native_gate_final_only",
+      "text": "No, Yes. I. Stop. Hey, Jarvis.",
+      "final": "[1.41s] No,\n[2.69s] Yes.\n[4.86s] I.\n[6.82s] Stop.\n[8.58s] Hey, Jarvis."
+    },
+    {
+      "file": "jarvis-echo-communication_speaker-user_only-1789690502150.zip",
+      "mode": "native_gate_periodic",
+      "text": "No. Yes. I. Stop. Hey Jarvis!",
+      "final": "[1.38s] No.\n[2.69s] Yes.\n[4.86s] I.\n[6.82s] Stop.\n[8.58s] Hey Jarvis!"
+    }
+  ],
+  "call-gates": [
+    {
+      "file": "jarvis-echo-communication_speaker-double_talk-1789690522268.zip",
+      "mode": "call_input_gates_no_endpoint_or_live_backlog",
+      "decoderSamples": 83200,
+      "text": "No. Yes. I. Stop. Hey, jogger.",
+      "final": "[0.00s] No. Yes. I. Stop. Hey, jogger."
+    },
+    {
+      "file": "jarvis-echo-communication_speaker-jarvis_only-1789690469259.zip",
+      "mode": "call_input_gates_no_endpoint_or_live_backlog",
+      "decoderSamples": 0,
+      "text": "",
+      "final": ""
+    },
+    {
+      "file": "jarvis-echo-communication_speaker-user_only-1789690502150.zip",
+      "mode": "call_input_gates_no_endpoint_or_live_backlog",
+      "decoderSamples": 85760,
+      "text": "No, yes, I stop. Hey, Jarvis.",
+      "final": "[0.00s] No, yes, I stop. Hey, Jarvis."
+    }
+  ],
+  "whisper": [
+    {
+      "file": "jarvis-echo-communication_speaker-double_talk-1789690522268.zip",
+      "text": "No. Yes. I. Stop. Hey, Joseph.",
+      "elapsed": 0.9187524529988877
+    },
+    {
+      "file": "jarvis-echo-communication_speaker-jarvis_only-1789690469259.zip",
+      "text": "(buzzing)",
+      "elapsed": 0.4403432069993869
+    },
+    {
+      "file": "jarvis-echo-communication_speaker-user_only-1789690502150.zip",
+      "text": "No. Yes. I. Stop. Hey Jarvis.",
+      "elapsed": 0.8691562179992616
+    }
+  ]
+}

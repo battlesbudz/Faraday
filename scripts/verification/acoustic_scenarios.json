@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "runtime_versions": {
+    "sherpa-onnx": "1.13.7",
+    "onnxruntime": "1.23.2"
+  },
+  "checks": [
+    {
+      "name": "whisper_recorded_boundaries",
+      "backend": "whisper",
+      "variant": "original",
+      "max_word_error_rate": 0.10714285714285714,
+      "baseline_word_error_rate": 0.07142857142857142
+    },
+    {
+      "name": "whisper_recorded_quiet_ending",
+      "backend": "whisper",
+      "variant": "trailing_silence",
+      "max_word_error_rate": 0.10714285714285714,
+      "baseline_word_error_rate": 0.07142857142857142
+    }
+  ],
+  "required_jvm_tests": [
+    {
+      "classname": "com.battlesbudz.jarvis.v2.voice.RecordedPhraseCaptureTest",
+      "name": "whisperRetainsRecordedOpeningPauseAndEnding"
+    },
+    {
+      "classname": "com.battlesbudz.jarvis.v2.ai.GemmaRecordedAudioDeliveryTest",
+      "name": "instructionPrecedesCompleteHumanRecordingInNativeContent"
+    }
+  ]
+}

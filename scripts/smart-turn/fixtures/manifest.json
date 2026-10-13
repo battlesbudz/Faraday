@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "reference_sha256": "139b047d10dee42ad5b4894489012e515a882d8f5e2bffe8ad27b30728fc9968",
+  "numpy_version": "2.3.5",
+  "absolute_tolerance": 2e-06,
+  "private_audio_used": false,
+  "public_fixture_attribution": "LibriSpeech 1089-134686-0000, CC-BY-4.0; see app/src/test/resources/recorded-audio/manifest.json. Last 8 s retained for features only.",
+  "cases": [
+    {
+      "id": "silence_8s",
+      "samples": 128000,
+      "shape": [
+        80,
+        800
+      ],
+      "pcm16le": {
+        "file": "silence_8s.pcm16le.gz",
+        "sha256_uncompressed": "24a046dc04fefdb652e4077b41162490b344a4dd45f918505477f84c592f3070",
+        "bytes_uncompressed": 256000
+      },
+      "features.f32le": {
+        "file": "silence_8s.features.f32le.gz",
+        "sha256_uncompressed": "c4a1d90bbbdc1c49cf89b8f73360019b1b0fe01ae48a9dfd6fc2c4a3228b8859",
+        "bytes_uncompressed": 256000
+      }
+    },
+    {
+      "id": "tone_440hz_1s",
+      "samples": 16000,
+      "shape": [
+        80,
+        800
+      ],
+      "pcm16le": {
+        "file": "tone_440hz_1s.pcm16le.gz",
+        "sha256_uncompressed": "97baea0a56c5b48504ea4b65b41148c6d55dc494d22652b3db7cedb295876efe",
+        "bytes_uncompressed": 32000
+      },
+      "features.f32le": {
+        "file": "tone_440hz_1s.features.f32le.gz",
+        "sha256_uncompressed": "0f5e01ac3f012259a096168d842eee34b65b7daf246b94091220c9165eef4602",
+        "bytes_uncompressed": 256000
+      }
+    },
+    {
+      "id": "noise_lcg_8s",
+      "samples": 128000,
+      "shape": [
+        80,
+        800
+      ],
+      "pcm16le": {
+        "file": "noise_lcg_8s.pcm16le.gz",
+        "sha256_uncompressed": "be992466e78fd0b1d1a71c93d1b79eedadddc75387d3169fab238b766c4eae70",
+        "bytes_uncompressed": 256000
+      },
+      "features.f32le": {
+        "file": "noise_lcg_8s.features.f32le.gz",
+        "sha256_uncompressed": "c5938c6cf6e5e3824b4d5714696973a81b5cabacc9306c0297668ebc8f0da543",
+        "bytes_uncompressed": 256000
+      }
+    },
+    {
+      "id": "chirp_9s",
+      "samples": 144000,
+      "shape": [
+        80,
+        800
+      ],
+      "pcm16le": {
+        "file": "chirp_9s.pcm16le.gz",
+        "sha256_uncompressed": "9f51960580f5751d34d0938de6ee42bdec6b06dde8fe7ba2c3f0fb05c0126d84",
+        "bytes_uncompressed": 288000
+      },
+      "features.f32le": {
+        "file": "chirp_9s.features.f32le.gz",
+        "sha256_uncompressed": "b2efa03bfd17e66f7f93819ef95da04375b8e3071dfc01748af3ad277a6e76be",
+        "bytes_uncompressed": 256000
+      }
+    },
+    {
+      "id": "quiet_one_lsb",
+      "samples": 16000,
+      "shape": [
+        80,
+        800
+      ],
+      "pcm16le": {
+        "file": "quiet_one_lsb.pcm16le.gz",
+        "sha256_uncompressed": "92eee892974d5c0d751f298455a3dd677ede81104f46c55e6e6ea67136e041ca",
+        "bytes_uncompressed": 32000
+      },
+      "features.f32le": {
+        "file": "quiet_one_lsb.features.f32le.gz",
+        "sha256_uncompressed": "c081ba3fb168d3a0bcf2fe5551ccb5faf703e9c7a44b69f96276acb243e402e3",
+        "bytes_uncompressed": 256000
+      }
+    },
+    {
+      "id": "dc_short",
+      "samples": 159,
+      "shape": [
+        80,
+        800
+      ],
+      "pcm16le": {
+        "file": "dc_short.pcm16le.gz",
+        "sha256_uncompressed": "754279cd32b871efc1cf5a834a7d4d9fae844f7686319f2bf021419f0b8ccd84",
+        "bytes_uncompressed": 318
+      },
+      "features.f32le": {
+        "file": "dc_short.features.f32le.gz",
+        "sha256_uncompressed": "486c3097a19a693a11dc61c8e3639407d90a26588bd283ef028098eb3a6f646c",
+        "bytes_uncompressed": 256000
+      }
+    },
+    {
+      "id": "impulse_one_sample",
+      "samples": 1,
+      "shape": [
+        80,
+        800
+      ],
+      "pcm16le": {
+        "file": "impulse_one_sample.pcm16le.gz",
+        "sha256_uncompressed": "8f96c15501bef61baf5bd943201979595736b66b6a7e3b35c353729ab8d9a561",
+        "bytes_uncompressed": 2
+      },
+      "features.f32le": {
+        "file": "impulse_one_sample.features.f32le.gz",
+        "sha256_uncompressed": "2396d10c5b4d740d949453c1be29105fd4e41ee4d948fd76affaf61a2f98df3f",
+        "bytes_uncompressed": 256000
+      }
+    },
+    {
+      "id": "public_librispeech_last8s",
+      "samples": 166960,
+      "shape": [
+        80,
+        800
+      ],
+      "pcm16le": {
+        "file": "public_librispeech_last8s.pcm16le.gz",
+        "sha256_uncompressed": "06b3e22db20760452d503a01d24cd7a7a23ddbeab07919c58e22eccb68cc03fb",
+        "bytes_uncompressed": 333920
+      },
+      "features.f32le": {
+        "file": "public_librispeech_last8s.features.f32le.gz",
+        "sha256_uncompressed": "1dcec365564615ee454bf4138ef31649014a1369d37e81529ececb512ca6bf5d",
+        "bytes_uncompressed": 256000
+      }
+    }
+  ]
+}

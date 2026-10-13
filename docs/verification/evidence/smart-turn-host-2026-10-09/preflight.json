@@ -1,0 +1,26 @@
+{
+  "status": "preflight_pass",
+  "source_commit": "165ffbb46af313d51e3947a2e70cab3eaef3a543",
+  "source_tree": "bd90286517b045508d2b2b778eb89322fac5920d",
+  "source_clean": true,
+  "manifest_sha256": "e91750cee56c13881ffbce8fdda804e5433c233eeb921edb520d989f0184fc1b",
+  "owner_admission_sha256": "d52c69322950eae64aa70e3e59890ad0a56a11fce6ef878be27ae9e962c09fc4",
+  "disk_free_bytes": 26262216704,
+  "mem_available_kib": 9012720,
+  "allowed_cpus": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+  ],
+  "selected_cpu": 0,
+  "numpy": "2.3.5",
+  "task_owned_inputs": "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/smartturn-host-inputs-20261009-2019",
+  "task_owned_run_output": "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/smartturn-host-run-20261009-2019",
+  "private_export_used": false
+}

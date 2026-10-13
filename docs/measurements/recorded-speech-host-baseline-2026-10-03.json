@@ -1,0 +1,212 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "checks": [
+    {
+      "name": "whisper_recorded_boundaries",
+      "backend": "whisper",
+      "variant": "original",
+      "sample_id": "librispeech-1089-134686-0000",
+      "status": "passed",
+      "recording_sha256": "0b1785dba56f22af426ccb25d318f7e103558fd40e1c3ab064b455dba2afae12",
+      "input_sha256": "06b3e22db20760452d503a01d24cd7a7a23ddbeab07919c58e22eccb68cc03fb",
+      "model_files": [
+        {
+          "name": "base.en-encoder.int8.onnx",
+          "bytes": 29120534,
+          "sha256": "ef6b936f4c9b1d90a3b68634b60c4ed8576b26172b33c2535ec0e933c9edb823"
+        },
+        {
+          "name": "base.en-decoder.int8.onnx",
+          "bytes": 130669978,
+          "sha256": "f7162ad6db2dbef16cfaeaa7f945b9d7dd9c1b8d472f6aca82f2273d185e4d41"
+        },
+        {
+          "name": "base.en-tokens.txt",
+          "bytes": 835554,
+          "sha256": "306cd27f03c1a714eca7108e03d66b7dc042abe8c258b44c199a7ed9838dd930"
+        }
+      ],
+      "text": "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered flower-faten sauce.",
+      "raw_result": "{\"lang\": \"\", \"emotion\": \"\", \"event\": \"\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered flower-faten sauce.\", \"timestamps\": [], \"durations\": [], \"tokens\":[\" He\", \" hoped\", \" there\", \" would\", \" be\", \" stew\", \" for\", \" dinner\", \",\", \" turn\", \"ips\", \" and\", \" carrots\", \" and\", \" bruised\", \" potatoes\", \" and\", \" fat\", \" mut\", \"ton\", \" pieces\", \" to\", \" be\", \" lad\", \"led\", \" out\", \" in\", \" thick\", \",\", \" pepp\", \"ered\", \" flower\", \"-\", \"fat\", \"en\", \" sauce\", \".\"], \"ys_log_probs\": [], \"words\": []}",
+      "elapsed_ms": 1816.476,
+      "word_error_rate": 0.07142857142857142,
+      "first_word": "he",
+      "last_word": "sauce",
+      "first_word_correct": true,
+      "last_word_correct": true
+    },
+    {
+      "name": "whisper_recorded_quiet_ending",
+      "backend": "whisper",
+      "variant": "trailing_silence",
+      "sample_id": "librispeech-1089-134686-0000",
+      "status": "passed",
+      "recording_sha256": "0b1785dba56f22af426ccb25d318f7e103558fd40e1c3ab064b455dba2afae12",
+      "input_sha256": "645c30a8497871ac81f66f95e0799317254251be81d2cb8d11dcbed3e00069a5",
+      "model_files": [
+        {
+          "name": "base.en-encoder.int8.onnx",
+          "bytes": 29120534,
+          "sha256": "ef6b936f4c9b1d90a3b68634b60c4ed8576b26172b33c2535ec0e933c9edb823"
+        },
+        {
+          "name": "base.en-decoder.int8.onnx",
+          "bytes": 130669978,
+          "sha256": "f7162ad6db2dbef16cfaeaa7f945b9d7dd9c1b8d472f6aca82f2273d185e4d41"
+        },
+        {
+          "name": "base.en-tokens.txt",
+          "bytes": 835554,
+          "sha256": "306cd27f03c1a714eca7108e03d66b7dc042abe8c258b44c199a7ed9838dd930"
+        }
+      ],
+      "text": "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flower-faten sauce.",
+      "raw_result": "{\"lang\": \"\", \"emotion\": \"\", \"event\": \"\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flower-faten sauce.\", \"timestamps\": [], \"durations\": [], \"tokens\":[\" He\", \" hoped\", \" there\", \" would\", \" be\", \" stew\", \" for\", \" dinner\", \",\", \" turn\", \"ips\", \" and\", \" carrots\", \" and\", \" bruised\", \" potatoes\", \" and\", \" fat\", \" mut\", \"ton\", \" pieces\", \" to\", \" be\", \" lad\", \"led\", \" out\", \" in\", \" thick\", \" pepp\", \"ered\", \" flower\", \"-\", \"fat\", \"en\", \" sauce\", \".\"], \"ys_log_probs\": [], \"words\": []}",
+      "elapsed_ms": 1685.568,
+      "word_error_rate": 0.07142857142857142,
+      "first_word": "he",
+      "last_word": "sauce",
+      "first_word_correct": true,
+      "last_word_correct": true
+    },
+    {
+      "name": "moonshine_recorded_boundaries",
+      "backend": "moonshine",
+      "variant": "original",
+      "sample_id": "librispeech-1089-134686-0000",
+      "status": "passed",
+      "recording_sha256": "0b1785dba56f22af426ccb25d318f7e103558fd40e1c3ab064b455dba2afae12",
+      "input_sha256": "06b3e22db20760452d503a01d24cd7a7a23ddbeab07919c58e22eccb68cc03fb",
+      "model_files": [
+        {
+          "name": "adapter.ort",
+          "bytes": 2870368,
+          "sha256": "c665f742364febad597cc9ac1e0b341ffbee0e24a1466e2f3bde95e6e4771762"
+        },
+        {
+          "name": "cross_kv.ort",
+          "bytes": 5356536,
+          "sha256": "e2d3417144e9514055ebfefe8dcc4c0a55a55adcb8530435844c75c53e352bf6"
+        },
+        {
+          "name": "decoder_kv.ort",
+          "bytes": 81878600,
+          "sha256": "1a05465b1dd955858dfcbee039c0020fb5dd982b0f5094c34e61735d518d771b"
+        },
+        {
+          "name": "encoder.ort",
+          "bytes": 44148576,
+          "sha256": "2d4d973e91e8aca08c51e7e7efa28a46ab265b63d809d5294d18b86bcd85b993"
+        },
+        {
+          "name": "frontend.model.ort",
+          "bytes": 26944,
+          "sha256": "09b1210ae30dc5f0f3e45f0ebab914c254741323114f53fbbe5ae62cca35058f"
+        },
+        {
+          "name": "frontend.weights.ort",
+          "bytes": 7769464,
+          "sha256": "7ef97521bd4bad3928f5bb6808586f4fcc6e92bd5990394112eed7d4052ec338"
+        },
+        {
+          "name": "streaming_config.json",
+          "bytes": 512,
+          "sha256": "26f02b6afb22d60871a5efd85c3d38e569cc0ddb6c5eb6e93d3260152ae8a47a"
+        },
+        {
+          "name": "tokenizer.bin",
+          "bytes": 249974,
+          "sha256": "6884b35fd6377d4c4d32336a0bc152f36b64d1e45b6503683cdc238250a8472d"
+        }
+      ],
+      "text": "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flower fattened sauce.",
+      "raw_result": "{\"events\": [{\"kind\": \"LineStarted\", \"text\": \"\"}, {\"kind\": \"LineTextChanged\", \"text\": \"\"}, {\"kind\": \"LineUpdated\", \"text\": \"you\"}, {\"kind\": \"LineTextChanged\", \"text\": \"you\"}, {\"kind\": \"LineUpdated\", \"text\": \"\"}, {\"kind\": \"LineTextChanged\", \"text\": \"\"}, {\"kind\": \"LineUpdated\", \"text\": \"He.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped,\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped,\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turned.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turned.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and crabs.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and crabs.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and brews.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and brews.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat money.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat money.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton peas.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton peas.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick pepper.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick pepper.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flour.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flour.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flower fattened.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flower fattened.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flower fattened sauce.\"}, {\"kind\": \"LineCompleted\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flower fattened sauce.\"}], \"final\": \"[0.00s] He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flower fattened sauce.\"}",
+      "elapsed_ms": 9461.477,
+      "word_error_rate": 0.03571428571428571,
+      "first_word": "he",
+      "last_word": "sauce",
+      "first_word_correct": true,
+      "last_word_correct": true
+    },
+    {
+      "name": "moonshine_recorded_quiet_ending",
+      "backend": "moonshine",
+      "variant": "trailing_silence",
+      "sample_id": "librispeech-1089-134686-0000",
+      "status": "passed",
+      "recording_sha256": "0b1785dba56f22af426ccb25d318f7e103558fd40e1c3ab064b455dba2afae12",
+      "input_sha256": "645c30a8497871ac81f66f95e0799317254251be81d2cb8d11dcbed3e00069a5",
+      "model_files": [
+        {
+          "name": "adapter.ort",
+          "bytes": 2870368,
+          "sha256": "c665f742364febad597cc9ac1e0b341ffbee0e24a1466e2f3bde95e6e4771762"
+        },
+        {
+          "name": "cross_kv.ort",
+          "bytes": 5356536,
+          "sha256": "e2d3417144e9514055ebfefe8dcc4c0a55a55adcb8530435844c75c53e352bf6"
+        },
+        {
+          "name": "decoder_kv.ort",
+          "bytes": 81878600,
+          "sha256": "1a05465b1dd955858dfcbee039c0020fb5dd982b0f5094c34e61735d518d771b"
+        },
+        {
+          "name": "encoder.ort",
+          "bytes": 44148576,
+          "sha256": "2d4d973e91e8aca08c51e7e7efa28a46ab265b63d809d5294d18b86bcd85b993"
+        },
+        {
+          "name": "frontend.model.ort",
+          "bytes": 26944,
+          "sha256": "09b1210ae30dc5f0f3e45f0ebab914c254741323114f53fbbe5ae62cca35058f"
+        },
+        {
+          "name": "frontend.weights.ort",
+          "bytes": 7769464,
+          "sha256": "7ef97521bd4bad3928f5bb6808586f4fcc6e92bd5990394112eed7d4052ec338"
+        },
+        {
+          "name": "streaming_config.json",
+          "bytes": 512,
+          "sha256": "26f02b6afb22d60871a5efd85c3d38e569cc0ddb6c5eb6e93d3260152ae8a47a"
+        },
+        {
+          "name": "tokenizer.bin",
+          "bytes": 249974,
+          "sha256": "6884b35fd6377d4c4d32336a0bc152f36b64d1e45b6503683cdc238250a8472d"
+        }
+      ],
+      "text": "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flower fattened sauce.",
+      "raw_result": "{\"events\": [{\"kind\": \"LineStarted\", \"text\": \"\"}, {\"kind\": \"LineTextChanged\", \"text\": \"\"}, {\"kind\": \"LineUpdated\", \"text\": \"you\"}, {\"kind\": \"LineTextChanged\", \"text\": \"you\"}, {\"kind\": \"LineUpdated\", \"text\": \"\"}, {\"kind\": \"LineTextChanged\", \"text\": \"\"}, {\"kind\": \"LineUpdated\", \"text\": \"He.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped,\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped,\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnip.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnip.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and brews.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and brews.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potato.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potato.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton tea.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton tea.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be laid.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be laid.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick pepper.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick pepper.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flowers.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flowers.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flower fats.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flower fats.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flower fattened sauce.\"}, {\"kind\": \"LineTextChanged\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flower fattened sauce.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flower fattened sauce.\"}, {\"kind\": \"LineUpdated\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flower fattened sauce.\"}, {\"kind\": \"LineCompleted\", \"text\": \"He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flower fattened sauce.\"}], \"final\": \"[0.00s] He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flower fattened sauce.\"}",
+      "elapsed_ms": 10000.602,
+      "word_error_rate": 0.03571428571428571,
+      "first_word": "he",
+      "last_word": "sauce",
+      "first_word_correct": true,
+      "last_word_correct": true
+    }
+  ],
+  "coverage": "Real pinned ASR weights on Linux CPU; shipping capture/Content delivery are separate release JVM checks.",
+  "not_covered": [
+    "Gemma audio understanding",
+    "Android native runtime execution",
+    "microphone/speaker/AEC/Bluetooth",
+    "population accuracy",
+    "device latency/thermal"
+  ],
+  "runtime_versions": {
+    "moonshine-voice": "0.1.5",
+    "sherpa-onnx": "1.13.7",
+    "onnxruntime": "1.23.2"
+  },
+  "purpose": "Local fixture baseline calibration; this is not CI or Android release verification.",
+  "recorded_at": "2026-10-03",
+  "source_identity": {
+    "base_commit": "1834f365566aaa168613f8f9bc09856f6afffa4f",
+    "working_tree": "Uncommitted recorded-audio gate and fixture additions from the current task",
+    "runner": "Linux CPU, Python 3.12; exact pinned production weights and host SDK versions"
+  }
+}

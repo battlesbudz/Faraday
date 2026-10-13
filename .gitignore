@@ -1,0 +1,12 @@
+.gradle/
+**/build/
+**/__pycache__/
+*.pyc
+local.properties
+
+# Disposable verification evidence (CI retains it as artifacts).
+verification-evidence*/
+verification-runs/
+
+# Smart Turn model weights are explicit app-private downloads, never source/build assets.
+**/smart-turn-v3*.onnx

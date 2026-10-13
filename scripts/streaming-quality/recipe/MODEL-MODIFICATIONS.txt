@@ -1,0 +1,36 @@
+MODIFIED GEMMA 4 E2B AUDIO GRAPH MATERIAL
+
+Original model: Gemma 4 E2B, Google DeepMind.
+Original LiteRT-LM bundle: litert-community/gemma-4-E2B-it-litert-lm.
+Pinned repository revision: 6e5c4f1e395deb959c494953478fa5cec4b8008f.
+Original source SHA-256:
+181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c
+Model license: Apache License 2.0. See Apache-2.0.txt and
+https://ai.google.dev/gemma/apache_2
+
+The following artifacts are modified/derived structural graph materials prepared
+on 2026-10-06 for the user's private native-streaming experiment. They are not
+an official Google model export or endorsed Google release:
+
+source-copy-recipe.bin
+SHA-256: f41105fecf5a86c0ab2486182d4256b98bf33c3a71f58c2b4f8e9a37b5cd86cc
+
+structural-literals.bin.gz
+SHA-256: c3093aa1f9bd5ff9cfe3c0a61df722d0bce806a5a4f2f1b747b0ffd91d15d2f1
+
+Locally reconstructed gemma4_e2b_audio_stream_stateful.tflite
+SHA-256: d5c50b140ace235717e6713d287e73ccfa4f32d0090e1cceb9d00714da850a1b
+(The reconstructed model is NOT included in this source-only package.)
+
+Changes: extracted and combined the original audio encoder, adapter, and EOA
+sections; specialized static graph shapes to bounded windows; introduced explicit
+per-layer and Mel history inputs/outputs; added count/mask/cache scheduling;
+canonicalized unused cache slots; exposed audio_stream_step and separate eoa
+signatures. Original trained buffer and quantization payloads are copied exactly
+from the separately supplied official bundle. No retraining or requantization was
+performed. The source-only assets omit all such learned payloads.
+
+This notice records changes and provenance; it is not license clearance or an
+assertion that all APK dependency notices have been satisfied. Preserve it with
+the structural assets and locally reconstructed artifact. Review the actual
+packaged form and downstream distribution before sharing it with other parties.

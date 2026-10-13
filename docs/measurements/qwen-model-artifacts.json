@@ -1,0 +1,167 @@
+[
+  {
+    "id": "Qwen2.5-Coder-1.5B-Instruct",
+    "fileName": "Qwen2.5-Coder-1.5B-Instruct_int4.litertlm",
+    "sourceFile": "Qwen2.5-Coder-1.5B-Instruct_int4.litertlm",
+    "revision": "ddb8ab66e162dd89328da9bc144d1d626d3f2c9f",
+    "sha256": "273ecc7771ba2dd5fe1bb6d4d4726ad0353102f04ad094082ccf59bca9f21213",
+    "bytes": 1117385648,
+    "url": "https://huggingface.co/litert-community/Qwen2.5-Coder-1.5B-Instruct/resolve/ddb8ab66e162dd89328da9bc144d1d626d3f2c9f/Qwen2.5-Coder-1.5B-Instruct_int4.litertlm?download=true",
+    "backend": "CPU",
+    "contextTokens": 4096
+  },
+  {
+    "id": "Qwen2.5-Coder-3B-Instruct",
+    "fileName": "Qwen2.5_Coder_3B_It.litertlm",
+    "sourceFile": "Qwen2.5_Coder_3B_It.litertlm",
+    "revision": "f02778f1b0bb06315051c1e212abd19a389bff34",
+    "sha256": "78d23da074383f52f852b945b8090870e6c9dded02a842f535ee3ccb9e2874f3",
+    "bytes": 3433083824,
+    "url": "https://huggingface.co/litert-community/Qwen2.5-Coder-3B-Instruct/resolve/f02778f1b0bb06315051c1e212abd19a389bff34/Qwen2.5_Coder_3B_It.litertlm?download=true",
+    "backend": "GPU",
+    "contextTokens": 4096
+  },
+  {
+    "id": "Qwen3-0.6B",
+    "fileName": "Qwen3-0.6B_dynamic_wi4b32_afp32.litertlm",
+    "sourceFile": "Qwen3-0.6B_dynamic_wi4b32_afp32.litertlm",
+    "revision": "8414150f2e9dcc82449bcc9c5abc404b399a4d06",
+    "sha256": "e3e290109da4388d65a17510a0c66af91c8039f52d2c465868dbc43c09a776cf",
+    "bytes": 344437808,
+    "url": "https://huggingface.co/litert-community/Qwen3-0.6B/resolve/8414150f2e9dcc82449bcc9c5abc404b399a4d06/Qwen3-0.6B_dynamic_wi4b32_afp32.litertlm?download=true",
+    "backend": "GPU",
+    "contextTokens": 2048
+  },
+  {
+    "id": "Qwen3-1.7B",
+    "fileName": "Qwen3-1.7B_dynamic_wi4b32_afp32.litertlm",
+    "sourceFile": "Qwen3-1.7B_dynamic_wi4b32_afp32.litertlm",
+    "revision": "73fbc3fe8271c162a603ee66f6e7ed25b6211195",
+    "sha256": "2eeffef7b51bc3e1225ea69fe7aa5f417397934b56a5b6c20cc068d6fd2c918b",
+    "bytes": 977184032,
+    "url": "https://huggingface.co/litert-community/Qwen3-1.7B/resolve/73fbc3fe8271c162a603ee66f6e7ed25b6211195/Qwen3-1.7B_dynamic_wi4b32_afp32.litertlm?download=true",
+    "backend": "GPU",
+    "contextTokens": 2048
+  },
+  {
+    "id": "Qwen3-4B",
+    "fileName": "qwen3_4b_mixed_int4.litertlm",
+    "sourceFile": "qwen3_4b_mixed_int4.litertlm",
+    "revision": "84cc5a35c9c65cd18fcd65bb1f3a7d77a4acfe6e",
+    "sha256": "f0794bc77efeaaf4f7af815f04c483b19b8f2ae4a102cef1b7b760a25848a18e",
+    "bytes": 2659057664,
+    "url": "https://huggingface.co/litert-community/Qwen3-4B/resolve/84cc5a35c9c65cd18fcd65bb1f3a7d77a4acfe6e/qwen3_4b_mixed_int4.litertlm?download=true",
+    "backend": "GPU",
+    "contextTokens": 2048
+  },
+  {
+    "id": "Qwen3-4B-Instruct-2507",
+    "fileName": "qwen3_4b_instruct_2507_mixed_int4.litertlm",
+    "sourceFile": "qwen3_4b_instruct_2507_mixed_int4.litertlm",
+    "revision": "4d409771b414d86b270ca54d27ffc45032a81142",
+    "sha256": "9e48b165836256f5344d9d044930607b9c47f6ef34e27f82e96881664f3ba2fd",
+    "bytes": 2659057664,
+    "url": "https://huggingface.co/litert-community/Qwen3-4B-Instruct-2507/resolve/4d409771b414d86b270ca54d27ffc45032a81142/qwen3_4b_instruct_2507_mixed_int4.litertlm?download=true",
+    "backend": "GPU",
+    "contextTokens": 2048
+  },
+  {
+    "id": "Qwen3-4B-Thinking-2507",
+    "fileName": "Qwen3-4B-Thinking-2507.litertlm",
+    "sourceFile": "model.litertlm",
+    "revision": "92751be3c03156438ba11699fffbd314002ade5d",
+    "sha256": "356b2d7778d27d55fbb0d2e0c5e8801e9de136db59849c41c882bd97333840d5",
+    "bytes": 2474357680,
+    "url": "https://huggingface.co/litert-community/Qwen3-4B-Thinking-2507/resolve/92751be3c03156438ba11699fffbd314002ade5d/model.litertlm?download=true",
+    "backend": "GPU",
+    "contextTokens": 4096
+  },
+  {
+    "id": "Qwen3-8B",
+    "fileName": "qwen3_8b_mixed_int4.litertlm",
+    "sourceFile": "qwen3_8b_mixed_int4.litertlm",
+    "revision": "71ff705588319d52d374977eff3da4eee0c0d26e",
+    "sha256": "cb4e6d0de4bbf6656d177812cf0c6a983967dedd17e7f88e84b901c3a9862a42",
+    "bytes": 4887412736,
+    "url": "https://huggingface.co/litert-community/Qwen3-8B/resolve/71ff705588319d52d374977eff3da4eee0c0d26e/qwen3_8b_mixed_int4.litertlm?download=true",
+    "backend": "GPU",
+    "contextTokens": 2048
+  },
+  {
+    "id": "Qwen3.5-0.8B",
+    "fileName": "Qwen3.5-0.8B_int8.litertlm",
+    "sourceFile": "Qwen3.5-0.8B_int8.litertlm",
+    "revision": "c23b16e43ada6ead533b12593fe500bbe268014f",
+    "sha256": "684d4d34adf7176eb47f6026ff65c33d42584737254e5524a8d1ad62edc21b98",
+    "bytes": 963184864,
+    "url": "https://huggingface.co/litert-community/Qwen3.5-0.8B/resolve/c23b16e43ada6ead533b12593fe500bbe268014f/Qwen3.5-0.8B_int8.litertlm?download=true",
+    "backend": "CPU",
+    "contextTokens": 4096
+  },
+  {
+    "id": "Qwen3.5-2B",
+    "fileName": "Qwen3.5-2B_int8.litertlm",
+    "sourceFile": "Qwen3.5-2B_int8.litertlm",
+    "revision": "0d50110e55d80ac7be6233d047e0d5f0fb8394c4",
+    "sha256": "86c97baba6d3fb4109588562f0b9411e502c883be7fc2479f93ce3a6ea3efb6b",
+    "bytes": 2116592816,
+    "url": "https://huggingface.co/litert-community/Qwen3.5-2B/resolve/0d50110e55d80ac7be6233d047e0d5f0fb8394c4/Qwen3.5-2B_int8.litertlm?download=true",
+    "backend": "CPU",
+    "contextTokens": 4096
+  },
+  {
+    "id": "Qwen3.5-4B",
+    "fileName": "Qwen3.5-4B_mixed_int4.litertlm",
+    "sourceFile": "Qwen3.5-4B_mixed_int4.litertlm",
+    "revision": "f06d1275eb219ff140d11d08b586cf9bb55b8fd6",
+    "sha256": "176b5a2b6c20bde7739fba98e653a04f5d5b4a753a4b9dd0ff529aba7c35be99",
+    "bytes": 2754365536,
+    "url": "https://huggingface.co/litert-community/Qwen3.5-4B/resolve/f06d1275eb219ff140d11d08b586cf9bb55b8fd6/Qwen3.5-4B_mixed_int4.litertlm?download=true",
+    "backend": "CPU",
+    "contextTokens": 4096
+  },
+  {
+    "id": "Qwen2.5-1.5B-Instruct",
+    "fileName": "Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.litertlm",
+    "sourceFile": "Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.litertlm",
+    "revision": "19edb84c69a0212f29a6ef17ba0d6f278b6a1614",
+    "sha256": "faa60663b333290c1496c499828b21d3e3254a788cacd8cce917ce0f761a2dc9",
+    "bytes": 1597931520,
+    "url": "https://huggingface.co/litert-community/Qwen2.5-1.5B-Instruct/resolve/19edb84c69a0212f29a6ef17ba0d6f278b6a1614/Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.litertlm?download=true",
+    "backend": "GPU",
+    "contextTokens": 4096
+  },
+  {
+    "id": "Qwen2-0.5B-Instruct",
+    "fileName": "Qwen2_0.5B_Instruct.litertlm",
+    "sourceFile": "Qwen2_0.5B_Instruct.litertlm",
+    "revision": "13aab3e522828d85fa178d885716ab858a715149",
+    "sha256": "0f01cc004b8eb62b92ba6be85ed05a248ba0d2f78af94c4949b313eccfb4c157",
+    "bytes": 647377840,
+    "url": "https://huggingface.co/litert-community/Qwen2-0.5B-Instruct/resolve/13aab3e522828d85fa178d885716ab858a715149/Qwen2_0.5B_Instruct.litertlm?download=true",
+    "backend": "GPU",
+    "contextTokens": 4096
+  },
+  {
+    "id": "Qwen2-1.5B-Instruct",
+    "fileName": "Qwen2_1.5B_Instruct.litertlm",
+    "sourceFile": "Qwen2_1.5B_Instruct.litertlm",
+    "revision": "0292a162494daa04ab6d67da70a39ef353a281f2",
+    "sha256": "f0009d992f962157ee7164e7bf93d16229992fbb4ffe4ee055d0da47f189ad62",
+    "bytes": 1802843056,
+    "url": "https://huggingface.co/litert-community/Qwen2-1.5B-Instruct/resolve/0292a162494daa04ab6d67da70a39ef353a281f2/Qwen2_1.5B_Instruct.litertlm?download=true",
+    "backend": "GPU",
+    "contextTokens": 4096
+  },
+  {
+    "id": "Qwen2-VL-2B",
+    "fileName": "Qwen2-VL-2B.litertlm",
+    "sourceFile": "Qwen2-VL-2B.litertlm",
+    "revision": "5a03c8597ec02ec3c84cde3f1fd043688396bde5",
+    "sha256": "cf481776bcb16fe539a38c924a67fc213bb5ee55e6fa600729f060e64849066b",
+    "bytes": 1783424544,
+    "url": "https://huggingface.co/litert-community/Qwen2-VL-2B/resolve/5a03c8597ec02ec3c84cde3f1fd043688396bde5/Qwen2-VL-2B.litertlm?download=true",
+    "backend": "GPU",
+    "contextTokens": 4096
+  }
+]

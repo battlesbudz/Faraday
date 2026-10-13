@@ -1,0 +1,123 @@
+{
+  "timestamp_utc": "2026-10-09T20:41:23.453520+00:00",
+  "repair_base_commit": "984f6eed516b5c9986f8457fe320c43e99abd9f0",
+  "scope": "Two exact per-turn metadata exclusions from benchmark report group identity and TXT shared provenance; preserve full raw JSON/CSV/TXT values.",
+  "new_exclusions": [
+    "followup_smart_turn_utterance_id",
+    "capture_first_raw_transfer"
+  ],
+  "new_tests": {
+    "count": 25,
+    "result": "JUnit version 4.13.2\n.........................\nTime: 0.467\n\nOK (25 tests)\n\n",
+    "compile_exit_code": 0,
+    "test_exit_code": 0,
+    "sources_stable": true,
+    "sources_sha256": {
+      "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmark.kt": "cfc229403c833dc7e3581170f500384246406e38f6c82e4a40fb0edd5c1ef486",
+      "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmarkAccuracy.kt": "e523ee3450e86eb2096b28600f57292a6bba8a356d402f955d95860fa9581dc0",
+      "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmarkDefinitions.kt": "d54f9930620431b2b575ce80e6aa54e199c259e1d8edcef3cf47f1f8b7cee286",
+      "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmarkReport.kt": "dcd3f3144d2dc1d0ebf133678afe22b67c6ed27a9ac62ac2b16091af2f07adbf",
+      "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmarkTextExport.kt": "4a0c0072bb8c7dbcbbe7e6a5da63890d3d70b050fdb1dce518b41a3a97ab1267",
+      "app/src/test/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmarkTest.kt": "ad873487c1be28f13bbed59b9008b6034a80ad1b00a7d9810d748a1c8f2f8490",
+      "app/src/test/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmarkTextExportTest.kt": "8826fe134936269aa652b074333ad1a9405e1da6f2458dfdeb23f7829c29189a"
+    },
+    "dependencies_sha256": {
+      "activity-1.10.0.jar": "df62a5e8df0818756e10eed86fef04fd3cd6e8437f513c4480d3807980506b7b",
+      "activity-compose-1.10.0.jar": "66e855031a026023d937444572b7f596f3246f1e674960e4f1b0ca03ff3aed04",
+      "android-all-14-robolectric-10818077.jar": "6be2218c6a53fe3c57bc22ebdc723edcb7270a8a6f187545708aa5c0ed813977",
+      "animation-android-1.7.6.jar": "1d695f326f63c1dbc59080ef3e49cd1b449873ecf629e30f095e495a957a3bad",
+      "animation-core-android-1.7.6.jar": "afc740a456b01d5879605982a4c1223c5aacbe02c1db67a1bedd85e56b18b89a",
+      "annotation-jvm-1.9.1.jar": "1e343917ebf27ba96fe4dc52b1cad7fd32b738fbc6355bb6cd5b3b305d7212d0",
+      "annotations-13.0.jar": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478",
+      "collection-jvm-1.4.0.jar": "d5cf7b72647c7995071588fe870450ff9c8f127f253d2d4851e161b800f67ae0",
+      "core-1.15.0.jar": "e4d3c02d3d3cc92f0c6d59df0a7c7d8faa04936aeabaa4f5f3e55c050f076d9b",
+      "foundation-android-1.7.6.jar": "91909bdd0c60559c526733a36b1468dd1ed0cac3be876c7a056c23c1e077890f",
+      "foundation-layout-android-1.7.6.jar": "911b9031843265c3bdd6b840decd6a7e6d2edc86712c511c66bb9dfddd15dfdb",
+      "hamcrest-core-1.3.jar": "66fdef91e9739348df7a096aa384a5685f4e875584cce89386a7a47251c4d8e9",
+      "junit-4.13.2.jar": "8e495b634469d64fb8acfa3495a065cbacc8a0fff55ce1e31007be4c16dc57d3",
+      "kotlin-compiler-embeddable-2.3.21.jar": "d3e70fb011675e77ef00f1a68918d3cd91eed26058977d1e3ea2a37a293233af",
+      "kotlin-compose-compiler-plugin-embeddable-2.3.21.jar": "6658edfd25de3dec89bdedc0308014a2ebd97731c6f749df0827c5be1ef95515",
+      "kotlin-daemon-embeddable-2.3.21.jar": "222fc10a3c22e74d30369bf8a0ca6c4f9372eac7d4a0081e290c256fa4d30fb2",
+      "kotlin-reflect-2.3.21.jar": "33e37d9dfa86c7a29ab34e975b5f4a1287b458878611051f3485652220c1a2cb",
+      "kotlin-script-runtime-2.3.21.jar": "ec61bf1229c837fa9f4255f34ca69816138b73158e7ae9b8d964cf92ca6dfd2e",
+      "kotlin-stdlib-2.3.21.jar": "6f64eac736db9434dd6925b4a518b9d1d17177652320c37916cf9ba3ce7d7d7a",
+      "kotlinx-coroutines-core-jvm-1.9.0.jar": "ad89c2892235e670f222d819cb3d81188143cb19a05b59df9889ae4269f5c70a",
+      "lifecycle-common-jvm-2.8.7.jar": "61c873a7327c946ec033c310bb98f3f92eeabcede0e1a5200ab8a1896483c7bf",
+      "lifecycle-runtime-android-2.8.7.jar": "5ebbe28bbfe9da92040fe7b94021cb2981caf2e4c7df6a4bc3b4a0a81faef66c",
+      "lifecycle-runtime-compose-android-2.8.7.jar": "7b8e83af9e4141109eacc45aac8a6a9a64bd4acc78fdd3d037eec5bcdbea1d17",
+      "lifecycle-viewmodel-android-2.8.7.jar": "6fbb150054da900de5a88e5bf64b8bf2ba2d10805fc5cea0a9a26245792d7244",
+      "lifecycle-viewmodel-savedstate-2.8.7.jar": "81e9f7cd7e4221dc5e48eb81e63ff33a81fb4f0189e6cc6f31291ef2bf934912",
+      "material3-android-1.3.1.jar": "c0b099abe90c54853f27ba4deea7006b4fa8da481c80934ec4c4ba111163ce06",
+      "runtime-android-1.7.6.jar": "aeb2a678f6ce36634e12716be30bd2e8ea768b0e534687983d7fea703142978b",
+      "runtime-saveable-android-1.7.6.jar": "a9dcfc34048f704781525e07a4e4caaadfbc4810becb8f2816ebc21a68874211",
+      "savedstate-1.2.1.jar": "f4f41ae607c65ef27ec592c092fe733b952147301a390008ab7ed36fd2ea9b88",
+      "trove4j-1.0.20200330.jar": "c5fd725bffab51846bf3c77db1383c60aaaebfe1b7fe2f00d23fe1b7df0a439d",
+      "ui-android-1.7.6.jar": "83346f5e42f5738a1cb277d52f2c2d5d1c9de765f37d6b538fe243fd7c1640d0",
+      "ui-geometry-android-1.7.6.jar": "0625c05354bbdb66e6097acefea4adc2f24e9d4f424a475323b10f9b827e4b03",
+      "ui-graphics-android-1.7.6.jar": "c8e4fa4920ecc5cbce4df60967f11ff7f9803b52ad2bb3e0dda6af1e7b1136e7",
+      "ui-text-android-1.7.6.jar": "99c8f97a161a92bed95c3b950efc7bb4e6a49c9775752571c5a1390de9d7ccea",
+      "ui-unit-android-1.7.6.jar": "0982f87811ca9fe258b0fbb6c8e9c95d118a444ed2fa20579e022308597455b8",
+      "ui-util-android-1.7.6.jar": "6c35a2d572ec444c31a2231aabe3dcd544e66ee9d1b58c5ed2b9f8f351140f11",
+      "uiautomator-2.3.0.jar": "94c3c658c9627107c9eee0eb01f7e45e2eff72b16e8aac2d95cac7f5a1e2fc0b"
+    }
+  },
+  "regressions": [
+    "Different follow-up UUIDs with identical disabled shadow settings share report group and TXT provenance; both IDs retained on raw rows.",
+    "Different producer-shaped raw-transfer prefix byte and sequence observations share group/provenance; full strings retained on raw rows.",
+    "Changed actual capture_profile_requested or followup_smart_turn_mode remains separate; no broad metadata exclusions."
+  ],
+  "review": {
+    "verdict": "passed_no_blocker",
+    "five_file_manifest_sha256": "6810e89a8a69c0f44e8fe47cf1af7a7fdd22e6d1656fc3cb577fa768f3475dd1",
+    "files": {
+      "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmarkReport.kt": "dcd3f3144d2dc1d0ebf133678afe22b67c6ed27a9ac62ac2b16091af2f07adbf",
+      "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmarkTextExport.kt": "4a0c0072bb8c7dbcbbe7e6a5da63890d3d70b050fdb1dce518b41a3a97ab1267",
+      "app/src/test/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmarkTest.kt": "ad873487c1be28f13bbed59b9008b6034a80ad1b00a7d9810d748a1c8f2f8490",
+      "app/src/test/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmarkTextExportTest.kt": "8826fe134936269aa652b074333ad1a9405e1da6f2458dfdeb23f7829c29189a",
+      "docs/verification/smart-turn-followup-2026-10-09.md": "4ef9fb8e684e639c466832ec76e8ffc2f352f7c40355ed7ed379143880040165"
+    },
+    "original_voice_shadow_sources_and_tests_unchanged": true
+  },
+  "retained_original_checks": {
+    "receipt_repository_path": "docs/verification/evidence/smart-turn-followup-2026-10-09.json",
+    "receipt_sha256": "902b405169856ad0c882f8b76e35f695257005dd2a8fbef03405e2e045d1619e",
+    "compiled_sources_still_byte_identical": 154,
+    "jvm_capture_tests": 54,
+    "jvm_smart_turn_tests": 39,
+    "helper_tests": 6,
+    "actual_source_api_compile": 143,
+    "statement": "Not rerun for this diagnostics-only repair; all original compiled source hashes rechecked against current content."
+  },
+  "combined_distinct_compiled_source_count": 158,
+  "external_evidence_directory": "followup-smartturn-correlation-evidence",
+  "artifacts_sha256": {
+    "before-fix/receipt.json": "6a2eb7fa4782ac2d04bef3431920ba2d305e7619fc109bd17445bb3f3d2dc66c",
+    "before-fix/tests.log": "239d198b657e8ddd93f24498cf9dbb82341930b2ffd271929768d9d3a75e6af9",
+    "before-fix/compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after-fix/receipt.json": "4929514ff691f433d7f7b890d30eab908d9f408c739d7717294b4bf9e078b161",
+    "after-fix/tests.log": "caf040af180c7c8df3031a83d290465e02cbec5d3351d684f8fabd96eab8f02e",
+    "after-fix/compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "final/receipt.json": "c12eb66720e04f2ce615d91e79228b0ad7c612062ff563667dc492c0c682f269",
+    "final/tests.log": "5c5eaa9492120b76add3b36f953fea32fcdf9c4b4f8aaae6acd797c3b791f154",
+    "final/compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before-raw-transfer-fix/receipt.json": "2f187e6cb2d9b452bd61741171f98425c97628ad2a041b682422bae33d26c7ce",
+    "before-raw-transfer-fix/tests.log": "272590b84d592d75f6df7bc9dc21ceb5d86bd3bf6907e66b07fb845d72edc3bc",
+    "before-raw-transfer-fix/compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "final-two-key/receipt.json": "c772e82f63867c16d0053a784cbbd6c22f6fb02a516fcd6a84ac1054e5c2dc13",
+    "final-two-key/tests.log": "7b0d16a466c8baef51df1abdc2938541ff47e69929f47a7f6913e7949105ce59",
+    "final-two-key/compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "run-report.py": "a66863c315ee5049fd32ff9331d674711b1b5b02a903e21a8ca4498f0ba26c81",
+    "reviewed-repair.sha256": "6810e89a8a69c0f44e8fe47cf1af7a7fdd22e6d1656fc3cb577fa768f3475dd1"
+  },
+  "failed_run_history": [
+    "before-fix: two expected grouping regressions failed on original candidate",
+    "after-fix: UUID filters fixed; one test fixture duplicate turn ID rejected before real-configuration assertion",
+    "final: UUID-only repair passed all25 after distinct fixture ID",
+    "before-raw-transfer-fix: two expected grouping regressions failed with varying raw-transfer evidence",
+    "final-two-key: all25 passed with both exact exclusions"
+  ],
+  "limits": [
+    "No APK, R8, JNI/NDK, Android instrumentation, model, download, credential or physical-device work",
+    "No publication; exact-head release gates remain required"
+  ]
+}

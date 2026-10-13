@@ -1,0 +1,134 @@
+{
+  "head": "68a96943f2ab78bf5494c54812e70707c1aea727",
+  "tree": "c36fcfcb4a9002c121bb51a1dd84ca33af9f19b9",
+  "source_review_commit": "69734a4ecbc8fbbfe5ef8880b906fdcc45cb132d",
+  "matching_rearm_app_files": [
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/ReplyCaptureBenchmark.kt",
+      "blob": "53a583f25eb7cbb39c6dba8c4e103803ad2832f1"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/runtime/VoiceTurnCaptureFactory.kt",
+      "blob": "b420760ba525d2651b3ad94d1a8d8291e8f162d6"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/runtime/turn/OrdinaryVoiceReplyStage.kt",
+      "blob": "585d9f8cae499a74825063f7800cbf5def85c8bb"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/runtime/turn/VoiceTurnFinalizer.kt",
+      "blob": "23bec6ac2d765c513f5d01d8c85378773d865441"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/runtime/turn/VoiceTurnLifetime.kt",
+      "blob": "b939b484cde22ac0afbd2699226dfaad72a52840"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/runtime/turn/VoiceTurnPreparation.kt",
+      "blob": "e39debf49795fc165ed53c916f3982fc960da8bb"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/runtime/turn/VoiceTurnRecognition.kt",
+      "blob": "ca1dffa25ae09d220078b7ff836786e8cc11d735"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/AudioTurnCapture.kt",
+      "blob": "bc969cda6e22b1712e420b3fe79b97a5899c2ece"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CallInputQueue.kt",
+      "blob": "9266e4b39a5abbacdaf015dc8fe65f47988673c4"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptionInputAdmission.kt",
+      "blob": "e7d1dc95a34a71a27161fce8ff9b065fe5e2a12f"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptionPublicationFence.kt",
+      "blob": "f7e4b3e90485290789b1671c14267a1f00377d05"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptureFirstAudioInput.kt",
+      "blob": "31a88b41969ede84386b3ab5d8b32126a760ba5e"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptureFirstReplyHandoff.kt",
+      "blob": "411450a4d1cc8574ed34c67c7ce70d7d82a9583b"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/FinalWhisperFarewellSnapshot.kt",
+      "blob": "2623828e0703429c76e91c823480e659c899f8c8"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/NaturalBargeInAudioInput.kt",
+      "blob": "da98f0a2fa16d88d2e8b529ef42ab8b481208c0a"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/PostAnswerCaptionContinuation.kt",
+      "blob": "fc959a00fa72b7c71908f64ca9626b24572bb48b"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/ReplyInterruption.kt",
+      "blob": "8d8e7d47bcbc5cb1fb482ce3190579295a7bb23a"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/ReplyVoiceCapture.kt",
+      "blob": "b34b729b99003fa74b2ea046a38fca3c84f8f36c"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/VoiceCallPolicy.kt",
+      "blob": "d1adb8fae50a635576d4d709c308d1446b589cdb"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/VoiceCaptureHandoff.kt",
+      "blob": "8d3a74c2fe2bc39c7ac16880ad37923c83c7771c"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/VoiceSessionController.kt",
+      "blob": "dddba6705b93523073aecde8ce3b44adcbd5ecfe"
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/voice/CaptionInputAdmissionTest.kt",
+      "blob": "a94e0e272a5c3fb44f60e4aa07c427a8e0fef3e2"
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/voice/CaptionPublicationFenceTest.kt",
+      "blob": "b6b55c4625621bceb49da1a0be592d47a1c29b9d"
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/voice/CaptionPublicationOwnershipTest.kt",
+      "blob": "24be9a7abcea4b6df4802b4d917b1d29bb4878b1"
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/voice/CaptureFinalVerdictTest.kt",
+      "blob": "8cdafcb73642b0742d7d0edd89c8261680a749d9"
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/voice/CaptureFirstAudioInputTest.kt",
+      "blob": "2917916bafce6b5dee62ebd3c7f32117176cfc48"
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/voice/CaptureFirstReplyHandoffTest.kt",
+      "blob": "d5cb67c6c72d160d8f63f9d3df856d61c9957025"
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/voice/FinalWhisperFarewellSnapshotTest.kt",
+      "blob": "46bd1bbadaac38b0554217894307648147df14f6"
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/voice/PostAnswerCaptionContinuationTest.kt",
+      "blob": "03052c423a103c09dc7c81d79e1235080a23978d"
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/voice/VoiceCallPolicyTest.kt",
+      "blob": "add80b48d3daa1d8852f28409657fef161868d98"
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/voice/VoiceCaptureHandoffTest.kt",
+      "blob": "0df4c902daef23f88616cf53b113c2d93d663247"
+    }
+  ],
+  "conflict_resolution": "Only docs/verification/features.md; retained SmartTurn and capture-first sections. No app source conflicts.",
+  "crypto_included": false,
+  "publication_held": true
+}

@@ -1,0 +1,16 @@
+<execution-temp>/jarvis-fixture-review-2026-10-11/original-fixture/EarlyGemmaInputModeTest.kt:25:25: error: unresolved reference 'sun'.
+            val field = sun.misc.Unsafe::class.java.getDeclaredField("theUnsafe").apply { isAccessible = true }
+                        ^^^
+<execution-temp>/jarvis-fixture-review-2026-10-11/original-fixture/EarlyGemmaInputModeTest.kt:25:48: error: cannot infer type for type parameter 'T'. Specify it explicitly.
+            val field = sun.misc.Unsafe::class.java.getDeclaredField("theUnsafe").apply { isAccessible = true }
+                                               ^^^^
+<execution-temp>/jarvis-fixture-review-2026-10-11/original-fixture/EarlyGemmaInputModeTest.kt:25:48: error: unresolved reference. None of the following candidates is applicable because of a receiver type mismatch:
+val <T> KClass<T>.java: Class<T>
+            val field = sun.misc.Unsafe::class.java.getDeclaredField("theUnsafe").apply { isAccessible = true }
+                                               ^^^^
+<execution-temp>/jarvis-fixture-review-2026-10-11/original-fixture/EarlyGemmaInputModeTest.kt:26:45: error: unresolved reference 'sun'.
+            val unsafe = field.get(null) as sun.misc.Unsafe
+                                            ^^^
+<execution-temp>/jarvis-fixture-review-2026-10-11/original-fixture/EarlyGemmaInputModeTest.kt:27:21: error: unresolved reference 'allocateInstance'.
+            (unsafe.allocateInstance(LiteRtLmEngine::class.java) as LiteRtLmEngine).also {
+                    ^^^^^^^^^^^^^^^^

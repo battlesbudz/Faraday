@@ -1,0 +1,37 @@
+{
+  "first_failed_review_commit": "e784dbbce98bfe5a2f49e4bb887aa30f840b6827",
+  "smart_turn_capture_foundation": "0ec040030e52101add4e046b566f241eee23d02d",
+  "focused_tests": 109,
+  "actual_owner_tests": 45,
+  "owner_repeat_runs": 20,
+  "owner_repeat_failures": 0,
+  "python_tests": 13,
+  "android_api_actual_sources": 143,
+  "android_api_attempt": "020",
+  "source_checks": {
+    "focused": {
+      "file_count": 52,
+      "all_current_bytes_match_receipt": true
+    },
+    "owners": {
+      "file_count": 52,
+      "all_current_bytes_match_receipt": true
+    },
+    "boundary": {
+      "file_count": 143,
+      "all_current_bytes_match_receipt": true
+    }
+  },
+  "apk_jni_device_or_model_run": false,
+  "independent_rereview_pending": true,
+  "receipt_hashes": {
+    "focused-jvm.json": "28e6505f237929d5f0100af5388bb6b0af38cfb91894eec275ec34e95118b26e",
+    "focused-jvm.log": "6f01d5630ba7171bc15741886329ed612859553422535f76560c6c06d396464d",
+    "owner-jvm.json": "332ef9b84fcff9b6e6baa46bb8bc0a6c19163a59e44ec6a5b5467591d295f6da",
+    "owner-jvm.log": "c1795d8b4b408ede9e635872ba8bc6a8c5bb2480a66437d6fa01b19e9fd6110f",
+    "owner-repeats.json": "55f0e8c3188bdc993dcfd00cd9371a7cfbc90c2dbdd4f1dc2c3d960f7cd66e9f",
+    "android-api-boundary.json": "8dcfb4bf5f6e6a7bffac5d5a3b5bdd8228baa7650ee850a72d8b6d1219cd1436",
+    "android-api-boundary.log": "eba6a7e3e196d68c0f0e8e39d9750c32e48b9d62f9599581800e929f45b040ea",
+    "python-architecture.log": "a185fb5b98a903663aeec93cd1e3ae5ff0d89687bf9ddd5c8e98f3c06ed2b6c1"
+  }
+}

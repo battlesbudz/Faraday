@@ -1,0 +1,464 @@
+{
+  "schema": 1,
+  "source_base_commit": "770cde61791cceed664f7c991e17fc08f0a35a7d",
+  "source_sha256": {
+    "app/src/main/java/com/battlesbudz/jarvis/v2/ui/BenchmarkExportFiles.kt": "462f73476b776680d25c872e1348f3e13be03b489b3de3d4914e7a2aa013695d",
+    "app/src/androidTest/java/com/battlesbudz/jarvis/v2/verification/BenchmarkExportJourneyProbe.kt": "10cf4ffa408378e04886eaa72164a4aaf0c1342fd4e357bff5ad649d078b9ecb"
+  },
+  "baseline_probe_sha256": "cf96dfe0b3a4c5e5b0dd0b68aa721faa8f098e1f57d1c96469a11fcab0e637a1",
+  "diagnosis": {
+    "build": 1247,
+    "run_id": 37995191775,
+    "run_url": "https://github.com/battlesbudz/Jarvis-OS-V2/actions/runs/37995191775",
+    "failed_profile": "30-phone-normal",
+    "main_journeys": 82,
+    "main_passed": 81,
+    "failing_test": "test45_pipelineBenchmarksScoreOriginalAsrPersistAndExportRedactedEvidence",
+    "unresolved_typed_descriptors": [
+      "getSynchronousResult(Context,String):SynchronousResult",
+      "parseResult(int,Intent):Uri"
+    ]
+  },
+  "checks": {
+    "host": {
+      "passed": true,
+      "scope": "Separate production/test classfile compilation; real Android14/AndroidX bytecode; exact 78-assertion probe; host bridge-folding reproduction, not R8 or device execution.",
+      "commands": [
+        {
+          "name": "compile-production",
+          "exit": 0,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "compile-before",
+          "exit": 0,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "bytecode-before",
+          "exit": 0,
+          "log_sha256": "161c16808f5892c5877f52e0f6de045552641ca1d4b539a34c8a8790cb566607"
+        },
+        {
+          "name": "stock-before",
+          "exit": 0,
+          "log_sha256": "68c65aa978c9b48a5f0288ccf671d999872c64e74a791a7b9b739e27c6bffe59"
+        },
+        {
+          "name": "compile-after",
+          "exit": 0,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "bytecode-after",
+          "exit": 0,
+          "log_sha256": "1eb5916005efd738739e0ace8ce3851d224590c7543f5250b972a0a581844091"
+        },
+        {
+          "name": "stock-after",
+          "exit": 0,
+          "log_sha256": "68c65aa978c9b48a5f0288ccf671d999872c64e74a791a7b9b739e27c6bffe59"
+        },
+        {
+          "name": "compile-transform",
+          "exit": 0,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "fold-typed-methods",
+          "exit": 0,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "bytecode-folded",
+          "exit": 0,
+          "log_sha256": "046b3f38bf4d480a79d1c9051e02bd8374bd60c87e6d19b535504c6221402e72"
+        },
+        {
+          "name": "folded-before",
+          "exit": 1,
+          "log_sha256": "6b15bc7b07f8dd6ff648e089ab7c86240392d23d51c67c44473f615e38ccc7df"
+        },
+        {
+          "name": "folded-after",
+          "exit": 0,
+          "log_sha256": "68c65aa978c9b48a5f0288ccf671d999872c64e74a791a7b9b739e27c6bffe59"
+        },
+        {
+          "name": "compile-typed-parse",
+          "exit": 0,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "folded-typed-parse",
+          "exit": 1,
+          "log_sha256": "0badcbb6329e9b7097cc7f9791676f9d30873a2dd3945b7876ea9a963cb41469"
+        },
+        {
+          "name": "compile-missing-openable",
+          "exit": 0,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "reject-missing-openable",
+          "exit": 1,
+          "log_sha256": "b339c8dd5afc8203f69657321cac440e7ea2ea997bc3855e46c56cacf455aef4"
+        }
+      ]
+    },
+    "exact_test45_compile": {
+      "exit": 0,
+      "scope": "Fresh compilation of exact changed test45 method against real Android14 framework, UiAutomator2.3.0, Compose1.7.6/material3 1.3.1/activity1.10.0 APIs and actual production benchmark/UI/probe sources. Existing activity/navigation/evidence helpers are signature-only TODO seams; BuildConfig generated constants are stubbed; unchanged conversation data declarations are extracted verbatim from source. NOT complete ReleaseJourneyTest compilation, instrumentation/device execution, R8 or APK verification. No prior compilation result reused.",
+      "source_sha256": "64bb32d8d412801cc7cedc9c0cdd203c538e6e8151952e6d4ecb9993ebddf0bd",
+      "exact_method_sha256": "5a4defa28f59e694430d119002b4084bcddb15ed30c9c68af043135ac76002c5",
+      "fixture_sha256": "bcb00f803bd1e8e6407e73ee5329d385a685bf24b767e2e54265eb3b90182bf7",
+      "model_declaration_origins": {
+        "app/src/main/java/com/battlesbudz/jarvis/v2/chat/ConversationHistory.kt": "0d60b10cb57bc2b3b058c202609df98094e6f0f67c3ca1c14e618db6c2deef33",
+        "app/src/main/java/com/battlesbudz/jarvis/v2/chat/ChatAttachment.kt": "1c924c69175db1d47b374d806758e6bda8b1cc8bcab8ab05ee1c7e7d616c5a2b"
+      },
+      "sources": {
+        "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmark.kt": "cfc229403c833dc7e3581170f500384246406e38f6c82e4a40fb0edd5c1ef486",
+        "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmarkAccuracy.kt": "e523ee3450e86eb2096b28600f57292a6bba8a356d402f955d95860fa9581dc0",
+        "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmarkReport.kt": "dcd3f3144d2dc1d0ebf133678afe22b67c6ed27a9ac62ac2b16091af2f07adbf",
+        "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmarkDefinitions.kt": "d54f9930620431b2b575ce80e6aa54e199c259e1d8edcef3cf47f1f8b7cee286",
+        "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmarkTextExport.kt": "4a0c0072bb8c7dbcbbe7e6a5da63890d3d70b050fdb1dce518b41a3a97ab1267",
+        "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmarkArchive.kt": "aeefe50cc6b1086ff4621af5352ce566526af36d92b21954b398e5cf69a3cc5f",
+        "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmarkJournal.kt": "59094e78aa73003ba0d3d765d9f5856b38d3f40541b6dcd0362ed462f5b24a9f",
+        "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/PipelineBenchmarkSelection.kt": "0e0e31645f521618be98c8e088097043d332d42be03b07e8358c9dbef30c1944",
+        "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/AndroidPipelineBenchmarkStore.kt": "3a72801c088befbe55a36e162b977eab5d7085b762ea796b2ecba1480c1425d9",
+        "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/ConversationMetricsExport.kt": "41a692b8bdd64b85345ce69d5be4aa99d51a3f6be596537bbb823d4723871a5c",
+        "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/ReplyMetrics.kt": "7dc92db31158ccc96372ed25364388b032e7b01254f3f7a90566d9fdf0ebab8b",
+        "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/NativeAudioTimingMetrics.kt": "35fa08de72d517e0568770c45a9991a4b39ca302408986f843db605f55110337",
+        "app/src/main/java/com/battlesbudz/jarvis/v2/ui/BenchmarkExportFiles.kt": "462f73476b776680d25c872e1348f3e13be03b489b3de3d4914e7a2aa013695d",
+        "app/src/main/java/com/battlesbudz/jarvis/v2/ui/BenchmarkExportControls.kt": "46bee5c32b23a0eca955a0149b19dbefb66fc05d96ee23d2bdd3729f70858b44",
+        "app/src/main/java/com/battlesbudz/jarvis/v2/ui/PipelineBenchmarkScreen.kt": "14b26c7419a90673681a0190d5e3ce958f21b871cede26bb4bc4f942a0cb03a3",
+        "app/src/androidTest/java/com/battlesbudz/jarvis/v2/verification/BenchmarkExportJourneyProbe.kt": "10cf4ffa408378e04886eaa72164a4aaf0c1342fd4e357bff5ad649d078b9ecb"
+      },
+      "generated_sources": {
+        "ConversationModels.kt": "9ad6a447b37d246c7e68cdc42147a15bb76ae18e18e779118cbb240564478188",
+        "BuildConfig.kt": "e58f754796bcb3e0b0d760fd9a3e0df1dcd5f0717a13b158ae8ac50c219bd5ed",
+        "Test45CompileFixture.kt": "bcb00f803bd1e8e6407e73ee5329d385a685bf24b767e2e54265eb3b90182bf7"
+      }
+    },
+    "helpers": {
+      "exit": 0,
+      "architecture": "passed",
+      "scripts_tests": 109,
+      "verification_tests": 82,
+      "log_sha256": "6fbe73745dc0b6cce71de2e57f11dd0cdfc1ba94f1d854a611a5c816190ea5ec"
+    },
+    "independent_review": {
+      "result": "approved, no blocking objections",
+      "scope": "Both initial/recreated locals; all three actual normal/compact APK DEX methods; unchanged assertions; host harness claims and negative controls",
+      "required_followup": "Fresh release app/test R8 build, re-audit new DEX and full five-profile Android gate"
+    }
+  },
+  "dependency_provenance": [
+    {
+      "url": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-embeddable/2.3.21/kotlin-compiler-embeddable-2.3.21.jar",
+      "sha256": "d3e70fb011675e77ef00f1a68918d3cd91eed26058977d1e3ea2a37a293233af",
+      "file": "kotlin-compiler-embeddable-2.3.21.jar",
+      "bytes": 59720376
+    },
+    {
+      "url": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.3.21/kotlin-stdlib-2.3.21.jar",
+      "sha256": "6f64eac736db9434dd6925b4a518b9d1d17177652320c37916cf9ba3ce7d7d7a",
+      "file": "kotlin-stdlib-2.3.21.jar",
+      "bytes": 1804721
+    },
+    {
+      "url": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-script-runtime/2.3.21/kotlin-script-runtime-2.3.21.jar",
+      "sha256": "ec61bf1229c837fa9f4255f34ca69816138b73158e7ae9b8d964cf92ca6dfd2e",
+      "file": "kotlin-script-runtime-2.3.21.jar",
+      "bytes": 44972
+    },
+    {
+      "url": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-reflect/2.3.21/kotlin-reflect-2.3.21.jar",
+      "sha256": "33e37d9dfa86c7a29ab34e975b5f4a1287b458878611051f3485652220c1a2cb",
+      "file": "kotlin-reflect-2.3.21.jar",
+      "bytes": 3633922
+    },
+    {
+      "url": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-embeddable/2.3.21/kotlin-daemon-embeddable-2.3.21.jar",
+      "sha256": "222fc10a3c22e74d30369bf8a0ca6c4f9372eac7d4a0081e290c256fa4d30fb2",
+      "file": "kotlin-daemon-embeddable-2.3.21.jar",
+      "bytes": 368344
+    },
+    {
+      "url": "https://repo.maven.apache.org/maven2/org/jetbrains/intellij/deps/trove4j/1.0.20200330/trove4j-1.0.20200330.jar",
+      "sha256": "c5fd725bffab51846bf3c77db1383c60aaaebfe1b7fe2f00d23fe1b7df0a439d",
+      "file": "trove4j-1.0.20200330.jar",
+      "bytes": 572985
+    },
+    {
+      "url": "https://repo.maven.apache.org/maven2/org/jetbrains/annotations/13.0/annotations-13.0.jar",
+      "sha256": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478",
+      "file": "annotations-13.0.jar",
+      "bytes": 17536
+    },
+    {
+      "url": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.9.0/kotlinx-coroutines-core-jvm-1.9.0.jar",
+      "sha256": "ad89c2892235e670f222d819cb3d81188143cb19a05b59df9889ae4269f5c70a",
+      "file": "kotlinx-coroutines-core-jvm-1.9.0.jar",
+      "bytes": 1463587
+    },
+    {
+      "url": "https://repo.maven.apache.org/maven2/junit/junit/4.13.2/junit-4.13.2.jar",
+      "sha256": "8e495b634469d64fb8acfa3495a065cbacc8a0fff55ce1e31007be4c16dc57d3",
+      "file": "junit-4.13.2.jar",
+      "bytes": 384581
+    },
+    {
+      "url": "https://repo.maven.apache.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar",
+      "sha256": "66fdef91e9739348df7a096aa384a5685f4e875584cce89386a7a47251c4d8e9",
+      "file": "hamcrest-core-1.3.jar",
+      "bytes": 45024
+    },
+    {
+      "url": "https://repo.maven.apache.org/maven2/org/robolectric/android-all/14-robolectric-10818077/android-all-14-robolectric-10818077.jar",
+      "sha256": "6be2218c6a53fe3c57bc22ebdc723edcb7270a8a6f187545708aa5c0ed813977",
+      "file": "android-all-14-robolectric-10818077.jar",
+      "bytes": 137666235
+    },
+    {
+      "url": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compose-compiler-plugin-embeddable/2.3.21/kotlin-compose-compiler-plugin-embeddable-2.3.21.jar",
+      "sha256": "6658edfd25de3dec89bdedc0308014a2ebd97731c6f749df0827c5be1ef95515",
+      "file": "kotlin-compose-compiler-plugin-embeddable-2.3.21.jar",
+      "bytes": 941028
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/test/uiautomator/uiautomator/2.3.0/uiautomator-2.3.0.aar",
+      "sha256": "884c675c336b663f53a1d0de440642ee80d2bdf9d0049abdae2a3ecd5e6320fc",
+      "file": "uiautomator-2.3.0.aar",
+      "bytes": 130139,
+      "classes_sha256": "94c3c658c9627107c9eee0eb01f7e45e2eff72b16e8aac2d95cac7f5a1e2fc0b"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/compose/material3/material3-android/1.3.1/material3-android-1.3.1.aar",
+      "sha256": "752473d4ea271f822858c313ec0d857ab05249021906f3005b30f2b1fcd0dcc0",
+      "file": "material3-android-1.3.1.aar",
+      "bytes": 4965333,
+      "classes_sha256": "c0b099abe90c54853f27ba4deea7006b4fa8da481c80934ec4c4ba111163ce06"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-android/1.7.6/ui-android-1.7.6.aar",
+      "sha256": "42df06e3390808c85256a7efd74d448da71cbc168b41497a30535045c926f5b0",
+      "file": "ui-android-1.7.6.aar",
+      "bytes": 5031134,
+      "classes_sha256": "83346f5e42f5738a1cb277d52f2c2d5d1c9de765f37d6b538fe243fd7c1640d0"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-unit-android/1.7.6/ui-unit-android-1.7.6.aar",
+      "sha256": "9ed6214fdd4da272b0b2582c428f8c3dce5ce6a186c47daaf9fc01aec226a199",
+      "file": "ui-unit-android-1.7.6.aar",
+      "bytes": 90115,
+      "classes_sha256": "0982f87811ca9fe258b0fbb6c8e9c95d118a444ed2fa20579e022308597455b8"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-geometry-android/1.7.6/ui-geometry-android-1.7.6.aar",
+      "sha256": "63eb3d049a8c819e3805d51ce15b9203249ce960ecfd53251126592047bc2ff0",
+      "file": "ui-geometry-android-1.7.6.aar",
+      "bytes": 40423,
+      "classes_sha256": "0625c05354bbdb66e6097acefea4adc2f24e9d4f424a475323b10f9b827e4b03"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-util-android/1.7.6/ui-util-android-1.7.6.aar",
+      "sha256": "f74120949fd8f82fbfbcc3793246108f9554df0f51ecc7fb5d721ac971c4394a",
+      "file": "ui-util-android-1.7.6.aar",
+      "bytes": 15696,
+      "classes_sha256": "6c35a2d572ec444c31a2231aabe3dcd544e66ee9d1b58c5ed2b9f8f351140f11"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-graphics-android/1.7.6/ui-graphics-android-1.7.6.aar",
+      "sha256": "00c96a2e54b03bc0b72b8fc4327bd2a75b689c689aa01295d870141eb9ddddd0",
+      "file": "ui-graphics-android-1.7.6.aar",
+      "bytes": 1636819,
+      "classes_sha256": "c8e4fa4920ecc5cbce4df60967f11ff7f9803b52ad2bb3e0dda6af1e7b1136e7"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-text-android/1.7.6/ui-text-android-1.7.6.aar",
+      "sha256": "d2291842f1c3e8e70c4cb5c962c0754e463e023fef906f3437c209a096c09ec7",
+      "file": "ui-text-android-1.7.6.aar",
+      "bytes": 839919,
+      "classes_sha256": "99c8f97a161a92bed95c3b950efc7bb4e6a49c9775752571c5a1390de9d7ccea"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/compose/foundation/foundation-android/1.7.6/foundation-android-1.7.6.aar",
+      "sha256": "5ccb96bab040a70f7fdd577faaad75343261c006d42fcc5723a38f50a82f597c",
+      "file": "foundation-android-1.7.6.aar",
+      "bytes": 4843523,
+      "classes_sha256": "91909bdd0c60559c526733a36b1468dd1ed0cac3be876c7a056c23c1e077890f"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/compose/foundation/foundation-layout-android/1.7.6/foundation-layout-android-1.7.6.aar",
+      "sha256": "296e14e2b37f7ba09e4185637f71409199bced21d5a070fe26f6dc6b26d588b6",
+      "file": "foundation-layout-android-1.7.6.aar",
+      "bytes": 645951,
+      "classes_sha256": "911b9031843265c3bdd6b840decd6a7e6d2edc86712c511c66bb9dfddd15dfdb"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/compose/runtime/runtime-android/1.7.6/runtime-android-1.7.6.aar",
+      "sha256": "482942683274e1961727b2a76d68fe4ab4abb8145fd8b3146142144ce0b25311",
+      "file": "runtime-android-1.7.6.aar",
+      "bytes": 2415630,
+      "classes_sha256": "aeb2a678f6ce36634e12716be30bd2e8ea768b0e534687983d7fea703142978b"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/compose/runtime/runtime-saveable-android/1.7.6/runtime-saveable-android-1.7.6.aar",
+      "sha256": "802c98303c250a91b89d6b703c3eab73bff6cd220a85fdd10e17ca126f954879",
+      "file": "runtime-saveable-android-1.7.6.aar",
+      "bytes": 1116233,
+      "classes_sha256": "a9dcfc34048f704781525e07a4e4caaadfbc4810becb8f2816ebc21a68874211"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/compose/animation/animation-android/1.7.6/animation-android-1.7.6.aar",
+      "sha256": "01f349d54cf9ec41cd0adf5d8c2a869c2c245b8dbb6be5a57e7ebe3d68d31791",
+      "file": "animation-android-1.7.6.aar",
+      "bytes": 1478224,
+      "classes_sha256": "1d695f326f63c1dbc59080ef3e49cd1b449873ecf629e30f095e495a957a3bad"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/compose/animation/animation-core-android/1.7.6/animation-core-android-1.7.6.aar",
+      "sha256": "9722d4fccd4a9e95910baa16652563ba92a5829f9d6e09194850447e3cd9983a",
+      "file": "animation-core-android-1.7.6.aar",
+      "bytes": 1473987,
+      "classes_sha256": "afc740a456b01d5879605982a4c1223c5aacbe02c1db67a1bedd85e56b18b89a"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-runtime-compose-android/2.8.7/lifecycle-runtime-compose-android-2.8.7.aar",
+      "sha256": "80bf0a8fe9a79b93a318832bc36900f3ab8bd5931ff9ca0ecd3087100e1f07d8",
+      "file": "lifecycle-runtime-compose-android-2.8.7.aar",
+      "bytes": 58286,
+      "classes_sha256": "7b8e83af9e4141109eacc45aac8a6a9a64bd4acc78fdd3d037eec5bcdbea1d17"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-runtime-android/2.8.7/lifecycle-runtime-android-2.8.7.aar",
+      "sha256": "b8eb997dd434d70eb97cbd6d1395b6337c6771717c7acd59f11c0853f3860284",
+      "file": "lifecycle-runtime-android-2.8.7.aar",
+      "bytes": 82180,
+      "classes_sha256": "5ebbe28bbfe9da92040fe7b94021cb2981caf2e4c7df6a4bc3b4a0a81faef66c"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-common-jvm/2.8.7/lifecycle-common-jvm-2.8.7.jar",
+      "sha256": "61c873a7327c946ec033c310bb98f3f92eeabcede0e1a5200ab8a1896483c7bf",
+      "file": "lifecycle-common-jvm-2.8.7.jar",
+      "bytes": 57238
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-viewmodel-savedstate/2.8.7/lifecycle-viewmodel-savedstate-2.8.7.aar",
+      "sha256": "646f2a42d2884b02308fb19837089e2669835fe21ca6a5b60666d5eb94d081dd",
+      "file": "lifecycle-viewmodel-savedstate-2.8.7.aar",
+      "bytes": 37817,
+      "classes_sha256": "81e9f7cd7e4221dc5e48eb81e63ff33a81fb4f0189e6cc6f31291ef2bf934912"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-viewmodel-android/2.8.7/lifecycle-viewmodel-android-2.8.7.aar",
+      "sha256": "e7e7043f66b077637563ff564a7fc6cee461d284a0f2485c050a2143abbd8920",
+      "file": "lifecycle-viewmodel-android-2.8.7.aar",
+      "bytes": 57286,
+      "classes_sha256": "6fbb150054da900de5a88e5bf64b8bf2ba2d10805fc5cea0a9a26245792d7244"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/core/core/1.15.0/core-1.15.0.aar",
+      "sha256": "432b85a1974076e14b487ece4a28c59a84f1b9efc3fc8be72cd7f05d32055e51",
+      "file": "core-1.15.0.aar",
+      "bytes": 1336135,
+      "classes_sha256": "e4d3c02d3d3cc92f0c6d59df0a7c7d8faa04936aeabaa4f5f3e55c050f076d9b"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/savedstate/savedstate/1.2.1/savedstate-1.2.1.aar",
+      "sha256": "21a7d4bcf6bdb94ad7b9283801529300b4fbb8808ca4f191e0cdce6fd8e4705a",
+      "file": "savedstate-1.2.1.aar",
+      "bytes": 20217,
+      "classes_sha256": "f4f41ae607c65ef27ec592c092fe733b952147301a390008ab7ed36fd2ea9b88"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/activity/activity-compose/1.10.0/activity-compose-1.10.0.aar",
+      "sha256": "5217dd9df8556bdea9a2bb54a94720dd1f5d7d5925db5033ede7410b1ff60493",
+      "file": "activity-compose-1.10.0.aar",
+      "bytes": 1061220,
+      "classes_sha256": "66e855031a026023d937444572b7f596f3246f1e674960e4f1b0ca03ff3aed04"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/activity/activity/1.10.0/activity-1.10.0.aar",
+      "sha256": "c72301bc7307769cd6c3e0edb8da5837e7dea6fd89a5cdedfcfc87bd581850e1",
+      "file": "activity-1.10.0.aar",
+      "bytes": 230386,
+      "classes_sha256": "df62a5e8df0818756e10eed86fef04fd3cd6e8437f513c4480d3807980506b7b"
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/collection/collection-jvm/1.4.0/collection-jvm-1.4.0.jar",
+      "sha256": "d5cf7b72647c7995071588fe870450ff9c8f127f253d2d4851e161b800f67ae0",
+      "file": "collection-jvm-1.4.0.jar",
+      "bytes": 767379
+    },
+    {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/annotation/annotation-jvm/1.9.1/annotation-jvm-1.9.1.jar",
+      "sha256": "1e343917ebf27ba96fe4dc52b1cad7fd32b738fbc6355bb6cd5b3b305d7212d0",
+      "file": "annotation-jvm-1.9.1.jar",
+      "bytes": 60577
+    }
+  ],
+  "dependencies": {
+    "activity-1.10.0.jar": "df62a5e8df0818756e10eed86fef04fd3cd6e8437f513c4480d3807980506b7b",
+    "activity-compose-1.10.0.jar": "66e855031a026023d937444572b7f596f3246f1e674960e4f1b0ca03ff3aed04",
+    "android-all-14-robolectric-10818077.jar": "6be2218c6a53fe3c57bc22ebdc723edcb7270a8a6f187545708aa5c0ed813977",
+    "animation-android-1.7.6.jar": "1d695f326f63c1dbc59080ef3e49cd1b449873ecf629e30f095e495a957a3bad",
+    "animation-core-android-1.7.6.jar": "afc740a456b01d5879605982a4c1223c5aacbe02c1db67a1bedd85e56b18b89a",
+    "annotation-jvm-1.9.1.jar": "1e343917ebf27ba96fe4dc52b1cad7fd32b738fbc6355bb6cd5b3b305d7212d0",
+    "annotations-13.0.jar": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478",
+    "collection-jvm-1.4.0.jar": "d5cf7b72647c7995071588fe870450ff9c8f127f253d2d4851e161b800f67ae0",
+    "core-1.15.0.jar": "e4d3c02d3d3cc92f0c6d59df0a7c7d8faa04936aeabaa4f5f3e55c050f076d9b",
+    "foundation-android-1.7.6.jar": "91909bdd0c60559c526733a36b1468dd1ed0cac3be876c7a056c23c1e077890f",
+    "foundation-layout-android-1.7.6.jar": "911b9031843265c3bdd6b840decd6a7e6d2edc86712c511c66bb9dfddd15dfdb",
+    "hamcrest-core-1.3.jar": "66fdef91e9739348df7a096aa384a5685f4e875584cce89386a7a47251c4d8e9",
+    "junit-4.13.2.jar": "8e495b634469d64fb8acfa3495a065cbacc8a0fff55ce1e31007be4c16dc57d3",
+    "kotlin-compiler-embeddable-2.3.21.jar": "d3e70fb011675e77ef00f1a68918d3cd91eed26058977d1e3ea2a37a293233af",
+    "kotlin-compose-compiler-plugin-embeddable-2.3.21.jar": "6658edfd25de3dec89bdedc0308014a2ebd97731c6f749df0827c5be1ef95515",
+    "kotlin-daemon-embeddable-2.3.21.jar": "222fc10a3c22e74d30369bf8a0ca6c4f9372eac7d4a0081e290c256fa4d30fb2",
+    "kotlin-reflect-2.3.21.jar": "33e37d9dfa86c7a29ab34e975b5f4a1287b458878611051f3485652220c1a2cb",
+    "kotlin-script-runtime-2.3.21.jar": "ec61bf1229c837fa9f4255f34ca69816138b73158e7ae9b8d964cf92ca6dfd2e",
+    "kotlin-stdlib-2.3.21.jar": "6f64eac736db9434dd6925b4a518b9d1d17177652320c37916cf9ba3ce7d7d7a",
+    "kotlinx-coroutines-core-jvm-1.9.0.jar": "ad89c2892235e670f222d819cb3d81188143cb19a05b59df9889ae4269f5c70a",
+    "lifecycle-common-jvm-2.8.7.jar": "61c873a7327c946ec033c310bb98f3f92eeabcede0e1a5200ab8a1896483c7bf",
+    "lifecycle-runtime-android-2.8.7.jar": "5ebbe28bbfe9da92040fe7b94021cb2981caf2e4c7df6a4bc3b4a0a81faef66c",
+    "lifecycle-runtime-compose-android-2.8.7.jar": "7b8e83af9e4141109eacc45aac8a6a9a64bd4acc78fdd3d037eec5bcdbea1d17",
+    "lifecycle-viewmodel-android-2.8.7.jar": "6fbb150054da900de5a88e5bf64b8bf2ba2d10805fc5cea0a9a26245792d7244",
+    "lifecycle-viewmodel-savedstate-2.8.7.jar": "81e9f7cd7e4221dc5e48eb81e63ff33a81fb4f0189e6cc6f31291ef2bf934912",
+    "material3-android-1.3.1.jar": "c0b099abe90c54853f27ba4deea7006b4fa8da481c80934ec4c4ba111163ce06",
+    "runtime-android-1.7.6.jar": "aeb2a678f6ce36634e12716be30bd2e8ea768b0e534687983d7fea703142978b",
+    "runtime-saveable-android-1.7.6.jar": "a9dcfc34048f704781525e07a4e4caaadfbc4810becb8f2816ebc21a68874211",
+    "savedstate-1.2.1.jar": "f4f41ae607c65ef27ec592c092fe733b952147301a390008ab7ed36fd2ea9b88",
+    "trove4j-1.0.20200330.jar": "c5fd725bffab51846bf3c77db1383c60aaaebfe1b7fe2f00d23fe1b7df0a439d",
+    "ui-android-1.7.6.jar": "83346f5e42f5738a1cb277d52f2c2d5d1c9de765f37d6b538fe243fd7c1640d0",
+    "ui-geometry-android-1.7.6.jar": "0625c05354bbdb66e6097acefea4adc2f24e9d4f424a475323b10f9b827e4b03",
+    "ui-graphics-android-1.7.6.jar": "c8e4fa4920ecc5cbce4df60967f11ff7f9803b52ad2bb3e0dda6af1e7b1136e7",
+    "ui-text-android-1.7.6.jar": "99c8f97a161a92bed95c3b950efc7bb4e6a49c9775752571c5a1390de9d7ccea",
+    "ui-unit-android-1.7.6.jar": "0982f87811ca9fe258b0fbb6c8e9c95d118a444ed2fa20579e022308597455b8",
+    "ui-util-android-1.7.6.jar": "6c35a2d572ec444c31a2231aabe3dcd544e66ee9d1b58c5ed2b9f8f351140f11",
+    "uiautomator-2.3.0.jar": "94c3c658c9627107c9eee0eb01f7e45e2eff72b16e8aac2d95cac7f5a1e2fc0b"
+  },
+  "not_covered": [
+    "Full Gradle release JVM/native checks",
+    "New R8 compilation",
+    "Signed APK",
+    "Android instrumentation",
+    "Picker/ContentResolver/FileProvider I/O",
+    "Full five-profile release gate"
+  ],
+  "scratch_receipt_sha256": {
+    "host": "e8207312dbb4703a7e3cbb4cc966520a439f11f605a0e3f47ef0f7ac94140953",
+    "exact_test45_compile": "32c61a31d7963da8c196f5d4dbb0e951473850d9a6163f7876d9dfdad4bbfc7a"
+  },
+  "retained_initial_harness_failure": "Initial FoldTypedMethods.java compile used an unsupported shaded-ASM InputStream constructor. Changed to readAllBytes; final fresh harness compilation and every control passed. The earlier scratch log is retained; it did not run a test or affect source repair.",
+  "evidence_sha256": {
+    "build1247-compact-export-dex-audit.json": "8ea65cb30de45e2030dbb2f47909e3995f725d7c742d205316149df0266998d3",
+    "build1247-export-dex-audit.json": "8030679de5037e4b73f98d7503a9e039db090539ef8e0e21dde6a71d54691038",
+    "compiled-contract-calls.json": "2705d831414d75818bee907ef308d835b32c8c4da82a4bd046ede3f63d0c180c",
+    "harness/FoldTypedMethods.java": "da46ee05985da841142dda5072a496ace5a8476adc14f0d856f0d27be55ae9e0",
+    "harness/audit-export-dex.py": "b3bf1f65d8a4c3aba911cb64d5915f400548a63fdfee7b571fd0f6121f7fbc29",
+    "harness/run_host.py": "ab2f69c9f3da2c3134be5d9ad2bef4b59591e19f8dd2d265e9214929deeba2fe",
+    "helperchecks.log": "6fbe73745dc0b6cce71de2e57f11dd0cdfc1ba94f1d854a611a5c816190ea5ec",
+    "host-results.json": "0114d0a1d190632836642ce67fc5ad49868167e2fdf296d6efd6e673f35c7970"
+  }
+}

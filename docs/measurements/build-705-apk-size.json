@@ -1,0 +1,1470 @@
+{
+  "apk_bytes": 73236319,
+  "zip_overhead_bytes": 141405,
+  "groups": {
+    "META-INF": {
+      "zip_bytes": 930,
+      "uncompressed_bytes": 880,
+      "entries": 62
+    },
+    "assets": {
+      "zip_bytes": 642490,
+      "uncompressed_bytes": 833888,
+      "entries": 17
+    },
+    "dex": {
+      "zip_bytes": 3943000,
+      "uncompressed_bytes": 3943000,
+      "entries": 1
+    },
+    "lib": {
+      "zip_bytes": 68307136,
+      "uncompressed_bytes": 68307136,
+      "entries": 11
+    },
+    "metadata": {
+      "zip_bytes": 87714,
+      "uncompressed_bytes": 101926,
+      "entries": 4
+    },
+    "kotlin": {
+      "zip_bytes": 12342,
+      "uncompressed_bytes": 53381,
+      "entries": 8
+    },
+    "org": {
+      "zip_bytes": 99342,
+      "uncompressed_bytes": 233815,
+      "entries": 128
+    },
+    "res": {
+      "zip_bytes": 1960,
+      "uncompressed_bytes": 4100,
+      "entries": 6
+    }
+  },
+  "entries": [
+    {
+      "path": "lib/arm64-v8a/libonnxruntime.so",
+      "zip_bytes": 21684872,
+      "uncompressed_bytes": 21684872,
+      "compression": "stored"
+    },
+    {
+      "path": "lib/arm64-v8a/liblitertlm_jni.so",
+      "zip_bytes": 14667424,
+      "uncompressed_bytes": 14667424,
+      "compression": "stored"
+    },
+    {
+      "path": "lib/arm64-v8a/libmoonshine.so",
+      "zip_bytes": 11112456,
+      "uncompressed_bytes": 11112456,
+      "compression": "stored"
+    },
+    {
+      "path": "lib/arm64-v8a/libms_ort_1232.so",
+      "zip_bytes": 6291928,
+      "uncompressed_bytes": 6291928,
+      "compression": "stored"
+    },
+    {
+      "path": "lib/arm64-v8a/libLiteRt.so",
+      "zip_bytes": 5047688,
+      "uncompressed_bytes": 5047688,
+      "compression": "stored"
+    },
+    {
+      "path": "lib/arm64-v8a/libsherpa-onnx-jni.so",
+      "zip_bytes": 4533912,
+      "uncompressed_bytes": 4533912,
+      "compression": "stored"
+    },
+    {
+      "path": "classes.dex",
+      "zip_bytes": 3943000,
+      "uncompressed_bytes": 3943000,
+      "compression": "stored"
+    },
+    {
+      "path": "lib/arm64-v8a/libLiteRtClGlAccelerator.so",
+      "zip_bytes": 2761680,
+      "uncompressed_bytes": 2761680,
+      "compression": "stored"
+    },
+    {
+      "path": "lib/arm64-v8a/libc++_shared.so",
+      "zip_bytes": 1292904,
+      "uncompressed_bytes": 1292904,
+      "compression": "stored"
+    },
+    {
+      "path": "lib/arm64-v8a/libmicrowakeword.so",
+      "zip_bytes": 799656,
+      "uncompressed_bytes": 799656,
+      "compression": "stored"
+    },
+    {
+      "path": "assets/voice/silero_vad.onnx",
+      "zip_bytes": 508088,
+      "uncompressed_bytes": 643854,
+      "compression": "compressed"
+    },
+    {
+      "path": "lib/arm64-v8a/libmoonshine-jni.so",
+      "zip_bytes": 104520,
+      "uncompressed_bytes": 104520,
+      "compression": "stored"
+    },
+    {
+      "path": "resources.arsc",
+      "zip_bytes": 83092,
+      "uncompressed_bytes": 83092,
+      "compression": "stored"
+    },
+    {
+      "path": "assets/microwakeword/hey_jarvis.tflite",
+      "zip_bytes": 52272,
+      "uncompressed_bytes": 52272,
+      "compression": "stored"
+    },
+    {
+      "path": "assets/microwakeword/stop.tflite",
+      "zip_bytes": 45744,
+      "uncompressed_bytes": 45744,
+      "compression": "stored"
+    },
+    {
+      "path": "lib/arm64-v8a/libandroidx.graphics.path.so",
+      "zip_bytes": 10096,
+      "uncompressed_bytes": 10096,
+      "compression": "stored"
+    },
+    {
+      "path": "kotlin/kotlin.kotlin_builtins",
+      "zip_bytes": 5501,
+      "uncompressed_bytes": 30910,
+      "compression": "compressed"
+    },
+    {
+      "path": "assets/licenses/moonshine.txt",
+      "zip_bytes": 5284,
+      "uncompressed_bytes": 14180,
+      "compression": "compressed"
+    },
+    {
+      "path": "assets/dexopt/baseline.prof",
+      "zip_bytes": 3992,
+      "uncompressed_bytes": 3992,
+      "compression": "stored"
+    },
+    {
+      "path": "assets/licenses/flatbuffers-LICENSE.txt",
+      "zip_bytes": 3949,
+      "uncompressed_bytes": 11358,
+      "compression": "compressed"
+    },
+    {
+      "path": "assets/licenses/gemmlowp-LICENSE.txt",
+      "zip_bytes": 3949,
+      "uncompressed_bytes": 11358,
+      "compression": "compressed"
+    },
+    {
+      "path": "assets/licenses/ruy-LICENSE.txt",
+      "zip_bytes": 3949,
+      "uncompressed_bytes": 11358,
+      "compression": "compressed"
+    },
+    {
+      "path": "assets/licenses/tflite_micro-LICENSE.txt",
+      "zip_bytes": 3949,
+      "uncompressed_bytes": 11358,
+      "compression": "compressed"
+    },
+    {
+      "path": "assets/licenses/home-assistant-android-APACHE-2.0.txt",
+      "zip_bytes": 3948,
+      "uncompressed_bytes": 11357,
+      "compression": "compressed"
+    },
+    {
+      "path": "assets/licenses/micro-wake-word-models-APACHE-2.0.txt",
+      "zip_bytes": 3948,
+      "uncompressed_bytes": 11357,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_rules_any.txt",
+      "zip_bytes": 3899,
+      "uncompressed_bytes": 13059,
+      "compression": "compressed"
+    },
+    {
+      "path": "AndroidManifest.xml",
+      "zip_bytes": 3561,
+      "uncompressed_bytes": 16480,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_rules_any.txt",
+      "zip_bytes": 2832,
+      "uncompressed_bytes": 9451,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_lang.txt",
+      "zip_bytes": 2276,
+      "uncompressed_bytes": 7594,
+      "compression": "compressed"
+    },
+    {
+      "path": "kotlin/collections/collections.kotlin_builtins",
+      "zip_bytes": 1884,
+      "uncompressed_bytes": 8620,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_rules_any.txt",
+      "zip_bytes": 1679,
+      "uncompressed_bytes": 4632,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_lang.txt",
+      "zip_bytes": 1538,
+      "uncompressed_bytes": 4874,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_approx_any.txt",
+      "zip_bytes": 1530,
+      "uncompressed_bytes": 4708,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_approx_any.txt",
+      "zip_bytes": 1506,
+      "uncompressed_bytes": 4043,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_approx_common.txt",
+      "zip_bytes": 1466,
+      "uncompressed_bytes": 5120,
+      "compression": "compressed"
+    },
+    {
+      "path": "kotlin/reflect/reflect.kotlin_builtins",
+      "zip_bytes": 1447,
+      "uncompressed_bytes": 4859,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_rules_polish.txt",
+      "zip_bytes": 1444,
+      "uncompressed_bytes": 4167,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_rules_polish.txt",
+      "zip_bytes": 1435,
+      "uncompressed_bytes": 4112,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_approx_common.txt",
+      "zip_bytes": 1431,
+      "uncompressed_bytes": 4971,
+      "compression": "compressed"
+    },
+    {
+      "path": "kotlin/ranges/ranges.kotlin_builtins",
+      "zip_bytes": 1380,
+      "uncompressed_bytes": 4353,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_rules_english.txt",
+      "zip_bytes": 1332,
+      "uncompressed_bytes": 3013,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_rules_english.txt",
+      "zip_bytes": 1273,
+      "uncompressed_bytes": 2970,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_rules_russian.txt",
+      "zip_bytes": 1261,
+      "uncompressed_bytes": 3980,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/dmrules.txt",
+      "zip_bytes": 1259,
+      "uncompressed_bytes": 3545,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_rules_greeklatin.txt",
+      "zip_bytes": 1196,
+      "uncompressed_bytes": 3041,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_rules_french.txt",
+      "zip_bytes": 1165,
+      "uncompressed_bytes": 2778,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_approx_common.txt",
+      "zip_bytes": 1131,
+      "uncompressed_bytes": 3195,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_rules_greek.txt",
+      "zip_bytes": 1129,
+      "uncompressed_bytes": 2918,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_rules_russian.txt",
+      "zip_bytes": 1115,
+      "uncompressed_bytes": 3042,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_rules_spanish.txt",
+      "zip_bytes": 1113,
+      "uncompressed_bytes": 2480,
+      "compression": "compressed"
+    },
+    {
+      "path": "kotlin/concurrent/atomics/atomics.kotlin_builtins",
+      "zip_bytes": 1111,
+      "uncompressed_bytes": 2882,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_rules_portuguese.txt",
+      "zip_bytes": 1096,
+      "uncompressed_bytes": 2598,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_rules_portuguese.txt",
+      "zip_bytes": 1090,
+      "uncompressed_bytes": 2573,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_rules_spanish.txt",
+      "zip_bytes": 1086,
+      "uncompressed_bytes": 2382,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_rules_german.txt",
+      "zip_bytes": 1065,
+      "uncompressed_bytes": 2787,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_rules_german.txt",
+      "zip_bytes": 1053,
+      "uncompressed_bytes": 2735,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_hebrew_common.txt",
+      "zip_bytes": 1040,
+      "uncompressed_bytes": 2845,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_hebrew_common.txt",
+      "zip_bytes": 1028,
+      "uncompressed_bytes": 2983,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_rules_cyrillic.txt",
+      "zip_bytes": 971,
+      "uncompressed_bytes": 2300,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_rules_cyrillic.txt",
+      "zip_bytes": 964,
+      "uncompressed_bytes": 2366,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_rules_spanish.txt",
+      "zip_bytes": 963,
+      "uncompressed_bytes": 2073,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_rules_french.txt",
+      "zip_bytes": 958,
+      "uncompressed_bytes": 2274,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_rules_french.txt",
+      "zip_bytes": 949,
+      "uncompressed_bytes": 2224,
+      "compression": "compressed"
+    },
+    {
+      "path": "assets/licenses/kissfft-BSD-3-Clause.txt",
+      "zip_bytes": 948,
+      "uncompressed_bytes": 1830,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_lang.txt",
+      "zip_bytes": 931,
+      "uncompressed_bytes": 2431,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_exact_any.txt",
+      "zip_bytes": 922,
+      "uncompressed_bytes": 1952,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_hebrew_common.txt",
+      "zip_bytes": 908,
+      "uncompressed_bytes": 2187,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_rules_arabic.txt",
+      "zip_bytes": 903,
+      "uncompressed_bytes": 2208,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_rules_hungarian.txt",
+      "zip_bytes": 873,
+      "uncompressed_bytes": 1960,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_rules_hungarian.txt",
+      "zip_bytes": 860,
+      "uncompressed_bytes": 1887,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_rules_dutch.txt",
+      "zip_bytes": 845,
+      "uncompressed_bytes": 1867,
+      "compression": "compressed"
+    },
+    {
+      "path": "assets/licenses/kissfft-Unlicense.txt",
+      "zip_bytes": 843,
+      "uncompressed_bytes": 1521,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_rules_italian.txt",
+      "zip_bytes": 814,
+      "uncompressed_bytes": 1873,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_approx_common.txt",
+      "zip_bytes": 808,
+      "uncompressed_bytes": 1769,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_rules_italian.txt",
+      "zip_bytes": 807,
+      "uncompressed_bytes": 1848,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_exact_approx_common.txt",
+      "zip_bytes": 792,
+      "uncompressed_bytes": 1736,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_approx_polish.txt",
+      "zip_bytes": 785,
+      "uncompressed_bytes": 2228,
+      "compression": "compressed"
+    },
+    {
+      "path": "DebugProbesKt.bin",
+      "zip_bytes": 777,
+      "uncompressed_bytes": 1728,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_approx_polish.txt",
+      "zip_bytes": 771,
+      "uncompressed_bytes": 2183,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_exact_approx_common.txt",
+      "zip_bytes": 767,
+      "uncompressed_bytes": 1685,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_approx_german.txt",
+      "zip_bytes": 760,
+      "uncompressed_bytes": 1853,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_approx_german.txt",
+      "zip_bytes": 759,
+      "uncompressed_bytes": 1852,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_rules_czech.txt",
+      "zip_bytes": 745,
+      "uncompressed_bytes": 1561,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_approx_english.txt",
+      "zip_bytes": 740,
+      "uncompressed_bytes": 1489,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_approx_english.txt",
+      "zip_bytes": 740,
+      "uncompressed_bytes": 1489,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_rules_romanian.txt",
+      "zip_bytes": 720,
+      "uncompressed_bytes": 1509,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_rules_romanian.txt",
+      "zip_bytes": 711,
+      "uncompressed_bytes": 1526,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_approx_russian.txt",
+      "zip_bytes": 685,
+      "uncompressed_bytes": 1437,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_rules_hebrew.txt",
+      "zip_bytes": 685,
+      "uncompressed_bytes": 1462,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_rules_hebrew.txt",
+      "zip_bytes": 682,
+      "uncompressed_bytes": 1459,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_rules_hebrew.txt",
+      "zip_bytes": 680,
+      "uncompressed_bytes": 1472,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_approx_russian.txt",
+      "zip_bytes": 676,
+      "uncompressed_bytes": 1427,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_rules_turkish.txt",
+      "zip_bytes": 675,
+      "uncompressed_bytes": 1386,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_any.txt",
+      "zip_bytes": 652,
+      "uncompressed_bytes": 1226,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_exact_common.txt",
+      "zip_bytes": 635,
+      "uncompressed_bytes": 1109,
+      "compression": "compressed"
+    },
+    {
+      "path": "assets/voice/SILERO_LICENSE.txt",
+      "zip_bytes": 632,
+      "uncompressed_bytes": 1075,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_approx_french.txt",
+      "zip_bytes": 616,
+      "uncompressed_bytes": 1224,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_exact_common.txt",
+      "zip_bytes": 591,
+      "uncompressed_bytes": 1095,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_common.txt",
+      "zip_bytes": 589,
+      "uncompressed_bytes": 1093,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_languages.txt",
+      "zip_bytes": 544,
+      "uncompressed_bytes": 951,
+      "compression": "compressed"
+    },
+    {
+      "path": "kotlin/annotation/annotation.kotlin_builtins",
+      "zip_bytes": 542,
+      "uncompressed_bytes": 1022,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_approx_arabic.txt",
+      "zip_bytes": 536,
+      "uncompressed_bytes": 991,
+      "compression": "compressed"
+    },
+    {
+      "path": "assets/dexopt/baseline.profm",
+      "zip_bytes": 511,
+      "uncompressed_bytes": 511,
+      "compression": "stored"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_languages.txt",
+      "zip_bytes": 508,
+      "uncompressed_bytes": 888,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_approx_french.txt",
+      "zip_bytes": 507,
+      "uncompressed_bytes": 942,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_approx_spanish.txt",
+      "zip_bytes": 496,
+      "uncompressed_bytes": 868,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_languages.txt",
+      "zip_bytes": 486,
+      "uncompressed_bytes": 849,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_exact_polish.txt",
+      "zip_bytes": 485,
+      "uncompressed_bytes": 875,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_approx_greeklatin.txt",
+      "zip_bytes": 485,
+      "uncompressed_bytes": 845,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_polish.txt",
+      "zip_bytes": 484,
+      "uncompressed_bytes": 874,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_approx_cyrillic.txt",
+      "zip_bytes": 479,
+      "uncompressed_bytes": 831,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_cyrillic.txt",
+      "zip_bytes": 479,
+      "uncompressed_bytes": 830,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_czech.txt",
+      "zip_bytes": 479,
+      "uncompressed_bytes": 830,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_english.txt",
+      "zip_bytes": 479,
+      "uncompressed_bytes": 830,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_approx_hungarian.txt",
+      "zip_bytes": 478,
+      "uncompressed_bytes": 831,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_approx_italian.txt",
+      "zip_bytes": 478,
+      "uncompressed_bytes": 831,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_approx_portuguese.txt",
+      "zip_bytes": 478,
+      "uncompressed_bytes": 831,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_approx_spanish.txt",
+      "zip_bytes": 478,
+      "uncompressed_bytes": 831,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_approx_cyrillic.txt",
+      "zip_bytes": 477,
+      "uncompressed_bytes": 831,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_approx_romanian.txt",
+      "zip_bytes": 477,
+      "uncompressed_bytes": 830,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_approx_czech.txt",
+      "zip_bytes": 477,
+      "uncompressed_bytes": 830,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_approx_dutch.txt",
+      "zip_bytes": 477,
+      "uncompressed_bytes": 830,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_approx_greek.txt",
+      "zip_bytes": 477,
+      "uncompressed_bytes": 830,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_approx_portuguese.txt",
+      "zip_bytes": 477,
+      "uncompressed_bytes": 830,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_approx_romanian.txt",
+      "zip_bytes": 477,
+      "uncompressed_bytes": 830,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_approx_turkish.txt",
+      "zip_bytes": 477,
+      "uncompressed_bytes": 830,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_approx_italian.txt",
+      "zip_bytes": 477,
+      "uncompressed_bytes": 830,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_approx_hungarian.txt",
+      "zip_bytes": 476,
+      "uncompressed_bytes": 830,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_approx_spanish.txt",
+      "zip_bytes": 476,
+      "uncompressed_bytes": 830,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_exact_cyrillic.txt",
+      "zip_bytes": 476,
+      "uncompressed_bytes": 830,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_exact_english.txt",
+      "zip_bytes": 476,
+      "uncompressed_bytes": 830,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_exact_french.txt",
+      "zip_bytes": 476,
+      "uncompressed_bytes": 830,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_exact_hungarian.txt",
+      "zip_bytes": 476,
+      "uncompressed_bytes": 830,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_exact_romanian.txt",
+      "zip_bytes": 476,
+      "uncompressed_bytes": 830,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_exact_spanish.txt",
+      "zip_bytes": 476,
+      "uncompressed_bytes": 830,
+      "compression": "compressed"
+    },
+    {
+      "path": "res/oq.xml",
+      "zip_bytes": 476,
+      "uncompressed_bytes": 952,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_german.txt",
+      "zip_bytes": 475,
+      "uncompressed_bytes": 826,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_approx_any.txt",
+      "zip_bytes": 475,
+      "uncompressed_bytes": 830,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_exact_german.txt",
+      "zip_bytes": 474,
+      "uncompressed_bytes": 826,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_spanish.txt",
+      "zip_bytes": 471,
+      "uncompressed_bytes": 832,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_exact_russian.txt",
+      "zip_bytes": 470,
+      "uncompressed_bytes": 831,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_russian.txt",
+      "zip_bytes": 470,
+      "uncompressed_bytes": 831,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_exact_french.txt",
+      "zip_bytes": 465,
+      "uncompressed_bytes": 815,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_arabic.txt",
+      "zip_bytes": 464,
+      "uncompressed_bytes": 816,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_greeklatin.txt",
+      "zip_bytes": 464,
+      "uncompressed_bytes": 817,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_exact_any.txt",
+      "zip_bytes": 464,
+      "uncompressed_bytes": 817,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_approx_hebrew.txt",
+      "zip_bytes": 463,
+      "uncompressed_bytes": 812,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/ash_exact_hebrew.txt",
+      "zip_bytes": 463,
+      "uncompressed_bytes": 812,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_approx_hebrew.txt",
+      "zip_bytes": 463,
+      "uncompressed_bytes": 812,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_dutch.txt",
+      "zip_bytes": 463,
+      "uncompressed_bytes": 812,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_french.txt",
+      "zip_bytes": 463,
+      "uncompressed_bytes": 812,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_greek.txt",
+      "zip_bytes": 463,
+      "uncompressed_bytes": 812,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_hebrew.txt",
+      "zip_bytes": 463,
+      "uncompressed_bytes": 812,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_hungarian.txt",
+      "zip_bytes": 463,
+      "uncompressed_bytes": 812,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_italian.txt",
+      "zip_bytes": 463,
+      "uncompressed_bytes": 812,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_portuguese.txt",
+      "zip_bytes": 463,
+      "uncompressed_bytes": 812,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_romanian.txt",
+      "zip_bytes": 463,
+      "uncompressed_bytes": 812,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/gen_exact_turkish.txt",
+      "zip_bytes": 463,
+      "uncompressed_bytes": 812,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_approx_french.txt",
+      "zip_bytes": 463,
+      "uncompressed_bytes": 812,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_approx_hebrew.txt",
+      "zip_bytes": 463,
+      "uncompressed_bytes": 812,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_exact_hebrew.txt",
+      "zip_bytes": 463,
+      "uncompressed_bytes": 812,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_exact_italian.txt",
+      "zip_bytes": 463,
+      "uncompressed_bytes": 812,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_exact_portuguese.txt",
+      "zip_bytes": 463,
+      "uncompressed_bytes": 812,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/sep_exact_spanish.txt",
+      "zip_bytes": 463,
+      "uncompressed_bytes": 812,
+      "compression": "compressed"
+    },
+    {
+      "path": "org/apache/commons/codec/language/bm/lang.txt",
+      "zip_bytes": 456,
+      "uncompressed_bytes": 803,
+      "compression": "compressed"
+    },
+    {
+      "path": "res/Xh.xml",
+      "zip_bytes": 400,
+      "uncompressed_bytes": 784,
+      "compression": "compressed"
+    },
+    {
+      "path": "kotlin/internal/internal.kotlin_builtins",
+      "zip_bytes": 359,
+      "uncompressed_bytes": 596,
+      "compression": "compressed"
+    },
+    {
+      "path": "res/Z7.xml",
+      "zip_bytes": 301,
+      "uncompressed_bytes": 552,
+      "compression": "compressed"
+    },
+    {
+      "path": "res/N8.xml",
+      "zip_bytes": 295,
+      "uncompressed_bytes": 584,
+      "compression": "compressed"
+    },
+    {
+      "path": "kotlin-tooling-metadata.json",
+      "zip_bytes": 284,
+      "uncompressed_bytes": 626,
+      "compression": "compressed"
+    },
+    {
+      "path": "res/Qq.xml",
+      "zip_bytes": 276,
+      "uncompressed_bytes": 796,
+      "compression": "compressed"
+    },
+    {
+      "path": "assets/microwakeword/hey_jarvis.json",
+      "zip_bytes": 247,
+      "uncompressed_bytes": 388,
+      "compression": "compressed"
+    },
+    {
+      "path": "assets/microwakeword/stop.json",
+      "zip_bytes": 237,
+      "uncompressed_bytes": 375,
+      "compression": "compressed"
+    },
+    {
+      "path": "res/ib.xml",
+      "zip_bytes": 212,
+      "uncompressed_bytes": 432,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/sherpa_onnx_release.kotlin_module",
+      "zip_bytes": 154,
+      "uncompressed_bytes": 195,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/version-control-info.textproto",
+      "zip_bytes": 118,
+      "uncompressed_bytes": 120,
+      "compression": "compressed"
+    },
+    {
+      "path": "kotlin/coroutines/coroutines.kotlin_builtins",
+      "zip_bytes": 118,
+      "uncompressed_bytes": 139,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/third_party.odml.litert_lm.kotlin.java.com.google.ai.edge.litertlm_litertlm-android.kotlin_module",
+      "zip_bytes": 82,
+      "uncompressed_bytes": 90,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.arch.core_core-runtime.version",
+      "zip_bytes": 61,
+      "uncompressed_bytes": 67,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/com/android/build/gradle/app-metadata.properties",
+      "zip_bytes": 52,
+      "uncompressed_bytes": 56,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/services/z6.f",
+      "zip_bytes": 14,
+      "uncompressed_bytes": 15,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.activity_activity-compose.version",
+      "zip_bytes": 9,
+      "uncompressed_bytes": 7,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.activity_activity-ktx.version",
+      "zip_bytes": 9,
+      "uncompressed_bytes": 7,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.activity_activity.version",
+      "zip_bytes": 9,
+      "uncompressed_bytes": 7,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.core_core-ktx.version",
+      "zip_bytes": 9,
+      "uncompressed_bytes": 7,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.core_core.version",
+      "zip_bytes": 9,
+      "uncompressed_bytes": 7,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.work_work-runtime-ktx.version",
+      "zip_bytes": 9,
+      "uncompressed_bytes": 7,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.work_work-runtime.version",
+      "zip_bytes": 9,
+      "uncompressed_bytes": 7,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.annotation_annotation-experimental.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.autofill_autofill.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.compose.animation_animation-core.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.compose.animation_animation.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.compose.foundation_foundation-layout.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.compose.foundation_foundation.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.compose.material3_material3.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.compose.material_material-icons-core.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.compose.material_material-ripple.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.compose.runtime_runtime-saveable.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.compose.runtime_runtime.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.compose.ui_ui-geometry.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.compose.ui_ui-graphics.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.compose.ui_ui-text.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.compose.ui_ui-unit.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.compose.ui_ui-util.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.compose.ui_ui.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.customview_customview-poolingcontainer.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.emoji2_emoji2.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.graphics_graphics-path.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.interpolator_interpolator.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.lifecycle_lifecycle-livedata-core-ktx.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.lifecycle_lifecycle-livedata-core.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.lifecycle_lifecycle-livedata.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.lifecycle_lifecycle-process.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.lifecycle_lifecycle-runtime-compose.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.lifecycle_lifecycle-runtime-ktx.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.lifecycle_lifecycle-runtime.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.lifecycle_lifecycle-service.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.lifecycle_lifecycle-viewmodel-ktx.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.lifecycle_lifecycle-viewmodel-savedstate.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.lifecycle_lifecycle-viewmodel.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.profileinstaller_profileinstaller.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.room_room-ktx.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.room_room-runtime.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.savedstate_savedstate-ktx.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.savedstate_savedstate.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.sqlite_sqlite-framework.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.sqlite_sqlite.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.startup_startup-runtime.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.tracing_tracing-ktx.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.tracing_tracing.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/androidx.versionedparcelable_versionedparcelable.version",
+      "zip_bytes": 8,
+      "uncompressed_bytes": 6,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/kotlinx_coroutines_android.version",
+      "zip_bytes": 7,
+      "uncompressed_bytes": 5,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/kotlinx_coroutines_core.version",
+      "zip_bytes": 7,
+      "uncompressed_bytes": 5,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/services/a8.a0",
+      "zip_bytes": 7,
+      "uncompressed_bytes": 5,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/services/b8.a",
+      "zip_bytes": 7,
+      "uncompressed_bytes": 5,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/services/e6.k",
+      "zip_bytes": 7,
+      "uncompressed_bytes": 5,
+      "compression": "compressed"
+    },
+    {
+      "path": "META-INF/services/q5.c",
+      "zip_bytes": 7,
+      "uncompressed_bytes": 5,
+      "compression": "compressed"
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+# Reference fragment for the independent verify-streaming-quality job.
+# The complete workflow is authoritative: first select the exact successful SDK
+# artifact and validate its AAR/provenance/source receipt and original attempt.
+# APK assembly may run in parallel; release publication still requires quality.
+- uses: actions/setup-python@v5
+  with:
+    python-version: '3.12'
+- name: Install pinned fixture derivation dependencies
+  run: |
+    python -m pip install --only-binary=:all: -r scripts/streaming-quality/requirements.txt
+- name: Test hosted quality orchestration contracts
+  run: python -m unittest discover -s scripts/streaming-quality -p 'test_*.py' -v
+- name: Reconstruct authenticated SDK source
+  run: |
+    python scripts/streaming-quality/prepare_sdk_source.py \
+      --android-receipt "$GITHUB_WORKSPACE/streaming-sdk-input/source-receipt.json" \
+      --patch third_party/litert-lm-0.16.0/PATCH.diff \
+      --reviewed-source third_party/litert-lm-0.16.0/reviewed-source.json \
+      --sdk "$RUNNER_TEMP/streaming-sdk/sdk" \
+      --bazel "$RUNNER_TEMP/streaming-sdk/downloads/bazel-7.6.1-linux-x86_64"
+- name: Build bounded hosted native quality probes
+  timeout-minutes: 63
+  run: |
+    set -euo pipefail
+    python scripts/streaming-quality/build_probes.py \
+      --sdk "$RUNNER_TEMP/streaming-sdk/sdk" \
+      --android-receipt "$GITHUB_WORKSPACE/streaming-sdk-input/source-receipt.json" \
+      --patch third_party/litert-lm-0.16.0/PATCH.diff \
+      --bazel "$RUNNER_TEMP/streaming-sdk/downloads/bazel-7.6.1-linux-x86_64" \
+      --bazel-root "$RUNNER_TEMP/streaming-sdk/bazel" \
+      --out "$RUNNER_TEMP/streaming-quality-build"
+- name: Run exact full-E2B native quality prerequisite
+  timeout-minutes: 50
+  env:
+    GEMMA_QUALITY_COMPUTE_SLOT: confirmed_by_owner
+  run: |
+    set -euo pipefail
+    python scripts/streaming-quality/run_quality.py \
+      --build-dir "$RUNNER_TEMP/streaming-quality-build" \
+      --out "$RUNNER_TEMP/streaming-quality-run"
+- name: Select weightless quality receipts even after failure
+  if: always()
+  run: |
+    python scripts/streaming-quality/export_evidence.py \
+      --build-dir "$RUNNER_TEMP/streaming-quality-build" \
+      --run-dir "$RUNNER_TEMP/streaming-quality-run" \
+      --out "$RUNNER_TEMP/streaming-quality-evidence"
+- name: Retain only selected hosted quality evidence
+  if: always()
+  uses: actions/upload-artifact@v4
+  with:
+    name: jarvis-streaming-quality-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+    path: ${{ runner.temp }}/streaming-quality-evidence/
+    if-no-files-found: error
+    retention-days: 14
+# Do not use continue-on-error or turn resource refusal into a successful gate.
+# Keep SDK at45 minutes and quality at115 minutes, including all setup.
+# No weights, audio, Mel, activations, requests, or raw
+# run/build directory are an upload target. A resource failure needs a separate
+# owner decision, not larger limits or an automatic retry.

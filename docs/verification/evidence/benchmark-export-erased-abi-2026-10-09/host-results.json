@@ -1,0 +1,8 @@
+{
+  "folded-before": "Exception in thread \"main\" java.lang.NoSuchMethodError: 'androidx.activity.result.contract.ActivityResultContract$SynchronousResult androidx.activity.result.contract.ActivityResultContracts$CreateDocument.getSynchronousResult(android.content.Context, java.lang.String)'\n\tat com.battlesbudz.jarvis.v2.verification.BenchmarkExportJourneyProbe.verifyCreateDocumentContracts(BenchmarkExportJourneyProbe.kt:82)\n\tat com.battlesbudz.jarvis.v2.verification.RunContractKt.main(RunContract.kt:4)\n\tat com.battlesbudz.jarvis.v2.verification.RunContractKt.main(RunContract.kt)\n",
+  "folded-after": "PASS: 78 exact probe assertions across TXT/JSON/CSV\n",
+  "folded-typed-parse": "Exception in thread \"main\" java.lang.NoSuchMethodError: 'android.net.Uri androidx.activity.result.contract.ActivityResultContracts$CreateDocument.parseResult(int, android.content.Intent)'\n\tat com.battlesbudz.jarvis.v2.ui.TypedParseKt.main(TypedParse.kt:7)\n\tat com.battlesbudz.jarvis.v2.ui.TypedParseKt.main(TypedParse.kt)\n",
+  "reject-missing-openable": "Exception in thread \"main\" java.lang.AssertionError\n\tat org.junit.Assert.fail(Assert.java:87)\n\tat org.junit.Assert.assertTrue(Assert.java:42)\n\tat org.junit.Assert.assertTrue(Assert.java:53)\n\tat com.battlesbudz.jarvis.v2.verification.BenchmarkExportJourneyProbe.verifyCreateDocumentContracts(BenchmarkExportJourneyProbe.kt:80)\n\tat com.battlesbudz.jarvis.v2.verification.RunContractKt.main(RunContract.kt:4)\n\tat com.battlesbudz.jarvis.v2.verification.RunContractKt.main(RunContract.kt)\n",
+  "stock-before": "PASS: 78 exact probe assertions across TXT/JSON/CSV\n",
+  "stock-after": "PASS: 78 exact probe assertions across TXT/JSON/CSV\n"
+}

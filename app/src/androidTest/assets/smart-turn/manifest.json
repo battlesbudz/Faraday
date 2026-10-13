@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "purpose": "Weight-free, synthetic PCM16 mono 16000 Hz fixtures for Android Smart Turn JNI/control validation. No model bytes and no recorded/private speech.",
+  "generator": "scripts/smart-turn/generate_goldens.py",
+  "generator_sha256": "fc8e649ffa00791d8dc128240ad297c1491d573c8e5c197da769aba6de0bea34",
+  "reference_manifest": "scripts/smart-turn/fixtures/manifest.json",
+  "copy_policy": "Source assets are exact copies of existing frozen gzip fixtures; no regeneration. AAPT expands .gz assets and removes that suffix in the test APK. Packaged files contain the pinned decoded PCM bytes.",
+  "fixtures": [
+    {
+      "id": "silence_8s",
+      "file": "silence_8s.pcm16le.gz",
+      "packaged_file": "silence_8s.pcm16le",
+      "source": "scripts/smart-turn/fixtures/silence_8s.pcm16le.gz",
+      "compressed_bytes": 283,
+      "sha256_compressed": "3cbea0db3d7c7ced78be73748eb6a66dbd2860c860a5063c82b5fae48ae2d7fa",
+      "decoded_bytes": 256000,
+      "sha256_pcm16le": "24a046dc04fefdb652e4077b41162490b344a4dd45f918505477f84c592f3070",
+      "sample_rate_hz": 16000,
+      "channels": 1,
+      "generated_signal": "128000 zero-valued signed16 samples"
+    },
+    {
+      "id": "tone_440hz_1s",
+      "file": "tone_440hz_1s.pcm16le.gz",
+      "packaged_file": "tone_440hz_1s.pcm16le",
+      "source": "scripts/smart-turn/fixtures/tone_440hz_1s.pcm16le.gz",
+      "compressed_bytes": 1031,
+      "sha256_compressed": "39441df1135de73c487e7116fef1305b3f804304681260e22a923cb44bc77541",
+      "decoded_bytes": 32000,
+      "sha256_pcm16le": "97baea0a56c5b48504ea4b65b41148c6d55dc494d22652b3db7cedb295876efe",
+      "sample_rate_hz": 16000,
+      "channels": 1,
+      "generated_signal": "16000 signed16 samples, numpy.rint(12000 * sin(2*pi*440*arange(16000)/16000))"
+    }
+  ]
+}

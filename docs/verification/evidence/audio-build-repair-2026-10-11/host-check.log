@@ -1,0 +1,33 @@
+app/src/main/java/com/battlesbudz/jarvis/v2/ai/ReferenceGroundingClient.kt:190:29: warning: 'constructor(p0: String!): URL' is deprecated. Deprecated in Java.
+            val searchUrl = URL(
+                            ^^^
+app/src/main/java/com/battlesbudz/jarvis/v2/ai/ReferenceGroundingClient.kt:218:23: warning: 'constructor(p0: String!): URL' is deprecated. Deprecated in Java.
+            val url = URL(
+                      ^^^
+app/src/main/java/com/battlesbudz/jarvis/v2/ai/ReferenceGroundingClient.kt:231:23: warning: 'constructor(p0: String!): URL' is deprecated. Deprecated in Java.
+            val url = URL(
+                      ^^^
+app/src/main/java/com/battlesbudz/jarvis/v2/ai/ReferenceGroundingClient.kt:258:23: warning: 'constructor(p0: String!): URL' is deprecated. Deprecated in Java.
+            val url = URL(raw)
+                      ^^^
+app/src/main/java/com/battlesbudz/jarvis/v2/ai/ReferenceGroundingClient.kt:299:27: warning: 'constructor(p0: URL!, p1: String!): URL' is deprecated. Deprecated in Java.
+                    url = URL(url, connection.getHeaderField("Location") ?: error("Missing redirect"))
+                          ^^^
+app/src/test/java/com/battlesbudz/jarvis/v2/voice/RetainedPcmEncoderWorkerTest.kt:28:47: warning: 'val id: Long' is deprecated. Deprecated in Java.
+            threads += Thread.currentThread().id
+                                              ^^
+app/src/test/java/com/battlesbudz/jarvis/v2/voice/RetainedPcmEncoderWorkerTest.kt:36:47: warning: 'val id: Long' is deprecated. Deprecated in Java.
+            threads += Thread.currentThread().id
+                                              ^^
+app/src/test/java/com/battlesbudz/jarvis/v2/voice/RetainedPcmEncoderWorkerTest.kt:42:47: warning: 'val id: Long' is deprecated. Deprecated in Java.
+            threads += Thread.currentThread().id
+                                              ^^
+app/src/test/java/com/battlesbudz/jarvis/v2/voice/RetainedPcmEncoderWorkerTest.kt:119:48: warning: 'val id: Long' is deprecated. Deprecated in Java.
+        assertNotEquals(Thread.currentThread().id, encoder.threads.first())
+                                               ^^
+JUnit version 4.13.2
+.....................................................................................................................................
+Time: 0.663
+
+OK (133 tests)
+

@@ -1,0 +1,295 @@
+{
+  "schema_version": 1,
+  "review_type": "Independent post-run file-hash, stored-array and raw-output review; no model execution",
+  "status": "review_pass_exact_agreement_on_eight_host_fixtures",
+  "blocking_findings": [],
+  "source_commit": "165ffbb46af313d51e3947a2e70cab3eaef3a543",
+  "source_tree": "bd90286517b045508d2b2b778eb89322fac5920d",
+  "tracked_source_clean": true,
+  "admission_manifest_sha256": "e91750cee56c13881ffbce8fdda804e5433c233eeb921edb520d989f0184fc1b",
+  "source_review_sha256": "08c0ec2858ae0d9d5e40ec0211982bec7b41de72cdc8a230909bcad3cef2b203",
+  "owner_admission_sha256": "d52c69322950eae64aa70e3e59890ad0a56a11fce6ef878be27ae9e962c09fc4",
+  "execution_binding_sha256": "45ff4a5e096f66962c56d83e8ee880d5b9e331755bc382c41cb7aeb2c61fcc83",
+  "harness_sha256": {
+    "README.md": "99ef13883dde6035b9b3de4d9b1f66c71befcd66597c6487dc7a2f1f9e339331",
+    "run_host.py": "8bf883147a7b775b431bfede29c20ef74b75ddef928551422b7dedd8a9c01a41",
+    "native_host_probe.cc": "dae8915ff713f54088abed8ff468ba5ce8bc4450cb3726960e4e72cd9b13eacf",
+    "reference_ort_probe.cc": "78255286cc92c5b85c41ac135ad242237dfcf19e97cfe46093c018ae48fb3cec"
+  },
+  "source_sha256": {
+    "app/src/main/cpp/smartturn/smart_turn_session.h": "bc31e706c33633cf509ca2483a3d280c26b404609e266837b7e79a030a33b23c",
+    "app/src/main/cpp/smartturn/whisper_features.h": "48b3758b5ccb422eff32d221d6f32c745dc054ab2091031e228bc2f6c8ff74e3",
+    "app/src/main/cpp/smartturn/whisper_features.cc": "cb32f66aa6194039350437cb3f5074d8560da17d06893be755b94a92a357bb3e",
+    "third_party/smart-turn/reference_whisper_features.py": "139b047d10dee42ad5b4894489012e515a882d8f5e2bffe8ad27b30728fc9968",
+    "scripts/smart-turn/fixtures/manifest.json": "1b8bf8d17de8469aca6b40c1613af35078b1af9cf90962c7fd0b8fe81bae1420"
+  },
+  "model": {
+    "sha256": "2bb026316b14a660486a75b1733cd3fbab8c2fd0314dc9af7be49f8cca967e4f",
+    "bytes": 8679182
+  },
+  "runtime_archive": {
+    "sha256": "25b1ef1fea1acd210d63f8f24dc870ad6e077795ce1f54876252c6d3803c15af",
+    "bytes": 8828892,
+    "expanded_declared_bytes": 25006386,
+    "regular_files_verified_against_archive": 27
+  },
+  "runtime_libraries_sha256": {
+    "libonnxruntime.so.1.27.1": "50e214fa23276cf2f3fb96d90d8e7ca9fc5ba29f42e298eccf3b23f7d8a81ae2",
+    "libonnxruntime.so": "50e214fa23276cf2f3fb96d90d8e7ca9fc5ba29f42e298eccf3b23f7d8a81ae2",
+    "libonnxruntime.so.1": "50e214fa23276cf2f3fb96d90d8e7ca9fc5ba29f42e298eccf3b23f7d8a81ae2",
+    "libonnxruntime_providers_shared.so": "086ec1d5388f64153d9c63470d126693db9a182c8ce236d3a1119068471b8a0d"
+  },
+  "retained_raw_evidence_sha256": {
+    "compile-native.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "compile-native.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "compile-reference.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "compile-reference.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "compiler-version.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "compiler-version.stdout": "5f6798e87440f1e8b88bf6822c33bebe434f83374640a7f8ba967902ee1ea098",
+    "native.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native.stdout": "055e1960556108e124cfa19ec6ecdf268749dc5e0fa4fa6d038000c24878d5cf",
+    "receipt.json": "5806234b80caa3328e9a84a49258ded742a881a1d85fbe55c9cc3b4eed199cdf",
+    "reference.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "reference.stdout": "b5ecf3c2acbc8dc2380e31a16bfbd65f067d0d8f69ef3628ab1a794d035891e8"
+  },
+  "all_retained_raw_copies_match_originals": true,
+  "all_execution_binding_artifact_hashes_verified": true,
+  "fixture_count": 8,
+  "frontend_absolute_tolerance": 2e-06,
+  "worst_frontend_absolute_error": 2.384185791015625e-07,
+  "probability_tolerance": null,
+  "all_official_and_native_feature_probabilities_float32_bit_identical": true,
+  "host_fixture_probability_agreement_reviewed": true,
+  "general_probability_parity_admitted": false,
+  "cases": [
+    {
+      "id": "silence_8s",
+      "samples": 128000,
+      "pcm_sha256": "2d4da04b861bb9dbe77c871415931785a18138d6db035f1bbcd0cf8277c6fc23",
+      "official_feature_sha256": "c4a1d90bbbdc1c49cf89b8f73360019b1b0fe01ae48a9dfd6fc2c4a3228b8859",
+      "native_feature_sha256": "c4a1d90bbbdc1c49cf89b8f73360019b1b0fe01ae48a9dfd6fc2c4a3228b8859",
+      "frontend_max_abs_error": 0.0,
+      "probability": 0.9870367050170898,
+      "probability_float32_bits": 1065135728,
+      "probability_absolute_difference": 0.0,
+      "probability_ulp_difference": 0
+    },
+    {
+      "id": "tone_440hz_1s",
+      "samples": 16000,
+      "pcm_sha256": "7398f86c9c3a8034e75d34bbfbd3fc45a77139530beb47fb912afd41a7b9d951",
+      "official_feature_sha256": "0f5e01ac3f012259a096168d842eee34b65b7daf246b94091220c9165eef4602",
+      "native_feature_sha256": "3f8f751baef194d63e412fbef34b8d523d19223d18e989ac7deb9bcfd10f7154",
+      "frontend_max_abs_error": 1.1920928955078125e-07,
+      "probability": 0.08601978421211243,
+      "probability_float32_bits": 1034955556,
+      "probability_absolute_difference": 0.0,
+      "probability_ulp_difference": 0
+    },
+    {
+      "id": "noise_lcg_8s",
+      "samples": 128000,
+      "pcm_sha256": "953353af104f6de248ee95b0e95227f3c3b472fe49ee309d38a78707784bdf59",
+      "official_feature_sha256": "c5938c6cf6e5e3824b4d5714696973a81b5cabacc9306c0297668ebc8f0da543",
+      "native_feature_sha256": "9017f5e0d0a2f94f326dc85f656c9fda0ddc09b00d59b98cdfda6c4e611c3e99",
+      "frontend_max_abs_error": 2.384185791015625e-07,
+      "probability": 0.9380639791488647,
+      "probability_float32_bits": 1064314102,
+      "probability_absolute_difference": 0.0,
+      "probability_ulp_difference": 0
+    },
+    {
+      "id": "chirp_9s",
+      "samples": 128000,
+      "pcm_sha256": "3205a6d792a39ab4c33b2e17b3f9cb9b8255685915ce4037c0a512ce615731a1",
+      "official_feature_sha256": "b2efa03bfd17e66f7f93819ef95da04375b8e3071dfc01748af3ad277a6e76be",
+      "native_feature_sha256": "b91ff11d72584b02376b5f62c4ac91696368ecce221ac266a2f022e056877aff",
+      "frontend_max_abs_error": 1.1920928955078125e-07,
+      "probability": 0.40278559923171997,
+      "probability_float32_bits": 1053702634,
+      "probability_absolute_difference": 0.0,
+      "probability_ulp_difference": 0
+    },
+    {
+      "id": "quiet_one_lsb",
+      "samples": 16000,
+      "pcm_sha256": "3e605ac6838e9b97d1c85ef9ab9aef2afaba0bc095c09bd39ff735d2cf92e3b4",
+      "official_feature_sha256": "c081ba3fb168d3a0bcf2fe5551ccb5faf703e9c7a44b69f96276acb243e402e3",
+      "native_feature_sha256": "6f6d9d9c2f05b362bb4726eae7dc208bd36470bd6c4678cc1356f2a13a55f4d7",
+      "frontend_max_abs_error": 1.1920928955078125e-07,
+      "probability": 0.978554368019104,
+      "probability_float32_bits": 1064993418,
+      "probability_absolute_difference": 0.0,
+      "probability_ulp_difference": 0
+    },
+    {
+      "id": "dc_short",
+      "samples": 159,
+      "pcm_sha256": "52a21fb62532ebf66ccb1811f6894890b45f421d6a5b3b97c57baccc09d1d21e",
+      "official_feature_sha256": "486c3097a19a693a11dc61c8e3639407d90a26588bd283ef028098eb3a6f646c",
+      "native_feature_sha256": "79e4398d70544c3c39284c7f78ce08b70b8f6713dc37cd07ae402b0fcfe1c561",
+      "frontend_max_abs_error": 2.384185791015625e-07,
+      "probability": 0.9848582744598389,
+      "probability_float32_bits": 1065099180,
+      "probability_absolute_difference": 0.0,
+      "probability_ulp_difference": 0
+    },
+    {
+      "id": "impulse_one_sample",
+      "samples": 1,
+      "pcm_sha256": "c82c39e488b9d648e15e8d7007b75537eabffd4e6a6e4f5044e143861fecc3df",
+      "official_feature_sha256": "2396d10c5b4d740d949453c1be29105fd4e41ee4d948fd76affaf61a2f98df3f",
+      "native_feature_sha256": "354dadefbed44a7b6e92c2f76b8ff19eeeceeb9b98420802789e4e9cdcae090b",
+      "frontend_max_abs_error": 1.1920928955078125e-07,
+      "probability": 0.9619386196136475,
+      "probability_float32_bits": 1064714652,
+      "probability_absolute_difference": 0.0,
+      "probability_ulp_difference": 0
+    },
+    {
+      "id": "public_librispeech_last8s",
+      "samples": 128000,
+      "pcm_sha256": "79030deaadb4397c9783de9e8edaf7094aad9e59f0699e0933f56b6d237bb706",
+      "official_feature_sha256": "1dcec365564615ee454bf4138ef31649014a1369d37e81529ececb512ca6bf5d",
+      "native_feature_sha256": "016247314652a570024cedcb6c9f77dee304319785b985048cb0120ffbf9f955",
+      "frontend_max_abs_error": 1.1920928955078125e-07,
+      "probability": 0.4509245455265045,
+      "probability_float32_bits": 1055317909,
+      "probability_absolute_difference": 0.0,
+      "probability_ulp_difference": 0
+    }
+  ],
+  "negative_controls": {
+    "unprepared_rejected": true,
+    "pre_cancel_rejected": true,
+    "nonfinite_rejected": true,
+    "reuse_after_rejections_exact": true
+  },
+  "execution": {
+    "launcher_attempts": 1,
+    "launcher_exit_code": 0,
+    "retries": 0,
+    "recorded_wall_seconds": 5.370902565999131,
+    "retained_run_bytes": 78716005,
+    "phase_records_verified": [
+      {
+        "label": "compiler-version",
+        "pid": 11,
+        "owned_process_group": 11,
+        "exit_code": 0,
+        "wall_seconds": 0.004257606999090058,
+        "communicate_completed": true,
+        "direct_child_reaped": true,
+        "group_state": "absent",
+        "cleanup_verified": true,
+        "status": "completed"
+      },
+      {
+        "label": "compile-native",
+        "pid": 12,
+        "owned_process_group": 12,
+        "exit_code": 0,
+        "wall_seconds": 1.8660224079994805,
+        "communicate_completed": true,
+        "direct_child_reaped": true,
+        "group_state": "absent",
+        "cleanup_verified": true,
+        "status": "completed"
+      },
+      {
+        "label": "compile-reference",
+        "pid": 19,
+        "owned_process_group": 19,
+        "exit_code": 0,
+        "wall_seconds": 1.352137281000978,
+        "communicate_completed": true,
+        "direct_child_reaped": true,
+        "group_state": "absent",
+        "cleanup_verified": true,
+        "status": "completed"
+      },
+      {
+        "label": "native",
+        "pid": 24,
+        "owned_process_group": 24,
+        "exit_code": 0,
+        "wall_seconds": 0.8201787230009359,
+        "communicate_completed": true,
+        "direct_child_reaped": true,
+        "group_state": "absent",
+        "cleanup_verified": true,
+        "status": "completed"
+      },
+      {
+        "label": "reference",
+        "pid": 25,
+        "owned_process_group": 25,
+        "exit_code": 0,
+        "wall_seconds": 0.9498099310003454,
+        "communicate_completed": true,
+        "direct_child_reaped": true,
+        "group_state": "absent",
+        "cleanup_verified": true,
+        "status": "completed"
+      }
+    ],
+    "inference_counts_from_reviewed_source_and_complete_outputs": {
+      "production_successful": 9,
+      "reference_successful": 16,
+      "production_rejected_controls": 3
+    },
+    "sessions_total": 2,
+    "maximum_live_sessions": 1,
+    "ownership_evidence": "Hash-bound runner calls each phase synchronously and requires recorded group absence before returning; raw record counts and phase list match the two reviewed probes.",
+    "resource_evidence": "Recorded wall times and retained file/archive sizes are within bounds. AS/CPU/affinity caps are enforced by the reviewed runner and admitted launcher; peak RSS, process CPU usage and OS thread counts were not measured.",
+    "cleanup_evidence": "All five recorded direct children reaped and owned groups observed absent before their next phase. This review validates recorded evidence; it does not signal historical PIDs or claim independent process tracing."
+  },
+  "review_actions": {
+    "reexecuted_harness": false,
+    "compiled_code": false,
+    "downloaded_files": false,
+    "loaded_model_for_inference": false,
+    "created_model_sessions": 0,
+    "recomputed_official_frontend": false,
+    "computed_stored_array_differences": true,
+    "hashed_model_bytes_without_loading_runtime": true
+  },
+  "coverage_limits": [
+    "Host x86-64 Microsoft ORT 1.27.1 compatibility only",
+    "Eight fixed public/synthetic fixtures only; no calibration or endpoint-quality evidence",
+    "No JNI, Android, R8, NDK, APK or device validation",
+    "No phone latency, thermal, contention or acoustic-quality claim",
+    "No in-flight cancellation-race evidence",
+    "No encoder, keyguard, private audio or security scope"
+  ],
+  "cleanup_recommendation": {
+    "review_blocker_to_disposable_cleanup": false,
+    "eligible_task_owned_directories": [
+      "smartturn-host-inputs-20261009-2019",
+      "smartturn-host-run-20261009-2019"
+    ],
+    "condition": "Preserve this review, exact admission/source/harness records, execution-binding metadata, receipt and verified raw stdout/stderr copies outside disposable directories before authorized deletion. Preserve candidate sources, all fixture goldens and pre-existing caches.",
+    "cleanup_performed_by_reviewer": false
+  },
+  "host_phase_observations": {
+    "sha256": "5b026e9f55c3c00eda10dd83887e404d46f786a19f23996234d060eb5652f0c5",
+    "derived_ranges_independently_verified": true,
+    "reported_fixture_calls": 8,
+    "frontend_ms_range": [
+      13.641861,
+      17.454483
+    ],
+    "inference_ms_range": [
+      50.608356,
+      62.79725
+    ],
+    "frontend_plus_inference_ms_range": [
+      64.82168,
+      77.105418
+    ],
+    "model_session_initialization_separately_measured": false,
+    "initialization_note": "Session construction occurred before the per-call timers; no separate initialization timer or derived estimate is claimed. Whole child wall time is not initialization time.",
+    "claims": "Single-run Linux x86_64 host phase observations only; no phone, Android or device latency extrapolation; no warmup, statistical, calibration or throughput benchmark."
+  },
+  "execution_binding_artifacts_verified_count": 66
+}

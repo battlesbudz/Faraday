@@ -1,0 +1,469 @@
+{
+  "status": "terminal_exit_zero_pending_independent_review",
+  "launcher_exit_code": 0,
+  "launcher_attempts": 1,
+  "retries": 0,
+  "admitted_manifest_sha256": "e91750cee56c13881ffbce8fdda804e5433c233eeb921edb520d989f0184fc1b",
+  "harness_runner_sha256": "8bf883147a7b775b431bfede29c20ef74b75ddef928551422b7dedd8a9c01a41",
+  "source_commit": "165ffbb46af313d51e3947a2e70cab3eaef3a543",
+  "source_tree": "bd90286517b045508d2b2b778eb89322fac5920d",
+  "source_clean_after_run": true,
+  "retained_raw_evidence": [
+    {
+      "filename": "compile-native.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "filename": "compile-native.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "filename": "compile-reference.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "filename": "compile-reference.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "filename": "compiler-version.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "filename": "compiler-version.stdout",
+      "sha256": "5f6798e87440f1e8b88bf6822c33bebe434f83374640a7f8ba967902ee1ea098",
+      "bytes": 232
+    },
+    {
+      "filename": "native.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "filename": "native.stdout",
+      "sha256": "055e1960556108e124cfa19ec6ecdf268749dc5e0fa4fa6d038000c24878d5cf",
+      "bytes": 949
+    },
+    {
+      "filename": "receipt.json",
+      "sha256": "5806234b80caa3328e9a84a49258ded742a881a1d85fbe55c9cc3b4eed199cdf",
+      "bytes": 15272
+    },
+    {
+      "filename": "reference.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "filename": "reference.stdout",
+      "sha256": "b5ecf3c2acbc8dc2380e31a16bfbd65f067d0d8f69ef3628ab1a794d035891e8",
+      "bytes": 710
+    }
+  ],
+  "task_owned_artifacts_before_cleanup": [
+    {
+      "path_relative_to_run": "chirp_9s.pcm.f32le",
+      "sha256": "3205a6d792a39ab4c33b2e17b3f9cb9b8255685915ce4037c0a512ce615731a1",
+      "bytes": 512000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "chirp_9s.pcm.f32le.native-features.f32le",
+      "sha256": "b91ff11d72584b02376b5f62c4ac91696368ecce221ac266a2f022e056877aff",
+      "bytes": 256000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "chirp_9s.reference.f32le",
+      "sha256": "b2efa03bfd17e66f7f93819ef95da04375b8e3071dfc01748af3ad277a6e76be",
+      "bytes": 256000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "compile-native.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "compile-native.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "compile-reference.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "compile-reference.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "compiler-version.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "compiler-version.stdout",
+      "sha256": "5f6798e87440f1e8b88bf6822c33bebe434f83374640a7f8ba967902ee1ea098",
+      "bytes": 232,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "dc_short.pcm.f32le",
+      "sha256": "52a21fb62532ebf66ccb1811f6894890b45f421d6a5b3b97c57baccc09d1d21e",
+      "bytes": 636,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "dc_short.pcm.f32le.native-features.f32le",
+      "sha256": "79e4398d70544c3c39284c7f78ce08b70b8f6713dc37cd07ae402b0fcfe1c561",
+      "bytes": 256000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "dc_short.reference.f32le",
+      "sha256": "486c3097a19a693a11dc61c8e3639407d90a26588bd283ef028098eb3a6f646c",
+      "bytes": 256000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "impulse_one_sample.pcm.f32le",
+      "sha256": "c82c39e488b9d648e15e8d7007b75537eabffd4e6a6e4f5044e143861fecc3df",
+      "bytes": 4,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "impulse_one_sample.pcm.f32le.native-features.f32le",
+      "sha256": "354dadefbed44a7b6e92c2f76b8ff19eeeceeb9b98420802789e4e9cdcae090b",
+      "bytes": 256000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "impulse_one_sample.reference.f32le",
+      "sha256": "2396d10c5b4d740d949453c1be29105fd4e41ee4d948fd76affaf61a2f98df3f",
+      "bytes": 256000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "native.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "native.stdout",
+      "sha256": "055e1960556108e124cfa19ec6ecdf268749dc5e0fa4fa6d038000c24878d5cf",
+      "bytes": 949,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "native_host_probe",
+      "sha256": "08272853f5ca2c2a655f2c47a43c12f52bd2b6709c156b85b6b53ca7b2753e33",
+      "bytes": 59408,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "noise_lcg_8s.pcm.f32le",
+      "sha256": "953353af104f6de248ee95b0e95227f3c3b472fe49ee309d38a78707784bdf59",
+      "bytes": 512000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "noise_lcg_8s.pcm.f32le.native-features.f32le",
+      "sha256": "9017f5e0d0a2f94f326dc85f656c9fda0ddc09b00d59b98cdfda6c4e611c3e99",
+      "bytes": 256000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "noise_lcg_8s.reference.f32le",
+      "sha256": "c5938c6cf6e5e3824b4d5714696973a81b5cabacc9306c0297668ebc8f0da543",
+      "bytes": 256000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/GIT_COMMIT_ID",
+      "sha256": "878ac47c4831caaf7653d43791c8f8eed9d3aec913bf35dd4ceb9204c44d7e4a",
+      "bytes": 41,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/LICENSE",
+      "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+      "bytes": 1073,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/Privacy.md",
+      "sha256": "9a15f9fd9d4c7b6dfc35f237f461863f84f8f73cf6189e330818a674d3828871",
+      "bytes": 2469,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/README.md",
+      "sha256": "8ba52c692082f38b30549875486986f9d8cc00875dd689468fb61db2cd84961d",
+      "bytes": 3112,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/ThirdPartyNotices.txt",
+      "sha256": "0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2",
+      "bytes": 325054,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/VERSION_NUMBER",
+      "sha256": "a8844fbc8c3eb51c26ed00aec4cd5a5a9d647f849c6ead07bcc83ed24c4a7718",
+      "bytes": 7,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/include/core/providers/custom_op_context.h",
+      "sha256": "c1f2a96c0de1978b0f2fbf60bf1b2d50c6412d487c1f5d68ac5ffa8e01b46ee4",
+      "bytes": 296,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/include/core/providers/resource.h",
+      "sha256": "65480b7886a180f09f40999aaead120e41cb872b2efa187938d610bfe1977473",
+      "bytes": 365,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/include/cpu_provider_factory.h",
+      "sha256": "0de52d129c718c07ee71a16b4953d8d483df019746a11caad77a0650a2f4ed47",
+      "bytes": 397,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/include/onnxruntime_c_api.h",
+      "sha256": "523131bab81173fe287c578f7dda344e1dc5c749fa3f70b55fbbf8f210850313",
+      "bytes": 392401,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/include/onnxruntime_cxx_api.h",
+      "sha256": "c5f9bb73d7674cf99a197b383a144eb2a5eda71cc060193a86c7d24e6fa36ed7",
+      "bytes": 168888,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/include/onnxruntime_cxx_inline.h",
+      "sha256": "114b4d008351eaa4462560438474cebd104f74259cc8af607acc0b97453200d2",
+      "bytes": 157429,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/include/onnxruntime_env_config_keys.h",
+      "sha256": "2d531fef7dd4ffd22f35d219e1a795dbaa1c94a4a7fd29397c0982232e4ca332",
+      "bytes": 1315,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/include/onnxruntime_ep_c_api.h",
+      "sha256": "f65ac849718cabe3ff4902698dd2de643c3b3dbe0010242b2b0407548e7ee00c",
+      "bytes": 149810,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/include/onnxruntime_ep_device_ep_metadata_keys.h",
+      "sha256": "855ce482f28f6e10d6c364b7e7c39bc79ded58d2d12a6fe04d0a63fee5249a20",
+      "bytes": 1875,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/include/onnxruntime_float16.h",
+      "sha256": "88b242845d25981633a0bbd1c148e273cf8bfb016ea3f57c4af41a06530f72b0",
+      "bytes": 17991,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/include/onnxruntime_lite_custom_op.h",
+      "sha256": "f8c42f24286a94c003fdc76563f9e692f39d560c138bdf23063b1482a201d613",
+      "bytes": 61254,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/include/onnxruntime_run_options_config_keys.h",
+      "sha256": "973037c14b0f1af0854ae25cd676776f79dbcfd2a6791f6ee17a5374c2a62550",
+      "bytes": 2952,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/include/onnxruntime_session_options_config_keys.h",
+      "sha256": "63c790b4e5f5416e7115dee7e0d818a7fd3924451fb2339102a086f7e50c011e",
+      "bytes": 36903,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/include/provider_options.h",
+      "sha256": "cb7206ffd06ba31b9f7e5f6089a6206f0c720c10c3adcc61db7f829c86691cfc",
+      "bytes": 480,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/lib/cmake/onnxruntime/onnxruntimeConfig.cmake",
+      "sha256": "880b8c3ceae1ac013b7442b852ae4f7674a439803a2f8dcb875f5043913e62bc",
+      "bytes": 939,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/lib/cmake/onnxruntime/onnxruntimeConfigVersion.cmake",
+      "sha256": "dded1bd074154b97e1cbda9ab5549c4009385afa1548d6622f98222d2dbda610",
+      "bytes": 2765,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/lib/cmake/onnxruntime/onnxruntimeTargets-release.cmake",
+      "sha256": "7a4c88482762b92ec6a07600d32571d6334b2ce85d6d9a87cbf8dce8a7408ef5",
+      "bytes": 921,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/lib/cmake/onnxruntime/onnxruntimeTargets.cmake",
+      "sha256": "0b84a062f97cfdb408a8eb17e5a2cc72df2bb171521785ff2f67aae39310da2a",
+      "bytes": 4173,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/lib/libonnxruntime.so",
+      "sha256": "50e214fa23276cf2f3fb96d90d8e7ca9fc5ba29f42e298eccf3b23f7d8a81ae2",
+      "bytes": 23658512,
+      "is_symlink": true
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/lib/libonnxruntime.so.1",
+      "sha256": "50e214fa23276cf2f3fb96d90d8e7ca9fc5ba29f42e298eccf3b23f7d8a81ae2",
+      "bytes": 23658512,
+      "is_symlink": true
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/lib/libonnxruntime.so.1.27.1",
+      "sha256": "50e214fa23276cf2f3fb96d90d8e7ca9fc5ba29f42e298eccf3b23f7d8a81ae2",
+      "bytes": 23658512,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/lib/libonnxruntime_providers_shared.so",
+      "sha256": "086ec1d5388f64153d9c63470d126693db9a182c8ce236d3a1119068471b8a0d",
+      "bytes": 14632,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "ort/onnxruntime-linux-x64-1.27.1/lib/pkgconfig/libonnxruntime.pc",
+      "sha256": "9e3d3370fced09fdbe916faebc3390e75f6094bf8c6bab8ba5fdd7b73685d46b",
+      "bytes": 332,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "public_librispeech_last8s.pcm.f32le",
+      "sha256": "79030deaadb4397c9783de9e8edaf7094aad9e59f0699e0933f56b6d237bb706",
+      "bytes": 512000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "public_librispeech_last8s.pcm.f32le.native-features.f32le",
+      "sha256": "016247314652a570024cedcb6c9f77dee304319785b985048cb0120ffbf9f955",
+      "bytes": 256000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "public_librispeech_last8s.reference.f32le",
+      "sha256": "1dcec365564615ee454bf4138ef31649014a1369d37e81529ececb512ca6bf5d",
+      "bytes": 256000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "quiet_one_lsb.pcm.f32le",
+      "sha256": "3e605ac6838e9b97d1c85ef9ab9aef2afaba0bc095c09bd39ff735d2cf92e3b4",
+      "bytes": 64000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "quiet_one_lsb.pcm.f32le.native-features.f32le",
+      "sha256": "6f6d9d9c2f05b362bb4726eae7dc208bd36470bd6c4678cc1356f2a13a55f4d7",
+      "bytes": 256000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "quiet_one_lsb.reference.f32le",
+      "sha256": "c081ba3fb168d3a0bcf2fe5551ccb5faf703e9c7a44b69f96276acb243e402e3",
+      "bytes": 256000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "receipt.json",
+      "sha256": "5806234b80caa3328e9a84a49258ded742a881a1d85fbe55c9cc3b4eed199cdf",
+      "bytes": 15272,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "reference.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "reference.stdout",
+      "sha256": "b5ecf3c2acbc8dc2380e31a16bfbd65f067d0d8f69ef3628ab1a794d035891e8",
+      "bytes": 710,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "reference_ort_probe",
+      "sha256": "0ebf26928adb5d29cc78cabfbf4597352dfe6b09ed82c7e48c908767b0d5a37f",
+      "bytes": 43384,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "silence_8s.pcm.f32le",
+      "sha256": "2d4da04b861bb9dbe77c871415931785a18138d6db035f1bbcd0cf8277c6fc23",
+      "bytes": 512000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "silence_8s.pcm.f32le.native-features.f32le",
+      "sha256": "c4a1d90bbbdc1c49cf89b8f73360019b1b0fe01ae48a9dfd6fc2c4a3228b8859",
+      "bytes": 256000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "silence_8s.reference.f32le",
+      "sha256": "c4a1d90bbbdc1c49cf89b8f73360019b1b0fe01ae48a9dfd6fc2c4a3228b8859",
+      "bytes": 256000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "tone_440hz_1s.pcm.f32le",
+      "sha256": "7398f86c9c3a8034e75d34bbfbd3fc45a77139530beb47fb912afd41a7b9d951",
+      "bytes": 64000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "tone_440hz_1s.pcm.f32le.native-features.f32le",
+      "sha256": "3f8f751baef194d63e412fbef34b8d523d19223d18e989ac7deb9bcfd10f7154",
+      "bytes": 256000,
+      "is_symlink": false
+    },
+    {
+      "path_relative_to_run": "tone_440hz_1s.reference.f32le",
+      "sha256": "0f5e01ac3f012259a096168d842eee34b65b7daf246b94091220c9165eef4602",
+      "bytes": 256000,
+      "is_symlink": false
+    }
+  ],
+  "cleanup_performed": false,
+  "private_audio_used": false,
+  "new_model_sessions_after_run": 0
+}

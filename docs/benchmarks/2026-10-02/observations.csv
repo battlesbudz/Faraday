@@ -1,0 +1,8 @@
+sample_id,displayed_ttft_seconds,displayed_ttf_sw_seconds,estimated_tokens_per_second,screenshot
+travel,2,3.78,42.7,1000032798.jpg
+travel-followup,0.68,3.6,36.3,1790966921382.jpeg
+audio-access-reply,0.68,3.05,38.6,1790966921382.jpeg
+medication,0.96,4.59,28.1,1790967071057.jpeg
+cubs,0.38,8.76,19.3,1000032785.jpg
+wikipedia,0.74,3.36,37.7,1000032796.jpg
+followup,0.75,3.54,26.9,1000032796.jpg

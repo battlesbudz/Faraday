@@ -1,0 +1,30 @@
+{
+  "before": {
+    "class_sha256": "5762ae0197c1976752358c227a17255a7ef36094acb192d7013ed3b72b6a0b44",
+    "disassembly_sha256": "161c16808f5892c5877f52e0f6de045552641ca1d4b539a34c8a8790cb566607",
+    "contract_method_invocations": [
+      "48: invokevirtual #336                // Method com/battlesbudz/jarvis/v2/ui/BenchmarkExportFiles.createDocument:(Lcom/battlesbudz/jarvis/v2/ui/BenchmarkExportFormat;)Landroidx/activity/result/contract/ActivityResultContracts$CreateDocument;",
+      "209: invokevirtual #361                // Method androidx/activity/result/contract/ActivityResultContracts$CreateDocument.createIntent:(Landroid/content/Context;Ljava/lang/String;)Landroid/content/Intent;",
+      "237: invokevirtual #336                // Method com/battlesbudz/jarvis/v2/ui/BenchmarkExportFiles.createDocument:(Lcom/battlesbudz/jarvis/v2/ui/BenchmarkExportFormat;)Landroidx/activity/result/contract/ActivityResultContracts$CreateDocument;",
+      "255: invokevirtual #361                // Method androidx/activity/result/contract/ActivityResultContracts$CreateDocument.createIntent:(Landroid/content/Context;Ljava/lang/String;)Landroid/content/Intent;",
+      "509: invokevirtual #450                // Method androidx/activity/result/contract/ActivityResultContracts$CreateDocument.getSynchronousResult:(Landroid/content/Context;Ljava/lang/String;)Landroidx/activity/result/contract/ActivityResultContract$SynchronousResult;",
+      "520: invokevirtual #457                // Method androidx/activity/result/contract/ActivityResultContracts$CreateDocument.parseResult:(ILandroid/content/Intent;)Landroid/net/Uri;",
+      "530: invokevirtual #457                // Method androidx/activity/result/contract/ActivityResultContracts$CreateDocument.parseResult:(ILandroid/content/Intent;)Landroid/net/Uri;",
+      "546: invokevirtual #457                // Method androidx/activity/result/contract/ActivityResultContracts$CreateDocument.parseResult:(ILandroid/content/Intent;)Landroid/net/Uri;"
+    ]
+  },
+  "after": {
+    "class_sha256": "7300886b90787f2b988409d90e09cacc3feccfacc61c4414d5015d8d5187749d",
+    "disassembly_sha256": "1eb5916005efd738739e0ace8ce3851d224590c7543f5250b972a0a581844091",
+    "contract_method_invocations": [
+      "48: invokevirtual #336                // Method com/battlesbudz/jarvis/v2/ui/BenchmarkExportFiles.createDocument:(Lcom/battlesbudz/jarvis/v2/ui/BenchmarkExportFormat;)Landroidx/activity/result/contract/ActivityResultContracts$CreateDocument;",
+      "212: invokevirtual #361                // Method androidx/activity/result/contract/ActivityResultContract.createIntent:(Landroid/content/Context;Ljava/lang/Object;)Landroid/content/Intent;",
+      "240: invokevirtual #336                // Method com/battlesbudz/jarvis/v2/ui/BenchmarkExportFiles.createDocument:(Lcom/battlesbudz/jarvis/v2/ui/BenchmarkExportFormat;)Landroidx/activity/result/contract/ActivityResultContracts$CreateDocument;",
+      "262: invokevirtual #361                // Method androidx/activity/result/contract/ActivityResultContract.createIntent:(Landroid/content/Context;Ljava/lang/Object;)Landroid/content/Intent;",
+      "513: invokevirtual #450                // Method androidx/activity/result/contract/ActivityResultContract.getSynchronousResult:(Landroid/content/Context;Ljava/lang/Object;)Landroidx/activity/result/contract/ActivityResultContract$SynchronousResult;",
+      "524: invokevirtual #457                // Method androidx/activity/result/contract/ActivityResultContract.parseResult:(ILandroid/content/Intent;)Ljava/lang/Object;",
+      "534: invokevirtual #457                // Method androidx/activity/result/contract/ActivityResultContract.parseResult:(ILandroid/content/Intent;)Ljava/lang/Object;",
+      "550: invokevirtual #457                // Method androidx/activity/result/contract/ActivityResultContract.parseResult:(ILandroid/content/Intent;)Ljava/lang/Object;"
+    ]
+  }
+}

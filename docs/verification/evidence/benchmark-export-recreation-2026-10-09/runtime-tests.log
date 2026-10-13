@@ -1,0 +1,7 @@
+PASS queued content replacement leaves old callback admitted before commit; delayed truncate reproduces 16KB second assertion
+PASS callback admitted before commit can truncate synchronously; blocked write reproduces Fold first assertion
+PASS committed replacement drops old raw registry result while fresh same-scope payload remains pending, repeated 8 times
+PASS disposal cancels callback coroutine queued before IO entry
+PASS disposal cancels a save dispatched to IO but still queued before provider entry
+PASS canceled picker clears pending state; live same-scope export retains its frozen report
+6 deterministic lifecycle cases passed with exact production composable/transport source, real Compose 1.7.6 / Activity 1.10.0; native provider I/O and Android tracing replaced by explicit host seams

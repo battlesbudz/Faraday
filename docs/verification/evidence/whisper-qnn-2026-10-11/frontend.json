@@ -1,0 +1,76 @@
+{
+  "scope": "Standalone host frontend only; no QNN/model/Android/device verification",
+  "reference": "Hugging Face Transformers v4.55.4 NumPy Whisper math, independent NumPy FFT",
+  "numpy_version": "2.3.5",
+  "shape": [
+    80,
+    3000
+  ],
+  "compiler": [
+    "c++"
+  ],
+  "extra_cxxflags": [],
+  "sanitizer_options": {},
+  "absolute_tolerance": 2e-06,
+  "source_sha256": {
+    "whisper_features.h": "b69dfcbe21250bd20d49383fd4df98efd42a88baad14a704be9b7654e052f95c",
+    "whisper_features.cc": "f9ee9c1b505d3775b3fe59d9439486a9bb867483880790832d1eaff7f6c97894",
+    "tests/frontend_probe.cc": "3f5200ddc07525c314596d3dfd3fa8351e9171d25a37ff3c48d9753c3d5d62f0",
+    "tests/verify_frontend.py": "7ed961fdcc2c3f29f26146200ae23574d4bb58bf69cfe6a60be48a6ecebbd632"
+  },
+  "cases": [
+    {
+      "id": "silence_30s",
+      "samples": 480000,
+      "max_abs_error": 0.0,
+      "passed": true
+    },
+    {
+      "id": "impulse_one_sample",
+      "samples": 1,
+      "max_abs_error": 0.0,
+      "passed": true
+    },
+    {
+      "id": "impulse_boundary_reflections",
+      "samples": 480000,
+      "max_abs_error": 0.0,
+      "passed": true
+    },
+    {
+      "id": "sine_440hz_short",
+      "samples": 16003,
+      "max_abs_error": 0.0,
+      "passed": true
+    },
+    {
+      "id": "mixed_30s",
+      "samples": 480000,
+      "max_abs_error": 0.0,
+      "passed": true
+    },
+    {
+      "id": "dc_short_no_normalization",
+      "samples": 159,
+      "max_abs_error": 0.0,
+      "passed": true
+    },
+    {
+      "id": "quiet_log_floor",
+      "samples": 319,
+      "max_abs_error": 0.0,
+      "passed": true
+    },
+    {
+      "id": "range_endpoints",
+      "samples": 2,
+      "max_abs_error": 0.0,
+      "passed": true
+    }
+  ],
+  "invalid_input_rejected": true,
+  "pre_cancelled_and_in_flight_cancelled": true,
+  "instance_reuse_checked": true,
+  "right_padding_equivalence": true,
+  "weights_used": false
+}

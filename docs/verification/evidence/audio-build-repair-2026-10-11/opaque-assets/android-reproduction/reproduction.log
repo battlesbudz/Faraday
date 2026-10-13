@@ -1,0 +1,9 @@
+native.so 26624
+opaque.so.gz.bin 130
+libonnxruntime_providers_qnn.so.gz.bin 1587694
+libQnnSystem.so.gz.bin 1494485
+libQnnHtp.so.gz.bin 1539372
+libQnnHtpV75Stub.so.gz.bin 289255
+libQnnHtpV75Skel.so.gz.bin 4396153
+manifest.json 1297
+PASS: pinned AGP inflates final .gz; opaque .gz.bin survives merge/link byte-for-byte.

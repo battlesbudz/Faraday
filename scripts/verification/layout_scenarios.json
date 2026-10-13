@@ -1,0 +1,11 @@
+{
+  "class": "com.battlesbudz.jarvis.v2.verification.ReleaseLayoutAccessibilityTest",
+  "tests": [
+    "test01_accessibleChatAndCallControls",
+    "test02_largeFontSmallScreenKeepsComposerAndCallActions",
+    "test03_foldAndUnfoldPreserveActiveCall",
+    "test04_nativeLibrariesLoadAtExpectedPageSize"
+  ],
+  "coverage": "Runtime accessibility names/actions/48dp touch targets, applied 200% system font scale in a 320dp surface, real rotation and host-controlled fold/unfold with draft/call/conversation continuity. Controlled call callbacks; no microphone/model inference.",
+  "not_covered": ["TalkBack spoken output and manual focus order", "Pixel contrast analysis", "OEM fold firmware or microphone behavior"]
+}

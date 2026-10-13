@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "support_provenance": "Reconstructed and freshly reviewed after workspace rollback; not an original recovered manifest.",
+  "model": {
+    "repository": "pipecat-ai/smart-turn-v3",
+    "revision": "f766f81d3cfdf7737ac64aad813d91bbfd56bf93",
+    "file": "smart-turn-v3.2-cpu.onnx",
+    "bytes": 8679182,
+    "sha256": "2bb026316b14a660486a75b1733cd3fbab8c2fd0314dc9af7be49f8cca967e4f",
+    "url": "https://huggingface.co/pipecat-ai/smart-turn-v3/resolve/f766f81d3cfdf7737ac64aad813d91bbfd56bf93/smart-turn-v3.2-cpu.onnx",
+    "license": "BSD-2-Clause",
+    "license_evidence": "Pinned Hugging Face model card declares bsd-2-clause; no model LICENSE endpoint. Upstream source license supplied.",
+    "model_card_sha256": "8b87ad1bb42432c1c8221944a7de5a0d1a52c2162af6f447ee9522530b38f199",
+    "prior_inspected_metadata": {
+      "provenance": "Historical actual model inspection before rollback; not rerun during recovery. Runtime validates schema on initialization.",
+      "ir_version": 10,
+      "default_opset": 18,
+      "external_tensors": false,
+      "input": {
+        "name": "input_features",
+        "type": "float32",
+        "shape": [
+          "s6",
+          80,
+          800
+        ]
+      },
+      "output": {
+        "name": "logits",
+        "type": "float32",
+        "shape": [
+          "s6",
+          1
+        ],
+        "already_sigmoid": true
+      }
+    },
+    "model_card_url": "https://huggingface.co/pipecat-ai/smart-turn-v3/raw/f766f81d3cfdf7737ac64aad813d91bbfd56bf93/README.md",
+    "model_card_file": "third_party/smart-turn/MODEL_CARD.md"
+  },
+  "frontend": {
+    "source_repository": "pipecat-ai/pipecat",
+    "source_revision": "7597e0c2f84fc05a31dd636daa9d91bb8405e9ff",
+    "source_path": "src/pipecat/audio/turn/smart_turn/_whisper_features.py",
+    "reference_sha256": "139b047d10dee42ad5b4894489012e515a882d8f5e2bffe8ad27b30728fc9968",
+    "sampling_rate": 16000,
+    "window_samples": 128000,
+    "features": [
+      80,
+      800
+    ],
+    "normalization": "float32 zero mean unit variance after recent-window crop and left padding; eps1e-7",
+    "fft_size": 400,
+    "hop_length": 160,
+    "mel_scale": "Slaney normalized",
+    "global_log_mel_floor": 1e-10,
+    "global_log_clamp_decades": 8,
+    "rolling_feature_cache": false
+  },
+  "source_project": {
+    "repository": "pipecat-ai/smart-turn",
+    "revision": "4786657e242dfe77dd138699ac564ee074a2a543",
+    "standalone_inference_default_warning": "inference.py references v3.1; do not use that ambiguous default for v3.2.",
+    "license_url": "https://raw.githubusercontent.com/pipecat-ai/smart-turn/4786657e242dfe77dd138699ac564ee074a2a543/LICENSE"
+  },
+  "runtime": {
+    "ort_version": "1.27.1",
+    "sherpa_revision": "917bed95c8e5c7c18aa4d69fea42e9ef8ef0a60e",
+    "jni_library": "sherpa-onnx-jni",
+    "new_runtime_library": false,
+    "cpu_threads": 1,
+    "gemma_owner": false,
+    "required_cpp_standard": "C++17 from pinned Sherpa top-level CMake",
+    "required_android_elf_page_alignment": 16384,
+    "cpp_standard_evidence": {
+      "url": "https://raw.githubusercontent.com/k2-fsa/sherpa-onnx/917bed95c8e5c7c18aa4d69fea42e9ef8ef0a60e/CMakeLists.txt",
+      "sha256": "c1bc731c38c15a0ebb133e2607cc3bbf5b6ff83488038c3cfa1c69f52a159726",
+      "lines": "370-374",
+      "default": 17,
+      "extensions": false,
+      "android_build_executed": false
+    }
+  },
+  "distribution": {
+    "activation": "Native audio endpoint control enabled by default once the pinned local model is installed; explicit disable; bounded fallback; no call-time downloads",
+    "weights_in_git_or_apk": false,
+    "runtime_downloader": "Explicit settings download through existing ModelDownloader; installed model is checked on its background worker",
+    "private_audio_upload_or_persistence": false,
+    "packaged_notices": "app/src/main/assets/licenses/smart-turn"
+  },
+  "licenses": {
+    "smart-turn-BSD-2-Clause.txt": "0d66364067f678c08586ebb60a16a2aed4fa081ec11057df35585759ce0e774f",
+    "Apache-2.0.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "pipecat-BSD-2-Clause.txt": "e31a733ecb79cbffafd5474e964e5eca15e0a0876a42b1d7253b51b198eb61aa"
+  },
+  "fixtures": {
+    "manifest_sha256": "1b8bf8d17de8469aca6b40c1613af35078b1af9cf90962c7fd0b8fe81bae1420",
+    "decoded_original_hashes_preserved": true,
+    "compressed_container_identity": "Chirp feature gzip remotely confirmed; other containers regenerated from retained generator, decoded bytes all match original pins."
+  },
+  "endpoint_semantics": {
+    "source_url": "https://github.com/pipecat-ai/pipecat/blob/7597e0c2f84fc05a31dd636daa9d91bb8405e9ff/src/pipecat/audio/turn/smart_turn/local_smart_turn_v3.py",
+    "source_git_blob": "e0cf7f251155accb1ce2f81b643eeddd1bec1907",
+    "complete": "probability > 0.5",
+    "continue": "probability <= 0.5",
+    "jarvis_policy_not_calibration": {
+      "pause_ms": 350,
+      "request_deadline_ms": 250,
+      "spacing_ms": 500,
+      "max_accepted_requests_per_turn": 8,
+      "continue_classified_quiet_ms": 3500,
+      "continue_cap_clock": "minimum of capture timestamp delta and classified quiet samples since last raw risk or confirmed speech, requiring exact current raw coverage; 3500–4200ms across existing 100 ms read phases",
+      "max_requests_per_acoustic_pause": 2,
+      "refresh_after_new_samples": 8000
+    }
+  }
+}

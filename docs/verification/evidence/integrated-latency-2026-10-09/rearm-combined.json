@@ -1,0 +1,40 @@
+{
+  "verified_at_utc": "2026-10-09T19:32:07.143331+00:00",
+  "commit": "68a96943f2ab78bf5494c54812e70707c1aea727",
+  "tree": "c36fcfcb4a9002c121bb51a1dd84ca33af9f19b9",
+  "clean_checkout": true,
+  "rearm_app_files_identical_to_69734a4": 31,
+  "focused_jvm_tests": 109,
+  "actual_owner_jvm_tests": 45,
+  "android_api_actual_sources": 143,
+  "results": {
+    "focused": {
+      "receipt": "combined-rearm-focused-68a9694/receipt.json",
+      "receipt_sha256": "369b93394e762e37aef357f767d408036ec2ebe5591b52133201fb7f730998eb",
+      "compiled_file_count": 52,
+      "current_sources_match": true,
+      "exit_code": 0
+    },
+    "owner": {
+      "receipt": "combined-rearm-owner-68a9694/receipt.json",
+      "receipt_sha256": "09abd0825536f0ff7d0df49d556dbac0fae1fc774fe14efd990baf607a88a386",
+      "compiled_file_count": 52,
+      "current_sources_match": true,
+      "exit_code": 0
+    },
+    "boundary": {
+      "receipt": "combined-rearm-boundary-68a9694/attempts/001/receipt.json",
+      "receipt_sha256": "1138918df6a27fb737efb73e34b268176be44305d27cf44ea08967405ca655a8",
+      "compiled_file_count": 143,
+      "current_sources_match": true,
+      "exit_code": 0
+    }
+  },
+  "checks_run_serially": true,
+  "checkout_edits_or_publication": false,
+  "limits": [
+    "Compile-only native/model-side fixtures for Android API boundary; no APK/R8/JNI/native inference/device execution.",
+    "Focused/owner tests use actual ownership/session/capture sources with synthetic hardware/model callbacks.",
+    "No refreshed Whisper snapshot work; snapshot behavior remains value-only and once-observed."
+  ]
+}

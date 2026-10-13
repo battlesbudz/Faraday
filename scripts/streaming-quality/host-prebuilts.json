@@ -1,0 +1,32 @@
+[
+  {
+    "path": "prebuilt/linux_x86_64/libGemmaModelConstraintProvider.so",
+    "sha256": "4369dc540c2d80eba783d112f196805c7e27b83270d4b20e7c22409b1ce05479",
+    "bytes": 22522536,
+    "url": "https://media.githubusercontent.com/media/google-ai-edge/LiteRT-LM/924e79c91542761242244e4f1651851f822e4cbb/prebuilt/linux_x86_64/libGemmaModelConstraintProvider.so"
+  },
+  {
+    "path": "prebuilt/linux_x86_64/libLiteRt.so",
+    "sha256": "e1b073426cafdf9320e0e1778c2761a5a51226e643a1c91da930cc12e92422a8",
+    "bytes": 10741368,
+    "url": "https://media.githubusercontent.com/media/google-ai-edge/LiteRT-LM/924e79c91542761242244e4f1651851f822e4cbb/prebuilt/linux_x86_64/libLiteRt.so"
+  },
+  {
+    "path": "prebuilt/linux_x86_64/libLiteRtTopKWebGpuSampler.so",
+    "sha256": "488eefd814ba214adb4fc047d7db869d4063b46cece259e6d4c125f8f42858cc",
+    "bytes": 14339800,
+    "url": "https://media.githubusercontent.com/media/google-ai-edge/LiteRT-LM/924e79c91542761242244e4f1651851f822e4cbb/prebuilt/linux_x86_64/libLiteRtTopKWebGpuSampler.so"
+  },
+  {
+    "path": "prebuilt/linux_x86_64/libLiteRtWebGpuAccelerator.so",
+    "sha256": "488f6a64a6760b69a2930b82b71d4e77f731b0b2f1c33435888a6f61e375f5bd",
+    "bytes": 8818264,
+    "url": "https://media.githubusercontent.com/media/google-ai-edge/LiteRT-LM/924e79c91542761242244e4f1651851f822e4cbb/prebuilt/linux_x86_64/libLiteRtWebGpuAccelerator.so"
+  },
+  {
+    "path": "prebuilt/linux_x86_64/libwebgpu_dawn.so",
+    "sha256": "8cadd63e1ed84d29700ab0e7a785fc674727b128384c06afd1846258fec57945",
+    "bytes": 13755432,
+    "url": "https://media.githubusercontent.com/media/google-ai-edge/LiteRT-LM/924e79c91542761242244e4f1651851f822e4cbb/prebuilt/linux_x86_64/libwebgpu_dawn.so"
+  }
+]

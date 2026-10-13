@@ -2,74 +2,335 @@ name: Android APK
 
 on:
   pull_request:
-    branches: [main]
   push:
-    branches: [PR1]
+    # Every successful opted-in build publishes test APKs after verification.
+    # PR runs separately verify GitHub's combined merge candidate.
+    branches: [main, PR1, feature-tools, 'feature/**']
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
-  build-pr:
-    name: Build and test PR APK
-    if: (github.event_name == 'pull_request' && github.event.action != 'closed') || (github.event_name == 'push' && github.ref == 'refs/heads/PR1')
+  build-streaming-sdk:
+    name: Build reviewed streaming SDK ARM64
+    if: >-
+      (github.event_name == 'push' &&
+       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/PR1' ||
+        github.ref == 'refs/heads/feature-tools' ||
+        startsWith(github.ref, 'refs/heads/feature/'))) ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    outputs:
+      artifact_id: ${{ steps.sdk-artifact.outputs.artifact-id }}
+      aar_sha256: ${{ steps.sdk-digests.outputs.sha256 }}
+      provenance_sha256: ${{ steps.sdk-digests.outputs.provenance_sha256 }}
+      source_receipt_sha256: ${{ steps.sdk-digests.outputs.source_receipt_sha256 }}
+      producer_attempt: ${{ steps.sdk-digests.outputs.producer_attempt }}
+      artifact_name: ${{ steps.sdk-digests.outputs.artifact_name }}
     steps:
-      - name: Check out source
-        uses: actions/checkout@v4
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.10.2'
-
-      - name: Run unit tests and assemble APK
-        run: gradle --no-daemon testDebugUnitTest assembleDebug
-
-      - name: Stage debug APK
+          java-version: '21'
+      - name: Require existing Android SDK license and install side-by-side native compiler
         run: |
-          mkdir -p artifact
-          cp app/build/outputs/apk/debug/app-debug.apk artifact/app-debug.apk
-
-      - name: Upload APK artifact
+          set -euo pipefail
+          # Presence is a prerequisite; sdkmanager still validates the applicable
+          # accepted fingerprint. EOF refuses a new license acceptance prompt.
+          test -s "${ANDROID_HOME}/licenses/android-sdk-license"
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
+            "ndk;28.1.13356709" "platforms;android-35" < /dev/null
+          command -v clang
+          command -v clang++
+      - name: Verify packaging helper contracts
+        run: python3 -m unittest discover -s scripts/streaming-sdk -p 'test_*.py' -v
+      - name: Build and package the exact reviewed SDK
+        run: |
+          set -euo pipefail
+          export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/28.1.13356709"
+          PATCH_SHA="$(python3 -c 'import json; print(json.load(open("third_party/litert-lm-0.16.0/reviewed-source.json"))["patch_sha256"])')"
+          python3 scripts/streaming-sdk/build_android_sdk.py --run \
+            --patch third_party/litert-lm-0.16.0/PATCH.diff \
+            --patch-sha256 "$PATCH_SHA" \
+            --reviewed-source third_party/litert-lm-0.16.0/reviewed-source.json \
+            --page-auditor scripts/check_page_sizes.py \
+            --out "$RUNNER_TEMP/streaming-sdk" 2>&1 | tee streaming-sdk-build.log
+      - name: Retain compiler and packaging evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: jarvis-os-v2-debug-apk
-          path: artifact/app-debug.apk
+          name: jarvis-streaming-sdk-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            streaming-sdk-build.log
+            ${{ runner.temp }}/streaming-sdk/source-receipt.json
+            ${{ runner.temp }}/streaming-sdk/packaged-kotlin-contract.json
+            ${{ runner.temp }}/streaming-sdk/*.native-audit.json
+            ${{ runner.temp }}/streaming-sdk/*.sampler-dependencies.json
+            ${{ runner.temp }}/streaming-sdk/sampler-dependency-contract.json
+            ${{ runner.temp }}/streaming-sdk/*.provenance.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Bind exact SDK output digests
+        id: sdk-digests
+        run: |
+          python3 scripts/streaming-sdk/validate_artifact.py \
+            --aar "$RUNNER_TEMP/streaming-sdk/litertlm-android-0.16.0-sealed-audio-arm64.aar" \
+            --provenance "$RUNNER_TEMP/streaming-sdk/litertlm-android-0.16.0-sealed-audio-arm64.provenance.json" \
+            --source-receipt "$RUNNER_TEMP/streaming-sdk/source-receipt.json" \
+            --check-workflow --github-output "$GITHUB_OUTPUT"
+          echo "producer_attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=jarvis-streaming-sdk-aar-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+      - name: Retain exact SDK AAR
+        id: sdk-artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-streaming-sdk-aar-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/streaming-sdk/*.aar
+            ${{ runner.temp }}/streaming-sdk/*.provenance.json
+            ${{ runner.temp }}/streaming-sdk/source-receipt.json
           if-no-files-found: error
+          retention-days: 14
+
+  verify-streaming-quality:
+    name: Verify full-E2B native audio quality
+    needs: build-streaming-sdk
+    runs-on: ubuntu-latest
+    timeout-minutes: 115
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      artifact_id: ${{ steps.quality-artifact.outputs.artifact-id }}
+      producer_attempt: ${{ steps.quality-identity.outputs.producer_attempt }}
+      artifact_name: ${{ steps.quality-identity.outputs.artifact_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Bind independent quality producer identity
+        id: quality-identity
+        run: |
+          echo "producer_attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=jarvis-streaming-quality-evidence-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+      - name: Select exact successful SDK producer
+        id: sdk-input
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          PRODUCER_ARTIFACT_ID: ${{ needs.build-streaming-sdk.outputs.artifact_id }}
+          SDK_ARTIFACT_NAME: ${{ needs.build-streaming-sdk.outputs.artifact_name }}
+          STREAMING_PRODUCER_ATTEMPT: ${{ needs.build-streaming-sdk.outputs.producer_attempt }}
+        run: |
+          set -euo pipefail
+          python3 scripts/verification/artifacts.py fetch --out streaming-sdk-manifest.json --repository "$GITHUB_REPOSITORY" --run-id "$GITHUB_RUN_ID"
+          python3 scripts/streaming-sdk/producer_identity.py --manifest streaming-sdk-manifest.json --repository "$GITHUB_REPOSITORY" --run-id "$GITHUB_RUN_ID" --head-sha "$EXPECTED_HEAD" \
+            --kind sdk --artifact-name "$SDK_ARTIFACT_NAME" --artifact-id "$PRODUCER_ARTIFACT_ID" \
+            --producer-attempt "$STREAMING_PRODUCER_ATTEMPT" --current-attempt "$GITHUB_RUN_ATTEMPT" --github-output "$GITHUB_OUTPUT"
+      - name: Download exact verified SDK inputs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/verification/artifacts.py download --manifest streaming-sdk-manifest.json --artifact-ids "${{ steps.sdk-input.outputs.artifact_ids }}" --out streaming-sdk-input --layout flat
+      - name: Verify SDK receipt against exact AAR and source before host work
+        env:
+          STREAMING_AAR_SHA256: ${{ needs.build-streaming-sdk.outputs.aar_sha256 }}
+          STREAMING_PROVENANCE_SHA256: ${{ needs.build-streaming-sdk.outputs.provenance_sha256 }}
+          STREAMING_SOURCE_RECEIPT_SHA256: ${{ needs.build-streaming-sdk.outputs.source_receipt_sha256 }}
+          STREAMING_PRODUCER_ATTEMPT: ${{ needs.build-streaming-sdk.outputs.producer_attempt }}
+        run: |
+          python3 scripts/streaming-sdk/validate_artifact.py \
+            --aar streaming-sdk-input/litertlm-android-0.16.0-sealed-audio-arm64.aar \
+            --provenance streaming-sdk-input/litertlm-android-0.16.0-sealed-audio-arm64.provenance.json \
+            --source-receipt streaming-sdk-input/source-receipt.json \
+            --expected-aar-sha256 "$STREAMING_AAR_SHA256" --expected-provenance-sha256 "$STREAMING_PROVENANCE_SHA256" \
+            --expected-source-receipt-sha256 "$STREAMING_SOURCE_RECEIPT_SHA256" --require-digests --check-workflow \
+            --producer-attempt "$STREAMING_PRODUCER_ATTEMPT"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned fixture derivation dependencies
+        run: |
+          python -m pip install --only-binary=:all: -r scripts/streaming-quality/requirements.txt
+      - name: Test hosted quality orchestration contracts
+        run: python -m unittest discover -s scripts/streaming-quality -p 'test_*.py' -v
+      - name: Reconstruct exact SDK source from verified producer receipt
+        run: |
+          python scripts/streaming-quality/prepare_sdk_source.py \
+            --android-receipt "$GITHUB_WORKSPACE/streaming-sdk-input/source-receipt.json" \
+            --patch third_party/litert-lm-0.16.0/PATCH.diff \
+            --reviewed-source third_party/litert-lm-0.16.0/reviewed-source.json \
+            --sdk "$RUNNER_TEMP/streaming-sdk/sdk" \
+            --bazel "$RUNNER_TEMP/streaming-sdk/downloads/bazel-7.6.1-linux-x86_64"
+      - name: Build bounded hosted native quality probes
+        timeout-minutes: 63
+        run: |
+          set -euo pipefail
+          python scripts/streaming-quality/build_probes.py \
+            --sdk "$RUNNER_TEMP/streaming-sdk/sdk" \
+            --android-receipt "$GITHUB_WORKSPACE/streaming-sdk-input/source-receipt.json" \
+            --patch third_party/litert-lm-0.16.0/PATCH.diff \
+            --bazel "$RUNNER_TEMP/streaming-sdk/downloads/bazel-7.6.1-linux-x86_64" \
+            --bazel-root "$RUNNER_TEMP/streaming-sdk/bazel" \
+            --out "$RUNNER_TEMP/streaming-quality-build"
+      - name: Capture weight-free encoder runtime diagnostic
+        id: encoder-runtime-diagnostic
+        continue-on-error: true
+        timeout-minutes: 4
+        run: |
+          set -euo pipefail
+          python scripts/streaming-quality/encoder-replay/diagnostic_guard.py \
+            --build-dir "$RUNNER_TEMP/streaming-quality-build" \
+            --guard "$RUNNER_TEMP/streaming-quality-build/diagnostic-compile-guard.private.json" \
+            --policy scripts/streaming-quality/encoder-replay/reviewed-source-policy.json \
+            --expected-policy-sha256 49de50880fd804d9365a1e10d9f72b48b7deca0f2a249ada5c2beb3d7b9d53ae \
+            --repository-cache "$RUNNER_TEMP/streaming-sdk/bazel/cache/repos/v1" \
+            --out "$RUNNER_TEMP/streaming-encoder-runtime-diagnostic"
+      - name: Retain verified weight-free encoder runtime diagnostic
+        if: steps.encoder-runtime-diagnostic.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-streaming-encoder-runtime-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/streaming-encoder-runtime-diagnostic/encoder-runtime-${{ github.run_id }}-${{ github.run_attempt }}.tar.gz
+            ${{ runner.temp }}/streaming-encoder-runtime-diagnostic/encoder-runtime-${{ github.run_id }}-${{ github.run_attempt }}.tar.gz.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Run exact full-E2B native quality prerequisite
+        timeout-minutes: 50
+        env:
+          GEMMA_QUALITY_COMPUTE_SLOT: confirmed_by_owner
+        run: |
+          set -euo pipefail
+          python scripts/streaming-quality/run_quality.py \
+            --build-dir "$RUNNER_TEMP/streaming-quality-build" \
+            --out "$RUNNER_TEMP/streaming-quality-run" \
+            --diagnostic-on-known-reference-mismatch
+      - name: Select weightless quality receipts even after failure
+        if: always()
+        run: |
+          python scripts/streaming-quality/export_evidence.py \
+            --build-dir "$RUNNER_TEMP/streaming-quality-build" \
+            --run-dir "$RUNNER_TEMP/streaming-quality-run" \
+            --out "$RUNNER_TEMP/streaming-quality-evidence"
+      - name: Retain only selected hosted quality evidence
+        id: quality-artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-streaming-quality-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/streaming-quality-evidence/
+          if-no-files-found: error
+          retention-days: 14
 
   build-release:
     name: Build signed release APK
-    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
+    needs: build-streaming-sdk
+    if: >-
+      (github.event_name == 'push' &&
+       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/PR1' ||
+        github.ref == 'refs/heads/feature-tools' ||
+        startsWith(github.ref, 'refs/heads/feature/'))) ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
+      actions: read
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+
+      - name: Select this run's successful SDK producer artifact
+        id: sdk-input
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          PRODUCER_ARTIFACT_ID: ${{ needs.build-streaming-sdk.outputs.artifact_id }}
+          SDK_ARTIFACT_NAME: ${{ needs.build-streaming-sdk.outputs.artifact_name }}
+          STREAMING_PRODUCER_ATTEMPT: ${{ needs.build-streaming-sdk.outputs.producer_attempt }}
+        run: |
+          set -euo pipefail
+          python3 scripts/verification/artifacts.py fetch --out streaming-sdk-manifest.json --repository "$GITHUB_REPOSITORY" --run-id "$GITHUB_RUN_ID"
+          python3 scripts/streaming-sdk/producer_identity.py --manifest streaming-sdk-manifest.json --repository "$GITHUB_REPOSITORY" --run-id "$GITHUB_RUN_ID" --head-sha "$EXPECTED_HEAD" \
+            --kind sdk --artifact-name "$SDK_ARTIFACT_NAME" --artifact-id "$PRODUCER_ARTIFACT_ID" \
+            --producer-attempt "$STREAMING_PRODUCER_ATTEMPT" --current-attempt "$GITHUB_RUN_ATTEMPT" --github-output "$GITHUB_OUTPUT"
+      - name: Download exact producer artifact ID
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/verification/artifacts.py download --manifest streaming-sdk-manifest.json --artifact-ids "${{ steps.sdk-input.outputs.artifact_ids }}" --out streaming-sdk-input --layout flat
+
+      - name: Restore Kotlin incremental compilation state
+        uses: actions/cache@v4
+        with:
+          # No APKs, test reports, signing material or configuration cache.
+          path: |
+            .gradle/8.10.2/executionHistory/
+            .gradle/kotlin/
+            app/build/kotlin/compileReleaseKotlin/
+            app/build/tmp/kotlin-classes/release/
+            app/build/intermediates/javac/release/
+          key: kotlin-incremental-v1-${{ runner.os }}-${{ github.head_ref || github.ref_name }}-${{ hashFiles('gradle.properties', 'build.gradle.kts', 'app/build.gradle.kts', 'settings.gradle.kts') }}-${{ github.sha }}
+          restore-keys: |
+            kotlin-incremental-v1-${{ runner.os }}-${{ github.head_ref || github.ref_name }}-${{ hashFiles('gradle.properties', 'build.gradle.kts', 'app/build.gradle.kts', 'settings.gradle.kts') }}-
 
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'  # LiteRT 0.16 SDK host tests load Java 21 class files.
+
+      - name: Install speech runtime NDK
+        run: |
+          test -s "${ANDROID_HOME}/licenses/android-sdk-license"
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" < /dev/null
+
+      - name: Cache shared speech runtime
+        uses: actions/cache@v4
+        with:
+          path: app/build/sherpa-native
+          # CMake embeds the checkout path, which changes on repository rename.
+          # Do not restore a cache from a differently named checkout.
+          key: sherpa-arm64-137-${{ runner.os }}-${{ github.repository }}-${{ hashFiles('scripts/build_sherpa.py', 'scripts/sherpa_jni_profile.py', 'app/src/main/cpp/smartturn/**', 'app/src/main/cpp/whisperqnn/**') }}
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
+          # Only trusted same-repository runs reach this job. Persist PR caches too.
+          cache-read-only: false
+
+      - name: Verify interruption keyword models in native engine
+        run: |
+          cmake -S app/src/main/cpp/microwakeword -B /tmp/keyword-native -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/keyword-native --parallel 2
+          python3 scripts/check_keyword_models.py /tmp/keyword-native/microwakeword_test
+
+      - name: Verify native dependency helpers
+        # Include the nested artifact/retry suite as well as root native/helper tests.
+        run: python3 scripts/dev.py check
 
       - name: Prepare release signing key
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           test -n "$ANDROID_KEYSTORE_BASE64"
+          test -n "$ANDROID_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_KEY_ALIAS"
+          test -n "$ANDROID_KEY_PASSWORD"
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/jarvis-release.keystore"
 
       - name: Run release tests and assemble APK
@@ -78,56 +339,438 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: gradle --no-daemon testReleaseUnitTest assembleRelease
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+          ANDROID_VERSION_NAME: 0.1.0-build.${{ github.run_number }}
+          STREAMING_AAR_SHA256: ${{ needs.build-streaming-sdk.outputs.aar_sha256 }}
+          STREAMING_PROVENANCE_SHA256: ${{ needs.build-streaming-sdk.outputs.provenance_sha256 }}
+          STREAMING_SOURCE_RECEIPT_SHA256: ${{ needs.build-streaming-sdk.outputs.source_receipt_sha256 }}
+          STREAMING_PRODUCER_ATTEMPT: ${{ needs.build-streaming-sdk.outputs.producer_attempt }}
+        run: |
+          set -euo pipefail
+          AAR="$GITHUB_WORKSPACE/streaming-sdk-input/litertlm-android-0.16.0-sealed-audio-arm64.aar"
+          PROVENANCE="$GITHUB_WORKSPACE/streaming-sdk-input/litertlm-android-0.16.0-sealed-audio-arm64.provenance.json"
+          python3 scripts/streaming-sdk/validate_artifact.py --aar "$AAR" --provenance "$PROVENANCE" --source-receipt "$GITHUB_WORKSPACE/streaming-sdk-input/source-receipt.json" --expected-source-receipt-sha256 "$STREAMING_SOURCE_RECEIPT_SHA256" --expected-aar-sha256 "$STREAMING_AAR_SHA256" --expected-provenance-sha256 "$STREAMING_PROVENANCE_SHA256" --require-digests --check-workflow --producer-attempt "$STREAMING_PRODUCER_ATTEMPT" --app-ndk "$ANDROID_HOME/ndk/27.2.12479018"
+          bash scripts/ci_gradle.sh release -PlitertLmBridgeAar="$AAR" -PlitertLmBridgeProvenance="$PROVENANCE" -PlitertLmBridgeSha256="$STREAMING_AAR_SHA256" -PlitertLmBridgeProvenanceSha256="$STREAMING_PROVENANCE_SHA256" -PlitertLmBridgeProducerAttempt="$STREAMING_PRODUCER_ATTEMPT" testReleaseUnitTest assembleRelease assembleReleaseAndroidTest
+
+      - name: Upload release instrumentation APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-verification-test-apk
+          path: app/build/outputs/apk/androidTest/release/*.apk
+          if-no-files-found: error
+
+      - name: Retain JVM test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-release-unit-tests
+          path: |
+            app/build/test-results/testReleaseUnitTest/
+            app/build/reports/tests/testReleaseUnitTest/
+          if-no-files-found: warn
+
+      - name: Report APK size against build 705
+        run: |
+          python3 scripts/apk_size_report.py app/build/outputs/apk/release/app-release.apk --output artifact/size --baseline docs/measurements/build-705-apk-size.json
+          cat artifact/size/apk-size.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload APK size report
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-os-v2-apk-size
+          path: artifact/size/
+          if-no-files-found: error
+
+      - name: Verify ASR native packaging
+        run: python3 scripts/check_asr_apk.py app/build/outputs/apk/release/app-release.apk
+
+      - name: Verify Piper callback ABI and retired assets in APK
+        run: python3 scripts/check_tts_callback.py app/build/outputs/apk/release/app-release.apk
+
+      - name: Verify signed release APK
+        run: |
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          SDK_BUILD_TOOLS="${ANDROID_HOME}/build-tools"
+          APKSIGNER="$(find "$SDK_BUILD_TOOLS" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose "$APK"
+
+      - name: Upload release shrinker reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-os-v2-release-r8-reports
+          path: app/build/outputs/mapping/release/
+          if-no-files-found: error
 
       - name: Stage release APK
         run: |
           mkdir -p artifact
           cp app/build/outputs/apk/release/app-release.apk artifact/app-release.apk
+          printf '%s\n' \
+            'BUILD-STAGE NOTICE: these signed APKs were uploaded before the complete verification gates finished. This file records upload-time status, not final verification.' \
+            "Authoritative run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            'Final status: this exact run must have a passing jarvis-verification-receipt/receipt.json and every required job, including full-E2B quality and all Android sandbox profiles.' \
+            'A later successful verification receipt and published GitHub release from this run supersede this build-stage notice. Final release assets contain only the verified APKs.' \
+            > artifact/UNVERIFIED-CANDIDATE.txt
 
-      - name: Upload release APK artifact
+      - name: Build and verify compact APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ format('{0}/jarvis-release.keystore', runner.temp) }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+          ANDROID_VERSION_NAME: 0.1.0-build.${{ github.run_number }}
+          STREAMING_AAR_SHA256: ${{ needs.build-streaming-sdk.outputs.aar_sha256 }}
+          STREAMING_PROVENANCE_SHA256: ${{ needs.build-streaming-sdk.outputs.provenance_sha256 }}
+          STREAMING_SOURCE_RECEIPT_SHA256: ${{ needs.build-streaming-sdk.outputs.source_receipt_sha256 }}
+          STREAMING_PRODUCER_ATTEMPT: ${{ needs.build-streaming-sdk.outputs.producer_attempt }}
+        run: |
+          set -euo pipefail
+          AAR="$GITHUB_WORKSPACE/streaming-sdk-input/litertlm-android-0.16.0-sealed-audio-arm64.aar"
+          PROVENANCE="$GITHUB_WORKSPACE/streaming-sdk-input/litertlm-android-0.16.0-sealed-audio-arm64.provenance.json"
+          python3 scripts/streaming-sdk/validate_artifact.py --aar "$AAR" --provenance "$PROVENANCE" --source-receipt "$GITHUB_WORKSPACE/streaming-sdk-input/source-receipt.json" --expected-source-receipt-sha256 "$STREAMING_SOURCE_RECEIPT_SHA256" --expected-aar-sha256 "$STREAMING_AAR_SHA256" --expected-provenance-sha256 "$STREAMING_PROVENANCE_SHA256" --require-digests --check-workflow --producer-attempt "$STREAMING_PRODUCER_ATTEMPT" --app-ndk "$ANDROID_HOME/ndk/27.2.12479018"
+          bash scripts/ci_gradle.sh compact -PlitertLmBridgeAar="$AAR" -PlitertLmBridgeProvenance="$PROVENANCE" -PlitertLmBridgeSha256="$STREAMING_AAR_SHA256" -PlitertLmBridgeProvenanceSha256="$STREAMING_PROVENANCE_SHA256" -PlitertLmBridgeProducerAttempt="$STREAMING_PRODUCER_ATTEMPT" -PcompactApk=true assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk artifact/app-compact.apk
+          python3 scripts/check_compact_apk.py artifact/app-release.apk artifact/app-compact.apk
+          python3 scripts/check_asr_apk.py artifact/app-compact.apk
+          python3 scripts/check_tts_callback.py artifact/app-compact.apk
+          APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          "$APKSIGNER" verify --verbose artifact/app-compact.apk
+          python3 scripts/apk_size_report.py artifact/app-compact.apk --output artifact/compact-size --baseline docs/measurements/build-705-apk-size.json
+          cat artifact/compact-size/apk-size.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload compact APK size report
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-os-v2-compact-apk-size
+          path: artifact/compact-size/
+          if-no-files-found: error
+
+      - name: Verify final sampler bytes and notices
+        env:
+          STREAMING_PROVENANCE_SHA256: ${{ needs.build-streaming-sdk.outputs.provenance_sha256 }}
+        run: |
+          python3 scripts/streaming-sdk/verify_packaged_samplers.py \
+            --apk artifact/app-release.apk --apk artifact/app-compact.apk \
+            --provenance streaming-sdk-input/litertlm-android-0.16.0-sealed-audio-arm64.provenance.json \
+            --expected-provenance-sha256 "$STREAMING_PROVENANCE_SHA256" \
+            --out artifact/packaged-sampler-identity.json
+
+      - name: Retain final sampler identity
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-packaged-sampler-identity
+          path: artifact/packaged-sampler-identity.json
+          if-no-files-found: warn
+
+      - name: Verify final encoder assets and notices
+        run: |
+          python3 scripts/streaming-sdk/verify_packaged_encoder_assets.py \
+            --apk artifact/app-release.apk --apk artifact/app-compact.apk \
+            --check-workflow --out artifact/packaged-encoder-assets.json
+
+      - name: Retain final encoder asset identity
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-packaged-encoder-assets
+          path: artifact/packaged-encoder-assets.json
+          if-no-files-found: warn
+
+      - name: Upload unverified APK build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: jarvis-os-v2-release-apk
-          path: artifact/app-release.apk
+          path: |
+            artifact/*.apk
+            artifact/UNVERIFIED-CANDIDATE.txt
+            artifact/packaged-encoder-assets.json
+          if-no-files-found: error
+
+      - name: Retain SDK consumer provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-streaming-sdk-consumer
+          path: |
+            streaming-sdk-manifest.json
+            streaming-sdk-input/*.provenance.json
+            streaming-sdk-input/source-receipt.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Retain build performance diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-build-performance
+          path: |
+            artifact/build-performance/
+            build/reports/profile/
+            build/reports/kotlin-build/
+          if-no-files-found: warn
+
+
+  prepare-upgrade-baseline:
+    name: Prepare upgrade baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch last published user candidate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        # Audio PR2 is the current user distribution stream, including feature candidates.
+        # Package update independently verifies this baseline has the candidate signing identity.
+        run: python3 scripts/verification/previous_release.py --repository "$GITHUB_REPOSITORY" --tag-prefix 'audio-pr2-pr6-build.' --before-build "$GITHUB_RUN_NUMBER" --out previous-release
+      - name: Retain exact upgrade input
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-previous-release
+          path: previous-release/
+          retention-days: 14
+          if-no-files-found: error
+
+  verify-native-pages:
+    name: Verify native 16 KB compatibility
+    needs: build-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve exact APK artifact ID
+        id: artifacts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 scripts/verification/artifacts.py fetch --out artifact-manifest.json --repository "$GITHUB_REPOSITORY" --run-id "$GITHUB_RUN_ID"
+          python3 scripts/verification/artifacts.py select --manifest artifact-manifest.json --run-id "$GITHUB_RUN_ID" --head-sha "$EXPECTED_HEAD" --require 'jarvis-os-v2-release-apk=Build signed release APK' --require-success --github-output "$GITHUB_OUTPUT"
+      - name: Download exact APKs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/verification/artifacts.py download --manifest artifact-manifest.json --artifact-ids "${{ steps.artifacts.outputs.artifact_ids }}" --out inputs --layout flat
+      - name: Audit every packaged native library and APK alignment
+        run: python3 scripts/check_page_sizes.py inputs/app-release.apk inputs/app-compact.apk --out native-page-sizes --source-commit "$GITHUB_SHA"
+      - name: Retain native page-size evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-native-page-sizes
+          path: native-page-sizes/
+          retention-days: 14
+          if-no-files-found: warn
+
+  verify-recorded-audio:
+    name: Recorded speech recognition
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned real-model speech runtimes
+        run: python3 -m pip install 'numpy==2.2.6' 'sherpa-onnx==1.13.7' 'onnxruntime==1.23.2'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify weight-free Whisper QNN frontend and native contracts
+        run: |
+          python3 - <<'PYTHON'
+          import sys, zipfile
+          from pathlib import Path
+          sys.path.insert(0, 'scripts')
+          from build_sherpa import ORT_HOST, download
+          output = Path('qnn-host-inputs'); output.mkdir(exist_ok=True)
+          with zipfile.ZipFile(download(ORT_HOST, output)) as archive:
+              archive.extractall(output / 'ort')
+          PYTHON
+          python3 app/src/main/cpp/whisperqnn/tests/verify_frontend.py --receipt recorded-audio/whisper-qnn-frontend.json
+          python3 app/src/main/cpp/whisperqnn/tests/verify_decoder.py --ort-root qnn-host-inputs/ort --jni-include "$JAVA_HOME/include" --receipt recorded-audio/whisper-qnn-native.json
+      - name: Cache checksum-verified acoustic model inputs
+        uses: actions/cache@v4
+        with:
+          path: acoustic-models/
+          key: recorded-audio-models-v1-${{ hashFiles('scripts/check_recorded_audio.py') }}
+      - name: Recognize recorded phrase boundaries and quiet endings
+        run: python3 scripts/check_recorded_audio.py --models acoustic-models --out recorded-audio --source-commit "$GITHUB_SHA" --download-models
+      - name: Retain recorded-audio results including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-recorded-audio
+          path: recorded-audio/
+          retention-days: 14
+          if-no-files-found: warn
+
+  verify-release:
+    name: Verify signed release in Android sandbox
+    needs: [build-release, prepare-upgrade-baseline]
+    uses: ./.github/workflows/android-sandbox.yml
+
+  verification-receipt:
+    name: Consolidate exact-build verification evidence
+    if: always() && needs.build-release.result != 'skipped'
+    needs: [build-streaming-sdk, verify-streaming-quality, build-release, prepare-upgrade-baseline, verify-release, verify-native-pages, verify-recorded-audio]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve exact same-run evidence IDs
+        id: evidence
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          QUALITY_ARTIFACT_ID: ${{ needs.verify-streaming-quality.outputs.artifact_id }}
+          QUALITY_ARTIFACT_NAME: ${{ needs.verify-streaming-quality.outputs.artifact_name }}
+          STREAMING_PRODUCER_ATTEMPT: ${{ needs.build-streaming-sdk.outputs.producer_attempt }}
+          QUALITY_PRODUCER_ATTEMPT: ${{ needs.verify-streaming-quality.outputs.producer_attempt }}
+        run: |
+          python3 scripts/verification/artifacts.py fetch --out artifact-manifest.json --repository "$GITHUB_REPOSITORY" --run-id "$GITHUB_RUN_ID"
+          python3 scripts/streaming-sdk/producer_identity.py --manifest artifact-manifest.json --repository "$GITHUB_REPOSITORY" --run-id "$GITHUB_RUN_ID" --head-sha "$EXPECTED_HEAD" \
+            --kind quality --artifact-name "$QUALITY_ARTIFACT_NAME" --artifact-id "$QUALITY_ARTIFACT_ID" \
+            --producer-attempt "$QUALITY_PRODUCER_ATTEMPT" --current-attempt "$GITHUB_RUN_ATTEMPT"
+          python3 scripts/verification/profiles.py select --manifest artifact-manifest.json --run-id "$GITHUB_RUN_ID" --head-sha "$EXPECTED_HEAD" --require 'jarvis-release-unit-tests=Build signed release APK' --require 'jarvis-verification-test-apk=Build signed release APK' --require 'jarvis-os-v2-release-apk=Build signed release APK' --require 'jarvis-native-page-sizes=Verify native 16 KB compatibility' --require 'jarvis-recorded-audio=Recorded speech recognition' --require 'jarvis-previous-release=Prepare upgrade baseline' --require 'jarvis-streaming-sdk-consumer=Build signed release APK' --require "$QUALITY_ARTIFACT_NAME=Verify full-E2B native audio quality" --github-output "$GITHUB_OUTPUT"
+      - name: Download exact same-run evidence
+        if: steps.evidence.outcome == 'success'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/verification/artifacts.py download --manifest artifact-manifest.json --artifact-ids "${{ steps.evidence.outputs.artifact_ids }}" --out verification-inputs --layout named
+      - name: Verify artifact bytes and test evidence
+        env:
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          VERIFICATION_NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/verification/receipt.py --inputs verification-inputs --out verification-receipt
+      - name: Bind reviewed SDK and actual host-model evidence to release receipt
+        env:
+          STREAMING_AAR_SHA256: ${{ needs.build-streaming-sdk.outputs.aar_sha256 }}
+          STREAMING_PROVENANCE_SHA256: ${{ needs.build-streaming-sdk.outputs.provenance_sha256 }}
+          STREAMING_SOURCE_RECEIPT_SHA256: ${{ needs.build-streaming-sdk.outputs.source_receipt_sha256 }}
+          STREAMING_PRODUCER_ATTEMPT: ${{ needs.build-streaming-sdk.outputs.producer_attempt }}
+          QUALITY_PRODUCER_ATTEMPT: ${{ needs.verify-streaming-quality.outputs.producer_attempt }}
+          QUALITY_ARTIFACT_NAME: ${{ needs.verify-streaming-quality.outputs.artifact_name }}
+        run: |
+          python3 scripts/streaming-sdk/bind_release_receipt.py --inputs verification-inputs --out verification-receipt \
+            --quality-dir "verification-inputs/$QUALITY_ARTIFACT_NAME" --producer-attempt "$STREAMING_PRODUCER_ATTEMPT" \
+            --quality-producer-attempt "$QUALITY_PRODUCER_ATTEMPT" --expected-source-receipt-sha256 "$STREAMING_SOURCE_RECEIPT_SHA256" \
+            --expected-aar-sha256 "$STREAMING_AAR_SHA256" --expected-provenance-sha256 "$STREAMING_PROVENANCE_SHA256"
+      - name: Retain verification receipt even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-verification-receipt
+          path: verification-receipt/
+          retention-days: 14
           if-no-files-found: error
 
   publish:
     name: Publish signed release APK
-    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
-    needs: build-release
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    needs: [build-release, verify-streaming-quality, verify-release, verify-native-pages, verify-recorded-audio, verification-receipt]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     steps:
-      - name: Download release APK
-        uses: actions/download-artifact@v4
-        with:
-          name: jarvis-os-v2-release-apk
-          path: dist
+      - uses: actions/checkout@v4
+      - name: Resolve exact release APK ID
+        id: artifacts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 scripts/verification/artifacts.py fetch --out artifact-manifest.json --repository "$GITHUB_REPOSITORY" --run-id "$GITHUB_RUN_ID"
+          python3 scripts/verification/artifacts.py select --manifest artifact-manifest.json --run-id "$GITHUB_RUN_ID" --head-sha "$EXPECTED_HEAD" --require 'jarvis-os-v2-release-apk=Build signed release APK' --require-success --github-output "$GITHUB_OUTPUT"
+      - name: Download exact release APK
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/verification/artifacts.py download --manifest artifact-manifest.json --artifact-ids "${{ steps.artifacts.outputs.artifact_ids }}" --out dist --layout flat
 
       - name: Publish GitHub Release APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.1.0-build.${{ github.run_number }}
-          target_commitish: ${{ github.sha }}
-          name: Jarvis OS V2 test build ${{ github.run_number }}
+          tag_name: ${{ github.event_name == 'pull_request' && format('audio-pr2-pr{0}-build.{1}', github.event.pull_request.number, github.run_number) || format('v0.1.0-build.{0}', github.run_number) }}
+          target_commitish: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          name: Jarvis OS V2 ${{ github.head_ref || github.ref_name }} build ${{ github.run_number }}
           generate_release_notes: true
-          files: dist/app-release.apk
+          files: dist/*.apk
+
+  publish-memory-test:
+    name: Publish Memory OS test APK
+    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/memory-os-v2'
+    needs: [build-release, verify-streaming-quality, verify-release, verify-native-pages, verify-recorded-audio, verification-receipt]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve exact release APK ID
+        id: artifacts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 scripts/verification/artifacts.py fetch --out artifact-manifest.json --repository "$GITHUB_REPOSITORY" --run-id "$GITHUB_RUN_ID"
+          python3 scripts/verification/artifacts.py select --manifest artifact-manifest.json --run-id "$GITHUB_RUN_ID" --head-sha "$EXPECTED_HEAD" --require 'jarvis-os-v2-release-apk=Build signed release APK' --require-success --github-output "$GITHUB_OUTPUT"
+      - name: Download exact release APK
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/verification/artifacts.py download --manifest artifact-manifest.json --artifact-ids "${{ steps.artifacts.outputs.artifact_ids }}" --out dist --layout flat
+
+      - name: Publish GitHub Release APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: memory-os-v2-build.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Jarvis OS V2 Memory OS test build ${{ github.run_number }}
+          prerelease: true
+          generate_release_notes: false
+          body: |
+            Conversation reliability test build: bounded user evidence, contextual factual lookup, correction handling, shared text/voice draft guards, truthful memory capture acknowledgments, and supplied PDF references.
+            Source: ${{ github.sha }}
+            Verification: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Both signed APK variants passed JVM/native checks, API 30/API 35 journeys, and consolidated evidence.
+            Pending proposals require review; conversation evidence does not become approved memory automatically.
+            Relevant evidence is required for factual answers. General live business/promotion discovery remains unavailable.
+            Embeddings, automatic extraction, temporal graph, and incoming message adapters remain planned.
+            Real model inference, physical audio, and Fold 6 performance require phone testing.
+          files: dist/*.apk
 
   publish-pr-test:
     name: Publish permanent PR test APK
     if: github.event_name == 'push' && github.ref == 'refs/heads/PR1'
-    needs: build-pr
+    needs: [build-release, verify-streaming-quality, verify-release, verify-native-pages, verify-recorded-audio, verification-receipt]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     steps:
-      - name: Download debug APK
-        uses: actions/download-artifact@v4
-        with:
-          name: jarvis-os-v2-debug-apk
-          path: dist
+      - uses: actions/checkout@v4
+      - name: Resolve exact release APK ID
+        id: artifacts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 scripts/verification/artifacts.py fetch --out artifact-manifest.json --repository "$GITHUB_REPOSITORY" --run-id "$GITHUB_RUN_ID"
+          python3 scripts/verification/artifacts.py select --manifest artifact-manifest.json --run-id "$GITHUB_RUN_ID" --head-sha "$EXPECTED_HEAD" --require 'jarvis-os-v2-release-apk=Build signed release APK' --require-success --github-output "$GITHUB_OUTPUT"
+      - name: Download exact release APK
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/verification/artifacts.py download --manifest artifact-manifest.json --artifact-ids "${{ steps.artifacts.outputs.artifact_ids }}" --out dist --layout flat
 
       - name: Publish permanent PR test release
         uses: softprops/action-gh-release@v2
@@ -137,4 +780,4 @@ jobs:
           name: Jarvis OS V2 PR1 test build
           prerelease: true
           generate_release_notes: false
-          files: dist/app-debug.apk
+          files: dist/*.apk

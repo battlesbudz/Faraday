@@ -1,0 +1,47 @@
+name: Delete three explicitly approved branches
+on:
+  push:
+    branches: [feature-tools]
+    paths: ['.github/workflows/delete-three-approved-branches.yml']
+permissions:
+  contents: write
+jobs:
+  cleanup:
+    if: github.repository == 'battlesbudz/Jarvis-OS-V2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify code preservation and delete only three approved branches
+        shell: python
+        run: |
+          import json, os, subprocess
+          assert os.environ["GITHUB_REPOSITORY"] == "battlesbudz/Jarvis-OS-V2"
+          assert os.environ["GITHUB_REF"] == "refs/heads/feature-tools"
+          expected = {"feature/future-feature":"22f856d68f6d7450bf8c4e8de9452adb10c1a75d","feature/remove-function-gemma":"958168370e30a78a1dac9bfbc9ed51a240af849a","voice-pr2-direct-e2b-audio":"29b27838f195859ab8e32ebe1e3326af883eec6a"}
+          keep = ["main", "audio-pr2", "feature/memory-os-v2", "feature-tools"]
+          def git(*args):
+              return subprocess.check_output(["git", *args], text=True).strip()
+          def refs():
+              return {line.split()[1].removeprefix("refs/heads/"): line.split()[0] for line in git("ls-remote", "--heads", "origin").splitlines()}
+          before = refs()
+          assert set(before) == set(keep) | set(expected)
+          for branch, sha in expected.items():
+              assert before[branch] == sha, "Branch moved: " + branch
+          assert expected["feature/remove-function-gemma"] == before["feature/memory-os-v2"]
+          for target in keep[1:]:
+              subprocess.run(["git", "merge-base", "--is-ancestor", expected["voice-pr2-direct-e2b-audio"], "origin/" + target], check=True)
+              subprocess.run(["git", "merge-base", "--is-ancestor", "21afb4dc", "origin/" + target], check=True)
+          assert git("diff", "--name-only", expected["feature/future-feature"], "21afb4dc") == "AGENTS.md"
+          leases = ["--force-with-lease=refs/heads/" + b + ":" + sha for b, sha in expected.items()]
+          deletions = [":refs/heads/" + b for b in expected]
+          subprocess.run(["git", "push", "--dry-run", "--atomic", *leases, "origin", *deletions], check=True)
+          subprocess.run(["git", "push", "--atomic", *leases, "origin", *deletions], check=True)
+          after = refs()
+          assert after == {b: sha for b, sha in before.items() if b in keep}
+          print(json.dumps({"deleted": expected, "remaining": after}, indent=2))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("Deleted the three explicitly approved branches after checking memory identity, direct-audio ancestry and copied model-selection code. All four retained branch refs unchanged.\n")
+          

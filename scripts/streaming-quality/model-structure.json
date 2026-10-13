@@ -1,0 +1,568 @@
+{
+  "stateful": {
+    "bytes": 103668112,
+    "sha256": "d5c50b140ace235717e6713d287e73ccfa4f32d0090e1cceb9d00714da850a1b",
+    "signatures": [
+      {
+        "key": "audio_stream_step",
+        "inputs": [
+          {
+            "index": 0,
+            "tensor_index": 0,
+            "name": "mel",
+            "dtype": "float32",
+            "shape": [
+              1,
+              48,
+              128
+            ],
+            "bytes": 24576
+          },
+          {
+            "index": 1,
+            "tensor_index": 1,
+            "name": "valid_mel_frames",
+            "dtype": "int32",
+            "shape": [
+              1
+            ],
+            "bytes": 4
+          },
+          {
+            "index": 2,
+            "tensor_index": 2,
+            "name": "history_tokens",
+            "dtype": "int32",
+            "shape": [
+              1
+            ],
+            "bytes": 4
+          },
+          {
+            "index": 3,
+            "tensor_index": 3,
+            "name": "prev_mel",
+            "dtype": "float32",
+            "shape": [
+              1,
+              4,
+              128
+            ],
+            "bytes": 2048
+          },
+          {
+            "index": 4,
+            "tensor_index": 4,
+            "name": "prev_layer_00",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 5,
+            "tensor_index": 5,
+            "name": "prev_layer_01",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 6,
+            "tensor_index": 6,
+            "name": "prev_layer_02",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 7,
+            "tensor_index": 7,
+            "name": "prev_layer_03",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 8,
+            "tensor_index": 8,
+            "name": "prev_layer_04",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 9,
+            "tensor_index": 9,
+            "name": "prev_layer_05",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 10,
+            "tensor_index": 10,
+            "name": "prev_layer_06",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 11,
+            "tensor_index": 11,
+            "name": "prev_layer_07",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 12,
+            "tensor_index": 12,
+            "name": "prev_layer_08",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 13,
+            "tensor_index": 13,
+            "name": "prev_layer_09",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 14,
+            "tensor_index": 14,
+            "name": "prev_layer_10",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 15,
+            "tensor_index": 15,
+            "name": "prev_layer_11",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          }
+        ],
+        "outputs": [
+          {
+            "index": 0,
+            "tensor_index": 3977,
+            "name": "soft_tokens",
+            "dtype": "float32",
+            "shape": [
+              1,
+              12,
+              1536
+            ],
+            "bytes": 73728
+          },
+          {
+            "index": 1,
+            "tensor_index": 3959,
+            "name": "encoder_features",
+            "dtype": "float32",
+            "shape": [
+              1,
+              12,
+              1536
+            ],
+            "bytes": 73728
+          },
+          {
+            "index": 2,
+            "tensor_index": 3961,
+            "name": "token_mask",
+            "dtype": "bool",
+            "shape": [
+              1,
+              12
+            ],
+            "bytes": 12
+          },
+          {
+            "index": 3,
+            "tensor_index": 25,
+            "name": "token_count",
+            "dtype": "int32",
+            "shape": [
+              1
+            ],
+            "bytes": 4
+          },
+          {
+            "index": 4,
+            "tensor_index": 27,
+            "name": "next_history_tokens",
+            "dtype": "int32",
+            "shape": [
+              1
+            ],
+            "bytes": 4
+          },
+          {
+            "index": 5,
+            "tensor_index": 138,
+            "name": "next_mel",
+            "dtype": "float32",
+            "shape": [
+              1,
+              4,
+              128
+            ],
+            "bytes": 2048
+          },
+          {
+            "index": 6,
+            "tensor_index": 467,
+            "name": "next_layer_00",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 7,
+            "tensor_index": 781,
+            "name": "next_layer_01",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 8,
+            "tensor_index": 1095,
+            "name": "next_layer_02",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 9,
+            "tensor_index": 1409,
+            "name": "next_layer_03",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 10,
+            "tensor_index": 1723,
+            "name": "next_layer_04",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 11,
+            "tensor_index": 2037,
+            "name": "next_layer_05",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 12,
+            "tensor_index": 2351,
+            "name": "next_layer_06",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 13,
+            "tensor_index": 2665,
+            "name": "next_layer_07",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 14,
+            "tensor_index": 2979,
+            "name": "next_layer_08",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 15,
+            "tensor_index": 3293,
+            "name": "next_layer_09",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 16,
+            "tensor_index": 3607,
+            "name": "next_layer_10",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          },
+          {
+            "index": 17,
+            "tensor_index": 3921,
+            "name": "next_layer_11",
+            "dtype": "float32",
+            "shape": [
+              1,
+              24,
+              1024
+            ],
+            "bytes": 98304
+          }
+        ]
+      },
+      {
+        "key": "eoa",
+        "inputs": [],
+        "outputs": [
+          {
+            "index": 0,
+            "tensor_index": 0,
+            "name": "eoa_embedding",
+            "dtype": "float32",
+            "shape": [
+              1,
+              1,
+              1536
+            ],
+            "bytes": 6144
+          }
+        ]
+      }
+    ]
+  },
+  "static": {
+    "bytes": 94052280,
+    "sha256": "eca6f5f0eae4997e9f2a74ee120a5eb7f9ee4f687196777e631b650d91a2ccfc",
+    "signatures": [
+      {
+        "key": "serving_default",
+        "inputs": [
+          {
+            "index": 0,
+            "tensor_index": 0,
+            "name": "mask",
+            "dtype": "bool",
+            "shape": [
+              1,
+              1,
+              816
+            ],
+            "bytes": 816
+          },
+          {
+            "index": 1,
+            "tensor_index": 1,
+            "name": "src_inputs",
+            "dtype": "float32",
+            "shape": [
+              1,
+              1,
+              816,
+              128
+            ],
+            "bytes": 417792
+          }
+        ],
+        "outputs": [
+          {
+            "index": 0,
+            "tensor_index": 2529,
+            "name": "features",
+            "dtype": "float32",
+            "shape": [
+              1,
+              204,
+              1536
+            ],
+            "bytes": 1253376
+          },
+          {
+            "index": 1,
+            "tensor_index": 296,
+            "name": "mask",
+            "dtype": "bool",
+            "shape": [
+              1,
+              204
+            ],
+            "bytes": 204
+          }
+        ]
+      }
+    ],
+    "source_offset": 1393082368
+  },
+  "adapter": {
+    "bytes": 9441244,
+    "sha256": "147e68dc8950b08024f5b5c4fb05673c264975005d39b24a377bd4d3ca3e758b",
+    "signatures": [
+      {
+        "key": "audio_adapter",
+        "inputs": [
+          {
+            "index": 0,
+            "tensor_index": 1,
+            "name": "features",
+            "dtype": "float32",
+            "shape": [
+              1,
+              204,
+              1536
+            ],
+            "bytes": 1253376
+          },
+          {
+            "index": 1,
+            "tensor_index": 0,
+            "name": "mask",
+            "dtype": "bool",
+            "shape": [
+              1,
+              204
+            ],
+            "bytes": 204
+          }
+        ],
+        "outputs": [
+          {
+            "index": 0,
+            "tensor_index": 17,
+            "name": "output_0",
+            "dtype": "float32",
+            "shape": [
+              1,
+              204,
+              1536
+            ],
+            "bytes": 1253376
+          }
+        ]
+      }
+    ],
+    "source_offset": 1487142912
+  },
+  "eoa": {
+    "bytes": 6772,
+    "sha256": "04c444c49f690a12f42cda1505005162917eea4698971dd59cc143edb5bfa81f",
+    "signatures": [
+      {
+        "key": "eoa",
+        "inputs": [],
+        "outputs": [
+          {
+            "index": 0,
+            "tensor_index": 0,
+            "name": "eoa_embedding",
+            "dtype": "float32",
+            "shape": [
+              1,
+              1,
+              1536
+            ],
+            "bytes": 6144
+          }
+        ]
+      }
+    ],
+    "source_offset": 1496596480
+  }
+}

@@ -1,7 +1,19 @@
 package com.battlesbudz.jarvis.v2.ai
 
+import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkOutcome
+import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkPurpose
+import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkSubmission
+import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkWarmState
 import com.google.ai.edge.litertlm.*
-import kotlinx.coroutines.flow.collect
+import com.battlesbudz.jarvis.v2.work.ProcessConversationAdmission
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import android.os.Looper
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.Closeable
 import java.util.concurrent.atomic.AtomicBoolean
@@ -19,108 +31,280 @@ class LiteRtLmEngine(
     cacheDir: String,
     useGpu: Boolean,
     private val tools: List<OpenApiTool> = emptyList(),
-    private val visionEnabled: Boolean = false
-) : LocalModelEngine, Closeable {
-    private val engine = Engine(
-        EngineConfig(
-            modelPath = modelPath,
-            cacheDir = cacheDir,
-            backend = if (useGpu) Backend.GPU() else Backend.CPU(),
-            visionBackend = if (visionEnabled) Backend.GPU() else null,
-            maxNumImages = if (visionEnabled) 1 else null
-        )
-    )
-    private var conversation: com.google.ai.edge.litertlm.Conversation? = null
-    private val closed = AtomicBoolean(false)
-
-    private fun createConversation() =
-        if (tools.isEmpty()) {
-            engine.createConversation()
-        } else {
-            engine.createConversation(
-                ConversationConfig(
-                    tools = tools.map { tool(it) },
-                    automaticToolCalling = false
-                )
-            )
+    val visionEnabled: Boolean = false,
+    val audioEnabled: Boolean = false,
+    private val speculativeDecoding: Boolean? = null
+) : LocalModelEngine, Closeable, ToolCallEngine {
+    private companion object {
+        val initializationLock = Any()
+        val callbackDepth = ThreadLocal.withInitial { 0 }
+        val quarantineLock = Any()
+        val retainedNativeEngines = mutableSetOf<LiteRtLmEngine>()
+        var quarantineAdmissionRetained = false
+        fun checkNativeWorkerThread() {
+            check(callbackDepth.get() == 0) { "Native lifecycle control is forbidden in model callbacks" }
+            check(Looper.myLooper() != Looper.getMainLooper()) { "Native lifecycle control requires a worker thread" }
         }
-
-    suspend fun initialize() {
-        engine.initialize()
-        conversation = createConversation()
+        inline fun nativeCallback(block: () -> Unit) {
+            callbackDepth.set(callbackDepth.get() + 1)
+            try { block() } finally { callbackDepth.set(callbackDepth.get() - 1) }
+        }
     }
-
-    suspend fun resetConversation() {
-        conversation?.close()
-        conversation = createConversation()
+    private val modelSpec = ModelCatalog.resolve(modelId)
+    @OptIn(ExperimentalApi::class)
+    private val engine = synchronized(initializationLock) {
+        // The SDK reads this global flag while constructing the native engine.
+        // Keep it scoped to our constructor and restore it on every exit.
+        val previousBenchmark = ExperimentalFlags.enableBenchmark
+        try {
+            ExperimentalFlags.enableBenchmark = true
+            Engine(EngineConfig(
+                modelPath = modelPath,
+                cacheDir = java.io.File(cacheDir, modelId).apply { mkdirs() }.path,
+                backend = if (useGpu) Backend.GPU() else Backend.CPU(),
+                visionBackend = if (visionEnabled) Backend.GPU() else null,
+                audioBackend = if (audioEnabled) Backend.CPU() else null,
+                maxNumImages = if (visionEnabled) 1 else null,
+                maxNumTokens = modelSpec.contextTokens
+            ))
+        } finally { ExperimentalFlags.enableBenchmark = previousBenchmark }
     }
+    private val lifecycle = CheckedConversationLifecycle(
+        createConversation = ::createConversation,
+        cancelConversation = { it.cancelProcess() },
+        awaitIdle = { it.awaitIdle() },
+        closeConversation = { it.close() },
+        closeEngine = { if (engine.isInitialized()) engine.close() },
+        checkWorkerThread = ::checkNativeWorkerThread,
+        onQuarantined = { retainProcessQuarantine() }
+    )
 
     /**
-     * Requests a structured FunctionGemma tool call without allowing the
-     * runtime to execute it. Kotlin validates and executes the typed action.
+     * Ordinary text jobs release their admission count in invokeOnCompletion too. Keep one
+     * additional process reservation and the actual Engine strongly retained before that can
+     * happen. This safety latch deliberately lasts until process exit, including after an
+     * explicit disposal retry; it never permits a new inference or model-file replacement.
      */
-    suspend fun generateToolCalls(prompt: String): List<ToolCall> {
-        val activeConversation = requireNotNull(conversation) {
-            "LiteRT-LM engine must be initialized before generation."
+    private fun retainProcessQuarantine() = synchronized(quarantineLock) {
+        if (!quarantineAdmissionRetained) {
+            ProcessConversationAdmission.activeJobs.incrementAndGet()
+            quarantineAdmissionRetained = true
         }
-        val routingPrompt = """
-            You are a model that can do function calling with the following functions.
-            Select a function when the user's request requires a phone action.
-            Return a structured function call instead of a natural-language answer.
-            
-            User request:
-            $prompt
-        """.trimIndent()
-        val response = activeConversation.sendMessage(routingPrompt)
-        val structuredCalls = response.toolCalls.map {
-            ToolCall(name = it.name, arguments = it.arguments.toString())
-        }
-        return structuredCalls.ifEmpty { parseRawToolCalls(response.toString()) }
+        retainedNativeEngines.add(this)
+        Unit
     }
 
-    private fun parseRawToolCalls(text: String): List<ToolCall> {
-        val callPattern = Regex(
-            """(?s)(?:<\|)?tool_call>\s*call:([A-Za-z0-9_.:-]+)\s*\{(.*?)\}(?:<\|tool_call\|>)?"""
-        )
-        val functionPattern = Regex(
-            """(?s)<start_function_call>\s*call:([A-Za-z0-9_.:-]+)\s*\{(.*?)\}<end_function_call>"""
-        )
-        val argumentPattern = Regex(
-            """([A-Za-z_][A-Za-z0-9_]*):\s*(?:<escape>(.*?)<escape>|"([^"]*)"|([^,}]+))"""
-        )
-        return (callPattern.findAll(text).asSequence() + functionPattern.findAll(text).asSequence())
-            .mapNotNull { match ->
-                val rawName = match.groupValues[1].substringAfterLast(":").trim()
-                if (rawName.isBlank()) return@mapNotNull null
-                val arguments = JSONObject()
-                argumentPattern.findAll(match.groupValues[2]).forEach { argument ->
-                    val value = argument.groupValues.drop(2).firstOrNull { it.isNotBlank() }
-                        ?.trim().orEmpty()
-                    arguments.put(argument.groupValues[1], value)
-                }
-                ToolCall(rawName, arguments.toString())
+    /** A terminal callback is never proof that the model lease can be released. */
+    val nativeResourcesSafeToRelease: Boolean get() = lifecycle.safeToRelease
+    val isNativeQuarantined: Boolean get() = lifecycle.isQuarantined
+    val requiresConfirmedHistoryRebuild: Boolean get() = lifecycle.requiresConfirmedHistoryRebuild
+
+    /** Reports actual submissions, including incremental input, retries and recognition fallback. */
+    var onPromptSubmitted: (String, Int) -> Unit = { _, _ -> }
+    /** Native submission/raw-callback timing; intentionally carries no generated text. */
+    var onInferenceProgress: (InferenceProgress) -> Unit = {}
+    /** Classification and text-free completion observer; copied before every native submission. */
+    var benchmarkPurpose: PipelineBenchmarkPurpose = PipelineBenchmarkPurpose.UNKNOWN
+    var onBenchmarkSubmission: (PipelineBenchmarkSubmission) -> Unit = {}
+    private val benchmarkNativeWorkStarted = AtomicBoolean(false)
+    private var benchmarkInitializationMs: Long? = null
+    private fun takeBenchmarkInitializationMs(): Long? = synchronized(this) {
+        benchmarkInitializationMs.also { benchmarkInitializationMs = null }
+    }
+
+    private var nativeSession = 0L
+    private var nativeSubmissions = 0
+    fun inputContextDescription(): String =
+        "nativeSession=$nativeSession nativePriorSubmissions=$nativeSubmissions toolsEnabled=$toolsEnabled " +
+            "fixedVoicePreface=${if (fixedVoicePreface) GemmaVoicePreface.POLICY else "none"} " +
+            "systemInstructionChars=${if (fixedVoicePreface) GemmaVoicePreface.instructions.length else 0}"
+
+    internal fun createVoicePrefillSession(): com.battlesbudz.jarvis.v2.voice.VoicePrefillSession {
+        checkNativeWorkerThread()
+        val purpose = benchmarkPurpose
+        val sink = onBenchmarkSubmission
+        val progressSink = onInferenceProgress
+        if (!modelSpec.incrementalGemmaInput) {
+            return TemplateVoiceSession { prompt, onToken ->
+                setToolsEnabled(false)
+                resetConversation()
+                onPromptSubmitted(prompt, 0)
+                generateWithContents(Contents.of(prompt), onToken, prompt.length, "text", purpose = purpose, sink = sink)
             }
-            .toList()
+        }
+        // Voice owns this engine exclusively. Do not allocate a second idle KV cache.
+        lifecycle.resetForConfirmedHistory()
+        val child = lifecycle.createChild({ engine.createSession() }) { it.awaitIdle(); it.close() }
+        val native = LiteRtNativeVoiceSession(child.child,
+            checkWorkerThread = ::checkNativeWorkerThread,
+            runCallback = { block -> nativeCallback(block) })
+        return LiteRtVoicePrefillSession(
+            session = object : VoiceNativeSession by native {
+                override fun awaitIdle() {
+                    try { native.awaitIdle() }
+                    catch (error: Throwable) { lifecycle.quarantineChild(child, error); throw error }
+                }
+                override fun close() = lifecycle.closeChild(child)
+            },
+            benchmarkModelId = modelId,
+            benchmarkPurpose = purpose,
+            benchmarkSink = sink,
+            benchmarkInitializationMs = takeBenchmarkInitializationMs(),
+            onBenchmarkNativeWorkStarted = { benchmarkNativeWorkStarted.set(true) },
+            onInferenceProgress = progressSink
+        )
+    }
+
+    private var fixedVoicePreface = false
+    internal val hasFixedVoicePreface: Boolean get() = fixedVoicePreface
+    private var toolsEnabled = false
+
+    /** Synchronous SDK prefill; caller serializes encoder compute behind this operation. */
+    internal suspend fun prepareVoiceConversation(isCurrent: () -> Boolean): Boolean {
+        checkNativeWorkerThread()
+        currentCoroutineContext().ensureActive()
+        check(modelSpec.incrementalGemmaInput && audioEnabled && !toolsEnabled)
+        if (!fixedVoicePreface) { resetConversation(); fixedVoicePreface = true }
+        return try {
+            val prepared = lifecycle.prepareConversation(isCurrent)
+            currentCoroutineContext().ensureActive()
+            if (!isCurrent()) { resetConversation(); false } else prepared
+        } catch (cancelled: CancellationException) {
+            resetConversation()
+            throw cancelled
+        }
+    }
+
+    /** Never preserve a used history merely to save preparation time. */
+    internal suspend fun resetForVoiceSpeculation() {
+        if (!lifecycle.hasUnusedPreparedConversation) resetConversation()
+    }
+
+    /** Called by the session owner before deciding whether to seed confirmed history. */
+    internal suspend fun prepareOrdinaryConversation(): Boolean {
+        if (!fixedVoicePreface) return false
+        resetConversation()
+        return true
+    }
+
+    private fun ordinaryPrompt(prompt: String): String {
+        check(!fixedVoicePreface) { "Ordinary input mode must be prepared before prompt assembly" }
+        return prompt
+    }
+
+    private suspend fun audioPrompt(prompt: String): String {
+        val dynamic = if (modelSpec.incrementalGemmaInput && !toolsEnabled) GemmaVoicePreface.userText(prompt) else null
+        val requested = dynamic != null
+        if (fixedVoicePreface != requested) {
+            check(!lifecycle.hasConversationHistory) { "Audio input mode change requires confirmed-history reset before prompt assembly" }
+            resetConversation()
+            fixedVoicePreface = requested
+        }
+        return dynamic ?: prompt
+    }
+
+    override suspend fun setToolsEnabled(enabled: Boolean): Boolean {
+        if (toolsEnabled == enabled && !(enabled && fixedVoicePreface)) return false
+        resetConversation()
+        if (enabled) fixedVoicePreface = false
+        toolsEnabled = enabled
+        return true
+    }
+
+    private fun createConversation() = engine.createConversation(
+        modelConversationConfig(modelSpec, tools, toolsEnabled, fixedVoicePreface)
+    )
+
+    @OptIn(ExperimentalApi::class)
+    override suspend fun initialize() {
+        currentCoroutineContext().ensureActive()
+        val initializationBeganAt = System.nanoTime()
+        lifecycle.initialize {
+            // initialize(), rather than Engine's constructor, reads this process-global flag.
+            synchronized(initializationLock) {
+                val previous = ExperimentalFlags.enableSpeculativeDecoding
+                try {
+                    ExperimentalFlags.enableSpeculativeDecoding = speculativeDecoding
+                    engine.initialize()
+                } finally { ExperimentalFlags.enableSpeculativeDecoding = previous }
+            }
+        }
+        benchmarkInitializationMs = (System.nanoTime() - initializationBeganAt) / 1_000_000
+    }
+
+    /** The next prompt must be rebuilt from confirmed history and actual tool receipts. */
+    override suspend fun resetConversation() = withContext(NonCancellable) {
+        lifecycle.resetForConfirmedHistory()
+        fixedVoicePreface = false
+        nativeSession++
+        nativeSubmissions = 0
     }
 
     override suspend fun generate(
         prompt: String,
         onToken: (String) -> Unit
-    ): GenerationResult = generateWithContents(Contents.of(prompt), onToken)
+    ): GenerationResult {
+        val userPrompt = ordinaryPrompt(prompt)
+        onPromptSubmitted(userPrompt, 0)
+        return generateWithContents(Contents.of(userPrompt), onToken, userPrompt.length, "text")
+    }
 
     suspend fun generate(
         prompt: String,
         imageBytes: ByteArray,
         onToken: (String) -> Unit
-    ): GenerationResult = generateWithContents(
-        Contents.of(Content.ImageBytes(imageBytes), Content.Text(prompt)),
-        onToken
-    )
+    ): GenerationResult {
+        require(visionEnabled && modelSpec.supportsVision) { "$modelId does not support image input. Select a vision model." }
+        val userPrompt = ordinaryPrompt(prompt)
+        onPromptSubmitted(userPrompt, 0)
+        return generateWithContents(Contents.of(Content.ImageBytes(imageBytes), Content.Text(userPrompt)), onToken,
+            userPrompt.length, "image_text", imageBytes = imageBytes.size)
+    }
+
+    /**
+     * Sends audio directly to the multimodal Gemma conversation.
+     * The byte array should contain a supported audio file, preferably a
+     * 16 kHz mono WAV for predictable on-device preprocessing.
+     */
+    suspend fun generateAudio(
+        prompt: String,
+        audioBytes: ByteArray,
+        onToken: (String) -> Unit
+    ): GenerationResult {
+        require(audioEnabled && modelSpec.supportsAudio) { "$modelId requires Whisper for speech recognition." }
+        val userPrompt = audioPrompt(prompt)
+        onPromptSubmitted(userPrompt, audioBytes.size)
+        return generateWithContents(audioMessageContents(userPrompt, audioBytes), onToken,
+            userPrompt.length, "audio_text", audioBytes = audioBytes.size)
+    }
+
+    /** Consume only a completed, fenced capture; SDK validation also forbids automatic tools. */
+    suspend fun generateSealedAudio(
+        prompt: String,
+        artifact: Content.SealedAudioEmbeddings,
+        onToken: (String) -> Unit,
+        maxPendingCallbacks: Int = Channel.UNLIMITED
+    ): GenerationResult {
+        require(audioEnabled && modelSpec.supportsAudio) { "$modelId does not support native audio input." }
+        val pcmBytes = artifact.pcmSampleCount * 2
+        val userPrompt = audioPrompt(prompt)
+        onPromptSubmitted(userPrompt, pcmBytes)
+        return generateWithContents(Contents.of(Content.Text(userPrompt), artifact), onToken,
+            userPrompt.length, "sealed_audio_text", audioBytes = pcmBytes, maxPendingCallbacks = maxPendingCallbacks)
+    }
 
     private suspend fun generateWithContents(
         contents: Contents,
-        onToken: (String) -> Unit
-    ): GenerationResult = generateWithMessage(Message.user(contents), onToken)
+        onToken: (String) -> Unit,
+        promptChars: Int,
+        mode: String,
+        audioBytes: Int = 0,
+        imageBytes: Int = 0,
+        purpose: PipelineBenchmarkPurpose = benchmarkPurpose,
+        sink: (PipelineBenchmarkSubmission) -> Unit = onBenchmarkSubmission,
+        maxPendingCallbacks: Int = Channel.UNLIMITED
+    ): GenerationResult = generateWithMessage(Message.user(contents), onToken,
+        promptChars, mode, audioBytes, imageBytes, purpose, sink, maxPendingCallbacks)
 
     suspend fun sendToolResult(
         call: ToolCall,
@@ -128,49 +312,180 @@ class LiteRtLmEngine(
         onToken: (String) -> Unit
     ): GenerationResult = generateWithMessage(
         Message.tool(Contents.of(Content.ToolResponse(call.name, resultMessage))),
-        onToken
+        onToken, resultMessage.length, "tool_response", purpose = PipelineBenchmarkPurpose.TOOL
+    )
+
+    /** Keep a batch in one native tool message so no call/result is discarded. */
+    suspend fun sendToolResults(
+        results: List<Pair<ToolCall, String>>,
+        onToken: (String) -> Unit
+    ): GenerationResult = generateWithMessage(
+        Message.tool(Contents.of(*results.map { Content.ToolResponse(it.first.name, it.second) }.toTypedArray())),
+        onToken, results.sumOf { it.second.length }, "tool_response", purpose = PipelineBenchmarkPurpose.TOOL
     )
 
     private suspend fun generateWithMessage(
         message: Message,
-        onToken: (String) -> Unit
+        onToken: (String) -> Unit,
+        promptChars: Int,
+        mode: String,
+        audioBytes: Int = 0,
+        imageBytes: Int = 0,
+        purpose: PipelineBenchmarkPurpose = benchmarkPurpose,
+        sink: (PipelineBenchmarkSubmission) -> Unit = onBenchmarkSubmission,
+        maxPendingCallbacks: Int = Channel.UNLIMITED
     ): GenerationResult {
-        val activeConversation = requireNotNull(conversation) {
-            "LiteRT-LM engine must be initialized before generation."
-        }
+        require(maxPendingCallbacks == Channel.UNLIMITED || maxPendingCallbacks in 1..128)
+        checkNativeWorkerThread()
+        currentCoroutineContext().ensureActive()
         val startedAt = System.nanoTime()
+        val progressSink = onInferenceProgress
+        val benchmark = NativeInferenceBenchmark(modelId, purpose,
+            if (benchmarkNativeWorkStarted.compareAndSet(false, true)) PipelineBenchmarkWarmState.COLD else PipelineBenchmarkWarmState.WARM,
+            mode, audioBytes, imageBytes, takeBenchmarkInitializationMs(), sink)
         var firstTokenAt: Long? = null
         val output = StringBuilder()
         val toolCalls = mutableListOf<ToolCall>()
+        var streamEvents = 0
+        val firstCallbackAt = java.util.concurrent.atomic.AtomicLong()
+        val firstRawTextReported = java.util.concurrent.atomic.AtomicBoolean(false)
+        var nativeSubmitMs: Long? = null
+        var benchmarkOutcome = PipelineBenchmarkOutcome.ERROR
+        var benchmarkError: Throwable? = null
+        var nativeTokens: NativeTokenTelemetry? = null
 
-        activeConversation.sendMessageAsync(message).collect { response ->
-            response.toolCalls.forEach {
-                toolCalls += ToolCall(it.name, JSONObject(it.arguments).toString())
+        val responses = Channel<Message>(maxPendingCallbacks)
+        val preparationStartedAt = System.nanoTime()
+        val wasEarlyPrepared = lifecycle.hasUnusedPreparedConversation
+        val nativeTurn = lifecycle.beginTurn()
+        benchmark.measurement.conversationReady(preparationStartedAt, wasEarlyPrepared)
+        val activeConversation = nativeTurn.conversation
+        val ownerJob = currentCoroutineContext()[Job]
+        nativeSubmissions++
+        var completed = false
+        try {
+            try {
+            currentCoroutineContext().ensureActive()
+            val submittedAt = System.nanoTime() / 1_000_000
+            progressSink(InferenceProgress(submittedAtMs = submittedAt))
+            val nativeSubmitBeganAt = System.nanoTime()
+            benchmark.measurement.submissionStarted(nativeSubmitBeganAt)
+            try { activeConversation.sendMessageAsync(message, object : MessageCallback {
+                override fun onMessage(message: Message) = nativeCallback {
+                    val hasText = message.toString().isNotEmpty()
+                    val callbackAt = benchmark.measurement.callback(hasText)
+                    firstCallbackAt.compareAndSet(0L, callbackAt)
+                    if (hasText && firstRawTextReported.compareAndSet(false, true))
+                        progressSink(InferenceProgress(firstRawTokenAtMs = callbackAt / 1_000_000))
+                    if (responses.trySend(message).isFailure)
+                        responses.close(IllegalStateException("native_response_queue_capacity"))
+                }
+                override fun onDone() = nativeCallback {
+                    try { benchmark.measurement.terminal() } finally { responses.close() }
+                }
+                override fun onError(throwable: Throwable) = nativeCallback {
+                    try { benchmark.measurement.terminal() } finally { responses.close(throwable) }
+                }
+            }) } finally {
+                benchmark.measurement.submitted(nativeSubmitBeganAt)
+                nativeSubmitMs = (System.nanoTime() - nativeSubmitBeganAt) / 1_000_000
             }
-            val messageText = response.toString()
-            if (messageText.isNotEmpty()) {
-                firstTokenAt = firstTokenAt ?: System.nanoTime()
-                output.append(messageText)
-                onToken(messageText)
+            } catch (error: Throwable) {
+                benchmark.measurement.terminal()
+                throw error
+            }
+            for (response in responses) {
+                val messageText = response.toString()
+                benchmark.measurement.consumed(messageText.isNotEmpty())
+                response.toolCalls.forEach {
+                    toolCalls += ToolCall(it.name, JSONObject(it.arguments).toString())
+                }
+                if (messageText.isNotEmpty()) {
+                    benchmark.measurement.visibleText()
+                    firstTokenAt = firstTokenAt ?: System.nanoTime()
+                    streamEvents++
+                    output.append(messageText)
+                    onToken(messageText)
+                }
+            }
+            benchmark.measurement.consumerDrained()
+            completed = true
+        } catch (error: Throwable) {
+            benchmarkError = error
+            benchmarkOutcome = if (error is CancellationException) PipelineBenchmarkOutcome.CANCELLED else PipelineBenchmarkOutcome.ERROR
+            throw error
+        } finally {
+            try {
+                // This blocking SDK call includes the last native callback returning. Never
+                // replace it with a callback latch, coroutine timeout, or unchecked destructor.
+                val accepted = withContext(NonCancellable) {
+                    lifecycle.finishTurn(nativeTurn,
+                        successful = { completed && ownerJob?.isActive != false },
+                        onDrained = { nativeTokens = readNativeTelemetry(it) })
+                }
+                if (accepted) benchmarkOutcome = PipelineBenchmarkOutcome.COMPLETE
+                else if (benchmarkError == null) {
+                    throw CancellationException("Native turn cancelled while draining")
+                }
+            } catch (cleanupError: Throwable) {
+                if (benchmarkError != null) {
+                    if (cleanupError !== benchmarkError) benchmarkError.addSuppressed(cleanupError)
+                } else {
+                    benchmarkError = cleanupError
+                    benchmarkOutcome = if (cleanupError is CancellationException)
+                        PipelineBenchmarkOutcome.CANCELLED else PipelineBenchmarkOutcome.ERROR
+                    throw cleanupError
+                }
+            } finally {
+                responses.cancel()
+                benchmark.finish(benchmarkOutcome, output.length, promptChars, streamEvents, error = benchmarkError,
+                    nativeTokens = nativeTokens)
             }
         }
 
+        val finishedAt = System.nanoTime()
         val firstTokenMs = firstTokenAt?.let { (it - startedAt) / 1_000_000 } ?: -1L
+        val totalMs = (finishedAt - startedAt) / 1_000_000
+        // LiteRT-LM currently exposes streamed text rather than token IDs on
+        // Android. Four characters per token is a useful English estimate;
+        // keep streamEvents separately so diagnostics remain honest.
+        val estimatedTokens = output.toString().estimateTokenCount()
+        val decodeMs = firstTokenAt?.let { finishedAt - it } ?: 0L
         return GenerationResult(
             text = output.toString(),
             timeToFirstTokenMs = firstTokenMs,
-            decodeTokensPerSecond = null,
-            toolCalls = toolCalls
+            decodeTokensPerSecond = if (decodeMs > 0 && estimatedTokens > 0) {
+                estimatedTokens * 1_000.0 / (decodeMs / 1_000_000.0)
+            } else null,
+            outputTokens = estimatedTokens,
+            totalGenerationTimeMs = totalMs,
+            streamEvents = streamEvents,
+            toolCalls = toolCalls,
+            nativeSubmitMs = nativeSubmitMs,
+            firstCallbackMs = firstCallbackAt.get().takeIf { it != 0L }?.let { (it - startedAt) / 1_000_000 }
         )
     }
 
-    override fun close() {
-        if (closed.compareAndSet(false, true)) {
-            conversation?.close()
-            engine.close()
-        }
+    private fun String.estimateTokenCount(): Int =
+        if (isBlank()) 0 else ((trim().length + 3) / 4).coerceAtLeast(streamEventsFallback())
+
+    private fun String.streamEventsFallback(): Int =
+        trim().split(Regex("\\s+")).count().coerceAtLeast(1)
+
+    @OptIn(ExperimentalApi::class)
+    private fun readNativeTelemetry(active: com.google.ai.edge.litertlm.Conversation): NativeTokenTelemetry? {
+        val began = System.nanoTime()
+        return runCatching {
+            val measured = active.getBenchmarkInfo()
+            NativeTokenTelemetry.checked(measured.lastPrefillTokenCount, measured.lastDecodeTokenCount,
+                measured.timeToFirstTokenInSecond, measured.lastPrefillTokensPerSecond,
+                measured.lastDecodeTokensPerSecond, (System.nanoTime() - began) / 1_000_000.0)
+        }.getOrNull()
     }
+
+    /** Must be called by the resource owner after child jobs join, off UI and callbacks. */
+    override fun close() = lifecycle.close()
+
+    /** Explicit recovery only; a failed attempt keeps both native resources and leases retained. */
+    fun retryQuarantinedClose() = lifecycle.retryQuarantinedClose()
 }
-
-
-data class ToolCall(val name: String, val arguments: String)

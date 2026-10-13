@@ -1,0 +1,32 @@
+{
+  "sdk-common-sources.jar": {
+    "source": "https://dl.google.com/dl/android/maven2/com/android/tools/sdk-common/31.7.3/sdk-common-31.7.3-sources.jar",
+    "bytes": 700203,
+    "sha256": "8da97b1ddc67992610b0f19c94b32351de15914452a5e548f34b1a6be89de307"
+  },
+  "AssetItem.java": {
+    "source": "sdk-common-31.7.3-sources.jar!/com/android/ide/common/resources/AssetItem.java",
+    "bytes": 2758,
+    "sha256": "72e584f341f2dd29a0ec3e25a666eedc17f291e973dec701a795bff1ae49768b"
+  },
+  "MergedAssetWriter.java": {
+    "source": "sdk-common-31.7.3-sources.jar!/com/android/ide/common/resources/MergedAssetWriter.java",
+    "bytes": 6566,
+    "sha256": "5dc3aa3c20ba45941b9e1a336a12885576612aef7ef24b0e443d800bef90a91e"
+  },
+  "maven.bin": {
+    "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/aapt2/8.7.3-12006047/aapt2-8.7.3-12006047-linux.jar",
+    "bytes": 2303812,
+    "sha256": "028916a040b58f34c9c89984e1bc48f8da6581662014f2b66391860def8b9c36"
+  },
+  "gradle-8.7.3.pom": {
+    "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/8.7.3/gradle-8.7.3.pom",
+    "bytes": 12006,
+    "sha256": "c10a1933d89b11a57593d286530d7fb9884f62aed1afc6390a117baa6bb7be4c"
+  },
+  "builder-8.7.3.pom": {
+    "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/builder/8.7.3/builder-8.7.3.pom",
+    "bytes": 5311,
+    "sha256": "f44fc330070e7500ccaf09af687582d8b498abaa070f4d6ac337cbbd1f8c2d8f"
+  }
+}

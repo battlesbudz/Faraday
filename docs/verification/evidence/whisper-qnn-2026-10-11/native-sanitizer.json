@@ -1,0 +1,143 @@
+{
+  "status": "passed",
+  "onnx_runtime": "1.27.1",
+  "checks": [
+    "actual_native_jni_syntax",
+    "decoder_state_and_fp16",
+    "real_ort_metadata_rejection",
+    "real_ort_run_termination",
+    "terminal_cancellation_races",
+    "jni_handle_lifetime",
+    "absent_qnn_diagnosed_failure",
+    "shared_env_registration_lifetime",
+    "post_registration_failure_rollback"
+  ],
+  "not_covered": [
+    "QNN HTP execution",
+    "Android JNI loading",
+    "real Whisper acoustic accuracy",
+    "device latency"
+  ],
+  "commands": [
+    [
+      "g++",
+      "-std=c++17",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-pthread",
+      "-fsanitize=address,undefined",
+      "-fno-omit-frame-pointer",
+      "-I<execution-temp>/jarvis-qnn-research/ort-host/onnxruntime-linux-x64-glibc2_17-Release-1.27.1/include",
+      "-I<execution-temp>/jarvis-qnn-research/jni",
+      "-I<execution-temp>/jarvis-qnn-research/jni/linux",
+      "-shared",
+      "-fPIC",
+      "app/src/main/cpp/whisperqnn/tests/fake_ep_factory.cc",
+      "-o",
+      "<execution-temp>/whisper-qnn-decoder-yln74r5r/fake-provider/libonnxruntime_providers_qnn.so"
+    ],
+    [
+      "g++",
+      "-std=c++17",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-pthread",
+      "-fsanitize=address,undefined",
+      "-fno-omit-frame-pointer",
+      "-I<execution-temp>/jarvis-qnn-research/ort-host/onnxruntime-linux-x64-glibc2_17-Release-1.27.1/include",
+      "-I<execution-temp>/jarvis-qnn-research/jni",
+      "-I<execution-temp>/jarvis-qnn-research/jni/linux",
+      "-fsyntax-only",
+      "app/src/main/cpp/whisperqnn/whisper_qnn_jni.cc",
+      "app/src/main/cpp/whisperqnn/whisper_qnn_session.cc",
+      "app/src/main/cpp/whisperqnn/whisper_features.cc"
+    ],
+    [
+      "g++",
+      "-std=c++17",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-pthread",
+      "-fsanitize=address,undefined",
+      "-fno-omit-frame-pointer",
+      "-I<execution-temp>/jarvis-qnn-research/ort-host/onnxruntime-linux-x64-glibc2_17-Release-1.27.1/include",
+      "-I<execution-temp>/jarvis-qnn-research/jni",
+      "-I<execution-temp>/jarvis-qnn-research/jni/linux",
+      "app/src/main/cpp/whisperqnn/tests/decode_state_test.cc",
+      "-o",
+      "<execution-temp>/whisper-qnn-decoder-yln74r5r/decode_state_test"
+    ],
+    [
+      "<execution-temp>/whisper-qnn-decoder-yln74r5r/decode_state_test"
+    ],
+    [
+      "g++",
+      "-std=c++17",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-pthread",
+      "-fsanitize=address,undefined",
+      "-fno-omit-frame-pointer",
+      "-I<execution-temp>/jarvis-qnn-research/ort-host/onnxruntime-linux-x64-glibc2_17-Release-1.27.1/include",
+      "-I<execution-temp>/jarvis-qnn-research/jni",
+      "-I<execution-temp>/jarvis-qnn-research/jni/linux",
+      "app/src/main/cpp/whisperqnn/tests/registry_test.cc",
+      "-o",
+      "<execution-temp>/whisper-qnn-decoder-yln74r5r/registry_test"
+    ],
+    [
+      "<execution-temp>/whisper-qnn-decoder-yln74r5r/registry_test"
+    ],
+    [
+      "g++",
+      "-std=c++17",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-pthread",
+      "-fsanitize=address,undefined",
+      "-fno-omit-frame-pointer",
+      "-I<execution-temp>/jarvis-qnn-research/ort-host/onnxruntime-linux-x64-glibc2_17-Release-1.27.1/include",
+      "-I<execution-temp>/jarvis-qnn-research/jni",
+      "-I<execution-temp>/jarvis-qnn-research/jni/linux",
+      "app/src/main/cpp/whisperqnn/tests/runtime_contract_test.cc",
+      "app/src/main/cpp/whisperqnn/whisper_features.cc",
+      "-L<execution-temp>/jarvis-qnn-research/ort-host/onnxruntime-linux-x64-glibc2_17-Release-1.27.1/lib",
+      "-Wl,-rpath,<execution-temp>/jarvis-qnn-research/ort-host/onnxruntime-linux-x64-glibc2_17-Release-1.27.1/lib",
+      "-lonnxruntime",
+      "-o",
+      "<execution-temp>/whisper-qnn-decoder-yln74r5r/runtime_contract_test"
+    ],
+    [
+      "<execution-temp>/whisper-qnn-decoder-yln74r5r/runtime_contract_test",
+      "<execution-temp>/whisper-qnn-decoder-yln74r5r/identity.onnx",
+      "<execution-temp>/whisper-qnn-decoder-yln74r5r/fake-provider"
+    ]
+  ],
+  "source_sha256": {
+    "tests/decode_state_test.cc": "ac59dade12763dea1d5403a646ab1a94e33c4e13c318df817d77954b1fcf6c6b",
+    "tests/fake_ep_factory.cc": "3957b057b6600d889abb16f799021694e718388634388fceae0f25c9197bfc2a",
+    "tests/frontend_probe.cc": "3f5200ddc07525c314596d3dfd3fa8351e9171d25a37ff3c48d9753c3d5d62f0",
+    "tests/registry_test.cc": "66d037993855217c266820cd2acc6c7eadcc04bb2a097f14b35ba74ee6154f29",
+    "tests/runtime_contract_test.cc": "ce3733f2d0deb9de4d8a9eebe478ed4c3e0eacd71c861fe521166fd55ba2a7eb",
+    "tests/verify_decoder.py": "e4f0a8d5d21d76b1903f83426629207e957421103182d50d68427eccf2c2b6f6",
+    "tests/verify_frontend.py": "7ed961fdcc2c3f29f26146200ae23574d4bb58bf69cfe6a60be48a6ecebbd632",
+    "whisper_decode_state.h": "8f6732f1dbc7f8ab0a2740e3812d6cfce5be0bcb2af8f2da5d820e25dc266913",
+    "whisper_features.cc": "f9ee9c1b505d3775b3fe59d9439486a9bb867483880790832d1eaff7f6c97894",
+    "whisper_features.h": "b69dfcbe21250bd20d49383fd4df98efd42a88baad14a704be9b7654e052f95c",
+    "whisper_qnn_jni.cc": "16c68904d0ca2fbdf3bc7b43a16241be6c1274b3a8836d08d10de3c99e895261",
+    "whisper_qnn_session.cc": "f6733c981debb243b0fb1fb0562c0588e8358fb541786ef7f3026b2f08f12dd1",
+    "whisper_qnn_session.h": "2a0685304591e573d780946314aa535c2b079ac9e723702685c260ad7009df47",
+    "whisper_run_state.h": "1c1d818857a4ba82b2c6946dafb7f31bc3910a5f22747aa6fdf0851c0c516c52"
+  },
+  "extra_cxxflags": "-fsanitize=address,undefined -fno-omit-frame-pointer"
+}

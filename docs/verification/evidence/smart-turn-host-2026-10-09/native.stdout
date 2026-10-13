@@ -1,0 +1,9 @@
+{"case_index":0,"probability":0.98703670501708984,"frontend_nanos":14308168,"inference_nanos":62797250}
+{"case_index":1,"probability":0.086019784212112427,"frontend_nanos":13641861,"inference_nanos":52401406}
+{"case_index":2,"probability":0.93806397914886475,"frontend_nanos":14425845,"inference_nanos":55030381}
+{"case_index":3,"probability":0.40278559923171997,"frontend_nanos":14120914,"inference_nanos":52429600}
+{"case_index":4,"probability":0.978554368019104,"frontend_nanos":14213324,"inference_nanos":50608356}
+{"case_index":5,"probability":0.98485827445983887,"frontend_nanos":16586115,"inference_nanos":50844504}
+{"case_index":6,"probability":0.96193861961364746,"frontend_nanos":14671346,"inference_nanos":55846444}
+{"case_index":7,"probability":0.45092454552650452,"frontend_nanos":17454483,"inference_nanos":52093131}
+{"unprepared_rejected":true,"pre_cancel_rejected":true,"nonfinite_rejected":true,"reuse_after_rejections_exact":true}

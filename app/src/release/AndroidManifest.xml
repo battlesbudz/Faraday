@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Release-variant manifest overlay for local unit tests only.
+     Robolectric (testReleaseUnitTest) resolves the ComponentActivity launched by
+     createAndroidComposeRule<ComponentActivity>() from the merged manifest.
+     No intent filter and exported=false: completely inert in the shipped APK. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="androidx.activity.ComponentActivity"
+            android:exported="false" />
+    </application>
+</manifest>

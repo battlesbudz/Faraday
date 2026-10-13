@@ -1,0 +1,108 @@
+{
+  "build_number": 1245,
+  "run_id": 37982483092,
+  "app_job_id": 114007839683,
+  "run_url": "https://github.com/battlesbudz/Jarvis-OS-V2/actions/runs/37982483092",
+  "local_source_commit": "165ffbb46af313d51e3947a2e70cab3eaef3a543",
+  "published_source_commit": "43cdf8ccd5a9090119e94c27c8de6af5c61f7c1f",
+  "source_tree": "bd90286517b045508d2b2b778eb89322fac5920d",
+  "source_git_blob": "bc969cda6e22b1712e420b3fe79b97a5899c2ece",
+  "source_sha256": "5470c5f3bb6437ba498db36f876d581fc3f911319a237f48d7fe52e7b76f5303",
+  "report_path": "/workspace/scratch/7d340526c5ef/tmp/jarvis-recovery-20261009-1750/build1245-evidence/unpacked/jarvis-build-performance/build/reports/kotlin-build/JarvisOSV2-build-2026-10-09-20-29-08-0.txt",
+  "report_sha256": "e6d67a7c0d3af8ea852e982bda1c83d1180a02ed06600faae75cd9a2fb3cae39",
+  "compiler_version": "2.3.21",
+  "compiler_jar_sha1": "c4b47f8e33cdbeedd8c1415ab9f9ade870388162",
+  "compiler_jar_sha256": "d3e70fb011675e77ef00f1a68918d3cd91eed26058977d1e3ea2a37a293233af",
+  "build1245_error_excerpts": [
+    {
+      "line": 23736,
+      "text": "The root cause java.lang.StackOverflowError was thrown at: java.base/java.util.HashMap.put(HashMap.java:618)"
+    },
+    {
+      "line": 23782,
+      "text": "Caused by: java.lang.StackOverflowError"
+    },
+    {
+      "line": 23784,
+      "text": "\tat org.jetbrains.kotlin.codegen.coroutines.CoroutineTransformerMethodVisitor.checkForSuspensionPointInsideMonitor$addMonitorDepthToSuccs(CoroutineTransformerMethodVisitor.kt:502)"
+    },
+    {
+      "line": 23785,
+      "text": "\tat org.jetbrains.kotlin.codegen.coroutines.CoroutineTransformerMethodVisitor.checkForSuspensionPointInsideMonitor$addMonitorDepthToSuccs(CoroutineTransformerMethodVisitor.kt:510)"
+    },
+    {
+      "line": 23786,
+      "text": "\tat org.jetbrains.kotlin.codegen.coroutines.CoroutineTransformerMethodVisitor.checkForSuspensionPointInsideMonitor$addMonitorDepthToSuccs(CoroutineTransformerMethodVisitor.kt:510)"
+    },
+    {
+      "line": 23787,
+      "text": "\tat org.jetbrains.kotlin.codegen.coroutines.CoroutineTransformerMethodVisitor.checkForSuspensionPointInsideMonitor$addMonitorDepthToSuccs(CoroutineTransformerMethodVisitor.kt:510)"
+    },
+    {
+      "line": 23788,
+      "text": "\tat org.jetbrains.kotlin.codegen.coroutines.CoroutineTransformerMethodVisitor.checkForSuspensionPointInsideMonitor$addMonitorDepthToSuccs(CoroutineTransformerMethodVisitor.kt:510)"
+    },
+    {
+      "line": 23789,
+      "text": "\tat org.jetbrains.kotlin.codegen.coroutines.CoroutineTransformerMethodVisitor.checkForSuspensionPointInsideMonitor$addMonitorDepthToSuccs(CoroutineTransformerMethodVisitor.kt:510)"
+    },
+    {
+      "line": 24812,
+      "text": "Using fallback strategy: Compile without Kotlin daemon"
+    },
+    {
+      "line": 48906,
+      "text": "The root cause java.lang.StackOverflowError was thrown at: java.base/java.util.HashMap.putVal(HashMap.java:637)"
+    },
+    {
+      "line": 48952,
+      "text": "Caused by: java.lang.StackOverflowError"
+    },
+    {
+      "line": 48955,
+      "text": "\tat org.jetbrains.kotlin.codegen.coroutines.CoroutineTransformerMethodVisitor.checkForSuspensionPointInsideMonitor$addMonitorDepthToSuccs(CoroutineTransformerMethodVisitor.kt:502)"
+    },
+    {
+      "line": 48956,
+      "text": "\tat org.jetbrains.kotlin.codegen.coroutines.CoroutineTransformerMethodVisitor.checkForSuspensionPointInsideMonitor$addMonitorDepthToSuccs(CoroutineTransformerMethodVisitor.kt:510)"
+    },
+    {
+      "line": 48957,
+      "text": "\tat org.jetbrains.kotlin.codegen.coroutines.CoroutineTransformerMethodVisitor.checkForSuspensionPointInsideMonitor$addMonitorDepthToSuccs(CoroutineTransformerMethodVisitor.kt:510)"
+    },
+    {
+      "line": 48958,
+      "text": "\tat org.jetbrains.kotlin.codegen.coroutines.CoroutineTransformerMethodVisitor.checkForSuspensionPointInsideMonitor$addMonitorDepthToSuccs(CoroutineTransformerMethodVisitor.kt:510)"
+    },
+    {
+      "line": 48959,
+      "text": "\tat org.jetbrains.kotlin.codegen.coroutines.CoroutineTransformerMethodVisitor.checkForSuspensionPointInsideMonitor$addMonitorDepthToSuccs(CoroutineTransformerMethodVisitor.kt:510)"
+    },
+    {
+      "line": 48960,
+      "text": "\tat org.jetbrains.kotlin.codegen.coroutines.CoroutineTransformerMethodVisitor.checkForSuspensionPointInsideMonitor$addMonitorDepthToSuccs(CoroutineTransformerMethodVisitor.kt:510)"
+    },
+    {
+      "line": 48961,
+      "text": "\tat org.jetbrains.kotlin.codegen.coroutines.CoroutineTransformerMethodVisitor.checkForSuspensionPointInsideMonitor$addMonitorDepthToSuccs(CoroutineTransformerMethodVisitor.kt:510)"
+    },
+    {
+      "line": 48962,
+      "text": "\tat org.jetbrains.kotlin.codegen.coroutines.CoroutineTransformerMethodVisitor.checkForSuspensionPointInsideMonitor$addMonitorDepthToSuccs(CoroutineTransformerMethodVisitor.kt:510)"
+    },
+    {
+      "line": 48963,
+      "text": "\tat org.jetbrains.kotlin.codegen.coroutines.CoroutineTransformerMethodVisitor.checkForSuspensionPointInsideMonitor$addMonitorDepthToSuccs(CoroutineTransformerMethodVisitor.kt:510)"
+    },
+    {
+      "line": 48964,
+      "text": "\tat org.jetbrains.kotlin.codegen.coroutines.CoroutineTransformerMethodVisitor.checkForSuspensionPointInsideMonitor$addMonitorDepthToSuccs(CoroutineTransformerMethodVisitor.kt:510)"
+    }
+  ],
+  "retained_default_failure_sha256": "d080a797c4cd83e7db85f31120b451889ac534d36a08fd0fb284d43f10d8460b",
+  "retained_default_failure_error_lines": [
+    23655,
+    23701
+  ],
+  "compiler_sha1_matches_ci_cache_component": true
+}

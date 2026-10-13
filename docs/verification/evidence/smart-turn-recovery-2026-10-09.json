@@ -1,0 +1,588 @@
+{
+  "schema_version": 1,
+  "timestamp_utc": "2026-10-09T18:29:20.928729+00:00",
+  "base_commit": "f783849de9cb6ebb2932eba52b7ebdc596aa02fa",
+  "scope": "Ordinary default-off Smart Turn candidate with recovered exact runtime and freshly reconstructed build/test/license support. No original admission inherited.",
+  "independent_source_review": "pending",
+  "source_files": [
+    {
+      "path": ".gitattributes",
+      "bytes": 146,
+      "sha256": "610f465a447035e1df052a7ba5ca6aad55222d8d83f3e756684935f744e1bba3",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": ".github/workflows/android.yml",
+      "bytes": 41916,
+      "sha256": "77f001b21d2174564acf5618258e272828d525f893ab1e43a8d9c0b7f2f825a8",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 281,
+      "sha256": "e6c079a0894d0bef8548791b49a23682db0a52b229abe1a547a515660af6db2f",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "app/build.gradle.kts",
+      "bytes": 9746,
+      "sha256": "879f151ed674c46c6fd7eb6f1de8110fc0c618d8bd35b80495cf7690ae214486",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "app/proguard-rules.pro",
+      "bytes": 30982,
+      "sha256": "f34a4ae3aea3faeadbae25ba680fd30ccc12d932d32466fe091a16794e0340fa",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "app/src/androidTest/java/com/battlesbudz/jarvis/v2/verification/ReleaseJourneyTest.kt",
+      "bytes": 358910,
+      "sha256": "64bb32d8d412801cc7cedc9c0cdd203c538e6e8151952e6d4ecb9993ebddf0bd",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "app/src/main/assets/licenses/smart-turn/Apache-2.0.txt",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "app/src/main/assets/licenses/smart-turn/NOTICE.md",
+      "bytes": 1793,
+      "sha256": "28527da3ee32f7098a7aae844875dac2406eccfeef2147a16d394100ca36a5da",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "app/src/main/assets/licenses/smart-turn/pipecat-BSD-2-Clause.txt",
+      "bytes": 1301,
+      "sha256": "e31a733ecb79cbffafd5474e964e5eca15e0a0876a42b1d7253b51b198eb61aa",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "app/src/main/assets/licenses/smart-turn/smart-turn-BSD-2-Clause.txt",
+      "bytes": 1301,
+      "sha256": "0d66364067f678c08586ebb60a16a2aed4fa081ec11057df35585759ce0e774f",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "app/src/main/cpp/smartturn/smart_turn_jni.cc",
+      "bytes": 2848,
+      "sha256": "270fbadabf0f35fb5681298ab8b3f113c54a31dfed4c52c7e82f370f162688f4",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "125f377542860ee065343e00ede4759c972a7b57"
+    },
+    {
+      "path": "app/src/main/cpp/smartturn/smart_turn_session.h",
+      "bytes": 4854,
+      "sha256": "bc31e706c33633cf509ca2483a3d280c26b404609e266837b7e79a030a33b23c",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "5d04cb7c2df635afb9cee8dbc3b0ad8ce1b01895"
+    },
+    {
+      "path": "app/src/main/cpp/smartturn/whisper_features.cc",
+      "bytes": 4792,
+      "sha256": "cb32f66aa6194039350437cb3f5074d8560da17d06893be755b94a92a357bb3e",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "91f1051fede333f08c07407e9bf81c973c8e4b3f"
+    },
+    {
+      "path": "app/src/main/cpp/smartturn/whisper_features.h",
+      "bytes": 1116,
+      "sha256": "48b3758b5ccb422eff32d221d6f32c745dc054ab2091031e228bc2f6c8ff74e3",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "b03c99eeac77ba63f2510a055afbcf0ec9f10d81"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/JarvisRuntime.kt",
+      "bytes": 58327,
+      "sha256": "489c03164f5146704d2a1ed9fd962f6b820b8938391e9ae86f3e83e523f374ad",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "f41a13be14a568ed834059b91f6be686e797f98a"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/diagnostics/SmartTurnBenchmarkTelemetry.kt",
+      "bytes": 1944,
+      "sha256": "69ece9aab8de6595e46b5387326ccf7f86fa033ac567ebf5b37a2bd51765ca16",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "204ac10e97a47cf70bfd0d7682b6a8ac4577c7db"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/runtime/RuntimeVoiceResources.kt",
+      "bytes": 3540,
+      "sha256": "aa420d6aab016fcaafed84a7ec014958815f4fe62bdf1d3c087eee604281e4fc",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "bcf13147cc95666c1d567ab38d34fd787d940bd5"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/runtime/VoiceTurnCaptureFactory.kt",
+      "bytes": 4782,
+      "sha256": "f529e6133c71ac92ecdf7b5f13b291bc12546228c00541cee46806e9ec180f05",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "f9040ecdcf2d721f0e11905072f954fa8f8a653e"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/runtime/turn/VoiceTurnFinalizer.kt",
+      "bytes": 5362,
+      "sha256": "a6a72e1e74541727f03a2a1e1d9d4e4638fceff0710c9150d17c46458e430867",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "ed8d1b44754a03afdf7f4a705e647e85a021d34d"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/runtime/turn/VoiceTurnPreparation.kt",
+      "bytes": 25541,
+      "sha256": "fc3e03ec297877c8d91f2ece32a1fdebce823ed8bd5d761025698971f890f554",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "ed8e3ad3bcff0554e0e6cdc2efb0851483afebbc"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/ui/VoiceInputSettings.kt",
+      "bytes": 7449,
+      "sha256": "b0b0d08cbf7d17dc913f0c73efb38f7fc9537e3d5bdd34679996133aaefdd972",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "ebc5409f987d326ab499fed785c36d1a67560b58"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/AudioTurnCapture.kt",
+      "bytes": 46709,
+      "sha256": "87413e6279d6705704dad0ce5c2bb08f95e3b237add632fc4d36d6e19173f342",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "9a60cd85fa91cb58cf01067344b22f9b3eb0ab34"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/CaptureShadowObserver.kt",
+      "bytes": 759,
+      "sha256": "ec4a0817815cb68a96aa03ade73f0fd03e111ebf180d5e88419e141dfa0a0167",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "1ceada65f93886db624b2a59f047ddee0a4873f0"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/NativeSmartTurnBackend.kt",
+      "bytes": 2600,
+      "sha256": "65747069d7261ec0ba17cf726c117257f20252550b477b1267e494817a45a4ba",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "d43c2e7f27ae0525c04c99c19e69a2738e2c6920"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnAudioSnapshot.kt",
+      "bytes": 1834,
+      "sha256": "44d450881c85241fffe8e623d143aa3ea08aa2d5147730ccbab8bfac8964cd7d",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "c047693c1f7007d7ce3a96b8f072ff3e097d23ed"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnCallOwner.kt",
+      "bytes": 3284,
+      "sha256": "e84036c62b946bcb922ae395b17407522269c471fa0e95ef5ffe2f0c2c0bb28b",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "50d1f9da2cbd8dbd92332dfcfab8dc0cb9b6d718"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnCaptureObserver.kt",
+      "bytes": 10073,
+      "sha256": "639434f32e6f69421c710c7c2ad8a089a53ce309a1b34fe4e0a40ad581014d99",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "aaf6d228ff1e62d5265ca957215e639991bcc00e"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnModelSpec.kt",
+      "bytes": 545,
+      "sha256": "4d8fd2398be40f0642ef8dfb275c2d240b48ea7e1faaa05a142f268f91c0ce6a",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "475b6afc569c07b608f7c2cfe42078e3afd011a8"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnModelStore.kt",
+      "bytes": 2689,
+      "sha256": "b448b2aaa41b614071e2401e6b987bf306f9beba119ee9645796369678aa354e",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "b017b1029534cdf01fde2ae25e06996ad50751f2"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnSettings.kt",
+      "bytes": 750,
+      "sha256": "6ce93a441160c82484b11e029b7e76db09cf5978042d9fd263c7afe14c6a9d87",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "ff59e3d756ad4f4daf753612d78ecf098cb382dd"
+    },
+    {
+      "path": "app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnShadow.kt",
+      "bytes": 10672,
+      "sha256": "0a2537b27a7fa1eba9176603bf75a781f4837fc3c4fad39c8673990582ca2483",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "15bfcba2130e3b14dce16a01a8e366a6362e8ec0"
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/ui/VoiceInputSettingsTest.kt",
+      "bytes": 8316,
+      "sha256": "93c5a0c42cabc4cfa4a376555aceb43a6e4e864b4d8a4bab547588268e5b7047",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "b638b54ad530df2ce69694ee9f7d1a8ed2976e81"
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/voice/CaptureShadowWiringTest.kt",
+      "bytes": 8544,
+      "sha256": "b85aeace6b3d691fde0187cff68d031c3c6bb16bbf0f61b940911e0959ea6a3e",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "eb71c6474814de2c561e0536eeac556294c50a58"
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnCaptureObserverTest.kt",
+      "bytes": 13413,
+      "sha256": "38973f69030fcfa9804c071c0a0d1ff6bf5056c23996dd3b8df13bd08da6d74b",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "fe442d0dc2f5ef73ce5e7640cf2edb0f370faadc"
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnLateTelemetryTest.kt",
+      "bytes": 4266,
+      "sha256": "4b18cae21b2594adf05e71d89ee7282521d8dcf7a71382a811546c28bead8af8",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "1558a1ba5e2b321aa6a9df560440d7e12c10a848"
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnModelStoreTest.kt",
+      "bytes": 4334,
+      "sha256": "345019883503843bd29f657b83b0051d5e349bb65fd1ef401e7362cf8143038b",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "fd2041300e89d558898d0bc71cd67c2dc0615fb5"
+    },
+    {
+      "path": "app/src/test/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnShadowTest.kt",
+      "bytes": 13185,
+      "sha256": "89e863e9f22ca0cb29339489dbeb7c0ea6f1e4c1bd5a09d963ace9c86300c5b2",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "docs/architecture/README.md",
+      "bytes": 24410,
+      "sha256": "eebbabb1bcb2355e942629dd9b2222a3839a0176a1967371b9dbc9b6cc28b4a4",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "docs/verification/features.md",
+      "bytes": 354862,
+      "sha256": "0166573820805419d7d1ccdd880f6d619b2313f12a755fd6085b245960eb90a4",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "docs/verification/smart-turn-recovery-2026-10-09.md",
+      "bytes": 4878,
+      "sha256": "ffa9872b3051bcf481cbcaba4148f17c8e9418822f14030aeae368516102597c",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "docs/verification/smart-turn-shadow-2026-10-09.md",
+      "bytes": 1410,
+      "sha256": "fdb182b9ccba0760334e74620dde5c7e45d1f6182bcb087288141683c26cd76c",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "docs/verification/smart-turn-wiring-2026-10-09.md",
+      "bytes": 9274,
+      "sha256": "fc2771e02c2ce1c193dd7a0904de961a15394d62cc1a1f9ced6b8af0aca0c0bc",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/README.md",
+      "bytes": 7834,
+      "sha256": "d974014f921382d3002e9600dc43734c2a3dbff9f2faa10b51d47ba0fe1a5c2f",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/build_sherpa.py",
+      "bytes": 5845,
+      "sha256": "2c47f8c9eb25c5fcde15a799b8b5e54e7a6f5d53ceffbd0fa92f5b514869ddc8",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/sherpa_jni_profile.py",
+      "bytes": 3369,
+      "sha256": "82caa8eeb882640d1ba4787a9abe029695f2a1c618d435f9a80facdbba5e9c71",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "10333bd064ddf26dcd5e3b19e30be3bd2962c8ee"
+    },
+    {
+      "path": "scripts/sherpa_required_symbols.json",
+      "bytes": 3104,
+      "sha256": "1ba62a28cb0a60d1b220d156a2bf444855d42513a0fc3b8b19f3dbd58f900970",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/chirp_9s.features.f32le.gz",
+      "bytes": 72551,
+      "sha256": "23f5ce930f7c31a8959e5aaecfbafced8bb0290656618c91cbee9188e06ac566",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/chirp_9s.pcm16le.gz",
+      "bytes": 263479,
+      "sha256": "044ece38a1ded51e21dcbad8ce4902d94372b536ecc1a45537369d8fc6ae706f",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/dc_short.features.f32le.gz",
+      "bytes": 1129,
+      "sha256": "8907a6cc3f1dd681ebd77596573a714842b36a94b2e5e63e3bb60731d939865b",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/dc_short.pcm16le.gz",
+      "bytes": 26,
+      "sha256": "99c1f176e91249dac0b88d844ef90594f9d2405f02d7b5fef1f2c70d4ddeb2ea",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/impulse_one_sample.features.f32le.gz",
+      "bytes": 660,
+      "sha256": "cbe186ce1721edd243fce2456d90ea57f7a56d6fb919f54ee599e3d04e84f717",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/impulse_one_sample.pcm16le.gz",
+      "bytes": 22,
+      "sha256": "377bfba130779122d81873ca4d414b114083297f67bc2026a857af1759bc06d4",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/manifest.json",
+      "bytes": 4750,
+      "sha256": "1b8bf8d17de8469aca6b40c1613af35078b1af9cf90962c7fd0b8fe81bae1420",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/noise_lcg_8s.features.f32le.gz",
+      "bytes": 211270,
+      "sha256": "f4d1cbc4e170fc33e1fcb436d73f6589de8cbdafd87f262b53510708eacae4d1",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/noise_lcg_8s.pcm16le.gz",
+      "bytes": 256098,
+      "sha256": "2bf9b17529c8145b474b51911ff865c433fe5f9354fae183a0fb0bd135261716",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/public_librispeech_last8s.features.f32le.gz",
+      "bytes": 217935,
+      "sha256": "de89e8208d869ecb0db63744a46630b9039f198c8d2aac790b9b2b0ab0ef87e2",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/public_librispeech_last8s.pcm16le.gz",
+      "bytes": 267992,
+      "sha256": "15d650c33c631c8a8c40c252bb229732de786cb29b79af99f98e41174431e5dd",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/quiet_one_lsb.features.f32le.gz",
+      "bytes": 9051,
+      "sha256": "146178346812de10ccd182f48fdceeec3ed4b65dcb13610791c458b21d11575b",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/quiet_one_lsb.pcm16le.gz",
+      "bytes": 151,
+      "sha256": "a7e28befb6ce9042c6ad5d2102815a981331b626d65acbeb1c4b9841244595c7",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/silence_8s.features.f32le.gz",
+      "bytes": 287,
+      "sha256": "4403562d0442ae03f4da9e3fed2eda145ee07aef092174539332e03ed31d5122",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/silence_8s.pcm16le.gz",
+      "bytes": 283,
+      "sha256": "3cbea0db3d7c7ced78be73748eb6a66dbd2860c860a5063c82b5fae48ae2d7fa",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/tone_440hz_1s.features.f32le.gz",
+      "bytes": 1842,
+      "sha256": "6557e1287df3ff245ee4cea6ae85131f8a26aca0b4cd71d0ef907f6c584fb59d",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/smart-turn/fixtures/tone_440hz_1s.pcm16le.gz",
+      "bytes": 1031,
+      "sha256": "39441df1135de73c487e7116fef1305b3f804304681260e22a923cb44bc77541",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/smart-turn/frontend_probe.cc",
+      "bytes": 959,
+      "sha256": "11c2dc66d116f09b1d32b5d0335da9e8f182258b0ca807a2b18a2bc700b1ea06",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/smart-turn/generate_goldens.py",
+      "bytes": 3314,
+      "sha256": "fc8e649ffa00791d8dc128240ad297c1491d573c8e5c197da769aba6de0bea34",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/smart-turn/verify_frontend.py",
+      "bytes": 4547,
+      "sha256": "e4fe7ffb3df907f48ba8bf93ac36f11784e82cb9402fd9f620aa646d92d03e24",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/test_sherpa_jni_profile.py",
+      "bytes": 2371,
+      "sha256": "b1703e75de5202010a75234e4603f415c7f1a37ae917d6676ab7af8a94ce659e",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/test_smart_turn_contract.py",
+      "bytes": 4685,
+      "sha256": "92d0d0c2d1a1a7ed0e99112999b5ab30ad3f6e71810945545723e783da6a6043",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "scripts/verification/scenarios.json",
+      "bytes": 5334,
+      "sha256": "468513dc56bf2efb745d0bb6a416510723dd405c994eb17b1c8b66e1fca0d67d",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "third_party/smart-turn/Apache-2.0.txt",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "third_party/smart-turn/MODEL_CARD.md",
+      "bytes": 1247,
+      "sha256": "8b87ad1bb42432c1c8221944a7de5a0d1a52c2162af6f447ee9522530b38f199",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "third_party/smart-turn/NOTICE.md",
+      "bytes": 1793,
+      "sha256": "28527da3ee32f7098a7aae844875dac2406eccfeef2147a16d394100ca36a5da",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "third_party/smart-turn/manifest.json",
+      "bytes": 4420,
+      "sha256": "182b8acc66cbb800dfda53ec4c7dd92cfa805a6618ce0797753cfe249a2e25b5",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "third_party/smart-turn/pipecat-BSD-2-Clause.txt",
+      "bytes": 1301,
+      "sha256": "e31a733ecb79cbffafd5474e964e5eca15e0a0876a42b1d7253b51b198eb61aa",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    },
+    {
+      "path": "third_party/smart-turn/reference_whisper_features.py",
+      "bytes": 7221,
+      "sha256": "139b047d10dee42ad5b4894489012e515a882d8f5e2bffe8ad27b30728fc9968",
+      "provenance": "exact_recovered_original",
+      "original_git_blob_sha": "05929340384a7f07c39d43b2f1ff22f65ce879e2"
+    },
+    {
+      "path": "third_party/smart-turn/smart-turn-BSD-2-Clause.txt",
+      "bytes": 1301,
+      "sha256": "0d66364067f678c08586ebb60a16a2aed4fa081ec11057df35585759ce0e774f",
+      "provenance": "new_or_reconstructed_support_or_base_merge",
+      "original_git_blob_sha": null
+    }
+  ],
+  "checks": {
+    "smart_turn_jvm_tests": 37,
+    "new_worker_lifecycle_tests": 17,
+    "recovered_observer_store_late_tests": 20,
+    "jvm_repeat_runs": 10,
+    "capture_hook_jvm_tests": 5,
+    "python_helpers": 109,
+    "verification_harness_tests": 82,
+    "original_frozen_frontend_cases": 8,
+    "frontend_tolerance": 2e-06,
+    "frontend_max_abs_error": 2.384185791015625e-07,
+    "nonfinite_frontend_input_rejected": true,
+    "architecture": "pass via scripts/dev.py check",
+    "selector_repair_preserved": true,
+    "main_suite_timeout_seconds": 900
+  },
+  "new_verification_log_sha256": {
+    "jvm-compile.log": "e1c9ac13e66fe97d5e4e8f838fb614eee43c8c71501962ebdf0672d08a74d762",
+    "jvm-tests.log": "e23d8fcfd727c67a68c9b294a7d8108d848d938c58ee88132865ed9e530159a1",
+    "jvm-repeat-results.json": "bbe9fca146711215095fcb3a48d694a3bf9257e50dac06bf8087daf70aa3fc8e",
+    "capture-compile.log": "945598d9a824cfee8187cfa7485ede54d9930927f021cfb8ee2d14c6de1f6d7b",
+    "capture-tests.log": "d0c338632645bf64db340266a5a4e597d4c870a6dae50e091157ceed9f261827",
+    "helper-checks-final.log": "8548ccfdda301ccb5cb7d11fd7e805035ec2a6fc7e5d32f5a4408a126207e969",
+    "frontend-receipt.json": "73dd7c7f40c154429b6f9cf8ce9dfedd558dcfabcdb48767554e9385f3725f18"
+  },
+  "upstream_source": {
+    "sherpa_CMake": {
+      "revision": "917bed95c8e5c7c18aa4d69fea42e9ef8ef0a60e",
+      "sha256": "c1bc731c38c15a0ebb133e2607cc3bbf5b6ff83488038c3cfa1c69f52a159726",
+      "cpp_standard_default": 17,
+      "source_lines": "370-374"
+    },
+    "model_card": {
+      "revision": "f766f81d3cfdf7737ac64aad813d91bbfd56bf93",
+      "sha256": "8b87ad1bb42432c1c8221944a7de5a0d1a52c2162af6f447ee9522530b38f199",
+      "declared_license": "bsd-2-clause",
+      "model_license_endpoint": "404; upstream project BSD license retained"
+    }
+  },
+  "limits": [
+    "No model download, model inference, JNI runtime execution, Android build, R8/test-DEX execution or device measurement in this recovery phase.",
+    "Recovered UI tests/journey81 still require release execution; extra phone runtime unknown.",
+    "Phase2 Runtime/Preparation/Finalizer API compilation will be checked by integration owner after rearm merge.",
+    "Native NDK, actual16KB ELF/APK and duplicate library audit remain hosted release gates.",
+    "No reconstructed source receives historical admission. No encrypted policy or new credentials included.",
+    "No default endpoint decision or Gemma owner added. Post-priority work wall time does not prove CPU overlap."
+  ]
+}

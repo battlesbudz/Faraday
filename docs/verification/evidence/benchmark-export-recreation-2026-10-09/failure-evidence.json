@@ -1,0 +1,50 @@
+{
+  "run_id": 38000787349,
+  "run_url": "https://github.com/battlesbudz/Jarvis-OS-V2/actions/runs/38000787349",
+  "failures": [
+    {
+      "artifact_id": 11651430428,
+      "artifact_name": "jarvis-verification-36-16k-normal-app-release",
+      "archive_sha256": "ca8da5e5f926007b0536330c402afc8c1335951a8f8e5df2bba08101f470a8d5",
+      "archive_bytes": 22673916,
+      "report_sha256": "777c3c4b296bff03d2b219880435444a3e8ada1ff71d7312f045e0b0341cf819",
+      "instrumentation_sha256": "80b89406c0d2e49b764956e194f177b932baf101aef2f43e780c5601ebc3d678",
+      "source_commit": "13a62a8374610fefda9b93c3213c559a9f97bef7",
+      "device": {
+        "abi": "x86_64,arm64-v8a",
+        "api": "36",
+        "fingerprint": "google/sdk_gphone16k_x86_64/emu64xa16k:16/BE2A.250530.026.F3/13894323:userdebug/dev-keys",
+        "native_bridge": "libndk_translation.so",
+        "page_size": 16384
+      },
+      "failure_test": "test45_pipelineBenchmarksScoreOriginalAsrPersistAndExportRedactedEvidence",
+      "failure_line": 3215,
+      "expected": "old bytes must be replaced",
+      "actual": "full old Jarvis pipeline benchmark report",
+      "main_passed": 81,
+      "main_total": 82
+    },
+    {
+      "artifact_id": 11651650341,
+      "artifact_name": "jarvis-verification-36-foldable-compact-app-compact",
+      "archive_sha256": "9edf1a63f4ecf161e8c452b6cd41c3ed1c12ca580d85a6a1d22b89f4cd8a7d1d",
+      "archive_bytes": 24971957,
+      "report_sha256": "ac1241745f736c34f718304a2cb86c3e7b29e5a9da1aef0690314ea5e55a3ff0",
+      "instrumentation_sha256": "bb486c39bbc8c0be553c3c6e763a911735d30d9e3629f3b2e73616303a24cb45",
+      "source_commit": "13a62a8374610fefda9b93c3213c559a9f97bef7",
+      "device": {
+        "abi": "x86_64,arm64-v8a",
+        "api": "36",
+        "fingerprint": "google/sdk_gphone64_x86_64/emu64xa:16/BE2A.250530.026.F3/13894323:userdebug/dev-keys",
+        "native_bridge": "libndk_translation.so",
+        "page_size": 4096
+      },
+      "failure_test": "test45_pipelineBenchmarksScoreOriginalAsrPersistAndExportRedactedEvidence",
+      "failure_line": 3207,
+      "expected": "old bytes must be replaced",
+      "actual": "empty string",
+      "main_passed": 81,
+      "main_total": 82
+    }
+  ]
+}

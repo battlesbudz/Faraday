@@ -1,0 +1,223 @@
+{
+  "scope": "Export contract ABI encoded in supplied release app and independent instrumentation DEX tables",
+  "limits": [
+    "Read-only static DEX table/hierarchy audit; no bytecode execution or Android run",
+    "Method references are table entries, not instruction counts or callsite attributions",
+    "Only the mapped base contract, CreateDocument and production anonymous subclass are audited",
+    "Superclass lookup covers these class methods; no general interface/default-method resolution",
+    "The supplied old APKs do not verify the changed source or a new R8 build"
+  ],
+  "mapping": {
+    "path": "build1247-evidence/unpacked/jarvis-os-v2-release-r8-reports/mapping.txt",
+    "sha256": "028ca93b5bf1f9590eeb148f9313f7852b7af236a3839eaa7ae2378176ef9cf4",
+    "owners": {
+      "androidx.activity.result.contract.ActivityResultContract": "Landroidx/activity/result/contract/ActivityResultContract;",
+      "androidx.activity.result.contract.ActivityResultContracts$CreateDocument": "Lf/b;",
+      "com.battlesbudz.jarvis.v2.ui.BenchmarkExportFiles$createDocument$1": "Ln5/k;"
+    }
+  },
+  "app": {
+    "path": "build1247-evidence/unpacked/jarvis-os-v2-release-apk/app-release.apk",
+    "sha256": "b9f2a3bef2166539092d6cfc9f5d55b13b68afd02237af2e921062c77ce00f28",
+    "dex_sha256": {
+      "classes.dex": "425d7672beab4401f2aa9c17ceafb48ebf1e6d05c1e0d879af8ff62af3b9e4af"
+    }
+  },
+  "test": {
+    "path": "build1247-evidence/unpacked/jarvis-verification-test-apk/app-release-androidTest.apk",
+    "sha256": "fa67e43c2ae877480256835c3dc194b01b120b7424e5813274b764ff39677630",
+    "dex_sha256": {
+      "classes.dex": "6ba3ddc10ce43f0bf3bc7419c1898e574c813b761ade357eb06fdedf45292a90"
+    }
+  },
+  "app_classes": {
+    "Landroidx/activity/result/contract/ActivityResultContract;": {
+      "superclass": "Ljava/lang/Object;",
+      "dex": "classes.dex"
+    },
+    "Lf/b;": {
+      "superclass": "Landroidx/activity/result/contract/ActivityResultContract;",
+      "dex": "classes.dex"
+    },
+    "Ln5/k;": {
+      "superclass": "Lf/b;",
+      "dex": "classes.dex"
+    }
+  },
+  "app_method_definitions": [
+    {
+      "owner": "Landroidx/activity/result/contract/ActivityResultContract;",
+      "name": "<init>",
+      "descriptor": "()V",
+      "dex": "classes.dex",
+      "method_id": 2674,
+      "definition": true,
+      "access_flags": 65537,
+      "method_group": "direct",
+      "code_offset": 1664880
+    },
+    {
+      "owner": "Landroidx/activity/result/contract/ActivityResultContract;",
+      "name": "createIntent",
+      "descriptor": "(Landroid/content/Context;Ljava/lang/Object;)Landroid/content/Intent;",
+      "dex": "classes.dex",
+      "method_id": 2675,
+      "definition": true,
+      "access_flags": 1025,
+      "method_group": "virtual",
+      "code_offset": 0
+    },
+    {
+      "owner": "Landroidx/activity/result/contract/ActivityResultContract;",
+      "name": "getSynchronousResult",
+      "descriptor": "(Landroid/content/Context;Ljava/lang/Object;)Lf/a;",
+      "dex": "classes.dex",
+      "method_id": 2676,
+      "definition": true,
+      "access_flags": 1,
+      "method_group": "virtual",
+      "code_offset": 1664848
+    },
+    {
+      "owner": "Landroidx/activity/result/contract/ActivityResultContract;",
+      "name": "parseResult",
+      "descriptor": "(ILandroid/content/Intent;)Ljava/lang/Object;",
+      "dex": "classes.dex",
+      "method_id": 2677,
+      "definition": true,
+      "access_flags": 1025,
+      "method_group": "virtual",
+      "code_offset": 0
+    },
+    {
+      "owner": "Lf/b;",
+      "name": "<init>",
+      "descriptor": "(Ljava/lang/String;)V",
+      "dex": "classes.dex",
+      "method_id": 19909,
+      "definition": true,
+      "access_flags": 65537,
+      "method_group": "direct",
+      "code_offset": 3690708
+    },
+    {
+      "owner": "Lf/b;",
+      "name": "a",
+      "descriptor": "(Landroid/content/Context;Ljava/lang/String;)Landroid/content/Intent;",
+      "dex": "classes.dex",
+      "method_id": 19910,
+      "definition": true,
+      "access_flags": 1,
+      "method_group": "virtual",
+      "code_offset": 3690532
+    },
+    {
+      "owner": "Lf/b;",
+      "name": "createIntent",
+      "descriptor": "(Landroid/content/Context;Ljava/lang/Object;)Landroid/content/Intent;",
+      "dex": "classes.dex",
+      "method_id": 19911,
+      "definition": true,
+      "access_flags": 4161,
+      "method_group": "virtual",
+      "code_offset": 3690500
+    },
+    {
+      "owner": "Lf/b;",
+      "name": "getSynchronousResult",
+      "descriptor": "(Landroid/content/Context;Ljava/lang/Object;)Lf/a;",
+      "dex": "classes.dex",
+      "method_id": 19912,
+      "definition": true,
+      "access_flags": 17,
+      "method_group": "virtual",
+      "code_offset": 3690620
+    },
+    {
+      "owner": "Lf/b;",
+      "name": "parseResult",
+      "descriptor": "(ILandroid/content/Intent;)Ljava/lang/Object;",
+      "dex": "classes.dex",
+      "method_id": 19913,
+      "definition": true,
+      "access_flags": 17,
+      "method_group": "virtual",
+      "code_offset": 3690664
+    },
+    {
+      "owner": "Ln5/k;",
+      "name": "a",
+      "descriptor": "(Landroid/content/Context;Ljava/lang/String;)Landroid/content/Intent;",
+      "dex": "classes.dex",
+      "method_id": 57468,
+      "definition": true,
+      "access_flags": 17,
+      "method_group": "virtual",
+      "code_offset": 6316016
+    },
+    {
+      "owner": "Ln5/k;",
+      "name": "createIntent",
+      "descriptor": "(Landroid/content/Context;Ljava/lang/Object;)Landroid/content/Intent;",
+      "dex": "classes.dex",
+      "method_id": 57469,
+      "definition": true,
+      "access_flags": 4177,
+      "method_group": "virtual",
+      "code_offset": 6315984
+    }
+  ],
+  "test_external_method_references": [
+    {
+      "owner": "Landroidx/activity/result/contract/ActivityResultContract;",
+      "name": "createIntent",
+      "descriptor": "(Landroid/content/Context;Ljava/lang/Object;)Landroid/content/Intent;",
+      "dex": "classes.dex",
+      "method_id": 520,
+      "resolved": true,
+      "defining_owner": "Landroidx/activity/result/contract/ActivityResultContract;",
+      "searched_owners": [
+        "Landroidx/activity/result/contract/ActivityResultContract;"
+      ]
+    },
+    {
+      "owner": "Lf/b;",
+      "name": "a",
+      "descriptor": "(Landroid/content/Context;Ljava/lang/String;)Landroid/content/Intent;",
+      "dex": "classes.dex",
+      "method_id": 6613,
+      "resolved": true,
+      "defining_owner": "Lf/b;",
+      "searched_owners": [
+        "Lf/b;"
+      ]
+    },
+    {
+      "owner": "Lf/b;",
+      "name": "getSynchronousResult",
+      "descriptor": "(Landroid/content/Context;Ljava/lang/String;)Lf/a;",
+      "dex": "classes.dex",
+      "method_id": 6614,
+      "resolved": false,
+      "searched_owners": [
+        "Lf/b;",
+        "Landroidx/activity/result/contract/ActivityResultContract;",
+        "Ljava/lang/Object;"
+      ]
+    },
+    {
+      "owner": "Lf/b;",
+      "name": "parseResult",
+      "descriptor": "(ILandroid/content/Intent;)Landroid/net/Uri;",
+      "dex": "classes.dex",
+      "method_id": 6615,
+      "resolved": false,
+      "searched_owners": [
+        "Lf/b;",
+        "Landroidx/activity/result/contract/ActivityResultContract;",
+        "Ljava/lang/Object;"
+      ]
+    }
+  ],
+  "unresolved_test_reference_count": 2
+}

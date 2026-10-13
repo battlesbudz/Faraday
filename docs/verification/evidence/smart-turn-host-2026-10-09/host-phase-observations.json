@@ -1,0 +1,18 @@
+{
+  "reported_fixture_calls": 8,
+  "frontend_ms_range": [
+    13.641861,
+    17.454483
+  ],
+  "inference_ms_range": [
+    50.608356,
+    62.79725
+  ],
+  "frontend_plus_inference_ms_range": [
+    64.82168,
+    77.105418
+  ],
+  "model_session_initialization_separately_measured": false,
+  "initialization_note": "Session construction occurred before the per-call timers; no separate initialization timer or derived estimate is claimed. Whole child wall time is not initialization time.",
+  "claims": "Single-run Linux x86_64 host phase observations only; no phone, Android or device latency extrapolation; no warmup, statistical, calibration or throughput benchmark."
+}

@@ -1,0 +1,695 @@
+{
+  "origins": {
+    "FP16": {
+      "declaration": {
+        "identity": {
+          "bytes": 513,
+          "sha256": "8e0c618afaa67b54305f0b7b7272a757a6bf93f758e74f67c8c4f3e73901ad35"
+        },
+        "path": "org_tensorflow/third_party/xla/third_party/FP16/workspace.bzl",
+        "root": "external"
+      },
+      "licenses": {
+        "licenses/FP16/LICENSE": {
+          "identity": {
+            "bytes": 1157,
+            "sha256": "17e4f539024be2749ee729d1e2f01d24cef12ece8c9bf18e91a4349be29c80bf"
+          },
+          "path": "FP16/LICENSE",
+          "root": "external"
+        }
+      },
+      "patches": [],
+      "public": {
+        "archive_sha256": "d973501a40c55126b31accc2d9f08d931ec3cc190c0430309a5e341d3c0ce32a",
+        "licenses": {
+          "licenses/FP16/LICENSE": {
+            "bytes": 1157,
+            "sha256": "17e4f539024be2749ee729d1e2f01d24cef12ece8c9bf18e91a4349be29c80bf"
+          }
+        },
+        "pin": "4dfe081cf6bcd15db339cf2680b9281b8451eeb3",
+        "upstream_url": "https://github.com/Maratyszcza/FP16"
+      }
+    },
+    "FXdiv": {
+      "declaration": {
+        "identity": {
+          "bytes": 496,
+          "sha256": "733aa15e172ed479e7ba94bb1692aba777122abbc8d76d41239b5bea5e81492c"
+        },
+        "path": "org_tensorflow/third_party/xla/third_party/fxdiv/workspace.bzl",
+        "root": "external"
+      },
+      "licenses": {
+        "licenses/FXdiv/LICENSE": {
+          "identity": {
+            "bytes": 1117,
+            "sha256": "7cac00006125b1486a27e4801ed66357236e984c540bd323945ab7b66b078ec3"
+          },
+          "path": "FXdiv/LICENSE",
+          "root": "external"
+        }
+      },
+      "patches": [],
+      "public": {
+        "archive_sha256": "3d7b0e9c4c658a84376a1086126be02f9b7f753caa95e009d9ac38d11da444db",
+        "licenses": {
+          "licenses/FXdiv/LICENSE": {
+            "bytes": 1117,
+            "sha256": "7cac00006125b1486a27e4801ed66357236e984c540bd323945ab7b66b078ec3"
+          }
+        },
+        "pin": "63058eff77e11aa15bf531df5dd34395ec3017c8",
+        "upstream_url": "https://github.com/Maratyszcza/FXdiv"
+      }
+    },
+    "XNNPACK": {
+      "declaration": {
+        "identity": {
+          "bytes": 649,
+          "sha256": "7ef55bb53067495b100136faa755f9603566f801332224b9c979148a4d15956e"
+        },
+        "path": "org_tensorflow/third_party/xla/third_party/xnnpack/workspace.bzl",
+        "root": "external"
+      },
+      "licenses": {
+        "licenses/XNNPACK/LICENSE": {
+          "identity": {
+            "bytes": 1560,
+            "sha256": "63f519e15726f4c4f830bd958f694c84fecb4e0a4cacc527d2696bb71ef95ada"
+          },
+          "path": "XNNPACK/LICENSE",
+          "root": "external"
+        }
+      },
+      "patches": [],
+      "public": {
+        "archive_sha256": "13ae01126b6d4a8b6769433c2a942d6204a3f97157d9c83d79cbfeec1041398c",
+        "licenses": {
+          "licenses/XNNPACK/LICENSE": {
+            "bytes": 1560,
+            "sha256": "63f519e15726f4c4f830bd958f694c84fecb4e0a4cacc527d2696bb71ef95ada"
+          }
+        },
+        "pin": "53a1797ba4360cbde068f2a984652be0f0b7b6fe",
+        "upstream_url": "https://github.com/google/XNNPACK"
+      }
+    },
+    "arm_neon_2_x86_sse": {
+      "declaration": {
+        "identity": {
+          "bytes": 685,
+          "sha256": "a1527fc209ec738fc22a11dce0cdc9a23c3489e579f6e9b625aa46bc1ee1730f"
+        },
+        "path": "org_tensorflow/third_party/arm_neon_2_x86_sse/workspace.bzl",
+        "root": "external"
+      },
+      "licenses": {
+        "licenses/arm_neon_2_x86_sse/LICENSE": {
+          "identity": {
+            "bytes": 1662,
+            "sha256": "7022f51b439a5915e933ecc270c83e24ca0cb2cceeb08b0132dcd4dbb03ed2dc"
+          },
+          "path": "arm_neon_2_x86_sse/LICENSE",
+          "root": "external"
+        }
+      },
+      "patches": [],
+      "public": {
+        "archive_sha256": "019fbc7ec25860070a1d90e12686fc160cfb33e22aa063c80f52b363f1361e9d",
+        "licenses": {
+          "licenses/arm_neon_2_x86_sse/LICENSE": {
+            "bytes": 1662,
+            "sha256": "7022f51b439a5915e933ecc270c83e24ca0cb2cceeb08b0132dcd4dbb03ed2dc"
+          }
+        },
+        "pin": "a15b489e1222b2087007546b4912e21293ea86ff",
+        "upstream_url": "https://github.com/intel/ARM_NEON_2_x86_SSE"
+      }
+    },
+    "com_google_absl": {
+      "declaration": {
+        "identity": {
+          "bytes": 19861,
+          "sha256": "b4f1fca9f5cd789b3e913cfa93b1a762a9eacce05ef97f6ebf4a93836a7d4acd"
+        },
+        "path": "WORKSPACE",
+        "root": "sdk"
+      },
+      "licenses": {
+        "licenses/com_google_absl/LICENSE": {
+          "identity": {
+            "bytes": 11361,
+            "sha256": "c79a7fea0e3cac04cd43f20e7b648e5a0ff8fa5344e644b0ee09ca1162b62747"
+          },
+          "path": "com_google_absl/LICENSE",
+          "root": "external"
+        }
+      },
+      "patches": [
+        {
+          "identity": {
+            "bytes": 886,
+            "sha256": "2d14482f889029bb6c3332ee925eb058e784ce35115b5e9222c43185c9d5dbc5"
+          },
+          "path": "PATCH.abseil",
+          "root": "sdk"
+        }
+      ],
+      "public": {
+        "archive_sha256": "6e1aee535473414164bf83e4ebc40240dec71a4701f8a642d906e95bea1aea0c",
+        "licenses": {
+          "licenses/com_google_absl/LICENSE": {
+            "bytes": 11361,
+            "sha256": "c79a7fea0e3cac04cd43f20e7b648e5a0ff8fa5344e644b0ee09ca1162b62747"
+          }
+        },
+        "pin": "20260526.0",
+        "upstream_url": "https://github.com/abseil/abseil-cpp"
+      }
+    },
+    "cpuinfo": {
+      "declaration": {
+        "identity": {
+          "bytes": 478,
+          "sha256": "05bb273b586db28586acbe5763d29c1398b36853cf8f3e6ca61255d44de7f914"
+        },
+        "path": "org_tensorflow/third_party/xla/third_party/cpuinfo/workspace.bzl",
+        "root": "external"
+      },
+      "licenses": {
+        "licenses/cpuinfo/LICENSE": {
+          "identity": {
+            "bytes": 1424,
+            "sha256": "8e7e60636c3aa0cb03571a1a841ce5697f9551ff92b3c426c2561613d15ade70"
+          },
+          "path": "cpuinfo/LICENSE",
+          "root": "external"
+        }
+      },
+      "patches": [],
+      "public": {
+        "archive_sha256": "9213f6f81784eb8679f0621ad1c20eac711e063cb9c7712738720609cbdf1c33",
+        "licenses": {
+          "licenses/cpuinfo/LICENSE": {
+            "bytes": 1424,
+            "sha256": "8e7e60636c3aa0cb03571a1a841ce5697f9551ff92b3c426c2561613d15ade70"
+          }
+        },
+        "pin": "ea6b9f1bb6e1001d8b21574d5bc78ddef62e499d",
+        "upstream_url": "https://github.com/pytorch/cpuinfo"
+      }
+    },
+    "eigen_archive": {
+      "declaration": {
+        "identity": {
+          "bytes": 821,
+          "sha256": "a17cf8c662ab4e279b1edc3defbefb16917336e72204aecbc43811835354a926"
+        },
+        "path": "org_tensorflow/third_party/xla/third_party/eigen3/workspace.bzl",
+        "root": "external"
+      },
+      "licenses": {
+        "licenses/eigen_archive/COPYING.APACHE": {
+          "identity": {
+            "bytes": 11362,
+            "sha256": "03379001a7b12a2ec997a25554247d985270b353c10d5bafee9ac8d6519820b7"
+          },
+          "path": "eigen_archive/COPYING.APACHE",
+          "root": "external"
+        },
+        "licenses/eigen_archive/COPYING.BSD": {
+          "identity": {
+            "bytes": 1517,
+            "sha256": "51928dce36213c5333ba3172e847d735d4c6e9b7ff2722a326c49067155b82eb"
+          },
+          "path": "eigen_archive/COPYING.BSD",
+          "root": "external"
+        },
+        "licenses/eigen_archive/COPYING.MINPACK": {
+          "identity": {
+            "bytes": 2193,
+            "sha256": "c87b7f8ee88f6195e91743820c00354833583aef091b72e2d4a49c8e28e798a0"
+          },
+          "path": "eigen_archive/COPYING.MINPACK",
+          "root": "external"
+        },
+        "licenses/eigen_archive/COPYING.MPL2": {
+          "identity": {
+            "bytes": 16727,
+            "sha256": "66a3107d5ad6a058aab753eaac2047ccb2ed0e39465dd0fe5844da3e300d5172"
+          },
+          "path": "eigen_archive/COPYING.MPL2",
+          "root": "external"
+        },
+        "licenses/eigen_archive/COPYING.README": {
+          "identity": {
+            "bytes": 494,
+            "sha256": "0aafdc086877b9f6cdded871bfbe6b3947306c9fb91f0354d4876179b675a943"
+          },
+          "path": "eigen_archive/COPYING.README",
+          "root": "external"
+        },
+        "licenses/eigen_archive/LICENSE": {
+          "identity": {
+            "bytes": 16725,
+            "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+          },
+          "path": "eigen_archive/LICENSE",
+          "root": "external"
+        }
+      },
+      "patches": [],
+      "public": {
+        "archive_sha256": "35c6126e246585d9cf6600b65471582c2701aae64b784a6fd19168a90cfc841e",
+        "licenses": {
+          "licenses/eigen_archive/COPYING.APACHE": {
+            "bytes": 11362,
+            "sha256": "03379001a7b12a2ec997a25554247d985270b353c10d5bafee9ac8d6519820b7"
+          },
+          "licenses/eigen_archive/COPYING.BSD": {
+            "bytes": 1517,
+            "sha256": "51928dce36213c5333ba3172e847d735d4c6e9b7ff2722a326c49067155b82eb"
+          },
+          "licenses/eigen_archive/COPYING.MINPACK": {
+            "bytes": 2193,
+            "sha256": "c87b7f8ee88f6195e91743820c00354833583aef091b72e2d4a49c8e28e798a0"
+          },
+          "licenses/eigen_archive/COPYING.MPL2": {
+            "bytes": 16727,
+            "sha256": "66a3107d5ad6a058aab753eaac2047ccb2ed0e39465dd0fe5844da3e300d5172"
+          },
+          "licenses/eigen_archive/COPYING.README": {
+            "bytes": 494,
+            "sha256": "0aafdc086877b9f6cdded871bfbe6b3947306c9fb91f0354d4876179b675a943"
+          },
+          "licenses/eigen_archive/LICENSE": {
+            "bytes": 16725,
+            "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+          }
+        },
+        "pin": "ea13a98decd497a8c5588fb5de71b57bcf10d864",
+        "upstream_url": "https://gitlab.com/libeigen/eigen"
+      }
+    },
+    "farmhash_archive": {
+      "declaration": {
+        "identity": {
+          "bytes": 1279,
+          "sha256": "0f5a9af93c7909308769c90eda2b84bd8a97dd134cab32480908230a7644147f"
+        },
+        "path": "org_tensorflow/third_party/xla/third_party/farmhash/workspace.bzl",
+        "root": "external"
+      },
+      "licenses": {
+        "licenses/farmhash_archive/COPYING": {
+          "identity": {
+            "bytes": 1110,
+            "sha256": "4162dd091caae234f72d3b57e138174f733e736b2430a4c51b098b17d866fcb6"
+          },
+          "path": "farmhash_archive/COPYING",
+          "root": "external"
+        }
+      },
+      "patches": [],
+      "public": {
+        "archive_sha256": "18392cf0736e1d62ecbb8d695c31496b6507859e8c75541d7ad0ba092dc52115",
+        "licenses": {
+          "licenses/farmhash_archive/COPYING": {
+            "bytes": 1110,
+            "sha256": "4162dd091caae234f72d3b57e138174f733e736b2430a4c51b098b17d866fcb6"
+          }
+        },
+        "pin": "0d859a811870d10f53a594927d0d0b97573ad06d",
+        "upstream_url": "https://github.com/google/farmhash"
+      }
+    },
+    "fft2d": {
+      "declaration": {
+        "identity": {
+          "bytes": 511,
+          "sha256": "2573635061dce28a8cad1d3c4a59d44bf5310165f1fe732c676fe9e1c1351873"
+        },
+        "path": "org_tensorflow/third_party/fft2d/workspace.bzl",
+        "root": "external"
+      },
+      "licenses": {
+        "licenses/fft2d/readme.txt": {
+          "identity": {
+            "bytes": 7183,
+            "sha256": "5b5e610da10394132a42d82ed6501fe1b83a1d19e1bb160c8ace10ed61708765"
+          },
+          "path": "fft2d/readme.txt",
+          "root": "external"
+        },
+        "licenses/fft2d/readme2d.txt": {
+          "identity": {
+            "bytes": 3212,
+            "sha256": "0b2a2082537735a2a576dbec2e8f9c1a09812eac6df6a389502a6ba860072906"
+          },
+          "path": "fft2d/readme2d.txt",
+          "root": "external"
+        }
+      },
+      "patches": [],
+      "public": {
+        "archive_sha256": "5f4dabc2ae21e1f537425d58a49cdca1c49ea11db0d6271e2a4b27e9697548eb",
+        "licenses": {
+          "licenses/fft2d/readme.txt": {
+            "bytes": 7183,
+            "sha256": "5b5e610da10394132a42d82ed6501fe1b83a1d19e1bb160c8ace10ed61708765"
+          },
+          "licenses/fft2d/readme2d.txt": {
+            "bytes": 3212,
+            "sha256": "0b2a2082537735a2a576dbec2e8f9c1a09812eac6df6a389502a6ba860072906"
+          }
+        },
+        "pin": "v1.0",
+        "upstream_url": "https://github.com/petewarden/OouraFFT"
+      }
+    },
+    "flatbuffers": {
+      "declaration": {
+        "identity": {
+          "bytes": 882,
+          "sha256": "d9c4b1d4d8b32f3a3e33f9d39aea79541e3e748348888934e8f3c7e220456c3c"
+        },
+        "path": "org_tensorflow/third_party/flatbuffers/workspace.bzl",
+        "root": "external"
+      },
+      "licenses": {
+        "licenses/flatbuffers/LICENSE": {
+          "identity": {
+            "bytes": 11358,
+            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+          },
+          "path": "flatbuffers/LICENSE",
+          "root": "external"
+        }
+      },
+      "patches": [],
+      "public": {
+        "archive_sha256": "9102253214dea6ae10c2ac966ea1ed2155d22202390b532d1dea64935c518ada",
+        "licenses": {
+          "licenses/flatbuffers/LICENSE": {
+            "bytes": 11358,
+            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+          }
+        },
+        "pin": "v25.9.23",
+        "upstream_url": "https://github.com/google/flatbuffers"
+      }
+    },
+    "gemmlowp": {
+      "declaration": {
+        "identity": {
+          "bytes": 759,
+          "sha256": "40524595ca9a85ea9be2b80868cb694e431512616eac897c26511f6b0297c262"
+        },
+        "path": "org_tensorflow/third_party/xla/third_party/gemmlowp/workspace.bzl",
+        "root": "external"
+      },
+      "licenses": {
+        "licenses/gemmlowp/LICENSE": {
+          "identity": {
+            "bytes": 11358,
+            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+          },
+          "path": "gemmlowp/LICENSE",
+          "root": "external"
+        }
+      },
+      "patches": [],
+      "public": {
+        "archive_sha256": "7dc418717c8456473fac4ff2288b71057e3dcb72894524c734a4362cdb51fa8b",
+        "licenses": {
+          "licenses/gemmlowp/LICENSE": {
+            "bytes": 11358,
+            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+          }
+        },
+        "pin": "16e8662c34917be0065110bfcd9cc27d30f52fdf",
+        "upstream_url": "https://github.com/google/gemmlowp"
+      }
+    },
+    "litert": {
+      "declaration": {
+        "identity": {
+          "bytes": 19861,
+          "sha256": "b4f1fca9f5cd789b3e913cfa93b1a762a9eacce05ef97f6ebf4a93836a7d4acd"
+        },
+        "path": "WORKSPACE",
+        "root": "sdk"
+      },
+      "licenses": {
+        "licenses/litert/LICENSE": {
+          "identity": {
+            "bytes": 11357,
+            "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+          },
+          "path": "litert/LICENSE",
+          "root": "external"
+        }
+      },
+      "patches": [],
+      "public": {
+        "archive_sha256": "07961b2128fe4fd330072c60d5ab1bb1b632d49a6d0bbdc8ff7885cd47fd4c1d",
+        "licenses": {
+          "licenses/litert/LICENSE": {
+            "bytes": 11357,
+            "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+          }
+        },
+        "pin": "0ff28117f1cb5556d0e015bf80b773f74e2bee51",
+        "upstream_url": "https://github.com/google-ai-edge/LiteRT"
+      }
+    },
+    "opencl_headers": {
+      "declaration": {
+        "identity": {
+          "bytes": 675,
+          "sha256": "6687998635ef59f1d158b154439b25a7b35febaaa60e9920842ce756d5399306"
+        },
+        "path": "org_tensorflow/third_party/opencl_headers/workspace.bzl",
+        "root": "external"
+      },
+      "licenses": {
+        "licenses/opencl_headers/LICENSE": {
+          "identity": {
+            "bytes": 11358,
+            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+          },
+          "path": "opencl_headers/LICENSE",
+          "root": "external"
+        }
+      },
+      "patches": [],
+      "public": {
+        "archive_sha256": "ca8090359654e94f2c41e946b7e9d826253d795ae809ce7c83a7d3c859624693",
+        "licenses": {
+          "licenses/opencl_headers/LICENSE": {
+            "bytes": 11358,
+            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+          }
+        },
+        "pin": "dcd5bede6859d26833cd85f0d6bbcee7382dc9b3",
+        "upstream_url": "https://github.com/KhronosGroup/OpenCL-Headers"
+      }
+    },
+    "org_tensorflow": {
+      "declaration": {
+        "identity": {
+          "bytes": 19861,
+          "sha256": "b4f1fca9f5cd789b3e913cfa93b1a762a9eacce05ef97f6ebf4a93836a7d4acd"
+        },
+        "path": "WORKSPACE",
+        "root": "sdk"
+      },
+      "licenses": {
+        "licenses/org_tensorflow/LICENSE": {
+          "identity": {
+            "bytes": 13575,
+            "sha256": "71c6915d04265772a0339bed47276942c678b45cc01534210ebe6984fd1aec65"
+          },
+          "path": "org_tensorflow/LICENSE",
+          "root": "external"
+        }
+      },
+      "patches": [
+        {
+          "identity": {
+            "bytes": 2710,
+            "sha256": "0e883bf54172971c1d4de0b63e05de397ef7555fe297b60d52482ceec00c8c6e"
+          },
+          "path": "PATCH.tensorflow",
+          "root": "sdk"
+        }
+      ],
+      "public": {
+        "archive_sha256": "c67c2e8c62b55936a3d7705989af57a0eb28a8b97ab7ed95fe294917c6fb0c14",
+        "licenses": {
+          "licenses/org_tensorflow/LICENSE": {
+            "bytes": 13575,
+            "sha256": "71c6915d04265772a0339bed47276942c678b45cc01534210ebe6984fd1aec65"
+          }
+        },
+        "pin": "9e1afa4e5cfd8818518183211b77f2976c7dc450",
+        "upstream_url": "https://github.com/tensorflow/tensorflow"
+      }
+    },
+    "pthreadpool": {
+      "declaration": {
+        "identity": {
+          "bytes": 502,
+          "sha256": "93027c9f0ca9fdc72dc18f545661c3e4cdc4af4b7511914d9fb5fa9c2a13be76"
+        },
+        "path": "org_tensorflow/third_party/xla/third_party/pthreadpool/workspace.bzl",
+        "root": "external"
+      },
+      "licenses": {
+        "licenses/pthreadpool/LICENSE": {
+          "identity": {
+            "bytes": 1378,
+            "sha256": "57814a606b4d0fb087d9a534919084b6c11b58a4174cb5a4aef200187780dc3a"
+          },
+          "path": "pthreadpool/LICENSE",
+          "root": "external"
+        }
+      },
+      "patches": [],
+      "public": {
+        "archive_sha256": "5ab4e8f63e3dcf62048360c216532bdf62f00dc204883a52d91230402f0feb6a",
+        "licenses": {
+          "licenses/pthreadpool/LICENSE": {
+            "bytes": 1378,
+            "sha256": "57814a606b4d0fb087d9a534919084b6c11b58a4174cb5a4aef200187780dc3a"
+          }
+        },
+        "pin": "02460584c6092e527c8b89f7df4de143d70e801f",
+        "upstream_url": "https://github.com/google/pthreadpool"
+      }
+    },
+    "ruy": {
+      "declaration": {
+        "identity": {
+          "bytes": 605,
+          "sha256": "422a618c44ba55f9c9fe4f18b27efaa26fa0d99f14f1b45e6239a2e3bae9a3a4"
+        },
+        "path": "org_tensorflow/third_party/ruy/workspace.bzl",
+        "root": "external"
+      },
+      "licenses": {
+        "licenses/ruy/LICENSE": {
+          "identity": {
+            "bytes": 11358,
+            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+          },
+          "path": "ruy/LICENSE",
+          "root": "external"
+        }
+      },
+      "patches": [],
+      "public": {
+        "archive_sha256": "a22c42e80c7bb450db8492728e4742ee66f46d5458c45fe67ce2c9b61240630c",
+        "licenses": {
+          "licenses/ruy/LICENSE": {
+            "bytes": 11358,
+            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+          }
+        },
+        "pin": "3286a34cc8de6149ac6844107dfdffac91531e72",
+        "upstream_url": "https://github.com/google/ruy"
+      }
+    },
+    "sdk": {
+      "declaration": {
+        "identity": {
+          "bytes": 19861,
+          "sha256": "b4f1fca9f5cd789b3e913cfa93b1a762a9eacce05ef97f6ebf4a93836a7d4acd"
+        },
+        "path": "WORKSPACE",
+        "root": "sdk"
+      },
+      "licenses": {
+        "licenses/sdk/LICENSE": {
+          "identity": {
+            "bytes": 11357,
+            "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+          },
+          "path": "LICENSE",
+          "root": "sdk"
+        }
+      },
+      "patches": [],
+      "public": {
+        "archive_sha256": null,
+        "licenses": {
+          "licenses/sdk/LICENSE": {
+            "bytes": 11357,
+            "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+          }
+        },
+        "pin": "924e79c91542761242244e4f1651851f822e4cbb",
+        "upstream_url": "https://github.com/google-ai-edge/LiteRT-LM"
+      }
+    },
+    "xla": {
+      "declaration": {
+        "identity": {
+          "bytes": 4183,
+          "sha256": "77264af4a0af04ba68a9d905555628e6eadb87a2c7cb2cb27230ef2320e9edea"
+        },
+        "path": "org_tensorflow/tensorflow/workspace3.bzl",
+        "root": "external"
+      },
+      "licenses": {
+        "licenses/xla/LICENSE": {
+          "identity": {
+            "bytes": 11356,
+            "sha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1"
+          },
+          "path": "xla/LICENSE",
+          "root": "external"
+        }
+      },
+      "patches": [],
+      "public": {
+        "archive_sha256": "c67c2e8c62b55936a3d7705989af57a0eb28a8b97ab7ed95fe294917c6fb0c14",
+        "licenses": {
+          "licenses/xla/LICENSE": {
+            "bytes": 11356,
+            "sha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1"
+          }
+        },
+        "pin": "9e1afa4e5cfd8818518183211b77f2976c7dc450",
+        "upstream_url": "https://github.com/tensorflow/tensorflow/tree/9e1afa4e5cfd8818518183211b77f2976c7dc450/third_party/xla"
+      }
+    }
+  },
+  "schema_version": 1,
+  "scope": "Hosted reviewed API30 WORKSPACE overlay; source declaration hash verified against Build1132 retained snapshot.",
+  "source_archives": {
+    "sources/OouraFFT-v1.0-original.tar.gz": {
+      "identity": {
+        "bytes": 110531,
+        "sha256": "5f4dabc2ae21e1f537425d58a49cdca1c49ea11db0d6271e2a4b27e9697548eb"
+      },
+      "origin": "fft2d",
+      "path": "content_addressable/sha256/5f4dabc2ae21e1f537425d58a49cdca1c49ea11db0d6271e2a4b27e9697548eb/file",
+      "regular_files": 38,
+      "root": "repository_cache"
+    },
+    "sources/eigen-ea13a98-original.tar.gz": {
+      "identity": {
+        "bytes": 2870994,
+        "sha256": "35c6126e246585d9cf6600b65471582c2701aae64b784a6fd19168a90cfc841e"
+      },
+      "origin": "eigen_archive",
+      "path": "content_addressable/sha256/35c6126e246585d9cf6600b65471582c2701aae64b784a6fd19168a90cfc841e/file",
+      "regular_files": 1820,
+      "root": "repository_cache"
+    }
+  },
+  "source_notice": "Corresponding source and notices for the proposed encoder diagnostic artifact\n\nThis diagnostic capsule provides its corresponding source and notices here.\n\nThe following files must remain with this diagnostic binary artifact. The source files retain their original licenses, notices and recipient\nrights; no additional restriction is imposed by this notice.\n\nEigen, commit ea13a98decd497a8c5588fb5de71b57bcf10d864:\n  sources/eigen-ea13a98-original.tar.gz\n  SHA-256: 35c6126e246585d9cf6600b65471582c2701aae64b784a6fd19168a90cfc841e\n  Complete unmodified corresponding source is included in this artifact.\n  The source is principally governed by MPL2.0, with component-specific notices\n  preserved in the archive and licenses/eigen_archive/.\n  Official source:\n  https://gitlab.com/libeigen/eigen/-/archive/ea13a98decd497a8c5588fb5de71b57bcf10d864/eigen-ea13a98decd497a8c5588fb5de71b57bcf10d864.tar.gz\n  MPL2.0: https://www.mozilla.org/en-US/MPL/2.0/\n\nOoura FFT package, TensorFlow-pinned OouraFFT v1.0:\n  sources/OouraFFT-v1.0-original.tar.gz\n  SHA-256: 5f4dabc2ae21e1f537425d58a49cdca1c49ea11db0d6271e2a4b27e9697548eb\n  Complete original package is included, without modifications to its 38 files.\n  Copyright Takuya OOURA, as specified in its original readmes.\n  Original notices: licenses/fft2d/readme.txt and readme2d.txt\n  Author/package/license: https://www.kurims.kyoto-u.ac.jp/~ooura/fft.html\n  Pinned source mirror: https://github.com/petewarden/OouraFFT/archive/v1.0.tar.gz\n\nOther compiled and header dependencies are listed by exact source pin in\nsource-map.json. Their original notices are included under licenses/.\nSystem glibc, libm, libstdc++, libgcc_s and the system ELF loader are not included.\nNo upstream author or organization endorses this diagnostic artifact.\n"
+}

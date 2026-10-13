@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "upgrade": {
+    "seed": {"class": "com.battlesbudz.jarvis.v2.verification.UpgradeFixtureTest", "test": "testSeedPreviousReleaseData"},
+    "verify": {"class": "com.battlesbudz.jarvis.v2.verification.UpgradeVerificationTest", "test": "testCandidateRetainsPreviousReleaseData"}
+  },
+  "class": "com.battlesbudz.jarvis.v2.verification.LifecycleJourneyTest",
+  "phases": {
+    "process_seed": {"test": "testProcessSeedAtUnrecordedEffect", "interrupt": "process_kill"},
+    "process_verify": {"test": "testProcessRecoveryPreservesReceiptsAndDoesNotRepeatEffect"},
+    "microphone_denied": {"test": "testMicrophoneDeniedLeavesSetupAndTextReachable"},
+    "permission_seed": {"test": "testLivePermissionSeedForegroundService", "interrupt": "permission_revoke"},
+    "permission_revoked": {"test": "testRevokedMicrophoneReopensWithoutActiveService"},
+    "permission_regranted": {"test": "testRegrantedMicrophoneStartsAndStopsForegroundService"},
+    "notification_denied": {"test": "testNotificationDeniedStillAllowsVisibleUserStartedService"},
+    "notification_regranted": {"test": "testNotificationRegrantedPublishesServiceControls"}
+  }
+}

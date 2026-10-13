@@ -1,0 +1,51 @@
+{
+  "only_changed_properties": {
+    "org.gradle.jvmargs": {
+      "before": "-Xmx2048m -Dfile.encoding=UTF-8",
+      "after": "-Xmx2048m -Xss8m -Dfile.encoding=UTF-8"
+    },
+    "kotlin.daemon.jvmargs": {
+      "before": "-Xmx4096m",
+      "after": "-Xmx4096m -Xss8m"
+    }
+  },
+  "same_property_keys": true,
+  "duplicate_properties": false,
+  "unchanged_workers": "2",
+  "java_properties_parse": "passed",
+  "jvm_argument_acceptance": {
+    "default": {
+      "command": [
+        "java",
+        "-XX:+PrintFlagsFinal",
+        "-version"
+      ],
+      "exit_code": 0,
+      "observed_flags": "     intx CompilerThreadStackSize                  = 1024                                   {pd product} {default}\n   size_t MaxHeapSize                              = 2613051392                                {product} {ergonomic}\n   size_t SoftMaxHeapSize                          = 2613051392                             {manageable} {ergonomic}\n     intx ThreadStackSize                          = 1024                                   {pd product} {default}\n     intx VMThreadStackSize                        = 1024                                   {pd product} {default}\nopenjdk version \"21.0.12.1\" 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-deb13u1-Debian)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-deb13u1-Debian, mixed mode, sharing)\n"
+    },
+    "gradle": {
+      "command": [
+        "java",
+        "-Xmx2048m",
+        "-Xss8m",
+        "-Dfile.encoding=UTF-8",
+        "-XX:+PrintFlagsFinal",
+        "-version"
+      ],
+      "exit_code": 0,
+      "observed_flags": "     intx CompilerThreadStackSize                  = 1024                                   {pd product} {default}\n   size_t MaxHeapSize                              = 2147483648                                {product} {command line}\n   size_t SoftMaxHeapSize                          = 2147483648                             {manageable} {ergonomic}\n     intx ThreadStackSize                          = 8192                                   {pd product} {command line}\n     intx VMThreadStackSize                        = 1024                                   {pd product} {default}\nopenjdk version \"21.0.12.1\" 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-deb13u1-Debian)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-deb13u1-Debian, mixed mode, sharing)\n"
+    },
+    "kotlin_daemon": {
+      "command": [
+        "java",
+        "-Xmx4096m",
+        "-Xss8m",
+        "-XX:+PrintFlagsFinal",
+        "-version"
+      ],
+      "exit_code": 0,
+      "observed_flags": "     intx CompilerThreadStackSize                  = 1024                                   {pd product} {default}\n   size_t MaxHeapSize                              = 4294967296                                {product} {command line}\n   size_t SoftMaxHeapSize                          = 4294967296                             {manageable} {ergonomic}\n     intx ThreadStackSize                          = 8192                                   {pd product} {command line}\n     intx VMThreadStackSize                        = 1024                                   {pd product} {default}\nopenjdk version \"21.0.12.1\" 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-deb13u1-Debian)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-deb13u1-Debian, mixed mode, sharing)\n"
+    }
+  },
+  "config_sha256": "f189b5df154325b8dc238d39b956c3f25480f0fbc66853d7ae4d4b7c9f3fbd7f"
+}

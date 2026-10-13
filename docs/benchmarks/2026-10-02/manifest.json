@@ -1,0 +1,30 @@
+{
+  "captured_local_date": "2026-10-02",
+  "device": "Samsung Galaxy Z Fold 6 (user reported)",
+  "source": "User-supplied screenshots from phone testing",
+  "build": "unknown: screenshot does not show build",
+  "model": "unknown: screenshot does not show model",
+  "input_route": "unknown",
+  "files": [
+    {
+      "path": "1790966921382.jpeg",
+      "sha256": "271f158da08920164dc8321c1767ac402429b8de820ec31b114ad6e85cd44d1b"
+    },
+    {
+      "path": "1790967071057.jpeg",
+      "sha256": "940116fcade051b2e71152f80da15f2fc4196d3468afd80c1c2f4f5363cfbece"
+    },
+    {
+      "path": "1000032785.jpg",
+      "sha256": "3abf6269025931c7d7d498f73a5e788d98c6d392b624c0cf14017118ea7d4c4a"
+    },
+    {
+      "path": "1000032798.jpg",
+      "sha256": "792dce2fdcb655456c9a21c86ae2b2d86eb89813827bad2fc5ddf3804c521d8e"
+    },
+    {
+      "path": "1000032796.jpg",
+      "sha256": "5f78c54c921a7c50f48fc0069bdf668c062a408000c3f5a199fcd8f633cbf00b"
+    }
+  ]
+}

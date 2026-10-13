@@ -1,0 +1,1 @@
+{"schemaVersion":2,"attempts":[{"id":"22345678-1234-4123-8123-123456789012","generation":2,"state":"SUCCEEDED","createdAtMs":1700000000000,"updatedAtMs":1700000000000,"request":{"name":"read_battery","arguments":{}},"result":"Battery level is 73%.","resultOutcome":"SUCCEEDED"}],"groups":[],"approvals":[],"grants":[],"events":[]}

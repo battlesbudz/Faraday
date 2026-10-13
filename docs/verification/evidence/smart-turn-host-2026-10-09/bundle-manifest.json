@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "scope": "Weight-free Smart Turn eight-fixture host evidence; later documentation use only; no candidate mutation or publication performed",
+  "source_commit": "165ffbb46af313d51e3947a2e70cab3eaef3a543",
+  "source_tree": "bd90286517b045508d2b2b778eb89322fac5920d",
+  "files": [
+    {
+      "file": "RESULTS.md",
+      "sha256": "43da08fa5db60d62682607d30e8f791c12cf5a73bc27ea0651e5ab8e42d75c61",
+      "bytes": 4576
+    },
+    {
+      "file": "cleanup.json",
+      "sha256": "b9c903dcad6c0142924f96885b458da9339d768b7e5c1c8419682d9111f1778a",
+      "bytes": 1009
+    },
+    {
+      "file": "compile-native.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "file": "compile-native.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "file": "compile-reference.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "file": "compile-reference.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "file": "compiler-version.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "file": "compiler-version.stdout",
+      "sha256": "5f6798e87440f1e8b88bf6822c33bebe434f83374640a7f8ba967902ee1ea098",
+      "bytes": 232
+    },
+    {
+      "file": "downloads.json",
+      "sha256": "0a2a70b2b1d8135b5ef0b1d03f618ded1c77db5d76754e9cedda5486769d6819",
+      "bytes": 1175
+    },
+    {
+      "file": "execution-binding.json",
+      "sha256": "45ff4a5e096f66962c56d83e8ee880d5b9e331755bc382c41cb7aeb2c61fcc83",
+      "bytes": 17040
+    },
+    {
+      "file": "harness/native_host_probe.cc",
+      "sha256": "dae8915ff713f54088abed8ff468ba5ce8bc4450cb3726960e4e72cd9b13eacf",
+      "bytes": 3420
+    },
+    {
+      "file": "harness/reference_ort_probe.cc",
+      "sha256": "78255286cc92c5b85c41ac135ad242237dfcf19e97cfe46093c018ae48fb3cec",
+      "bytes": 4227
+    },
+    {
+      "file": "harness/run_host.py",
+      "sha256": "8bf883147a7b775b431bfede29c20ef74b75ddef928551422b7dedd8a9c01a41",
+      "bytes": 19636
+    },
+    {
+      "file": "host-phase-observations.json",
+      "sha256": "5b026e9f55c3c00eda10dd83887e404d46f786a19f23996234d060eb5652f0c5",
+      "bytes": 668
+    },
+    {
+      "file": "independent-result-review.json",
+      "sha256": "0ce4c9cf7ffb56e2f60abdeed3db74ceceaeef70e724afdab013315610b9eb5f",
+      "bytes": 14008
+    },
+    {
+      "file": "launcher.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "file": "launcher.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "file": "native.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "file": "native.stdout",
+      "sha256": "055e1960556108e124cfa19ec6ecdf268749dc5e0fa4fa6d038000c24878d5cf",
+      "bytes": 949
+    },
+    {
+      "file": "preflight.json",
+      "sha256": "edce16cc3d8cecd62ee5d74f6d0cd44f6127aa206b4ba1a074bbaf35f8d5c94b",
+      "bytes": 849
+    },
+    {
+      "file": "receipt.json",
+      "sha256": "5806234b80caa3328e9a84a49258ded742a881a1d85fbe55c9cc3b4eed199cdf",
+      "bytes": 15272
+    },
+    {
+      "file": "reference.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "file": "reference.stdout",
+      "sha256": "b5ecf3c2acbc8dc2380e31a16bfbd65f067d0d8f69ef3628ab1a794d035891e8",
+      "bytes": 710
+    }
+  ],
+  "includes_weights": false,
+  "includes_runtime_binaries": false,
+  "includes_generated_pcm_or_features": false,
+  "includes_private_audio": false,
+  "all_entries_utf8_text": true
+}
