@@ -176,7 +176,11 @@ internal object ActionRequestText {
     private val SCHEDULE_VIEWS = listOf(
         "show (?:me )?(?:my |the )?schedule",
         "(?:what(?:'s| is)|show) (?:my |the )?schedule",
+        "tell me (?:my |the )?schedule",
+        "what(?:'s| is) on (?:my |the )?schedule",
         "what schedule",
+        "do i have anything scheduled",
+        "what do i have scheduled",
         "(?:list|show)(?: me)? (?:my )?reminders?",
         "what reminders? do i have",
         "do i have any reminders?",
@@ -186,6 +190,24 @@ internal object ActionRequestText {
         "how do i see (?:it|my reminders?|the schedule)",
         "how can i see (?:it|my reminders?|the schedule)"
     ).map { Regex("^${it.trimEnd('?')}$") }
+
+    /**
+     * Bounded natural-language forms for posting a notification. Returns the
+     * (title, text) pair, or null when the clause is not a recognizable
+     * notification request. A bare "post notification" with no content is
+     * not routable: the model should ask what the notification should say
+     * rather than invent content.
+     */
+    fun notificationRequest(clause: String): Pair<String, String>? {
+        val text = clause.lowercase().trim().trimEnd('.', '!', '?').trim()
+        val saying = Regex("""^(?:post|send)(?: me)? a notification (?:saying|that says|with (?:the )?text) (.+)$""")
+            .matchEntire(text)?.groupValues?.get(1)?.trim()
+        if (!saying.isNullOrEmpty()) return "Notification" to saying
+        val notify = Regex("""^notify me (?:that |: )(.+)$""")
+            .matchEntire(text)?.groupValues?.get(1)?.trim()
+        if (!notify.isNullOrEmpty()) return "Notification" to notify
+        return null
+    }
 
     private fun cleanTarget(text: String): String? {
         val target = trailing.replace(text.trim(), "").trim()
