@@ -10,19 +10,19 @@
 
 <p align="center">
   <a href="https://github.com/battlesbudz/Faraday/releases"><img src="https://img.shields.io/github/v/release/battlesbudz/Faraday" alt="Latest release"></a>
+  <a href="https://github.com/battlesbudz/Faraday/actions/workflows/android.yml"><img src="https://github.com/battlesbudz/Faraday/actions/workflows/android.yml/badge.svg" alt="Build status"></a>
   <a href="https://github.com/battlesbudz/Faraday/blob/main/LICENSE.md"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="https://github.com/battlesbudz/Faraday/releases"><img src="https://img.shields.io/badge/platform-Android%2011%2B-green" alt="Platform: Android 11+"></a>
-  <a href="#privacy"><img src="https://img.shields.io/badge/offline--first-brightgreen" alt="Offline-first"></a>
 </p>
 
 <p align="center">
   <sub>Built with</sub><br>
-  <img src="https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin">
-  <img src="https://img.shields.io/badge/Jetpack_Compose-4285F4?logo=jetpackcompose&logoColor=white" alt="Jetpack Compose">
-  <img src="https://img.shields.io/badge/Gemma-1A73E8" alt="Gemma">
-  <img src="https://img.shields.io/badge/LiteRT--LM-34A853" alt="LiteRT-LM">
-  <img src="https://img.shields.io/badge/Whisper-000000?logo=openai&logoColor=white" alt="Whisper">
-  <img src="https://img.shields.io/badge/Piper-FF6F00" alt="Piper">
+  <a href="https://kotlinlang.org/"><img src="https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin"></a>
+  <a href="https://developer.android.com/jetpack/compose"><img src="https://img.shields.io/badge/Jetpack_Compose-4285F4?logo=jetpackcompose&logoColor=white" alt="Jetpack Compose"></a>
+  <a href="https://deepmind.google/technologies/gemma/"><img src="https://img.shields.io/badge/Gemma-1A73E8" alt="Gemma"></a>
+  <a href="https://ai.google.dev/edge/litert"><img src="https://img.shields.io/badge/LiteRT--LM-34A853" alt="LiteRT-LM"></a>
+  <a href="https://github.com/openai/whisper"><img src="https://img.shields.io/badge/Whisper-000000?logo=openai&logoColor=white" alt="Whisper"></a>
+  <a href="https://github.com/rhasspy/piper"><img src="https://img.shields.io/badge/Piper-FF6F00" alt="Piper"></a>
 </p>
 
 <p align="center">
