@@ -15,6 +15,15 @@
   <a href="https://github.com/battlesbudz/Faraday/releases"><img src="https://img.shields.io/badge/platform-Android%2011%2B-green" alt="Platform: Android 11+"></a>
 </p>
 
+<p align="center">
+  <sub>Built with</sub><br>
+  <img src="https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin">
+  <img src="https://img.shields.io/badge/Jetpack_Compose-4285F4?logo=jetpackcompose&logoColor=white" alt="Jetpack Compose">
+  <img src="https://img.shields.io/badge/Gemma-1A73E8" alt="Gemma">
+  <img src="https://img.shields.io/badge/LiteRT--LM-34A853" alt="LiteRT-LM">
+  <img src="https://img.shields.io/badge/Whisper-000000?logo=openai&logoColor=white" alt="Whisper">
+  <img src="https://img.shields.io/badge/Piper-FF6F00" alt="Piper">
+</p>
 
 <p align="center">
   <a href="https://github.com/battlesbudz/Faraday/releases">Download for Android</a> · <a href="https://cdn.jsdelivr.net/gh/battlesbudz/Faraday@main/demo/jarvis-voice-demo.mp4">Watch the demo</a>
