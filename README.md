@@ -51,6 +51,7 @@
 - [Privacy](#privacy)
 - [Documentation and contributing](#documentation-and-contributing)
 - [FAQ](#faq)
+- [Acknowledgments](#acknowledgments)
 - [License](#license)
 
 </details>
@@ -203,6 +204,16 @@ Wake-word listening uses the phone's low-power audio path. Heavy use — long vo
 
 **What happens to my data if I uninstall?**
 Everything is stored locally on your phone. Uninstalling removes your conversations, memories, and downloaded models. There's no cloud copy.
+
+## Acknowledgments
+
+Faraday stands on the shoulders of giants:
+
+- [Gemma](https://deepmind.google/technologies/gemma/) — Google's open models that power every conversation, running fully on-device
+- [LiteRT-LM](https://ai.google.dev/edge/litert) — Google's on-device inference runtime that makes those models run on a phone
+- [Whisper](https://openai.com/index/whisper/) — OpenAI's speech recognition for turning voice into text
+- [Piper](https://github.com/rhasspy/piper) — the text-to-speech voice you hear
+- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) — the on-device speech toolkit behind Whisper recognition, Piper voices, and voice activity detection
 
 ## License
 
