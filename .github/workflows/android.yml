@@ -6,6 +6,13 @@ on:
     # Every successful opted-in build publishes test APKs after verification.
     # PR runs separately verify GitHub's combined merge candidate.
     branches: [main, PR1, feature-tools, 'feature/**']
+    # Skip builds when only docs or demo assets changed.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'demo/**'
+      - 'artwork/**'
+      - 'LICENSE*' 
 
 permissions:
   contents: read
@@ -703,7 +710,7 @@ jobs:
         with:
           tag_name: ${{ github.event_name == 'pull_request' && format('audio-pr2-pr{0}-build.{1}', github.event.pull_request.number, github.run_number) || format('v0.1.0-build.{0}', github.run_number) }}
           target_commitish: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-          name: Jarvis OS V2 ${{ github.head_ref || github.ref_name }} build ${{ github.run_number }}
+          name: Faraday ${{ github.head_ref || github.ref_name }} build ${{ github.run_number }}
           generate_release_notes: true
           files: dist/*.apk
 
@@ -735,7 +742,7 @@ jobs:
         with:
           tag_name: memory-os-v2-build.${{ github.run_number }}
           target_commitish: ${{ github.sha }}
-          name: Jarvis OS V2 Memory OS test build ${{ github.run_number }}
+          name: Faraday Memory OS test build ${{ github.run_number }}
           prerelease: true
           generate_release_notes: false
           body: |
@@ -777,7 +784,7 @@ jobs:
         with:
           tag_name: pr1-test
           target_commitish: ${{ github.sha }}
-          name: Jarvis OS V2 PR1 test build
+          name: Faraday PR1 test build
           prerelease: true
           generate_release_notes: false
           files: dist/*.apk
