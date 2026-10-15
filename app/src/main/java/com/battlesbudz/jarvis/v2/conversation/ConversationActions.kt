@@ -9,12 +9,16 @@ import com.battlesbudz.jarvis.v2.actions.runNative
 import com.battlesbudz.jarvis.v2.actions.runValidated
 import com.battlesbudz.jarvis.v2.ai.ToolCall
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkCapture
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * One turn's action-journal owner. Admission, Android execution, durable receipt publication and
- * UI acknowledgement stay together on Main. A model claim never serves as an executor receipt.
+ * One turn's action-journal owner. Admission, durable receipt publication and
+ * UI acknowledgement stay on Main. Android execution runs OFF Main: the
+ * executor blocks (launch settle/poll sleeps, the screenshot latch, runBlocking
+ * vision inference), so running it on Main would stall UI/Stop/lifecycle and
+ * can ANR. A model claim never serves as an executor receipt.
  * Cancellation marks unfinished journal work; it cannot undo an Android effect already begun.
  */
 internal class ConversationActions(
@@ -23,19 +27,37 @@ internal class ConversationActions(
     private val execute: (ActionRequest, MobileActionExecutor, String?, Int) -> ExecutionResult,
     private val cancelUnfinished: (String) -> Unit,
     private val conversationId: String,
-    private val onActionResult: (String, String, Boolean) -> Unit
+    private val onActionResult: (String, String, Boolean) -> Unit,
+    /** Admission / journal / UI-ack boundary. Production: Dispatchers.Main. */
+    private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
+    /**
+     * Android execution boundary. Production: Dispatchers.IO — the executor
+     * blocks (settle/poll sleeps, screenshot latch, runBlocking inference),
+     * and IO absorbs blocking work without starving Default's CPU-bound work.
+     */
+    private val executionDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
     private var groupId: String? = null
     private var step = 0
 
     private suspend fun dispatch(plan: ActionTurnPlan.Ready, request: ActionRequest,
-                                 executor: MobileActionExecutor? = null): ExecutionResult = withContext(Dispatchers.Main) {
-        if (groupId == null) groupId = admit(plan, conversationId)
-        if (groupId == null) ExecutionResult(false,
-            "I couldn't save this phone action, so I didn't start it.")
-        else execute(request, executor ?: this@ConversationActions.executor(), groupId, step++).also {
-            onActionResult(request.name, it.message, it.succeeded)
+                                 executor: MobileActionExecutor? = null): ExecutionResult {
+        // Admission stays on Main: the journal group is owned there.
+        val admitted = withContext(mainDispatcher) {
+            if (groupId == null) groupId = admit(plan, conversationId)
+            groupId
         }
+        if (admitted == null) return ExecutionResult(false,
+            "I couldn't save this phone action, so I didn't start it.")
+        val stepIndex = withContext(mainDispatcher) { step++ }
+        // Android execution runs OFF Main: the executor blocks (launch
+        // verification sleeps/poll, screenshot latch, runBlocking inference).
+        val result = withContext(executionDispatcher) {
+            execute(request, executor ?: this@ConversationActions.executor(), admitted, stepIndex)
+        }
+        // UI acknowledgement returns to Main.
+        withContext(mainDispatcher) { onActionResult(request.name, result.message, result.succeeded) }
+        return result
     }
 
     suspend fun runValidated(plan: ActionTurnPlan.Ready, benchmark: PipelineBenchmarkCapture): ActionTurnRunner.Outcome {
@@ -44,7 +66,7 @@ internal class ConversationActions(
         val started = System.nanoTime()
         benchmark.mark("tool_execution_started")
         val outcome = coordinator.runValidated(plan,
-            checkBattery = { withContext(Dispatchers.Main) {
+            checkBattery = { withContext(executionDispatcher) {
                 execute(ActionRequest("read_battery"), executor, null, 0)
             } },
             dispatch = { dispatch(plan, it, executor) })
