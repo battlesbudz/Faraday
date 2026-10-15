@@ -196,7 +196,7 @@ class EvidenceTests(unittest.TestCase):
         from diagnostic_status import Status
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);b=root/'build';r=root/'run';b.mkdir();r.mkdir()
-            context={'repository':'battlesbudz/Jarvis-OS-V2','run_id':123,'run_attempt':1,
+            context={'repository':'battlesbudz/Faraday','run_id':123,'run_attempt':1,
                 'head_sha':'a'*40,'source_commit':'b'*40}
             status=Status(b,context);status.phase('source_graph')
             status.failed(FileNotFoundError('/private/never-export-this'))

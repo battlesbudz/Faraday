@@ -16,7 +16,7 @@ import diagnostic_guard as guard
 import diagnostic_status as status
 import hosted_capture as capture
 
-CONTEXT = {'repository': 'battlesbudz/Jarvis-OS-V2', 'run_id': 123, 'run_attempt': 2,
+CONTEXT = {'repository': 'battlesbudz/Faraday', 'run_id': 123, 'run_attempt': 2,
            'head_sha': 'a'*40, 'source_commit': 'b'*40}
 REPORT = {'started': True, 'passed': False, 'exit_code': 2, 'resource_profile': 'diagnostic',
           'classification': 'build_compile_failure', 'cleanup_verified': True,

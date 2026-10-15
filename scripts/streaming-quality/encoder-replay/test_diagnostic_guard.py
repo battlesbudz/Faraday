@@ -17,7 +17,7 @@ from common import GateError
 from hosted_capture import public_graph
 from trace_compiler_inputs import source_record
 
-CONTEXT = {'repository':'battlesbudz/Jarvis-OS-V2','run_id':123,'run_attempt':2,
+CONTEXT = {'repository':'battlesbudz/Faraday','run_id':123,'run_attempt':2,
            'head_sha':'a'*40,'source_commit':'b'*40}
 MEMORY = {'host_mem_available_bytes':12*1024**3,'cgroup_remaining_bytes':None,
           'effective_available_bytes':12*1024**3}
