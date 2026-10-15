@@ -142,6 +142,27 @@ fun verifiedLaunchReceipt(
     else LaunchVerification.Unconfirmed("foreground not observed")
 )
 
+/**
+ * Receipt for a view intent (OpenWebsite / OpenSettings / Navigate). A
+ * verified launch proves only that the handler package reached the
+ * foreground with non-blank pixels — not that the requested URL, settings
+ * screen, or navigation destination opened. Maps can sit on an onboarding or
+ * error screen, the browser on an error page or a pre-existing tab, while
+ * satisfying every leg of launch verification, so a verified handler-open
+ * stays UNKNOWN_COMPLETION: the requested destination is unconfirmed, and
+ * the turn stops instead of continuing a chain on a destination it did not
+ * prove. Failures and unconfirmed launches pass through unchanged. There is
+ * no destination-specific evidence in this codebase (no OCR, no URL check)
+ * that could promote this to success.
+ */
+fun viewIntentReceipt(launchResult: ExecutionResult, label: String): ExecutionResult {
+    if (!launchResult.succeeded) return launchResult
+    return ExecutionResult(
+        ExecutionResult.Outcome.UNKNOWN_COMPLETION,
+        "The handler for $label opened, but the requested destination could not be confirmed."
+    )
+}
+
 fun assistantSubmittedLaunchReceipt(label: String): ExecutionResult =
     ExecutionResult(
         ExecutionResult.Outcome.UNKNOWN_COMPLETION,
@@ -154,4 +175,3 @@ fun assistantRejectedLaunchReceipt(label: String, error: String): ExecutionResul
         ExecutionResult.Outcome.FAILED,
         "Android rejected the assistant launch of $label: $error"
     )
-

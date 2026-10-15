@@ -138,13 +138,11 @@ class AndroidMobileActionExecutor(
         }
         is MobileAction.OpenWebsite -> dispatchViewIntent(
             Intent(Intent.ACTION_VIEW, Uri.parse(action.url)),
-            label = action.url,
-            openedText = "Opening"
+            label = action.url
         )
         is MobileAction.OpenSettings -> dispatchViewIntent(
             Intent(action.screen.intentAction),
-            label = "${action.screen.label} settings",
-            openedText = "Opening"
+            label = "${action.screen.label} settings"
         )
         is MobileAction.Navigate -> dispatchViewIntent(
             Intent(
@@ -154,8 +152,7 @@ class AndroidMobileActionExecutor(
                         Uri.encode(action.destination)
                 )
             ),
-            label = action.destination,
-            openedText = "Showing directions to"
+            label = action.destination
         )
         MobileAction.ScreenObserve -> observeScreen()
         is MobileAction.ScreenTap -> dispatchScreenMutation(
@@ -326,18 +323,20 @@ class AndroidMobileActionExecutor(
      * or exemption-backed startActivity. A background launch with no
      * supported route is a local refusal, never an optimistic "requested"
      * success.
+     *
+     * A verified launch proves only that the handler opened, never that the
+     * requested URL, settings screen, or destination opened — so the result
+     * goes through [viewIntentReceipt], which keeps a verified handler-open
+     * at UNKNOWN_COMPLETION instead of reporting "Opening/Showing
+     * directions" as a completed destination.
      */
     private fun dispatchViewIntent(
         intent: Intent,
-        label: String,
-        openedText: String
+        label: String
     ): ExecutionResult {
         val observePackage = intent.resolveActivity(context.packageManager)?.packageName
         val result = launchViaRoute(intent, label, observePackage)
-        // Preserve the caller's wording only for a genuinely verified
-        // launch. A submitted-but-unconfirmed launch keeps its honest
-        // receipt so the turn never claims an opening it did not observe.
-        return if (result.succeeded) ExecutionResult(true, "$openedText $label.") else result
+        return viewIntentReceipt(result, label)
     }
 
     /**
@@ -439,4 +438,3 @@ class AndroidMobileActionExecutor(
         )
     }
 }
-
