@@ -76,8 +76,12 @@ class PhoneVisionClient(
 
     /** GET /health. Throws [PhoneVisionException] when the server is unreachable. */
     suspend fun health(url: String = DEFAULT_HEALTH_URL): HealthStatus = withContext(Dispatchers.IO) {
-        val connection = openConnection(URL(url))
+        // openConnection is inside the try on purpose: a refused connection
+        // throws ConnectException here, and it must be mapped to the
+        // honest PhoneVisionException (START SERVER hint) below.
+        var connection: HttpURLConnection? = null
         try {
+            connection = openConnection(URL(url))
             connection.apply {
                 requestMethod = "GET"
                 connectTimeout = CONNECT_TIMEOUT_MS
@@ -108,13 +112,15 @@ class PhoneVisionClient(
         } catch (error: IOException) {
             throw PhoneVisionException("Phone Inference server request failed: ${error.message}")
         } finally {
-            connection.disconnect()
+            connection?.disconnect()
         }
     }
 
     private fun post(url: String, token: String, body: String): String {
-        val connection = openConnection(URL(url))
+        // openConnection is inside the try on purpose: see health() above.
+        var connection: HttpURLConnection? = null
         try {
+            connection = openConnection(URL(url))
             connection.apply {
                 requestMethod = "POST"
                 connectTimeout = CONNECT_TIMEOUT_MS
@@ -150,7 +156,7 @@ class PhoneVisionClient(
         } catch (error: IOException) {
             throw PhoneVisionException("Phone Inference server request failed: ${error.message}")
         } finally {
-            connection.disconnect()
+            connection?.disconnect()
         }
     }
 
