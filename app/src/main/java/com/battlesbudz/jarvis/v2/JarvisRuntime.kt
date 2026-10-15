@@ -729,6 +729,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
                     primary = { contentResolver.openInputStream(uri) },
                     fallback = { contentResolver.openAssetFileDescriptor(uri, "r")?.createInputStream() })
             }, diagnostics,
+                appAssets = applicationContext.assets,
+                visionServerConfig = { VisionServerSettings.snapshot(applicationContext) },
                 // M1d: model-proposed screen mutations never auto-dispatch
                 // (D23); M4: model-proposed browse_submit never auto-dispatches
                 // (D11). Park them for the user's explicit approval.
