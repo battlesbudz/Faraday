@@ -286,17 +286,62 @@ class PhoneTaskCoordinatorTest {
                 })
                 assertTrue(silentWork.enterSilentWork())
                 val effectRan = java.util.concurrent.CountDownLatch(1)
+                // Gate the fake executor: it parks after entry so the test
+                // can observe the pre-effect callback's publication while
+                // execution is still blocked. The trailing refresh in
+                // resumePhoneTasksAfterUnlock cannot have run yet (the
+                // resume job is suspended waiting for this executor), so
+                // a RUNNING publication seen here must come from the
+                // pipeline's onJournalChanged callback hop, not the
+                // trailing refresh.
+                val executionRelease = java.util.concurrent.CountDownLatch(1)
                 val execThreads = java.util.Collections.synchronizedList(mutableListOf<String>())
                 val projected = java.util.concurrent.CountDownLatch(1)
                 val scope = CoroutineScope(Dispatchers.Unconfined)
+                val baseName = { name: String -> name.substringBefore(" @coroutine") }
                 val coordinator = PhoneTaskCoordinator(scope,
                     androidx.test.core.app.ApplicationProvider.getApplicationContext(), { ledger }, { false },
-                    { MobileActionExecutor { execThreads += Thread.currentThread().name; effectRan.countDown(); ExecutionResult(true, "effect") } },
+                    { MobileActionExecutor {
+                        execThreads += Thread.currentThread().name
+                        effectRan.countDown()
+                        // Bounded park: if the test thread dies before
+                        // releasing, the executor still proceeds after
+                        // 10s instead of hanging CI.
+                        executionRelease.await(10, TimeUnit.SECONDS)
+                        ExecutionResult(true, "effect")
+                    } },
                     { true }, { _, _, _, _ -> projected.countDown() },
                     silentWork, {},
                     dispatcher = mainDispatcher, executionDispatcher = executionDispatcher)
                 coordinator.resumePhoneTasksAfterUnlock()
                 assertTrue("the resumed task must execute", effectRan.await(10, TimeUnit.SECONDS))
+                // While execution is blocked, the pre-effect callback must
+                // already have published RUNNING via the coordinator
+                // dispatcher. Poll for both the state and the test-main
+                // refresh-thread record together: refreshPhoneTasks
+                // assigns tasks.value before the silent-work clock
+                // records the refresh thread, so either alone could be
+                // observed first. Release in finally so a failure here
+                // cannot strand the executor or hang teardown.
+                var sawRunning = false
+                var runningOnMain = false
+                val runningDeadline = System.currentTimeMillis() + 10_000
+                while (System.currentTimeMillis() < runningDeadline) {
+                    val published = coordinator.tasks.value?.attempts?.singleOrNull { it.id == recoveredConversation.id }?.state
+                    if (published == ToolTaskState.RUNNING) sawRunning = true
+                    val threadsSnapshot: List<String> = synchronized(refreshThreads) { refreshThreads.toList() }
+                    if (sawRunning && threadsSnapshot.any { baseName(it) == "test-main" }) { runningOnMain = true; break }
+                    Thread.sleep(10)
+                }
+                try {
+                    val threadsSnapshot: List<String> = synchronized(refreshThreads) { refreshThreads.toList() }
+                    assertTrue("the pipeline's pre-effect callback must publish RUNNING on the coordinator dispatcher before execution is released (saw RUNNING=$sawRunning, refreshThreads=$threadsSnapshot)",
+                        runningOnMain)
+                    assertTrue("no publication while blocked may run on the execution dispatcher (refreshThreads=$threadsSnapshot)",
+                        threadsSnapshot.none { baseName(it) == "test-exec" })
+                } finally {
+                    executionRelease.countDown()
+                }
                 assertTrue("the resumed task must project", projected.await(10, TimeUnit.SECONDS))
                 // Drain every refresh posted to the coordinator dispatcher.
                 mainExecutor.submit(Runnable {}).get(10, TimeUnit.SECONDS)
@@ -308,7 +353,6 @@ class PhoneTaskCoordinatorTest {
                 assertEquals("the resumed task must record its terminal receipt before teardown",
                     ToolTaskState.SUCCEEDED, terminal?.state)
                 assertEquals("effect", terminal?.result)
-                val baseName = { name: String -> name.substringBefore(" @coroutine") }
                 assertEquals("resumed execution must run on the execution dispatcher",
                     listOf("test-exec"), execThreads.map(baseName))
                 assertTrue("projection refreshes must run on the coordinator dispatcher, never the execution dispatcher",
