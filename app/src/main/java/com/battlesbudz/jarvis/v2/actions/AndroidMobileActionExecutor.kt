@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.BatteryManager
 import android.os.SystemClock
 import android.view.KeyEvent
+import com.battlesbudz.jarvis.v2.vision.NativeVisionScreenshotAnalyzer
 import kotlin.math.round
 
 class AndroidMobileActionExecutor(
@@ -36,6 +37,21 @@ class AndroidMobileActionExecutor(
     private val overlayExempt: () -> Boolean = {
         android.provider.Settings.canDrawOverlays(context)
     },
+    /**
+     * Screenshot+vision launch verification (Battles 2026-10-15). Default
+     * is the production verifier: foreground package + screenshot from
+     * the accessibility-service bridge, analyzed by the existing
+     * NativeVision stack. Tests inject their own verifier (e.g. UiDevice
+     * capture + the same analyzer). There is no clean-return heuristic:
+     * a clean startActivity return never verifies a launch.
+     */
+    private val launchVerifier: LaunchVerifier = ScreenshotLaunchVerifier(
+        observationAvailable = { screenBridge.isAvailable() },
+        foregroundPackage = { screenBridge.foregroundPackage() },
+        captureScreenshot = { screenBridge.captureScreenshot() },
+        analyzeScreenshot = { bytes -> NativeVisionScreenshotAnalyzer(context.assets).analyze(bytes) },
+        onDiagnostic = onDiagnostic
+    ),
 ) : MobileActionExecutor {
     private val scheduling: ReminderScheduling? = reminderScheduling ?: (context as? ReminderScheduling)
     private val appResolver = InstalledAppResolver(context)
@@ -216,8 +232,9 @@ class AndroidMobileActionExecutor(
      * outcomes are reported distinctly: local refusal (Jarvis never asked
      * Android), submitted/unverified request (handed to the platform, never
      * promoted to success), platform rejection (startActivity threw), and
-     * observed foreground transition (destination visibility confirmed —
-     * the only verified launch).
+     * screenshot+vision verification (opening confirmed by foreground
+     * observation, screenshot capture, and vision analysis — the only
+     * verified launch).
      */
     private fun launchViaRoute(intent: Intent, label: String, observePackage: String?): ExecutionResult {
         val visible = canLaunchDirectly()
@@ -261,16 +278,18 @@ class AndroidMobileActionExecutor(
     }
 
     /**
-     * Fire a NEW_TASK launch and report the platform's verdict. Callers must
-     * only reach this when the launch is eligible: the activity is visible
-     * or a background-activity-start exemption applies. startActivity
-     * returns void, so a clean return is only a submitted request — the
-     * destination must be observed in the foreground before the launch
-     * counts as verified, and this path performs no observation. The result
-     * is unknown completion: the journal records it as unconfirmed, the
-     * workflow engine stops without repeating it, and success-dependent
-     * steps never inherit its success. Only the caught rejections are
-     * reported as platform rejections; silent background drops surface as
+     * Fire a NEW_TASK launch and verify it with screenshot+vision
+     * (Battles 2026-10-15). Callers must only reach this when the launch
+     * is eligible: the activity is visible or a background-activity-start
+     * exemption applies. startActivity returns void, so a clean return is
+     * only a submitted request — the launch counts as verified only when
+     * the injected verifier confirms it (foreground package observed, a
+     * real post-launch screenshot captured, NativeVision analysis ran
+     * over non-blank pixels). An unverified launch stays unknown
+     * completion: the journal records it as unconfirmed, the workflow
+     * engine stops without repeating it, and success-dependent steps never
+     * inherit its success. Only the caught rejections are reported as
+     * platform rejections; silent background drops surface as
      * submitted-but-unconfirmed, never as success.
      */
     private fun submitLaunch(
@@ -282,14 +301,13 @@ class AndroidMobileActionExecutor(
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(intent)
         onDiagnostic("App launch route=${route.name.lowercase()} label=$label result=submitted")
-        // No route is verified by a clean return (see
-        // isVerifiedByCleanReturn): startActivity returns void and this
-        // path performs no observation, so the launch stays unconfirmed.
-        // Only a caller that actually observes the destination in the
-        // foreground may pass foregroundObserved = true. No polling:
-        // Android offers no reliable API for an app to observe another
-        // app's foreground status.
-        verifiedLaunchReceipt(label, route, platformError = null, foregroundObserved = isVerifiedByCleanReturn(route))
+        // A clean return verifies nothing. The verifier is the only path
+        // to a verified launch: wait ~1s, screenshot, vision analysis.
+        // When capture/observation is unavailable it reports unconfirmed,
+        // never a false success.
+        val verification = launchVerifier.verify(observePackage, label)
+        onDiagnostic("App launch route=${route.name.lowercase()} label=$label verification=$verification")
+        verifiedLaunchReceipt(label, route, platformError = null, verification = verification)
     } catch (cancelled: kotlinx.coroutines.CancellationException) {
         throw cancelled
     } catch (error: android.content.ActivityNotFoundException) {

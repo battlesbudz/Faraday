@@ -2,7 +2,9 @@ package com.battlesbudz.jarvis.v2.actions
 
 import android.accessibilityservice.AccessibilityService
 import android.content.ComponentName
+import android.graphics.Bitmap
 import android.graphics.PixelFormat
+import android.view.Display
 import android.os.Bundle
 import android.graphics.Rect
 import android.provider.Settings
@@ -11,6 +13,10 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Button
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executor
+import java.util.concurrent.TimeUnit
 
 /**
  * M1c screen-control accessibility service. Observes the active window as a
@@ -33,6 +39,20 @@ class ScreenControlService : AccessibilityService() {
 
         internal fun connectedInstance(): ScreenControlService? = instance
 
+        /**
+         * One screenshot of the current screen via the connected
+         * accessibility service (AccessibilityService.takeScreenshot,
+         * API 30+ — minSdk is 30, so this is available on every supported
+         * device). No MediaProjection consent flow is needed: the user
+         * already granted this service screen access in Accessibility
+         * settings. Returns null when the service is not connected, the
+         * platform errors, or the capture times out — never fabricated
+         * pixels. The capture is throttled by the platform; at most one
+         * is taken per launch verification.
+         */
+        fun captureScreenshot(timeoutMs: Long = 5_000): ByteArray? =
+            connectedInstance()?.takeScreenScreenshot(timeoutMs)
+
         fun isEnabled(context: android.content.Context): Boolean {
             val expected = ComponentName(context, ScreenControlService::class.java).flattenToString()
             return Settings.Secure.getString(
@@ -44,6 +64,37 @@ class ScreenControlService : AccessibilityService() {
 
     override fun onServiceConnected() {
         instance = this
+    }
+
+    /**
+     * Captures the current screen's pixels through the platform
+     * AccessibilityService.takeScreenshot API. Synchronous for the
+     * launch verifier (bounded by [timeoutMs]); the callback runs on a
+     * direct executor and only hands over the PNG bytes.
+     */
+    fun takeScreenScreenshot(timeoutMs: Long = 5_000): ByteArray? {
+        val latch = CountDownLatch(1)
+        var png: ByteArray? = null
+        takeScreenshot(Display.DEFAULT_DISPLAY, Executor { it.run() }, object : ScreenshotCallback() {
+            override fun onSuccess(screenshot: ScreenshotResult) {
+                try {
+                    val out = ByteArrayOutputStream()
+                    if (screenshot.bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) {
+                        png = out.toByteArray()
+                    }
+                } catch (_: Exception) {
+                    png = null
+                } finally {
+                    latch.countDown()
+                }
+            }
+
+            override fun onError(errorCode: Int) {
+                latch.countDown()
+            }
+        })
+        latch.await(timeoutMs, TimeUnit.MILLISECONDS)
+        return png
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -258,6 +309,18 @@ internal class ServiceScreenBridge(
     private fun service(): ScreenControlService? = ScreenControlService.connectedInstance()
 
     override fun isAvailable(): Boolean = available()
+
+    override fun captureScreenshot(): ByteArray? = ScreenControlService.captureScreenshot()
+
+    /** Cheap root-only foreground-package read: no full tree walk per poll. */
+    override fun foregroundPackage(): String? {
+        val root = activeRoot() ?: return null
+        return try {
+            root.packageName?.toString()?.takeIf { it.isNotBlank() }
+        } finally {
+            root.recycle()
+        }
+    }
 
     override fun observe(): ScreenObservation? {
         val root = activeRoot() ?: return null

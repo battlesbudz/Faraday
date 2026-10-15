@@ -9,8 +9,8 @@ import org.junit.Test
  * submission is NEVER a verified launch on any route. The route decision
  * and the receipt wording are JVM-pure and tested here for every
  * combination: foreground, selected assistant, granted/revoked overlay,
- * unavailable assistant binding, and denied/no-supported-route. Only an
- * actual foreground observation verifies a launch; unobserved submissions
+ * unavailable assistant binding, and denied/no-supported-route. Only
+ * screenshot+vision verification verifies a launch; unverified submissions
  * are reported honestly as unconfirmed (unknown completion) so journals,
  * workflows and user reports never promote them to success.
  */
@@ -66,18 +66,37 @@ class BackgroundLaunchMatrixTest {
         )
     }
 
-    // Clean-return verification: no route is verified by a clean return.
+    // Screenshot+vision verification: the clean-return heuristic is gone
+    // entirely — no route is verified by a clean return, because there is
+    // no clean-return function anymore. Only a Verified verification from
+    // ScreenshotLaunchVerifier (foreground observed, screenshot captured,
+    // vision analysis over non-blank pixels) promotes a launch to success.
 
-    @Test fun noRouteIsVerifiedByCleanReturn() {
+    @Test fun unconfirmedVerificationNeverPromotesToSuccess() {
         // startActivity returns void: a clean return only proves the
-        // request was handed to the platform. Only an actual foreground
-        // observation verifies a launch, on DIRECT as on every route.
+        // request was handed to the platform. Without a Verified
+        // verification, every route stays unconfirmed — DIRECT included.
         for (route in BackgroundLaunchRoute.values()) {
-            assertFalse(
-                "a clean startActivity return never verifies a launch: $route",
-                isVerifiedByCleanReturn(route)
+            val receipt = verifiedLaunchReceipt(
+                "Example App", route, platformError = null,
+                verification = LaunchVerification.Unconfirmed("no screenshot evidence")
             )
+            assertEquals(
+                "an unverified launch never succeeds: $route",
+                Outcome.UNKNOWN_COMPLETION, receipt.outcome
+            )
+            assertFalse("an unverified launch is not success: $route", receipt.succeeded)
         }
+    }
+
+    @Test fun screenshotVerifiedLaunchIsSuccess() {
+        val verified = verifiedLaunchReceipt(
+            "Example App", BackgroundLaunchRoute.DIRECT, platformError = null,
+            verification = LaunchVerification.Verified
+        )
+        assertEquals(Outcome.SUCCEEDED, verified.outcome)
+        assertTrue("a screenshot-verified launch is success", verified.succeeded)
+        assertEquals("Opened Example App.", verified.message)
     }
 
     // Receipt wording: local refusal.
@@ -100,11 +119,10 @@ class BackgroundLaunchMatrixTest {
         )
     }
 
-    // Receipts: submitted/unverified vs observed vs platform rejection.
+    // Receipts: submitted/unverified vs verified vs platform rejection.
     // A background-route submission is unknown completion — never success.
-    // (Production submitLaunch passes foregroundObserved = isVerifiedByCleanReturn(route),
-    // false on every route; these test verifiedLaunchReceipt as a pure
-    // function of its inputs.)
+    // (Production submitLaunch passes the ScreenshotLaunchVerifier result;
+    // these test verifiedLaunchReceipt as a pure function of its inputs.)
 
     @Test fun submittedLaunchWithoutObservationIsUnverified() {
         val submitted = verifiedLaunchReceipt(

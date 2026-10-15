@@ -13,10 +13,13 @@ package com.battlesbudz.jarvis.v2.actions
  *   foreground — reported as unknown completion, never as success;
  * - platform rejection: startActivity threw (ActivityNotFound,
  *   SecurityException);
- * - verified launch: the destination package was seen in the foreground
- *   after the request. A clean startActivity return on any route — DIRECT
- *   included — is only a submitted request: the call performs no
- *   observation, and no return value verifies an opening. Unobserved
+ * - verified launch: screenshot+vision verification confirmed the
+ *   opening after the request (ScreenshotLaunchVerifier: ~1s settle,
+ *   expected package observed in the foreground, a real screenshot
+ *   captured, and the existing NativeVision stack analyzed it with
+ *   non-blank pixels). A clean startActivity return on any route —
+ *   DIRECT included — is only a submitted request: the call performs no
+ *   observation, and no return value verifies an opening. Unverified
  *   launches keep the unconfirmed receipt.
  *
  * The two recognized routes (selected assistant, overlay exemption) are not
@@ -54,20 +57,6 @@ fun resolveBackgroundLaunchRoute(
 }
 
 /**
- * Whether a clean startActivity return on this route counts as a verified
- * launch. None does: startActivity returns void, so a clean return only
- * proves the request was handed to the platform — it observes nothing
- * about whether the destination opened. Only an actual foreground
- * observation verifies a launch (see verifiedLaunchReceipt's
- * foregroundObserved). DIRECT included: the journey tests require an
- * unobserved launch to stay UNKNOWN_COMPLETION even when Jarvis's own
- * activity was visible, and chains must not continue on an unconfirmed
- * launch.
- */
-fun isVerifiedByCleanReturn(@Suppress("UNUSED_PARAMETER") route: BackgroundLaunchRoute): Boolean =
-    false
-
-/**
  * Local-refusal receipt: Jarvis could not establish a supported
  * background-launch route, so nothing was attempted. Worded as Jarvis's own
  * limitation — never as an observed Android block, and never implying the
@@ -85,25 +74,25 @@ fun backgroundLaunchRefusal(label: String): ExecutionResult =
  * Receipt for a launch that reached the platform. The four outcomes stay
  * distinct end to end:
  * - platform rejection -> FAILED: Android threw;
- * - verified launch -> SUCCEEDED: the destination was seen in the
- *   foreground. A clean startActivity return alone never verifies a
- *   launch on any route;
- * - submitted without observation on a background route ->
- *   UNKNOWN_COMPLETION: the request was handed to Android, but opening
- *   could not be confirmed. Journals record this as unknown outcome,
- *   workflows stop without repeating it, and later steps never inherit
- *   its success.
+ * - verified launch -> SUCCEEDED: screenshot+vision verification
+ *   confirmed the opening (ScreenshotLaunchVerifier returned Verified).
+ *   A clean startActivity return alone never verifies a launch on any
+ *   route — there is no clean-return heuristic anymore;
+ * - submitted without verification -> UNKNOWN_COMPLETION: the request
+ *   was handed to Android, but opening could not be confirmed. Journals
+ *   record this as unknown outcome, workflows stop without repeating
+ *   it, and later steps never inherit its success.
  *
  * A background-route submission is never promoted to a verified launch.
- * Callers that can observe the destination (e.g. instrumentation via
- * UiDevice) pass foregroundObserved = true; production background paths
- * leave it false and report honestly.
+ * Callers that verified the opening through ScreenshotLaunchVerifier pass
+ * its result; production background paths that could not verify leave it
+ * unconfirmed and report honestly.
  */
 fun verifiedLaunchReceipt(
     label: String,
     route: BackgroundLaunchRoute,
     platformError: String?,
-    foregroundObserved: Boolean = false
+    verification: LaunchVerification
 ): ExecutionResult {
     if (platformError != null) {
         return ExecutionResult(
@@ -111,28 +100,48 @@ fun verifiedLaunchReceipt(
             "Could not open $label: $platformError"
         )
     }
-    if (foregroundObserved) {
-        // The destination was actually seen in the foreground after the
-        // request: the only state that counts as a verified launch.
-        return ExecutionResult(ExecutionResult.Outcome.SUCCEEDED, "Opened $label.")
+    return when (verification) {
+        LaunchVerification.Verified -> {
+            // Screenshot+vision verification confirmed the opening: the
+            // only state that counts as a verified launch.
+            ExecutionResult(ExecutionResult.Outcome.SUCCEEDED, "Opened $label.")
+        }
+        is LaunchVerification.Unconfirmed -> {
+            // No platform error, but the opening was never verified. The
+            // request was handed to Android; whether it opened is unknown.
+            // This must not read as success anywhere: the journal, the
+            // workflow engine and the user report each treat unknown
+            // completion as unconfirmed. The verification reason is
+            // diagnostic-only; the receipt wording stays stable.
+            ExecutionResult(
+                ExecutionResult.Outcome.UNKNOWN_COMPLETION,
+                "The launch request for $label was sent, but opening could not be confirmed."
+            )
+        }
     }
-    // No platform error, but the destination was never observed. The request
-    // was handed to Android; whether it opened is unknown. This must not
-    // read as success anywhere: the journal, the workflow engine and the
-    // user report each treat unknown completion as unconfirmed.
-    return ExecutionResult(
-        ExecutionResult.Outcome.UNKNOWN_COMPLETION,
-        "The launch request for $label was sent, but opening could not be confirmed."
-    )
 }
 
 /**
- * Selected-assistant route receipt. The assistant binding's startActivity
- * cannot observe the destination either, so it follows the same contract:
- * a handed-off request is submitted/unverified, a throw is a platform
- * rejection. JVM-pure so the contract is unit-tested; the service delegates
- * to these.
+ * Pure-function form of [verifiedLaunchReceipt] for callers that already
+ * observed (or did not observe) the destination in the foreground
+ * themselves, without running a verifier — e.g. receipt unit tests.
+ * `foregroundObserved = true` is a caller-asserted observation, not a
+ * clean-return inference: nothing in production passes true from a
+ * startActivity return.
  */
+fun verifiedLaunchReceipt(
+    label: String,
+    route: BackgroundLaunchRoute,
+    platformError: String?,
+    foregroundObserved: Boolean = false
+): ExecutionResult = verifiedLaunchReceipt(
+    label,
+    route,
+    platformError,
+    if (foregroundObserved) LaunchVerification.Verified
+    else LaunchVerification.Unconfirmed("foreground not observed")
+)
+
 fun assistantSubmittedLaunchReceipt(label: String): ExecutionResult =
     ExecutionResult(
         ExecutionResult.Outcome.UNKNOWN_COMPLETION,

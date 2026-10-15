@@ -40,6 +40,7 @@ import androidx.test.uiautomator.Until
 import com.battlesbudz.jarvis.v2.MainActivity
 import com.battlesbudz.jarvis.v2.JarvisRuntime
 import com.battlesbudz.jarvis.v2.actions.*
+import com.battlesbudz.jarvis.v2.vision.NativeVisionScreenshotAnalyzer
 import com.battlesbudz.jarvis.v2.ai.ToolCall
 import com.battlesbudz.jarvis.v2.ai.ConversationPromptBuilder
 import com.battlesbudz.jarvis.v2.ai.LocalModelSpec
@@ -101,6 +102,28 @@ class ReleaseJourneyTest {
             captureEvidence(testName.methodName)
         } finally { if (::activity.isInitialized) activity.close() }
     }
+
+    /**
+     * Screenshot+vision launch verifier backed by UiDevice: the foreground
+     * package comes from the real device, the screenshot is a real
+     * UiDevice capture, and the analysis is the real production
+     * NativeVisionScreenshotAnalyzer. The production executor uses the
+     * same contract with the accessibility-service screenshot; the seam
+     * is only the capture/observation source, never the verification rule.
+     */
+    private fun screenshotLaunchVerifier(): LaunchVerifier = ScreenshotLaunchVerifier(
+        observationAvailable = { true },
+        foregroundPackage = { device.currentPackageName },
+        captureScreenshot = {
+            val file = File(context.cacheDir, "launch-verify-${System.nanoTime()}.png")
+            try {
+                if (device.takeScreenshot(file)) file.readBytes() else null
+            } finally {
+                file.delete()
+            }
+        },
+        analyzeScreenshot = { bytes -> NativeVisionScreenshotAnalyzer(context.assets).analyze(bytes) }
+    )
 
     private fun hideKeyboardWithoutNavigating() {
         // UiObject2.setText need not open the IME. A blind Back can finish the Activity.
@@ -787,14 +810,16 @@ class ReleaseJourneyTest {
     }
 
     @Test fun test07_settingsToolOpensAndroidSettings() {
-        val pipeline = MobileActionPipeline(executor = AndroidMobileActionExecutor(context, canLaunchDirectly = { true }))
+        val pipeline = MobileActionPipeline(executor = AndroidMobileActionExecutor(context, canLaunchDirectly = { true }, launchVerifier = screenshotLaunchVerifier()))
         val result = pipeline.execute(ActionRequest("open_app", mapOf("app" to "Settings", "package" to "com.android.settings")))
-        // A submitted launch is never promoted to a verified opening: the
-        // receipt reports the request as sent but unconfirmed.
-        assertEquals(ExecutionResult.Outcome.UNKNOWN_COMPLETION, result.outcome)
-        assertFalse("a submitted launch is not a verified opening: ${result.message}", result.succeeded)
-        assertTrue("the receipt must say the request was sent and opening could not be confirmed: ${result.message}",
-            result.message.contains("was sent") && result.message.contains("could not be confirmed"))
+        // Screenshot+vision verification: the launch is verified only
+        // because a post-launch screenshot was captured and analyzed
+        // while Settings was in the foreground — never from the clean
+        // startActivity return.
+        assertEquals(ExecutionResult.Outcome.SUCCEEDED, result.outcome)
+        assertTrue("a screenshot-verified opening succeeds: ${result.message}", result.succeeded)
+        assertTrue("the receipt must say the app opened: ${result.message}",
+            result.message.contains("Opened Settings."))
         // Destination visibility is asserted independently with UiDevice:
         // only an actually observed foreground package may claim a verified
         // opening.
@@ -947,23 +972,23 @@ class ReleaseJourneyTest {
         val audio = context.getSystemService(AudioManager::class.java)
         val before = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
         try {
-            val outcome = ActionTurnRunner(AndroidMobileActionExecutor(context, canLaunchDirectly = { true })).run(
+            val outcome = ActionTurnRunner(AndroidMobileActionExecutor(context, canLaunchDirectly = { true }, launchVerifier = screenshotLaunchVerifier())).run(
                 ActionTurnPlan.parse("Read battery then set media volume to 30 percent then open Settings"), listOf(listOf(
                     com.battlesbudz.jarvis.v2.ai.ToolCall("read_battery", "{}"),
                     com.battlesbudz.jarvis.v2.ai.ToolCall("set_volume", "{\"level\":30}"),
                     com.battlesbudz.jarvis.v2.ai.ToolCall("open_app", "{\"app\":\"Settings\"}"))))
             // The first two steps use real Android state. The trailing launch
-            // is submitted but unconfirmed, so the turn stops instead of
-            // completing: the volume change is real, the opening is not
-            // claimed as verified.
+            // is screenshot+vision verified, so the turn completes: the
+            // volume change is real and the opening is confirmed by a
+            // post-launch screenshot, not by the startActivity return.
             assertEquals(kotlin.math.round(audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC) * .3).toInt(), audio.getStreamVolume(AudioManager.STREAM_MUSIC))
-            assertFalse("the turn must not complete on an unconfirmed launch: ${outcome.message}", outcome.completed)
-            assertTrue("the turn must stop at the unconfirmed launch: ${outcome.message}", outcome.stopped)
+            assertTrue("the turn must complete on a screenshot-verified launch: ${outcome.message}", outcome.completed)
+            assertFalse("the turn must not stop at a verified launch: ${outcome.message}", outcome.stopped)
             val launch = outcome.receipts.last()
             assertEquals("open_app", launch.request.name)
-            assertEquals(ExecutionResult.Outcome.UNKNOWN_COMPLETION, launch.result.outcome)
-            assertTrue("the launch receipt must stay honest: ${launch.result.message}",
-                launch.result.message.contains("was sent") && launch.result.message.contains("could not be confirmed"))
+            assertEquals(ExecutionResult.Outcome.SUCCEEDED, launch.result.outcome)
+            assertTrue("the launch receipt must report the verified opening: ${launch.result.message}",
+                launch.result.message.contains("Opened Settings."))
             assertTrue("Settings must actually appear, not merely be reported",
                 device.wait(Until.hasObject(By.pkg("com.android.settings").depth(0)), 15_000))
         } finally { audio.setStreamVolume(AudioManager.STREAM_MUSIC, before, 0) }
@@ -1054,14 +1079,19 @@ class ReleaseJourneyTest {
             .plan("Can you open up Settings and tell me what my battery percentage is?")
         assertEquals(com.battlesbudz.jarvis.v2.ai.TurnKind.NORMAL_CHAT, plan.kind)
         assertNull(plan.lookupQuery)
-        val outcome = ActionTurnRunner(AndroidMobileActionExecutor(context, canLaunchDirectly = { true })).run(plan.actionPlan, listOf(listOf(
+        val outcome = ActionTurnRunner(AndroidMobileActionExecutor(context, canLaunchDirectly = { true }, launchVerifier = screenshotLaunchVerifier())).run(plan.actionPlan, listOf(listOf(
             com.battlesbudz.jarvis.v2.ai.ToolCall("open_app", "{\"app\":\"Settings\"}"),
             com.battlesbudz.jarvis.v2.ai.ToolCall("read_battery", "{}"))))
-        // The launch is submitted but unconfirmed, so the turn stops here:
-        // the battery read must not inherit the unestablished opening.
-        assertFalse("the turn must not complete on an unconfirmed launch: ${outcome.message}", outcome.completed)
-        assertEquals(listOf("open_app"), outcome.receipts.map { it.request.name })
-        assertEquals(ExecutionResult.Outcome.UNKNOWN_COMPLETION, outcome.receipts.single().result.outcome)
+        // The launch is screenshot+vision verified, so the turn continues
+        // to the battery read: the opening is confirmed by a post-launch
+        // screenshot, not by the startActivity return.
+        assertTrue("the turn must complete on a verified launch: ${outcome.message}", outcome.completed)
+        assertEquals(listOf("open_app", "read_battery"), outcome.receipts.map { it.request.name })
+        assertEquals(ExecutionResult.Outcome.SUCCEEDED, outcome.receipts.first().result.outcome)
+        assertTrue("the launch receipt must report the verified opening: ${outcome.receipts.first().result.message}",
+            outcome.receipts.first().result.message.contains("Opened Settings."))
+        assertTrue("the battery read after the verified launch must succeed: ${outcome.receipts.last().result.message}",
+            outcome.receipts.last().result.succeeded)
         assertTrue(device.wait(Until.hasObject(By.pkg("com.android.settings").depth(0)), 15_000))
     }
 
@@ -1112,7 +1142,7 @@ class ReleaseJourneyTest {
                     plan, calls,
                     dispatch = { request ->
                         executionOrder += "${task.value}:${request.name}"
-                        MobileActionPipeline(executor = AndroidMobileActionExecutor(context, canLaunchDirectly = { true })).execute(request)
+                        MobileActionPipeline(executor = AndroidMobileActionExecutor(context, canLaunchDirectly = { true }, launchVerifier = screenshotLaunchVerifier())).execute(request)
                     },
                     nextCalls = { emptyList() }
                 )
@@ -1134,7 +1164,7 @@ class ReleaseJourneyTest {
             val combinedReport = delivery.reports.joinToString(" ") { it.text }
             assertTrue(combinedReport.contains("Battery is at"))
             assertTrue(combinedReport.contains("Media volume set to 30 percent."))
-            assertTrue(combinedReport.contains("The launch request for Settings was sent, but opening could not be confirmed."))
+            assertTrue(combinedReport.contains("Opened Settings."))
             assertTrue(session.markDelivered(delivery.attemptId, delivery.reports.map { it.taskId }.toSet()))
             assertEquals(0, session.pendingReportCount())
         } finally {
@@ -2588,7 +2618,7 @@ class ReleaseJourneyTest {
     @Test fun test43_conditionalAndCommaPlansUseRealAndroidWithoutModelCalls() = runBlocking {
         val audio = context.getSystemService(AudioManager::class.java)
         val before = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
-        val executor = AndroidMobileActionExecutor(context, canLaunchDirectly = { true })
+        val executor = AndroidMobileActionExecutor(context, canLaunchDirectly = { true }, launchVerifier = screenshotLaunchVerifier())
         val battery = MobileActionPipeline(executor = executor).execute(ActionRequest("read_battery"))
         assertTrue(battery.succeeded)
         assertEquals(context.getSystemService(android.os.BatteryManager::class.java)
@@ -2606,15 +2636,15 @@ class ReleaseJourneyTest {
                 if (group == null) group = ledger.admit(plan.steps.map { it.request }, "conditional-thread", resumeAfterRestart = false)
                 pipeline.executeBound(checkNotNull(ledger.get(group!!.attemptIds[index++])), request)
             }, checkBattery = { MobileActionPipeline(executor = executor).execute(ActionRequest("read_battery")) })
-            // The trailing launch is submitted but unconfirmed, so the turn
-            // reports honestly instead of completing: every step dispatched,
-            // none of them over-claimed.
-            assertFalse("the turn must not complete on an unconfirmed launch: ${outcome.message}", outcome.completed)
+            // The trailing launch is screenshot+vision verified, so the
+            // turn completes: every step dispatched, the opening confirmed
+            // by a post-launch screenshot, none of them over-claimed.
+            assertTrue("the turn must complete on a screenshot-verified launch: ${outcome.message}", outcome.completed)
             assertEquals(true, outcome.conditionMatched)
             assertEquals(listOf("set_volume", "read_battery", "open_app"), outcome.receipts.map { it.request.name })
-            assertEquals(ExecutionResult.Outcome.UNKNOWN_COMPLETION, outcome.receipts.last().result.outcome)
-            assertTrue("the last receipt must stay honest: ${outcome.receipts.last().result.message}",
-                outcome.receipts.last().result.message.contains("could not be confirmed"))
+            assertEquals(ExecutionResult.Outcome.SUCCEEDED, outcome.receipts.last().result.outcome)
+            assertTrue("the last receipt must report the verified opening: ${outcome.receipts.last().result.message}",
+                outcome.receipts.last().result.message.contains("Opened Settings."))
             assertEquals((audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC) * .4).roundToInt(), audio.getStreamVolume(AudioManager.STREAM_MUSIC))
             assertEquals(percent, outcome.receipts[1].result.batteryPercent)
             assertTrue(device.wait(Until.hasObject(By.pkg("com.android.settings")), 10_000))
@@ -2627,9 +2657,9 @@ class ReleaseJourneyTest {
             assertEquals(false, skipped.conditionMatched)
             assertTrue(skipped.receipts.isEmpty())
             assertEquals((audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC) * .4).roundToInt(), audio.getStreamVolume(AudioManager.STREAM_MUSIC))
-            assertEquals(2, ledger.snapshot().count { it.state == ToolTaskState.SUCCEEDED })
-            assertEquals("the unconfirmed launch must be journaled as unknown, never succeeded",
-                1, ledger.snapshot().count { it.state == ToolTaskState.UNKNOWN_OUTCOME })
+            assertEquals(3, ledger.snapshot().count { it.state == ToolTaskState.SUCCEEDED })
+            assertEquals("the verified launch must be journaled as succeeded, never unknown",
+                0, ledger.snapshot().count { it.state == ToolTaskState.UNKNOWN_OUTCOME })
         } finally {
             audio.setStreamVolume(AudioManager.STREAM_MUSIC, before, 0)
             directory.deleteRecursively()
@@ -4263,22 +4293,25 @@ class ReleaseJourneyTest {
     }
 
     @Test fun test52_openSettingsWifiShowsSettings() {
-        val pipeline = MobileActionPipeline(executor = AndroidMobileActionExecutor(context, canLaunchDirectly = { true }))
+        val pipeline = MobileActionPipeline(executor = AndroidMobileActionExecutor(context, canLaunchDirectly = { true }, launchVerifier = screenshotLaunchVerifier()))
         val result = pipeline.execute(ActionRequest("open_settings", mapOf("screen" to "wifi")))
-        // Submitted, never promoted: only an observed foreground package
-        // may claim a verified opening.
-        assertEquals(ExecutionResult.Outcome.UNKNOWN_COMPLETION, result.outcome)
-        assertFalse("a submitted launch is not a verified opening: ${result.message}", result.succeeded)
+        // Screenshot+vision verified: the opening is confirmed by a
+        // post-launch screenshot while Wi-Fi settings was in the
+        // foreground — never by the startActivity return.
+        assertEquals(ExecutionResult.Outcome.SUCCEEDED, result.outcome)
+        assertTrue("a screenshot-verified opening succeeds: ${result.message}", result.succeeded)
+        assertTrue("the receipt must say the settings opened: ${result.message}",
+            result.message.contains("Opening Wi-Fi settings."))
         assertTrue("Wi-Fi settings must actually appear, not merely report success",
             device.wait(Until.hasObject(By.pkg("com.android.settings").depth(0)), 15_000))
         // @After captures the launched Settings screen before closing Jarvis's scenario.
     }
 
     @Test fun test53_openWebsiteDispatchesHonestReceipt() {
-        val pipeline = MobileActionPipeline(executor = AndroidMobileActionExecutor(context, canLaunchDirectly = { true }))
+        val pipeline = MobileActionPipeline(executor = AndroidMobileActionExecutor(context, canLaunchDirectly = { true }, launchVerifier = screenshotLaunchVerifier()))
         val result = pipeline.execute(ActionRequest("open_website", mapOf("url" to "example.com")))
-        assertEquals("an unobserved website launch stays unconfirmed: ${result.message}",
-            ExecutionResult.Outcome.UNKNOWN_COMPLETION, result.outcome)
+        assertEquals("a screenshot-verified website launch succeeds: ${result.message}",
+            ExecutionResult.Outcome.SUCCEEDED, result.outcome)
         assertTrue("receipt must name the normalized URL honestly",
             result.message.contains("https://example.com"))
         val rejected = pipeline.execute(ActionRequest("open_website", mapOf("url" to "javascript:alert(1)")))
@@ -4286,10 +4319,10 @@ class ReleaseJourneyTest {
     }
 
     @Test fun test54_navigateDispatchesHonestReceipt() {
-        val pipeline = MobileActionPipeline(executor = AndroidMobileActionExecutor(context, canLaunchDirectly = { true }))
+        val pipeline = MobileActionPipeline(executor = AndroidMobileActionExecutor(context, canLaunchDirectly = { true }, launchVerifier = screenshotLaunchVerifier()))
         val result = pipeline.execute(ActionRequest("navigate", mapOf("destination" to "1600 Amphitheatre Parkway")))
-        assertEquals("an unobserved navigation launch stays unconfirmed: ${result.message}",
-            ExecutionResult.Outcome.UNKNOWN_COMPLETION, result.outcome)
+        assertEquals("a screenshot-verified navigation launch succeeds: ${result.message}",
+            ExecutionResult.Outcome.SUCCEEDED, result.outcome)
         assertTrue("receipt must name the destination honestly",
             result.message.contains("1600 Amphitheatre Parkway"))
         val rejected = pipeline.execute(ActionRequest("navigate", mapOf("destination" to "   ")))
