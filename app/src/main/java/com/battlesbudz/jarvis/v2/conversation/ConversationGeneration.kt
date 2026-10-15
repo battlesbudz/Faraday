@@ -82,18 +82,39 @@ internal class ConversationGeneration(
         // HTTP path). One message combines detection + Gemma's understanding.
         val visionAssets = appAssets
         val visionImageBytes = attachments.image
-        val visionContext = if (visionAssets != null && visionImageBytes != null) {
-            runCatching {
-                val snapshot = NativeVision.analyze(visionImageBytes, visionAssets)
-                reply.benchmark.metric("native_vision_ms", snapshot.totalMs.toLong())
-                VisionContextFormatter.format(snapshot)
-            }.getOrElse { error ->
-                diagnostics.summary("Native vision failed: ${error.message?.take(200)}")
-                // Surface the failure instead of swallowing it: the model (and
-                // user) should know the structured on-device analysis did not
-                // run. The raw image remains attached as fallback.
-                VisionContextFormatter.failureNote(error)
-            }
+        val visionContext = if (visionImageBytes != null) {
+            val serverConfig = visionServerConfig()
+            if (serverConfig?.enabled == true) {
+                // Phone Inference server: when enabled, the server is
+                // authoritative for this turn. A failure surfaces as a
+                // failure note instead of silently falling back to
+                // in-process vision — otherwise a user testing the server
+                // path could never tell whether the server was exercised.
+                runCatching {
+                    require(serverConfig.token.isNotBlank()) {
+                        "Phone Inference server is enabled but no X-Vision-Token is saved. " +
+                            "Paste the token from the Phone Inference app into Settings."
+                    }
+                    val snapshot = PhoneVisionClient().detect(visionImageBytes, serverConfig.token)
+                    reply.benchmark.metric("phone_vision_server_ms", snapshot.totalMs.toLong())
+                    VisionContextFormatter.formatServerDetections(snapshot.detections, snapshot.totalMs)
+                }.getOrElse { error ->
+                    diagnostics.summary("Phone Inference server vision failed: ${error.message?.take(200)}")
+                    VisionContextFormatter.failureNote(error)
+                }
+            } else if (visionAssets != null) {
+                runCatching {
+                    val snapshot = NativeVision.analyze(visionImageBytes, visionAssets)
+                    reply.benchmark.metric("native_vision_ms", snapshot.totalMs.toLong())
+                    VisionContextFormatter.format(snapshot)
+                }.getOrElse { error ->
+                    diagnostics.summary("Native vision failed: ${error.message?.take(200)}")
+                    // Surface the failure instead of swallowing it: the model (and
+                    // user) should know the structured on-device analysis did not
+                    // run. The raw image remains attached as fallback.
+                    VisionContextFormatter.failureNote(error)
+                }
+            } else null
         } else null
         val submission = turnPrompt.assemble(invocation.prompt, visionContext, promptHistory, !modelSession.hasContext,
             routed.plan.activeSubject, routed.plan.resolvedQuestion, prepared.referenceContext, contextLimit)
