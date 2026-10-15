@@ -38,6 +38,30 @@ object VisionContextFormatter {
     }
 
     /**
+     * Formats a detections-only snapshot from the Phone Inference server.
+     * The server returns detections only — no segmentation, pose, or
+     * classification — so this deliberately omits the people-count and
+     * scene lines that [format] prints. Printing "People count: 0" for a
+     * server snapshot would contradict its own detections whenever people
+     * are among them.
+     */
+    fun formatServerDetections(detections: List<Detection>, inferenceMs: Double): String {
+        val parts = mutableListOf(
+            "On-device vision analysis (Phone Inference server, ${inferenceMs.toLong()} ms). " +
+                "Treat the following as authoritative for what is visible in the attached image."
+        )
+        if (detections.isEmpty()) {
+            parts += "Objects detected: 0. Detected objects: none recognizable."
+        } else {
+            parts += "Objects detected: ${detections.size}. Detected objects: " + detections.joinToString("; ") {
+                "${it.label} ${"%.2f".format(it.confidence)} at " +
+                    "[${it.box.x1.toInt()},${it.box.y1.toInt()},${it.box.x2.toInt()},${it.box.y2.toInt()}]"
+            }
+        }
+        return parts.joinToString("\n")
+    }
+
+    /**
      * User-visible note when native analysis throws. Returned as the vision
      * context (instead of null) so the failure is diagnosable instead of
      * silently swallowed; the raw image remains attached as fallback.
