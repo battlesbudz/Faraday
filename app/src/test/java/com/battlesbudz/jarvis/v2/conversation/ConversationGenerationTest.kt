@@ -15,6 +15,14 @@ import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkProvenance
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkPurpose
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkSubmission
 import com.battlesbudz.jarvis.v2.memory.MemoryDeliveryFence
+import com.battlesbudz.jarvis.v2.voice.NativeAudioCaptureTiming
+import com.battlesbudz.jarvis.v2.voice.NativePauseCertificate
+import com.battlesbudz.jarvis.v2.voice.NativePauseProposal
+import com.battlesbudz.jarvis.v2.voice.NativeSpeculationDriver
+import com.battlesbudz.jarvis.v2.voice.NativeVoicePromptPreview
+import com.battlesbudz.jarvis.v2.voice.NativeVoiceSpeculation
+import com.battlesbudz.jarvis.v2.voice.WavEncoder
+import com.battlesbudz.jarvis.v2.voice.pcmHash
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -43,11 +51,13 @@ class ConversationGenerationTest {
         override suspend fun sendToolResults(results: List<Pair<ToolCall, String>>, onToken: (String) -> Unit): GenerationResult = error("Unrequested tools must not execute")
     }
 
-    private suspend fun generate(audio: ByteArray? = null): Pair<ConversationDraft, Backend> {
+    private suspend fun generate(audio: ByteArray? = null,
+                             nativeSpeculation: NativeVoiceSpeculation? = null): Pair<ConversationDraft, Backend> {
         val backend = Backend()
         val diagnostics = ConversationDiagnostics({}, {}, {}, {})
         val memory = MemoryDeliveryFence()
-        val input = ConversationInvocation("Hello", emptyList(), voiceAudio = audio, directVoiceAudio = audio != null)
+        val input = ConversationInvocation("Hello", emptyList(), voiceAudio = audio, directVoiceAudio = audio != null,
+            nativeSpeculation = nativeSpeculation)
         val callbacks = ConversationCallbacks({}, {})
         val reply = ConversationReply("generation", PipelineBenchmarkCapture("generation", "text", 0,
             PipelineBenchmarkProvenance("test", 1)), true, memory, { it() }, {}, {}, {}, {}, { _, _, _ -> })
@@ -94,5 +104,53 @@ class ConversationGenerationTest {
         assertSame(audio, backend.requests.last().audio)
         assertEquals(listOf(false, false), backend.tools)
         assertEquals(PipelineBenchmarkPurpose.RETRY, backend.requests.last().purpose)
+    }
+
+    private fun speculationDriver(resets: () -> Unit) = object : NativeSpeculationDriver {
+        override suspend fun generate(proposal: NativePauseProposal, exactPrompt: String,
+            onToken: (String) -> Unit, onProgress: (InferenceProgress) -> Unit): GenerationResult {
+            onToken("Prepared."); return GenerationResult("Prepared.", 20, null)
+        }
+        override suspend fun rollback() { resets() }
+        override fun requestCancel() {}
+        override fun safeToRelease() = true
+        override fun timing(): NativeAudioCaptureTiming? = null
+    }
+
+    @Test fun directAudioPromotesMatchingNativeSpeculation() = runBlocking {
+        // The preview must carry the exact assembled submission prompt for
+        // promote to accept it. assemble is a pure function of the same
+        // inputs the production path uses, so computing it here yields the
+        // identical string.
+        val probePrompt = ConversationPrompt(ConversationPromptBuilder(ShortTermConversationContext()), true, { null }, { null })
+        val submitted = probePrompt.assemble("Hello", null, emptyList(), true, null, null, null, 10_000).text
+        var resets = 0
+        val pcm = byteArrayOf(1, 0, 2, 0)
+        val full = pcm + byteArrayOf(0, 0)
+        val wav = WavEncoder.pcm16Mono(full, 16000)
+        val candidate = NativeVoiceSpeculation(this, "call", "turn", 1, speculationDriver { resets++ },
+            NativeVoicePromptPreview(submitted) { true }, { true }, { true })
+        val proposal = NativePauseProposal("turn", 1, 1, 2, 300, pcm)
+        assertTrue(candidate.onProposal(proposal))
+        assertTrue(candidate.confirmCapture(NativePauseCertificate(proposal, full.size / 2, pcmHash(full), 1, 3, 650), wav))
+        val (draft, backend) = generate(wav, candidate)
+        assertEquals("Prepared.", draft.generated.text)
+        assertTrue("promoted speculation must not fall through to the backend", backend.requests.isEmpty())
+        assertFalse(draft.containsCurrentTurn)
+        assertTrue(candidate.closeAndDrain())
+    }
+
+    @Test fun toolPhaseSettlesOutstandingSpeculationBeforeMutation() = runBlocking {
+        var resets = 0
+        val pcm = byteArrayOf(1, 0, 2, 0)
+        val candidate = NativeVoiceSpeculation(this, "call", "turn", 1, speculationDriver { resets++ },
+            NativeVoicePromptPreview("unused") { true }, { true }, { true })
+        assertTrue(candidate.onProposal(NativePauseProposal("turn", 1, 1, 2, 300, pcm)))
+        // Never confirmed or promoted: the speculation is still outstanding
+        // when the tool phase starts, so it must be settled (rolled back) there.
+        val (draft, _) = generate(null, candidate)
+        assertEquals(1, resets)
+        assertEquals("A fresh answer.", draft.generated.text)
+        assertTrue(candidate.closeAndDrain())
     }
 }

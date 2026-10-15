@@ -86,7 +86,7 @@ internal class ConversationGeneration(
         validatePrompt(invocation, routed, prepared, promptHistory, turnPrompt, submission, contextLimit)
         val directAudio = invocation.directVoiceAudio || invocation.comparison?.request?.path == LiveComparison.Path.GEMMA_DIRECT
         check(invocation.sealedVoiceAudio == null || invocation.voiceAudioIsComplete) { "Incomplete native audio cannot be submitted" }
-        val input = ConversationInput(invocation.voiceAudio, directAudio, prepared.textInput, attachments.image, attachments.audio, invocation.sealedVoiceAudio)
+        val input = ConversationInput(invocation.voiceAudio, directAudio, prepared.textInput, attachments.image, attachments.audio, invocation.sealedVoiceAudio, invocation.nativeSpeculation)
         if (invocation.sealedVoiceAudio != null) {
             reply.benchmark.configuration("native_audio_input_path", "incremental_encoder_sealed_conversation_v1")
             reply.benchmark.metric("native_audio_pcm_samples", invocation.sealedVoiceAudio.pcmSampleCount)
@@ -189,6 +189,10 @@ internal class ConversationGeneration(
     private suspend fun executeNativeActions(draft: ConversationDraft, phoneActions: ConversationActions) {
         val answer = draft.answer
         val invocation = answer.invocation
+        // Settle outstanding speculation before the tool phase can mutate
+        // native state: a still-running speculative draft invalidates and
+        // drains first. Harmless after a successful promote (already drained).
+        invocation.nativeSpeculation?.beforeNativeMutation()
         val plan = answer.routed.actionPlan as? ActionTurnPlan.Ready
             ?: audioPlanFromCalls(draft) ?: return
         if (draft.generated.toolCalls.isEmpty()) {
