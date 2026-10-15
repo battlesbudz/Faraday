@@ -24,6 +24,7 @@ class ConversationSealedAudioInputTest {
         val raw = mutableListOf<ByteArray>()
         val sealed = mutableListOf<Content.SealedAudioEmbeddings>()
         override fun inputContextDescription() = "fake-backend"
+        override val toolsEnabled = false
         override suspend fun setToolsEnabled(enabled: Boolean) = false
         protected fun result(mode: String, prompt: String, emit: (String) -> Unit): GenerationResult {
             modes += mode

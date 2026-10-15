@@ -154,6 +154,8 @@ class LiteRtLmEngine(
     }
 
     private var toolsEnabled = false
+    /** Read-only view of the native tool policy; never resets the conversation. */
+    internal val toolsEnabledState: Boolean get() = toolsEnabled
     override suspend fun setToolsEnabled(enabled: Boolean): Boolean {
         if (toolsEnabled == enabled) return false
         resetConversation()

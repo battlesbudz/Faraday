@@ -23,12 +23,16 @@ import com.battlesbudz.jarvis.v2.voice.NativeVoicePromptPreview
 import com.battlesbudz.jarvis.v2.voice.NativeVoiceSpeculation
 import com.battlesbudz.jarvis.v2.voice.WavEncoder
 import com.battlesbudz.jarvis.v2.voice.pcmHash
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
 import org.junit.Test
 
 class ConversationGenerationTest {
-    private class Backend : ConversationBackend {
+    private class Backend(private val events: MutableList<String> = mutableListOf()) : ConversationBackend {
         data class Request(val prompt: String, val audio: ByteArray?, val purpose: PipelineBenchmarkPurpose)
         val requests = mutableListOf<Request>()
         val tools = mutableListOf<Boolean>()
@@ -38,7 +42,15 @@ class ConversationGenerationTest {
         override var onBenchmarkSubmission: (PipelineBenchmarkSubmission) -> Unit = {}
         override var benchmarkPurpose = PipelineBenchmarkPurpose.UNKNOWN
         override fun inputContextDescription() = "fake"
-        override suspend fun setToolsEnabled(enabled: Boolean): Boolean { tools.add(enabled); return false }
+        // Real flip semantics: a transition returns true, a no-op returns false.
+        override var toolsEnabled = false
+        override suspend fun setToolsEnabled(enabled: Boolean): Boolean {
+            tools.add(enabled)
+            events.add("tools:$enabled")
+            val changed = toolsEnabled != enabled
+            toolsEnabled = enabled
+            return changed
+        }
         private fun result(prompt: String, audio: ByteArray?, emit: (String) -> Unit): GenerationResult {
             requests.add(Request(prompt, audio, benchmarkPurpose))
             return if (requests.size == 1) GenerationResult("", 1, null,
@@ -52,8 +64,8 @@ class ConversationGenerationTest {
     }
 
     private suspend fun generate(audio: ByteArray? = null,
-                             nativeSpeculation: NativeVoiceSpeculation? = null): Pair<ConversationDraft, Backend> {
-        val backend = Backend()
+                             nativeSpeculation: NativeVoiceSpeculation? = null,
+                             backend: Backend = Backend()): Pair<ConversationDraft, Backend> {
         val diagnostics = ConversationDiagnostics({}, {}, {}, {})
         val memory = MemoryDeliveryFence()
         val input = ConversationInvocation("Hello", emptyList(), voiceAudio = audio, directVoiceAudio = audio != null,
@@ -155,5 +167,68 @@ class ConversationGenerationTest {
         assertEquals(1, resets)
         assertEquals("A fresh answer.", draft.generated.text)
         assertTrue(candidate.closeAndDrain())
+    }
+
+    @Test fun blockedDriverDrainsBeforeAnyToolsPolicyTransition() = runBlocking {
+        withTimeout(10_000) {
+            val events = mutableListOf<String>()
+            val backend = Backend(events)
+            val probePrompt = ConversationPrompt(ConversationPromptBuilder(ShortTermConversationContext()), true, { null }, { null })
+            val submitted = probePrompt.assemble("Hello", null, emptyList(), true, null, null, null, 10_000).text
+            val entered = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            var rollbacks = 0
+            // Blocked driver: the speculative draft is still generating when
+            // the ordinary turn starts. Nothing may mutate the native
+            // conversation (notably the tool-policy reset inside
+            // setToolsEnabled) until this driver has drained via promote.
+            val driver = object : NativeSpeculationDriver {
+                override suspend fun generate(proposal: NativePauseProposal, exactPrompt: String,
+                    onToken: (String) -> Unit, onProgress: (InferenceProgress) -> Unit): GenerationResult {
+                    events.add("driver_entered")
+                    entered.complete(Unit)
+                    release.await()
+                    events.add("driver_returned")
+                    onToken("Prepared.")
+                    return GenerationResult("Prepared.", 20, null)
+                }
+                override suspend fun rollback() { rollbacks++ }
+                override fun requestCancel() {}
+                override fun safeToRelease() = true
+                override fun timing(): NativeAudioCaptureTiming? = null
+            }
+            val pcm = byteArrayOf(1, 0, 2, 0)
+            val full = pcm + byteArrayOf(0, 0)
+            val wav = WavEncoder.pcm16Mono(full, 16000)
+            val candidate = NativeVoiceSpeculation(this, "call", "turn", 1, driver,
+                NativeVoicePromptPreview(submitted) { true }, { true }, { true })
+            val proposal = NativePauseProposal("turn", 1, 1, 2, 300, pcm)
+            assertTrue(candidate.onProposal(proposal))
+            assertTrue(candidate.confirmCapture(NativePauseCertificate(proposal, full.size / 2, pcmHash(full), 1, 3, 650), wav))
+            val generation = async { generate(wav, candidate, backend) }
+            try {
+                entered.await()
+                // Let the ordinary turn start: with the old ordering it calls
+                // setToolsEnabled at the top, before promote ever drains the
+                // blocked driver. With the fix, promote runs first and blocks
+                // on the driver, so no policy transition has happened yet.
+                // 500ms is far beyond the dispatch time of the generation
+                // coroutine and far inside the 1500ms speculation deadline.
+                delay(500)
+                assertTrue("tool policy must not transition while the speculation driver is blocked",
+                    backend.tools.isEmpty())
+                assertTrue(events.none { it.startsWith("tools:") })
+            } finally {
+                release.complete(Unit)
+            }
+            val (draft, _) = generation.await()
+            assertEquals("Prepared.", draft.generated.text)
+            assertTrue("promoted speculation must not fall through to the backend", backend.requests.isEmpty())
+            // The policy transition runs only after the blocked driver drained.
+            assertEquals(listOf(true), backend.tools)
+            assertTrue(events.indexOf("driver_returned") < events.indexOf("tools:true"))
+            assertEquals(1, rollbacks)
+            assertTrue(candidate.closeAndDrain())
+        }
     }
 }

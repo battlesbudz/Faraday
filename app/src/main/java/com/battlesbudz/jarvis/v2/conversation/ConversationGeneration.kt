@@ -50,8 +50,14 @@ internal class ConversationGeneration(
         telemetry.attach(engine, prepared.history, prepared.captureReceipt)
         val allowTools = invocation.comparison == null && modelSession.selectedModel().supportsTools &&
             (routed.actionPlan is ActionTurnPlan.Ready || invocation.directVoiceAudio)
-        if (engine.setToolsEnabled(allowTools)) modelSession.clearContextAccounting()
-        diagnostics.record("Generation tool policy allowed=$allowTools source=current_action_intent")
+        // Split the tool-policy transition. The accounting half applies now:
+        // when the policy will flip, the native conversation is about to reset,
+        // so this turn's prompt must re-seed history (matching the speculation
+        // preview, which always seeds). The native half — engine.setToolsEnabled,
+        // whose reset would mutate the conversation under an in-flight
+        // speculative draft — is deferred to the generation step below, after
+        // the speculative owner has drained via promote/settle.
+        if (engine.toolsEnabled != allowTools) modelSession.clearContextAccounting()
         val groundedVoice = invocation.voiceAudio != null && !prepared.referenceContext.isNullOrBlank()
         val guard = repetitionGuard(invocation, routed, prepared, reply, groundedVoice)
         if (invocation.voiceAudio != null) diagnostics.record("Voice sentence streaming: " +
@@ -101,7 +107,20 @@ internal class ConversationGeneration(
             " nativeAudioEncodeMs=${if (directAudio || attachments.audio != null) "unavailable" else "not_used"} queueMs=unavailable")
         var stoppedLoop = false
         val generated = try {
-            input.generate(engine, submission.text, { token -> telemetry.token(token); stream.accept(token) }) { error ->
+            // Promote-first: promote drains the speculative owner (join +
+            // rollback) without any native mutation, so the tool-policy
+            // transition below can never reset the conversation under an
+            // in-flight speculative draft. A non-direct-audio turn can never
+            // promote, so settle its speculation explicitly first. Only once
+            // the owner has drained is the native policy transition safe.
+            // The fallback then runs with the full ordinary audio input and
+            // the correct tool policy, never tool-disabled by a spent draft.
+            val onToken: (String) -> Unit = { token -> telemetry.token(token); stream.accept(token) }
+            val promoted = if (directAudio) input.tryPromote(submission.text, onToken) else null
+            if (promoted == null && !directAudio) invocation.nativeSpeculation?.beforeNativeMutation()
+            if (engine.setToolsEnabled(allowTools)) modelSession.clearContextAccounting()
+            diagnostics.record("Generation tool policy allowed=$allowTools source=current_action_intent")
+            promoted ?: input.generateFallback(engine, submission.text, onToken) { error ->
                 diagnostics.summary("Voice incremental fallback: reason=${error.javaClass.simpleName} " +
                     "message=${error.message?.take(300)} policy=final_text_once audioBytes=0")
             }

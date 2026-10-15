@@ -14,6 +14,13 @@ internal interface ConversationBackend : LocalModelEngine {
     var onInferenceProgress: (InferenceProgress) -> Unit
     var onBenchmarkSubmission: (PipelineBenchmarkSubmission) -> Unit
     var benchmarkPurpose: PipelineBenchmarkPurpose
+    /**
+     * Current native tool policy, read-only. Callers that must decide whether
+     * a transition (and the native conversation reset inside [setToolsEnabled])
+     * is pending use this instead of mutating: a policy transition must never
+     * run while a speculative owner is still draining.
+     */
+    val toolsEnabled: Boolean
     fun inputContextDescription(): String
     suspend fun setToolsEnabled(enabled: Boolean): Boolean
     suspend fun generate(prompt: String, imageBytes: ByteArray, onToken: (String) -> Unit): GenerationResult
@@ -39,6 +46,7 @@ internal class LiteRtConversationBackend(private val engine: LiteRtLmEngine) : C
         get() = engine.benchmarkPurpose
         set(value) { engine.benchmarkPurpose = value }
     override fun inputContextDescription() = engine.inputContextDescription()
+    override val toolsEnabled: Boolean get() = engine.toolsEnabledState
     override suspend fun setToolsEnabled(enabled: Boolean) = engine.setToolsEnabled(enabled)
     override suspend fun generate(prompt: String, onToken: (String) -> Unit) = engine.generate(prompt, onToken)
     override suspend fun generate(prompt: String, imageBytes: ByteArray, onToken: (String) -> Unit) = engine.generate(prompt, imageBytes, onToken)

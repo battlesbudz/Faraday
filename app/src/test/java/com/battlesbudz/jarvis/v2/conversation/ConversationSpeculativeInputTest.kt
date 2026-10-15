@@ -18,6 +18,7 @@ class ConversationSpeculativeInputTest {
         var raw: ByteArray? = null
         var calls = 0
         override fun inputContextDescription() = "fake"
+        override val toolsEnabled = false
         override suspend fun setToolsEnabled(enabled: Boolean) = false
         override suspend fun generate(prompt: String, onToken: (String) -> Unit): GenerationResult = error("must keep audio")
         override suspend fun generate(prompt: String, imageBytes: ByteArray, onToken: (String) -> Unit): GenerationResult = error("must keep audio")

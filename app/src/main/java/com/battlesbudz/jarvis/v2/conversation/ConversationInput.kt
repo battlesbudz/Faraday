@@ -28,12 +28,37 @@ internal class ConversationInput(
     private var speculativeResultUsed = false
     val nativeConversationContainsTurn: Boolean get() = !speculativeResultUsed && (textInput == null || incrementalFallbackUsed)
 
+    /**
+     * Attempts the speculative promotion on its own, without any ordinary
+     * generation. Promote drains the speculative owner (join + rollback) and
+     * is the only promotion boundary, so callers that must apply a native
+     * mutation afterwards (e.g. a tool-policy transition) run it first and
+     * mutate only once it returns. Returns null when there is no promotable
+     * speculation; the caller then runs [generateFallback] with the full
+     * ordinary input. Never call [generate] after a null return here: promote
+     * may be consumed only once.
+     */
+    suspend fun tryPromote(prompt: String, onToken: (String) -> Unit): GenerationResult? {
+        if (!directAudio) return null
+        val prepared = nativeSpeculation?.promote(prompt, ordinaryReplyAccepted = true, onToken = onToken)
+        if (prepared != null) speculativeResultUsed = true
+        return prepared
+    }
+
     suspend fun generate(engine: ConversationBackend, prompt: String, onToken: (String) -> Unit,
+                         onIncrementalFallback: (Throwable) -> Unit): GenerationResult =
+        tryPromote(prompt, onToken) ?: generateFallback(engine, prompt, onToken, onIncrementalFallback)
+
+    /**
+     * Ordinary generation without a promotion attempt. Use after [tryPromote]
+     * returned null (speculation already drained) or when no speculation
+     * exists. The direct-audio branch uses the full ordinary audio input,
+     * never a spent prefill.
+     */
+    suspend fun generateFallback(engine: ConversationBackend, prompt: String, onToken: (String) -> Unit,
                          onIncrementalFallback: (Throwable) -> Unit): GenerationResult = when {
         directAudio -> {
-            val prepared = nativeSpeculation?.promote(prompt, ordinaryReplyAccepted = true, onToken = onToken)
-            if (prepared != null) { speculativeResultUsed = true; prepared }
-            else if (sealedVoiceAudio != null) engine.generateSealedAudio(prompt, sealedVoiceAudio, onToken)
+            if (sealedVoiceAudio != null) engine.generateSealedAudio(prompt, sealedVoiceAudio, onToken)
             else engine.generateAudio(prompt, requireNotNull(voiceAudio), onToken)
         }
         textInput != null -> {
