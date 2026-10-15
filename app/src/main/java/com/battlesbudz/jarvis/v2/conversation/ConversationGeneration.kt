@@ -40,6 +40,13 @@ internal class ConversationGeneration(
      * vision context injection (existing behavior, e.g. unit tests).
      */
     private val appAssets: android.content.res.AssetManager? = null,
+    /**
+     * Vision-server config snapshot for this turn. When it reports
+     * enabled with a non-blank token, chat-photo vision goes to the
+     * Phone Inference server instead of the in-process models. Read
+     * fresh per turn so a Settings change applies without restart.
+     */
+    private val visionServerConfig: () -> VisionServerSettings.Config? = { null },
 ) {
     suspend fun generate(invocation: ConversationInvocation, contextLimit: Int,
                          routed: RoutedConversation, prepared: PreparedConversation,
