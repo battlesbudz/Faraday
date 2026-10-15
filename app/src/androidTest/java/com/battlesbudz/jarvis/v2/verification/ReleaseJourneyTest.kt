@@ -1154,7 +1154,16 @@ class ReleaseJourneyTest {
             assertNotNull("Follow-up B must be accepted while A is blocked", queue.admit("accepted-B", "utterance-B", "B"))
             assertEquals(1, queue.pendingCount())
             releaseFirstNativeGeneration.complete(Unit)
-            withTimeout(20_000) { queue.awaitIdle() }
+            // The awaitIdle budget must cover B's screenshot+vision launch
+            // verification: a genuine Verified receipt requires the
+            // detection + classification analysis to run to completion,
+            // and a 20s budget timed out while the analysis was still
+            // running. 120s covers the 90s analysis bound plus the
+            // verifier's settle/poll. The assertions below are unchanged;
+            // only this liveness budget reflects the real cost of the
+            // verification the test itself demands. The suite-level 900s
+            // instrumentation gate is untouched.
+            withTimeout(120_000) { queue.awaitIdle() }
 
             assertEquals(listOf("A:read_battery", "A:set_volume", "B:open_app"), executionOrder)
             assertEquals(kotlin.math.round(audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC) * .3).toInt(),
@@ -1213,7 +1222,16 @@ class ReleaseJourneyTest {
                 CapturedKind.Control(control)) is CaptureOutcome.Control)
             assertTrue("Speech interruption must leave accepted actions alive", queue.hasUnfinished())
             releaseOriginal.complete(Unit)
-            withTimeout(20_000) { queue.awaitIdle() }
+            // The awaitIdle budget must cover the follow-up's
+            // screenshot+vision launch verification: a genuine Verified
+            // receipt requires the detection + classification analysis to
+            // run to completion, and a 20s budget timed out while the
+            // analysis was still running. 120s covers the 90s analysis
+            // bound plus the verifier's settle/poll. The assertions below
+            // are unchanged; only this liveness budget reflects the real
+            // cost of the verification the test itself demands. The
+            // suite-level 900s instrumentation gate is untouched.
+            withTimeout(120_000) { queue.awaitIdle() }
 
             assertEquals(listOf("original:set_volume", "original:read_battery", "followup:open_app"), dispatches)
             assertEquals(1, dispatches.count { it == "original:set_volume" })

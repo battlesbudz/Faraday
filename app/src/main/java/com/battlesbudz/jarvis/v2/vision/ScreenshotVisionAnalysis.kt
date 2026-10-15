@@ -3,8 +3,6 @@ package com.battlesbudz.jarvis.v2.vision
 import android.content.res.AssetManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 
 /**
  * Result of analyzing one launch-verification screenshot with the existing
@@ -31,15 +29,32 @@ data class ScreenshotVisionEvidence(
  */
 class NativeVisionScreenshotAnalyzer(private val assets: AssetManager) {
 
-    /** Decodes, blank-checks, and runs NativeVision over one screenshot. Throws on failure. */
+    /**
+     * Decodes, blank-checks, and runs the detection + classification subset
+     * of NativeVision over one screenshot. Throws on failure.
+     *
+     * Scoped models: launch verification records detections + the first
+     * classification and discards segmentation/pose, so this does NOT run
+     * those two extra 640-input YOLO models. The full four-model analysis
+     * still exists on NativeVision for callers that consume all four
+     * outputs; the evidence this analyzer records is identical either way.
+     *
+     * Bounded execution: the analysis is joined with a real wall-clock
+     * bound on NativeVision's dedicated vision dispatcher — never
+     * Dispatchers.Default, and never an independent runBlocking root on
+     * the caller's (queue-worker) thread. The old runBlocking +
+     * cooperative withTimeout occupied both Default threads on a 2-core
+     * emulator and left an un-cancellable orphan starving the next test's
+     * queue worker after the caller's timeout fired.
+     */
     fun analyze(imageBytes: ByteArray): ScreenshotVisionEvidence {
         val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
             ?: throw IllegalStateException("Could not decode the screenshot.")
         try {
             val nonBlank = isNonBlank(bitmap)
-            val snapshot = runBlocking {
-                withTimeout(ANALYSIS_TIMEOUT_MS) { NativeVision.analyze(imageBytes, assets) }
-            }
+            val snapshot = NativeVision.analyzeDetectionAndClassificationBlocking(
+                imageBytes, assets, ANALYSIS_TIMEOUT_MS
+            )
             return ScreenshotVisionEvidence(
                 nonBlank = nonBlank,
                 detections = snapshot.detections.size,
