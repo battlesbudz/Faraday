@@ -2,6 +2,8 @@ package com.battlesbudz.jarvis.v2.actions
 
 import com.battlesbudz.jarvis.v2.vision.ScreenshotVisionEvidence
 
+import java.util.concurrent.TimeoutException
+
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 
@@ -163,7 +165,8 @@ class ScreenshotLaunchVerifier(
                 return LaunchVerification.Unconfirmed("screenshot contained no visible content")
             }
             onDiagnostic(
-                "launch_verify label=$label result=verified detections=${evidence.detections} " +
+                "launch_verify label=$label result=verified expected=$expectedPackage " +
+                    "detections=${evidence.detections} " +
                     "classification=${evidence.classification} vision_ms=${evidence.totalMs.toLong()}"
             )
             return LaunchVerification.Verified
@@ -177,6 +180,13 @@ class ScreenshotLaunchVerifier(
             Thread.currentThread().interrupt()
             onDiagnostic("launch_verify label=$label result=unconfirmed reason=interrupted")
             return LaunchVerification.Unconfirmed("verification was interrupted")
+        } catch (timeout: TimeoutException) {
+            // NativeVision's bounded blocking analysis throws
+            // java.util.concurrent.TimeoutException on timeout (its
+            // TimeoutCancellationException constructors are internal in
+            // pinned coroutines 1.9.0 and cannot be constructed).
+            onDiagnostic("launch_verify label=$label result=unconfirmed reason=analysis_timeout")
+            return LaunchVerification.Unconfirmed("screenshot analysis timed out")
         } catch (error: Exception) {
             onDiagnostic("launch_verify label=$label result=unconfirmed reason=error:${error.message?.take(80)}")
             return LaunchVerification.Unconfirmed("verification failed: ${error.message ?: "unknown error"}")

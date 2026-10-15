@@ -12,7 +12,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -154,8 +153,8 @@ object NativeVision {
      * vision job is cancelled (best-effort: delivered at the next
      * suspension point) and any orphaned native work stays confined to the
      * vision dispatcher; it can never occupy a Default worker thread.
-     * Throws TimeoutCancellationException on timeout (the verifier maps it
-     * to an Unconfirmed "analysis timed out" receipt, never success).
+     * Throws java.util.concurrent.TimeoutException on timeout (the verifier
+     * maps it to an Unconfirmed "analysis timed out" receipt, never success).
      */
     fun analyzeDetectionAndClassificationBlocking(
         imageBytes: ByteArray,
@@ -176,8 +175,12 @@ object NativeVision {
         try {
             return result.get(timeoutMs, TimeUnit.MILLISECONDS)
         } catch (timeout: TimeoutException) {
-            val failure =
-                TimeoutCancellationException("Screenshot vision analysis exceeded ${timeoutMs}ms")
+            // TimeoutCancellationException's constructors are internal in
+            // pinned coroutines 1.9.0, so it cannot be constructed here.
+            // Throw the java.util.concurrent timeout instead; the verifier
+            // maps it explicitly to an Unconfirmed "analysis timed out"
+            // receipt, never success.
+            val failure = TimeoutException("Screenshot vision analysis exceeded ${timeoutMs}ms")
             result.completeExceptionally(failure)
             job.cancel()
             throw failure

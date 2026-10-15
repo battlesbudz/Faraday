@@ -158,6 +158,15 @@ class ScreenshotLaunchVerificationTest {
         assertEquals("no screenshot means the analyzer never runs", 0, analyzed)
     }
 
+    @Test fun unconfirmedWhenAnalysisTimesOut() {
+        val result = verifier(
+            analyze = { throw java.util.concurrent.TimeoutException("Screenshot vision analysis exceeded 90000ms") }
+        ).verify("com.example.target", "Target")
+        val unconfirmed = result as LaunchVerification.Unconfirmed
+        assertEquals("a bounded-analysis timeout maps to the explicit timeout receipt, never a generic failure",
+            "screenshot analysis timed out", unconfirmed.reason)
+    }
+
     @Test fun unconfirmedWhenAnalysisThrows() {
         val result = verifier(analyze = { throw IllegalStateException("could not decode") })
             .verify("com.example.target", "Target")
