@@ -3204,7 +3204,8 @@ class ReleaseJourneyTest {
             // overlapping discovery path instead of a blind fling across the review section.
             benchmarkClickEnabled(By.res("benchmark_quality_intent_PASS"), holdDiscovery = true,
                 sparseHeldDiscovery = android.os.Build.VERSION.SDK_INT >= 35)
-            benchmarkClickEnabled(By.res("benchmark_quality_factuality_FAIL"))
+            benchmarkClickEnabled(By.res("benchmark_quality_factuality_FAIL"),
+                holdDiscovery = android.os.Build.VERSION.SDK_INT == 30)
             assertFalse(benchmarkScrollTo(By.res("pipeline_benchmark_quality_save"),
                 sparseHeldDiscovery = android.os.Build.VERSION.SDK_INT >= 35).isEnabled)
             benchmarkClickEnabled(By.res("pipeline_benchmark_quality_verify"))
