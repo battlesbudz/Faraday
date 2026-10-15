@@ -15,6 +15,7 @@ import com.battlesbudz.jarvis.v2.chat.AssistantStreamFilter
 import com.battlesbudz.jarvis.v2.chat.AssistantText
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkPurpose
 import com.battlesbudz.jarvis.v2.vision.NativeVision
+import com.battlesbudz.jarvis.v2.vision.PhoneVisionClient
 import com.battlesbudz.jarvis.v2.vision.VisionContextFormatter
 import com.battlesbudz.jarvis.v2.vision.VisionServerSettings
 import com.battlesbudz.jarvis.v2.voice.AudioToolGuard
