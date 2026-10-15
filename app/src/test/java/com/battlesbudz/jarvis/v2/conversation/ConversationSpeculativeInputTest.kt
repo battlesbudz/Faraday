@@ -52,7 +52,7 @@ class ConversationSpeculativeInputTest {
             val backend = Backend()
             val input = ConversationInput(wav, true, null, null, null, nativeSpeculation = candidate)
             val text = StringBuilder()
-            val result = input.generate(backend, if (matchingPrompt) "prompt" else "corrected prompt", text::append) { fail("no text retry") }
+            val result = input.generate(backend, if (matchingPrompt) "prompt" else "corrected prompt", text::append, onIncrementalFallback = { fail("no text retry") })
             assertEquals(1, resets)
             if (matchingPrompt) {
                 assertEquals("Prepared.", result.text); assertEquals("Prepared.", text.toString())
