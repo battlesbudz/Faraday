@@ -69,6 +69,7 @@ import com.battlesbudz.jarvis.v2.runtime.turn.VoiceTurnRecognition
 import com.battlesbudz.jarvis.v2.runtime.turn.VoiceTurnRequest
 import com.battlesbudz.jarvis.v2.runtime.turn.VoiceTurnRunner
 import com.battlesbudz.jarvis.v2.runtime.turn.VoiceTypedInputOwnership
+import com.battlesbudz.jarvis.v2.vision.VisionServerSettings
 import com.battlesbudz.jarvis.v2.voice.AudioTurnCapture
 import com.battlesbudz.jarvis.v2.voice.PiperVoiceOutput
 import com.battlesbudz.jarvis.v2.voice.SharedPreferencesVoiceCallStore
