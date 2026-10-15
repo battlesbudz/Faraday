@@ -46,6 +46,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 
 /**
@@ -226,18 +227,30 @@ internal class WorkflowCoordinator(
      * claimed and do nothing — triggers never double-fire.
      */
     fun onWorkflowAlarm(occurrenceId: String, done: () -> Unit) {
-        scope.launch(Dispatchers.Default) {
+        scope.launch {
             // done() fires only after the run's terminal checkpoint (or
             // resume re-arm) completes — the receiver's PendingResult is no
             // longer finished while work is still detached.
-            try { alarmRunner.onAlarm(occurrenceId) }
+            // Blocking verification (ledger/engine/dispatch) runs on IO
+            // through runInterruptible: ordinary coroutine cancellation
+            // cannot interrupt blocking calls, but scope cancellation
+            // (teardown) interrupts the thread so cleanup is reachable.
+            // Accepted actions still survive ordinary speech barge-in:
+            // barge-in never cancels this scope.
+            try { runInterruptible(Dispatchers.IO) { alarmRunner.onAlarm(occurrenceId) } }
             finally { done() }
         }
     }
 
     fun runWorkflowOccurrence(occurrence: WorkflowOccurrence) {
-        scope.launch(Dispatchers.Default) {
-            runOrResume(occurrence, resume = false, isCancelled = { !isActive })
+        scope.launch {
+            // Blocking verification on IO through runInterruptible: scope
+            // cancellation (teardown) interrupts blocking waits; ordinary
+            // speech barge-in never cancels this scope, so accepted
+            // actions survive it.
+            runInterruptible(Dispatchers.IO) {
+                runOrResume(occurrence, resume = false, isCancelled = { !isActive })
+            }
         }
     }
 
@@ -247,8 +260,14 @@ internal class WorkflowCoordinator(
      * their outputs stay available for argument bindings.
      */
     fun resumeWorkflowOccurrence(occurrence: WorkflowOccurrence) {
-        scope.launch(Dispatchers.Default) {
-            runOrResume(occurrence, resume = true, isCancelled = { !isActive })
+        scope.launch {
+            // Blocking verification on IO through runInterruptible: scope
+            // cancellation (teardown) interrupts blocking waits; ordinary
+            // speech barge-in never cancels this scope, so accepted
+            // actions survive it.
+            runInterruptible(Dispatchers.IO) {
+                runOrResume(occurrence, resume = true, isCancelled = { !isActive })
+            }
         }
     }
 
