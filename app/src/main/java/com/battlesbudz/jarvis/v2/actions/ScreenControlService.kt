@@ -45,10 +45,12 @@ class ScreenControlService : AccessibilityService() {
          * API 30+ — minSdk is 30, so this is available on every supported
          * device). No MediaProjection consent flow is needed: the user
          * already granted this service screen access in Accessibility
-         * settings. Returns null when the service is not connected, the
-         * platform errors, or the capture times out — never fabricated
-         * pixels. The capture is throttled by the platform; at most one
-         * is taken per launch verification.
+         * settings. Requires android:canTakeScreenshot in the service
+         * config (screen_control_service.xml): without it the platform
+         * reports onError and this returns null. Returns null when the
+         * service is not connected, the platform errors, or the capture
+         * times out — never fabricated pixels. The capture is throttled
+         * by the platform; at most one is taken per launch verification.
          */
         fun captureScreenshot(timeoutMs: Long = 5_000): ByteArray? =
             connectedInstance()?.takeScreenScreenshot(timeoutMs)
