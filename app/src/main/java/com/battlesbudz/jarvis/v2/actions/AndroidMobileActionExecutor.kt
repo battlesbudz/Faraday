@@ -282,16 +282,14 @@ class AndroidMobileActionExecutor(
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(intent)
         onDiagnostic("App launch route=${route.name.lowercase()} label=$label result=submitted")
-        // A DIRECT launch is verified by the clean platform return
-        // (see isVerifiedByCleanReturn): when Jarvis's own activity is
-        // visible and fires startActivity, Android cannot silently drop the
-        // start — only a throw (caught below) prevents the target from
-        // opening. Background routes keep the unconfirmed receipt because a
-        // background start can be silently dropped by the platform. No
-        // polling: Android offers no reliable API for an app to observe
-        // another app's foreground status.
-        val verified = isVerifiedByCleanReturn(route)
-        verifiedLaunchReceipt(label, route, platformError = null, foregroundObserved = verified)
+        // No route is verified by a clean return (see
+        // isVerifiedByCleanReturn): startActivity returns void and this
+        // path performs no observation, so the launch stays unconfirmed.
+        // Only a caller that actually observes the destination in the
+        // foreground may pass foregroundObserved = true. No polling:
+        // Android offers no reliable API for an app to observe another
+        // app's foreground status.
+        verifiedLaunchReceipt(label, route, platformError = null, foregroundObserved = isVerifiedByCleanReturn(route))
     } catch (cancelled: kotlinx.coroutines.CancellationException) {
         throw cancelled
     } catch (error: android.content.ActivityNotFoundException) {
@@ -423,3 +421,4 @@ class AndroidMobileActionExecutor(
         )
     }
 }
+

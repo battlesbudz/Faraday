@@ -311,6 +311,43 @@ class ReleaseJourneyTest {
         device.waitForIdle()
     }
 
+    /**
+     * Taps a control whose accessibility tree can lag the rendered UI
+     * (API 30 voice-call overlay: screenshots show Speaking with the Stop
+     * reply control while the accessibility cache still reports Listening
+     * without it). Each attempt refreshes the observation — on pre-34 this
+     * reapplies the service info to clear the stale cache — then requires
+     * a fresh, enabled node with stable safe tap bounds. The tap is
+     * outside the retry loop: a mutation must never be replayed.
+     */
+    private fun clickEnabledWithFreshObservation(selector: BySelector) {
+        val deadline = SystemClock.uptimeMillis() + 15_000
+        var ready: UiObject2? = null
+        while (SystemClock.uptimeMillis() < deadline) {
+            refreshWispObservation()
+            try {
+                val control = device.findObject(selector)
+                if (control != null && control.isEnabled && hasSafeTapBounds(control)) {
+                    val bounds = control.visibleBounds
+                    device.waitForIdle()
+                    SystemClock.sleep(300)
+                    val fresh = device.findObject(selector)
+                    if (fresh != null && fresh.isEnabled && hasSafeTapBounds(fresh) && fresh.visibleBounds == bounds) {
+                        ready = fresh
+                        break
+                    }
+                }
+            } catch (_: StaleObjectException) {
+                // Compose replaced the accessibility node; retry with a fresh one.
+            }
+            SystemClock.sleep(100)
+        }
+        val control = ready ?: throw AssertionError("Control did not become stably enabled with a fresh observation: $selector")
+        assertTrue("Control must settle within its deadline", SystemClock.uptimeMillis() < deadline)
+        control.click()
+        device.waitForIdle()
+    }
+
     /** Modal actions must settle without page-seeking gestures that can dismiss the dialog. */
     private fun clickModalAction(selector: BySelector) {
         val deadline = SystemClock.uptimeMillis() + 15_000
@@ -3901,7 +3938,11 @@ class ReleaseJourneyTest {
                     captureWispEvidence("test49_wispReducedMotionWhileSpeaking")
                     renderedAnimationScale("1")
                 }
-                clickEnabled(By.res("voice_call_stop_reply"))
+                // The overlay control can lag in the accessibility tree on
+                // API 30 (screenshots show Stop reply while the tree still
+                // reports Listening without it): refresh the observation
+                // before tapping.
+                clickEnabledWithFreshObservation(By.res("voice_call_stop_reply"))
                 pose("Scrolling the screen")
                 assertEquals(VoicePhase.LISTENING, VoiceSessionUi.phase.value)
                 assertEquals(0f, playback.value.level, 0f)
@@ -5816,3 +5857,4 @@ class ReleaseJourneyTest {
         assertNotNull(find(By.text("Gemma-4-E4B-it")))
     }
 }
+

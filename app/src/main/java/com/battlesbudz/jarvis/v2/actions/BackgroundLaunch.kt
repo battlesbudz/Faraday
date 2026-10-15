@@ -14,11 +14,10 @@ package com.battlesbudz.jarvis.v2.actions
  * - platform rejection: startActivity threw (ActivityNotFound,
  *   SecurityException);
  * - verified launch: the destination package was seen in the foreground
- *   after the request, OR the launch went through the DIRECT route (Jarvis's
- *   own activity visible) and startActivity returned without throwing.
- *   A foreground-initiated start cannot be silently dropped by Android's
- *   background-activity-start restrictions, so the clean return is the
- *   verification. Background routes keep the unconfirmed receipt.
+ *   after the request. A clean startActivity return on any route — DIRECT
+ *   included — is only a submitted request: the call performs no
+ *   observation, and no return value verifies an opening. Unobserved
+ *   launches keep the unconfirmed receipt.
  *
  * The two recognized routes (selected assistant, overlay exemption) are not
  * an exhaustive statement of Android's background-start exceptions, so the
@@ -56,15 +55,17 @@ fun resolveBackgroundLaunchRoute(
 
 /**
  * Whether a clean startActivity return on this route counts as a verified
- * launch. DIRECT means Jarvis's own activity was visible when it fired the
- * intent: Android cannot silently drop a foreground-initiated start, so the
- * platform return (no throw) is the verification. Background routes
- * (overlay-exempt, selected-assistant) can be silently dropped by the
- * platform's background-activity-start restrictions, so they stay
- * unconfirmed without an actual foreground observation.
+ * launch. None does: startActivity returns void, so a clean return only
+ * proves the request was handed to the platform — it observes nothing
+ * about whether the destination opened. Only an actual foreground
+ * observation verifies a launch (see verifiedLaunchReceipt's
+ * foregroundObserved). DIRECT included: the journey tests require an
+ * unobserved launch to stay UNKNOWN_COMPLETION even when Jarvis's own
+ * activity was visible, and chains must not continue on an unconfirmed
+ * launch.
  */
-fun isVerifiedByCleanReturn(route: BackgroundLaunchRoute): Boolean =
-    route == BackgroundLaunchRoute.DIRECT
+fun isVerifiedByCleanReturn(@Suppress("UNUSED_PARAMETER") route: BackgroundLaunchRoute): Boolean =
+    false
 
 /**
  * Local-refusal receipt: Jarvis could not establish a supported
@@ -85,8 +86,8 @@ fun backgroundLaunchRefusal(label: String): ExecutionResult =
  * distinct end to end:
  * - platform rejection -> FAILED: Android threw;
  * - verified launch -> SUCCEEDED: the destination was seen in the
- *   foreground, or the DIRECT route returned cleanly (a foreground start
- *   cannot be silently dropped);
+ *   foreground. A clean startActivity return alone never verifies a
+ *   launch on any route;
  * - submitted without observation on a background route ->
  *   UNKNOWN_COMPLETION: the request was handed to Android, but opening
  *   could not be confirmed. Journals record this as unknown outcome,
@@ -144,3 +145,4 @@ fun assistantRejectedLaunchReceipt(label: String, error: String): ExecutionResul
         ExecutionResult.Outcome.FAILED,
         "Android rejected the assistant launch of $label: $error"
     )
+

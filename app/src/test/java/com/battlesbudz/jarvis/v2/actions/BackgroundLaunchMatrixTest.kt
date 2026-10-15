@@ -5,14 +5,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 /**
- * Finding 3 (background-launch reporting) matrix, corrected: a background-
- * route submission is NEVER a verified launch. The route decision and the
- * receipt wording are JVM-pure and tested here for every combination:
- * foreground, selected assistant, granted/revoked overlay, unavailable
- * assistant binding, and denied/no-supported-route. A DIRECT (foreground)
- * clean return counts as a verified launch because Android cannot silently
- * drop a foreground-initiated start; background-route submissions are
- * reported honestly as unconfirmed (unknown completion) so journals,
+ * Finding 3 (background-launch reporting) matrix, corrected: a launch
+ * submission is NEVER a verified launch on any route. The route decision
+ * and the receipt wording are JVM-pure and tested here for every
+ * combination: foreground, selected assistant, granted/revoked overlay,
+ * unavailable assistant binding, and denied/no-supported-route. Only an
+ * actual foreground observation verifies a launch; unobserved submissions
+ * are reported honestly as unconfirmed (unknown completion) so journals,
  * workflows and user reports never promote them to success.
  */
 class BackgroundLaunchMatrixTest {
@@ -67,29 +66,18 @@ class BackgroundLaunchMatrixTest {
         )
     }
 
-    // Clean-return verification: DIRECT cannot be silently dropped.
+    // Clean-return verification: no route is verified by a clean return.
 
-    @Test fun directCleanReturnIsVerified() {
-        assertTrue(
-            "a foreground (DIRECT) startActivity that returns without throwing " +
-                "is a verified launch: Android cannot silently drop it",
-            isVerifiedByCleanReturn(BackgroundLaunchRoute.DIRECT)
-        )
-    }
-
-    @Test fun backgroundRoutesAreNotVerifiedByCleanReturn() {
-        assertFalse(
-            "an overlay-exempt background start can be silently dropped: clean return is not verification",
-            isVerifiedByCleanReturn(BackgroundLaunchRoute.OVERLAY_EXEMPT)
-        )
-        assertFalse(
-            "a selected-assistant background start can be silently dropped: clean return is not verification",
-            isVerifiedByCleanReturn(BackgroundLaunchRoute.SELECTED_ASSISTANT)
-        )
-        assertFalse(
-            "no route means no launch was attempted",
-            isVerifiedByCleanReturn(BackgroundLaunchRoute.NONE)
-        )
+    @Test fun noRouteIsVerifiedByCleanReturn() {
+        // startActivity returns void: a clean return only proves the
+        // request was handed to the platform. Only an actual foreground
+        // observation verifies a launch, on DIRECT as on every route.
+        for (route in BackgroundLaunchRoute.values()) {
+            assertFalse(
+                "a clean startActivity return never verifies a launch: $route",
+                isVerifiedByCleanReturn(route)
+            )
+        }
     }
 
     // Receipt wording: local refusal.
@@ -114,8 +102,8 @@ class BackgroundLaunchMatrixTest {
 
     // Receipts: submitted/unverified vs observed vs platform rejection.
     // A background-route submission is unknown completion — never success.
-    // (Production submitLaunch passes foregroundObserved=true for DIRECT via
-    // isVerifiedByCleanReturn; these test verifiedLaunchReceipt as a pure
+    // (Production submitLaunch passes foregroundObserved = isVerifiedByCleanReturn(route),
+    // false on every route; these test verifiedLaunchReceipt as a pure
     // function of its inputs.)
 
     @Test fun submittedLaunchWithoutObservationIsUnverified() {
@@ -236,3 +224,4 @@ class BackgroundLaunchMatrixTest {
         )
     }
 }
+
