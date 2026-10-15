@@ -30,7 +30,11 @@ import kotlinx.coroutines.TimeoutCancellationException
  * 1. the accessibility/UI observation shows the expected package in the
  *    foreground after the launch;
  * 2. a real screenshot of that screen was captured post-launch;
- * 3. the existing vision stack analyzed the screenshot and the pixels
+ * 3. the foreground package is re-observed AFTER the capture and still
+ *    matches: a capture taken after the foreground switched belongs to
+ *    another app and proves nothing about the requested launch. A fresh
+ *    capture alone does not bind identity throughout the operation.
+ * 4. the existing vision stack analyzed the screenshot and the pixels
  *    were non-blank (a black/empty capture is not evidence of an opening).
  * The foreground-package observation is what ties the screenshot to the
  * target app: the vision models describe what is visible, the package
@@ -121,6 +125,19 @@ class ScreenshotLaunchVerifier(
             if (bytes == null) {
                 onDiagnostic("launch_verify label=$label result=unconfirmed reason=screenshot_unavailable")
                 return LaunchVerification.Unconfirmed("screenshot capture is unavailable")
+            }
+            // Recheck foreground identity AFTER capture, before analysis:
+            // the foreground may have switched between the pre-capture
+            // poll and the capture itself, in which case these pixels are
+            // another app's screen. Analyzing them (up to 90s of
+            // inference) would prove nothing about this launch.
+            val afterCapture = foregroundPackage()
+            if (afterCapture != expectedPackage) {
+                onDiagnostic("launch_verify label=$label result=unconfirmed " +
+                    "reason=foreground_changed_after_capture saw=$afterCapture")
+                return LaunchVerification.Unconfirmed(
+                    "foreground changed after screenshot capture, saw ${afterCapture ?: "nothing observable"}"
+                )
             }
             val evidence = analyzeScreenshot(bytes)
             if (!evidence.nonBlank) {

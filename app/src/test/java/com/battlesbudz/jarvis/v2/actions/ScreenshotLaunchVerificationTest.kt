@@ -86,6 +86,44 @@ class ScreenshotLaunchVerificationTest {
         assertTrue("no observation channel means fail fast: no settle sleep", sleeps.isEmpty())
     }
 
+    @Test fun unconfirmedWhenForegroundChangesAfterCapture() {
+        var analyzed = 0
+        var foregroundCalls = 0
+        val result = verifier(
+            foreground = {
+                foregroundCalls++
+                if (foregroundCalls <= 1) "com.example.target" else "com.example.other"
+            },
+            analyze = {
+                analyzed++
+                ScreenshotVisionEvidence(nonBlank = true, detections = 2, classification = "screen", totalMs = 42.0)
+            }
+        ).verify("com.example.target", "Target")
+        assertTrue("a capture from another app is not evidence of this launch", result is LaunchVerification.Unconfirmed)
+        assertTrue(
+            "the reason must name the switch: ${(result as LaunchVerification.Unconfirmed).reason}",
+            result.reason.contains("foreground changed after screenshot capture")
+        )
+        assertEquals("another app's pixels must never reach analysis", 0, analyzed)
+    }
+
+    @Test fun unconfirmedWhenForegroundUnobservableAfterCapture() {
+        var analyzed = 0
+        var foregroundCalls = 0
+        val result = verifier(
+            foreground = {
+                foregroundCalls++
+                if (foregroundCalls <= 1) "com.example.target" else null
+            },
+            analyze = {
+                analyzed++
+                ScreenshotVisionEvidence(nonBlank = true, detections = 2, classification = "screen", totalMs = 42.0)
+            }
+        ).verify("com.example.target", "Target")
+        assertTrue(result is LaunchVerification.Unconfirmed)
+        assertEquals("an unobservable foreground after capture must not reach analysis", 0, analyzed)
+    }
+
     @Test fun unconfirmedWhenScreenshotUnavailable() {
         var analyzed = 0
         val result = verifier(
