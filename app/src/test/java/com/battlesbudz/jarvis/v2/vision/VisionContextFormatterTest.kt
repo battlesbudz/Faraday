@@ -72,4 +72,19 @@ class VisionContextFormatterTest {
         assertTrue(note.contains("unavailable"))
         assertTrue(note.contains("unknown error"))
     }
+
+    @Test fun serverDetectionsFormattedWithoutPeopleCount() {
+        val text = VisionContextFormatter.formatServerDetections(
+            listOf(detection("person"), detection("bus")), 83.5
+        )
+        assertTrue("expected 'Phone Inference server' in:\n$text", text.contains("Phone Inference server"))
+        assertTrue("expected 'Objects detected: 2' in:\n$text", text.contains("Objects detected: 2"))
+        assertTrue("expected person line in:\n$text", text.contains("person 0.85"))
+        assertFalse("must not print a people count for a detections-only snapshot:\n$text", text.contains("People count"))
+    }
+
+    @Test fun serverDetectionsEmptyIsExplicit() {
+        val text = VisionContextFormatter.formatServerDetections(emptyList(), 10.0)
+        assertTrue("expected 'Objects detected: 0' in:\n$text", text.contains("Objects detected: 0"))
+    }
 }
