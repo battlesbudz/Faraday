@@ -47,10 +47,15 @@ class ConversationActionsTest {
             val benchmark = PipelineBenchmarkCapture("test", "test", 0, PipelineBenchmarkProvenance("test", 1))
             val outcome = actions.runValidated(plan, benchmark)
             assertTrue("the step must complete", outcome.completed)
-            assertEquals("Android execution must run on the execution dispatcher", listOf("test-exec"), execThreads)
+            // The coroutines debug agent renames the thread while a coroutine
+            // runs on it ("test-exec @coroutine#149"): compare the base thread
+            // name, not the debug suffix, or this boundary check fails on
+            // any classpath with the debug agent enabled.
+            val baseName = { name: String -> name.substringBefore(" @coroutine") }
+            assertEquals("Android execution must run on the execution dispatcher", listOf("test-exec"), execThreads.map(baseName))
             assertEquals(
                 "admission and UI acknowledgement must stay on the main dispatcher",
-                listOf("test-main", "test-main"), mainThreads
+                listOf("test-main", "test-main"), mainThreads.map(baseName)
             )
         } finally {
             mainDispatcher.close()
