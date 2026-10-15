@@ -36,6 +36,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Owns durable phone-task admission, approval, recovery and conversation projections.
@@ -58,6 +59,14 @@ internal class PhoneTaskCoordinator(
     private val silentWork: SilentWorkController,
     private val recordDiagnostic: (String) -> Unit,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main,
+    /**
+     * Android execution boundary. Production: Dispatchers.IO — the executor
+     * blocks (launch settle/poll sleeps, screenshot latch, runBlocking
+     * inference), so the two dispatch sites below hop only the blocking
+     * executeAttempt call here; approval, journal and UI work stay on
+     * [dispatcher]. Same boundary as ConversationActions.
+     */
+    private val executionDispatcher: CoroutineDispatcher = Dispatchers.IO,
     /** M4: the shared browser session; null when the browser runtime path is not installed. */
     private val browserSession: com.battlesbudz.jarvis.v2.actions.BrowserSession? = null,
     /** Private/incognito mode: blocks web-browsing tools at the capability probe. */
@@ -251,7 +260,12 @@ internal class PhoneTaskCoordinator(
                         val attempt = ledger.get(id) ?: break
                         if (attempt.state == ToolTaskState.SUCCEEDED) continue
                         if (attempt.state != ToolTaskState.READY) break
-                        val result = phoneActionPipeline(createExecutor()).executeAttempt(attempt)
+                        // Blocking dispatch runs OFF the coordinator
+                        // dispatcher (Main in production): the executor
+                        // blocks for launch verification.
+                        val result = withContext(executionDispatcher) {
+                            phoneActionPipeline(createExecutor()).executeAttempt(attempt)
+                        }
                         projectPhoneTask(group.id, recovered = true)
                         if (!result.succeeded) break
                     }
@@ -380,7 +394,12 @@ internal class PhoneTaskCoordinator(
                                 else -> Unit
                             }
                         }
-                        val result = phoneActionPipeline(createExecutor()).executeAttempt(a, approval)
+                        // Blocking dispatch runs OFF the coordinator
+                        // dispatcher (Main in production): the executor
+                        // blocks for launch verification.
+                        val result = withContext(executionDispatcher) {
+                            phoneActionPipeline(createExecutor()).executeAttempt(a, approval)
+                        }
                         if (!result.succeeded) {
                             operationStatus(result.message)
                             // The approval did not survive the claim: never

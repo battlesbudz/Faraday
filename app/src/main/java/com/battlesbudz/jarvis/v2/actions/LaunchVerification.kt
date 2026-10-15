@@ -36,6 +36,11 @@ import kotlinx.coroutines.TimeoutCancellationException
  *    capture alone does not bind identity throughout the operation.
  * 4. the existing vision stack analyzed the screenshot and the pixels
  *    were non-blank (a black/empty capture is not evidence of an opening).
+ * 5. the foreground package is re-observed AFTER vision analysis and
+ *    still matches: analysis runs up to 90s of inference, and a switch
+ *    during analysis leaves stale pixels that prove nothing about
+ *    this launch. A Verified receipt requires the target to still be
+ *    foreground when the analysis result is trusted.
  * The foreground-package observation is what ties the screenshot to the
  * target app: the vision models describe what is visible, the package
  * observation identifies whose screen it is.
@@ -54,7 +59,7 @@ import kotlinx.coroutines.TimeoutCancellationException
  * Callers must dispatch launches off the main thread.
  */
 sealed interface LaunchVerification {
-    /** All three evidence legs held: the launch counts as a verified opening. */
+    /** All five evidence legs held: the launch counts as a verified opening. */
     data object Verified : LaunchVerification
 
     /** Any leg missing or failed: the launch stays unconfirmed. Never success. */
@@ -140,6 +145,19 @@ class ScreenshotLaunchVerifier(
                 )
             }
             val evidence = analyzeScreenshot(bytes)
+            // Recheck foreground identity AFTER analysis, before trusting
+            // the result: analysis runs up to 90s of inference, and the
+            // foreground may have switched while it ran. A Verified receipt
+            // for pixels of an app that is no longer foreground would prove
+            // nothing about this launch.
+            val afterAnalysis = foregroundPackage()
+            if (afterAnalysis != expectedPackage) {
+                onDiagnostic("launch_verify label=$label result=unconfirmed " +
+                    "reason=foreground_changed_during_analysis saw=$afterAnalysis")
+                return LaunchVerification.Unconfirmed(
+                    "foreground changed during screenshot analysis, saw ${afterAnalysis ?: "nothing observable"}"
+                )
+            }
             if (!evidence.nonBlank) {
                 onDiagnostic("launch_verify label=$label result=unconfirmed reason=blank_screenshot")
                 return LaunchVerification.Unconfirmed("screenshot contained no visible content")

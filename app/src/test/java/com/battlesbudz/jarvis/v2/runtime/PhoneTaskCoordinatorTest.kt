@@ -3,8 +3,11 @@ package com.battlesbudz.jarvis.v2.runtime
 import com.battlesbudz.jarvis.v2.actions.*
 import java.nio.file.Files
 import java.io.File
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -122,6 +125,45 @@ class PhoneTaskCoordinatorTest {
             assertEquals(ToolTaskState.PAUSED, ledger.get(workflow.attemptIds.single())?.state)
             assertEquals(0, effects)
             assertFalse(projected.any { it.startsWith("workflow:") })
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test fun resumedTaskExecutionRunsOffTheMainBoundary() {
+        // Resume-after-unlock and panel-approve dispatch share the same
+        // boundary: approval/journal/UI stay on the coordinator dispatcher
+        // (Main in production) while the blocking executor runs on the
+        // execution dispatcher. A launch-verification dispatch on Main
+        // would stall UI/Stop/lifecycle and can ANR.
+        val directory = Files.createTempDirectory("phone-resume-thread").toFile()
+        try {
+            val file = File(directory, "journal.json")
+            val ledger = ToolTaskLedger(FileToolTaskStore(file))
+            ledger.admit(listOf(ActionRequest("read_battery")), "conversation")
+            val mainDispatcher = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "test-main") }
+                .asCoroutineDispatcher()
+            val executionDispatcher = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "test-exec") }
+                .asCoroutineDispatcher()
+            try {
+                val execThreads = mutableListOf<String>()
+                val executed = java.util.concurrent.CountDownLatch(1)
+                val coordinator = PhoneTaskCoordinator(CoroutineScope(Dispatchers.Unconfined),
+                    androidx.test.core.app.ApplicationProvider.getApplicationContext(), { ledger }, { false },
+                    { MobileActionExecutor { execThreads += Thread.currentThread().name; executed.countDown(); ExecutionResult(true, "effect") } },
+                    { true }, { _, _, _, _ -> },
+                    com.battlesbudz.jarvis.v2.voice.SilentWorkController(), {},
+                    dispatcher = mainDispatcher, executionDispatcher = executionDispatcher)
+                assertTrue(coordinator.recoverAfterRestart())
+                assertEquals("recovery must leave the admitted task READY for resume",
+                    ToolTaskState.READY, ledger.get(ledger.journal().groups.single().attemptIds.single())?.state)
+                coordinator.resumePhoneTasksAfterUnlock()
+                assertTrue("the resumed task must execute", executed.await(10, TimeUnit.SECONDS))
+                val baseName = { name: String -> name.substringBefore(" @coroutine") }
+                assertEquals("resumed execution must run on the execution dispatcher",
+                    listOf("test-exec"), execThreads.map(baseName))
+            } finally {
+                mainDispatcher.close()
+                executionDispatcher.close()
+            }
         } finally { directory.deleteRecursively() }
     }
 

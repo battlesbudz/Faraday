@@ -124,6 +124,30 @@ class ScreenshotLaunchVerificationTest {
         assertEquals("an unobservable foreground after capture must not reach analysis", 0, analyzed)
     }
 
+    @Test fun unconfirmedWhenForegroundChangesDuringAnalysis() {
+        var analyzed = 0
+        var foregroundCalls = 0
+        val result = verifier(
+            foreground = {
+                foregroundCalls++
+                // Poll (1) and after-capture recheck (2) see the target;
+                // the foreground switches while analysis runs (3).
+                if (foregroundCalls <= 2) "com.example.target" else "com.example.other"
+            },
+            analyze = {
+                analyzed++
+                ScreenshotVisionEvidence(nonBlank = true, detections = 2, classification = "screen", totalMs = 42.0)
+            }
+        ).verify("com.example.target", "Target")
+        assertTrue("pixels analyzed while another app took the foreground prove nothing",
+            result is LaunchVerification.Unconfirmed)
+        assertTrue(
+            "the reason must name the switch: ${(result as LaunchVerification.Unconfirmed).reason}",
+            result.reason.contains("foreground changed during screenshot analysis")
+        )
+        assertEquals("analysis ran, but its result must be discarded", 1, analyzed)
+    }
+
     @Test fun unconfirmedWhenScreenshotUnavailable() {
         var analyzed = 0
         val result = verifier(
