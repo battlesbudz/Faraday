@@ -163,11 +163,6 @@ internal fun VoiceCallScreen(
     // M3 guided MCP setup (D07): custom server URL from the settings dialog.
     onConnectMcpServer: (String, String, String, (String) -> Unit) -> Unit = { _, _, _, done -> done("MCP setup is unavailable right now.") },
     // M7 external agents (D06): grant list with authorize/revoke/enable.
-    externalAgentGrants: kotlinx.coroutines.flow.StateFlow<List<com.battlesbudz.jarvis.v2.actions.ExternalAgentGrant>>? = null,
-    onAuthorizeExternalAgent: (String, String, Set<String>) -> String = { _, _, _ -> "External agents are unavailable right now." },
-    onRevokeExternalAgent: (String) -> Boolean = { false },
-    onSetExternalAgentEnabled: (String, Boolean) -> Boolean = { _, _ -> false },
-    onRefreshExternalAgentGrants: () -> Unit = {},
     callEvidenceActions: CallEvidenceActions,
 ) {
     val runtime = com.battlesbudz.jarvis.v2.voice.VoiceSessionUi
@@ -319,18 +314,6 @@ internal fun VoiceCallScreen(
                 ?: androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<com.battlesbudz.jarvis.v2.actions.WorkflowSettingsProjection?>(null) })
             WorkflowSettingsSection(projection = workflowProjection, onSetEnabled = onWorkflowSetEnabled,
                 onConnectMcpServer = onConnectMcpServer)
-            // M7 external agents: grant management UI.
-            val externalGrants by (externalAgentGrants?.collectAsState()
-                ?: androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<List<com.battlesbudz.jarvis.v2.actions.ExternalAgentGrant>>(emptyList()) })
-            androidx.compose.runtime.LaunchedEffect(settingsOpen) {
-                if (settingsOpen) onRefreshExternalAgentGrants()
-            }
-            ExternalAgentSettingsSection(
-                grants = externalGrants,
-                onAuthorize = onAuthorizeExternalAgent,
-                onRevoke = onRevokeExternalAgent,
-                onSetEnabled = onSetExternalAgentEnabled,
-            )
         androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 16.dp))
         Text("Voice & microphone", style = MaterialTheme.typography.titleMedium)
         Text("Voice: Piper Northern English", style = MaterialTheme.typography.bodyMedium)

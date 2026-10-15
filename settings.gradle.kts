@@ -20,3 +20,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "JarvisOSV2"
 include(":app")
+include(":phoneinference")

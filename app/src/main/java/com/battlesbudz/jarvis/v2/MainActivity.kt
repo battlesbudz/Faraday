@@ -3,6 +3,7 @@ package com.battlesbudz.jarvis.v2
 import com.battlesbudz.jarvis.v2.conversation.ConversationPolicy
 import com.battlesbudz.jarvis.v2.conversation.ConversationWork
 import android.os.Bundle
+import android.view.WindowManager
 import android.Manifest
 import android.content.pm.PackageManager
 import android.content.ClipData
@@ -16,6 +17,7 @@ import com.battlesbudz.jarvis.v2.presentation.ModelSetupOperations
 import com.battlesbudz.jarvis.v2.presentation.ModelSetupSession
 import com.battlesbudz.jarvis.v2.voice.AndroidAudioInput
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -93,6 +95,16 @@ class MainActivity : ComponentActivity() {
         // past-due routine occurrences against current circumstances.
         runtime.refreshWorkflowSettings()
         runtime.evaluateMissedWorkflowRuns()
+        // Incognito-only FLAG_SECURE: follow the current conversation. A
+        // private conversation blocks screenshots and screen recordings;
+        // switching to a normal conversation clears the flag again.
+        lifecycleScope.launch {
+            runtime.conversationHistory.current.collect { thread ->
+                val flags = secureFlagsForPrivateChat(thread.isPrivate)
+                if (flags != 0) window.addFlags(flags)
+                else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            }
+        }
         setContent {
             JarvisApp(
                 store = runtime.modelStore,
@@ -108,19 +120,6 @@ class MainActivity : ComponentActivity() {
                 // M2 saved workflows (D36): settings lists them; chat stays the operating surface.
                 workflowSettings = runtime.workflowSettings,
                 onWorkflowSetEnabled = runtime::setWorkflowEnabled,
-                // M7 external agents (D06): grant management UI.
-                externalAgentGrants = runtime.externalAgentGrantsState,
-                onAuthorizeExternalAgent = { callerId, displayName, functions ->
-                    try {
-                        runtime.authorizeExternalAgent(callerId, displayName, functions)
-                        "Authorized."
-                    } catch (e: IllegalArgumentException) {
-                        e.message ?: "Could not authorize."
-                    }
-                },
-                onRevokeExternalAgent = runtime::revokeExternalAgent,
-                onSetExternalAgentEnabled = runtime::setExternalAgentEnabled,
-                onRefreshExternalAgentGrants = runtime::refreshExternalAgentGrants,
                 // M3 guided MCP setup (D07): custom server URL from the settings dialog.
                 onConnectMcpServer = runtime::connectMcpServer,
                 callState = runtime.voiceSessionController.state,
@@ -255,3 +254,10 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 }
+
+/**
+ * Incognito-only FLAG_SECURE: private conversations block screenshots and
+ * screen recordings; normal conversations stay screenshottable.
+ */
+internal fun secureFlagsForPrivateChat(isPrivate: Boolean): Int =
+    if (isPrivate) WindowManager.LayoutParams.FLAG_SECURE else 0

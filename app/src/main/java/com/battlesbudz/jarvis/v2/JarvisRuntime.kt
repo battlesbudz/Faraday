@@ -887,7 +887,7 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     private fun startAutoMemoryEvaluation() {
         runtimeScope.launch {
             runAutoMemoryEvaluationPass()
-            while (kotlinx.coroutines.isActive) {
+            while (isActive) {
                 kotlinx.coroutines.delay(15 * 60 * 1000L)
                 runAutoMemoryEvaluationPass()
             }

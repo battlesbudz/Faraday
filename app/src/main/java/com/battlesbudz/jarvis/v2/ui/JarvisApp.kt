@@ -65,11 +65,6 @@ fun JarvisApp(
     silentWork: kotlinx.coroutines.flow.StateFlow<Boolean>? = null,
     onSilentWork: (Boolean) -> Unit = {},
     workflowSettings: kotlinx.coroutines.flow.StateFlow<com.battlesbudz.jarvis.v2.actions.WorkflowSettingsProjection?>? = null,
-    externalAgentGrants: kotlinx.coroutines.flow.StateFlow<List<com.battlesbudz.jarvis.v2.actions.ExternalAgentGrant>>? = null,
-    onAuthorizeExternalAgent: (String, String, Set<String>) -> String = { _, _, _ -> "External agents are unavailable right now." },
-    onRevokeExternalAgent: (String) -> Boolean = { false },
-    onSetExternalAgentEnabled: (String, Boolean) -> Boolean = { _, _ -> false },
-    onRefreshExternalAgentGrants: () -> Unit = {},
     onWorkflowSetEnabled: (String, Boolean) -> Unit = { _, _ -> },
     onConnectMcpServer: (String, String, String, (String) -> Unit) -> Unit = { _, _, _, done -> done("MCP setup is unavailable right now.") },
 ) {
@@ -189,11 +184,6 @@ fun JarvisApp(
                                             onSilentWork = onSilentWork,
                                             workflowSettings = workflowSettings,
                                             onWorkflowSetEnabled = onWorkflowSetEnabled,
-                                            externalAgentGrants = externalAgentGrants,
-                                            onAuthorizeExternalAgent = onAuthorizeExternalAgent,
-                                            onRevokeExternalAgent = onRevokeExternalAgent,
-                                            onSetExternalAgentEnabled = onSetExternalAgentEnabled,
-                                            onRefreshExternalAgentGrants = onRefreshExternalAgentGrants,
                                             onConnectMcpServer = onConnectMcpServer,
                                             callEvidenceActions = callEvidence,
                                         )

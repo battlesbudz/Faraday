@@ -495,3 +495,6 @@
 
 # Smart Turn JNI is compiled into the existing Sherpa library; retain exactly this bridge.
 -keep class com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnNative { *; }
+
+# Native on-device vision (phoneinference module): keep the ONNX Runtime Java API.
+-keep class ai.onnxruntime.** { *; }
