@@ -306,22 +306,38 @@ class PhoneTaskCoordinatorTest {
     }
 
     @Test fun staleRefreshVersusDenialLeavesAnswerWindowClosed() {
-        // Jerry review of edca4b30: a refresh that read a stale pre-denial
-        // snapshot could reopen the denied approval's answer window after
-        // the denial, and no later refresh closes it (the approval is
-        // consumed, so the decision finds nothing to ask about). The deny
-        // path consumes the approval and closes the window inside
-        // publishLock, and refresh decides inside the same lock, so every
-        // interleaving ends with the window closed. The store returns a
-        // pre-denial snapshot and then sleeps, so the refresh's decision
-        // lands after the denial even though its read happened before it:
-        // the race, made deterministic.
+        // Jerry review of f0aad54d: the previous fixture could not fail
+        // on the pre-fix code. It started the refresh first, holding
+        // publishLock through its slowed read, and phoneTaskAction's
+        // first step (operationStatus(null)) also takes that lock, so
+        // the denial was serialized behind the refresh's whole
+        // decision: refresh decided (opening the window), then the
+        // denial closed it, and the test passed with or without the
+        // fix. The real race needs the refresh's DECISION to land
+        // after the denial while its SNAPSHOT predates it, so this
+        // fixture reverses the order: the denial passes its initial
+        // lock first and parks at a store seam before the deny+close
+        // critical section; the refresh then parks mid-read holding
+        // publishLock with a pre-denial snapshot; the test releases
+        // the denial and waits for its store write plus a grace
+        // window for the close to land, and only then releases the
+        // refresh to decide. Pre-fix the denial's close lands first
+        // and the stale refresh reopens the window, failing the
+        // final assertion; with f0aad54d the denial blocks on the
+        // lock until the refresh has decided, then closes the window
+        // the refresh opened. Production code untouched: fixture only.
         val directory = Files.createTempDirectory("phone-stale-deny").toFile()
         try {
             val file = File(directory, "journal.json")
             val delegate = FileToolTaskStore(file)
             val readStarted = java.util.concurrent.CountDownLatch(1)
             val slowNextRead = java.util.concurrent.atomic.AtomicBoolean(false)
+            val slowReadGate = java.util.concurrent.CountDownLatch(1)
+            val denyAtSeam = java.util.concurrent.CountDownLatch(1)
+            val denyGate = java.util.concurrent.CountDownLatch(1)
+            val denySeamArmed = java.util.concurrent.atomic.AtomicBoolean(false)
+            val denyWriteDone = java.util.concurrent.CountDownLatch(1)
+            val denyWrites = java.util.concurrent.atomic.AtomicInteger(0)
             val slowStore = object : ToolTaskStore {
                 override fun read() = readJournal().attempts
                 override fun update(change: (List<ToolTaskAttempt>) -> List<ToolTaskAttempt>) =
@@ -330,12 +346,39 @@ class PhoneTaskCoordinatorTest {
                     val snapshot = delegate.readJournal()
                     if (slowNextRead.getAndSet(false)) {
                         readStarted.countDown()
-                        Thread.sleep(200)
+                        // Park the refresh mid-decision: it holds
+                        // publishLock with a pre-denial snapshot until
+                        // the test releases it, so its decision cannot
+                        // slip ahead of the denial.
+                        slowReadGate.await(10, TimeUnit.SECONDS)
                     }
                     return snapshot
                 }
-                override fun updateJournal(change: (ToolTaskJournal) -> ToolTaskJournal) =
-                    delegate.updateJournal(change)
+                override fun updateJournal(change: (ToolTaskJournal) -> ToolTaskJournal): ToolTaskJournal {
+                    if (Thread.currentThread().name == "deny-thread") {
+                        val write = denyWrites.incrementAndGet()
+                        if (write == 1 && denySeamArmed.getAndSet(false)) {
+                            // The denial's first write is
+                            // pauseExpiredGroups, before the deny+close
+                            // critical section: park here, NOT holding
+                            // publishLock, so the refresh can take its
+                            // pre-denial snapshot first.
+                            denyAtSeam.countDown()
+                            denyGate.await(10, TimeUnit.SECONDS)
+                        }
+                    }
+                    val out = delegate.updateJournal(change)
+                    if (Thread.currentThread().name == "deny-thread" && denyWrites.get() == 2) {
+                        // The denial's second write is the deny itself.
+                        // It fires only when the denial could run while
+                        // the refresh was parked (pre-fix); with the fix
+                        // the denial blocks on publishLock and this
+                        // never fires before the refresh is released,
+                        // which the await timeout below tolerates.
+                        denyWriteDone.countDown()
+                    }
+                    return out
+                }
             }
             val ledger = ToolTaskLedger(slowStore)
             val group = ledger.admit(listOf(ActionRequest("read_battery")), "conversation")
@@ -352,21 +395,38 @@ class PhoneTaskCoordinatorTest {
                 { MobileActionExecutor { ExecutionResult(true, "effect") } }, { true },
                 { _, _, _, _ -> }, silentWork, {},
                 dispatcher = Dispatchers.Unconfined, executionDispatcher = Dispatchers.Unconfined)
-            // Arm the slowed read, then start the refresh: it snapshots the
-            // pre-denial journal and sleeps holding publishLock.
+            // Start the denial first: it passes its initial
+            // operationStatus(null) lock, then parks at the
+            // pauseExpiredGroups seam, NOT holding publishLock.
+            denySeamArmed.set(true)
+            val denyThread = Thread({ coordinator.phoneTaskAction(pending.id, pending.generation, "deny") }, "deny-thread")
+            denyThread.start()
+            assertTrue("the denial must reach its store seam",
+                denyAtSeam.await(10, TimeUnit.SECONDS))
+            // Now start the refresh: it snapshots the pre-denial
+            // journal and parks holding publishLock.
             slowNextRead.set(true)
-            val refreshThread = Thread { coordinator.refreshPhoneTasks() }
+            val refreshThread = Thread({ coordinator.refreshPhoneTasks() }, "refresh-thread")
             refreshThread.start()
             assertTrue("the refresh must reach its slowed read",
                 readStarted.await(10, TimeUnit.SECONDS))
-            // Deny while the refresh is still deciding from its stale
-            // snapshot. With the lock, the denial waits for the refresh's
-            // decision and then closes whatever window it opened; without
-            // it, the denial's close lands before the decision and the
-            // stale refresh reopens the window for a consumed approval.
-            coordinator.phoneTaskAction(pending.id, pending.generation, "deny")
+            // Release the denial. Pre-fix it denies and closes while
+            // the refresh is still parked; with the fix it blocks on
+            // publishLock at the critical section.
+            denyGate.countDown()
+            // Wait for the pre-fix denial write (a timeout here only
+            // means the denial is parked on the lock, i.e. the fixed
+            // code), then a grace window for its close to land before
+            // the refresh is allowed to decide. A stalled denial here
+            // can only weaken the test (pass pre-fix), never fail the
+            // fixed code.
+            denyWriteDone.await(500, TimeUnit.MILLISECONDS)
+            Thread.sleep(200)
+            slowReadGate.countDown()
             refreshThread.join(10_000)
             assertFalse("the refresh thread must finish", refreshThread.isAlive)
+            denyThread.join(10_000)
+            assertFalse("the denial thread must finish", denyThread.isAlive)
             awaitCoordinatorIdle(scope)
             assertTrue("the denial must consume the approval",
                 ledger.journal().approvals.single().consumed)
