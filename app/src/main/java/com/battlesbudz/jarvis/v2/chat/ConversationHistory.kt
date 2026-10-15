@@ -70,6 +70,7 @@ class ConversationHistory(private val preferences: SharedPreferences) {
     }
     @Synchronized fun list(): List<ConversationThread> = threads.values.toList().asReversed()
     @Synchronized fun newConversation() {
+        dropCurrentIfPrivate()
         _current.value = ConversationThread(UUID.randomUUID().toString())
         threads[_current.value.id] = _current.value
         persist()
@@ -80,13 +81,21 @@ class ConversationHistory(private val preferences: SharedPreferences) {
      * drops it entirely.
      */
     @Synchronized fun newPrivateConversation() {
+        dropCurrentIfPrivate()
         _current.value = ConversationThread(UUID.randomUUID().toString(), isPrivate = true)
         threads[_current.value.id] = _current.value
         // Deliberately no persist(): private threads must never touch disk.
     }
     /** True when the current thread is private. */
     @Synchronized fun isCurrentPrivate(): Boolean = _current.value.isPrivate
-    @Synchronized fun select(id: String) { threads[id]?.let { _current.value = it; persist() } }
+    /** Leaving a private thread drops it entirely: it lives only in memory. Callers hold the lock. */
+    private fun dropCurrentIfPrivate() {
+        if (_current.value.isPrivate) threads.remove(_current.value.id)
+    }
+    @Synchronized fun select(id: String) {
+        if (id != _current.value.id) dropCurrentIfPrivate()
+        threads[id]?.let { _current.value = it; persist() }
+    }
     /**
      * Delete a conversation thread. Returns true if the thread existed and was
      * removed. If the deleted thread was the current one, the newest remaining

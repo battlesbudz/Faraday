@@ -224,7 +224,7 @@ class ExternalAgentAccess(
         }
         if (!ExternalAgentFunctions.isExposed(request.name)) {
             return ExternalAgentCallResult.Denied(ExternalDenialCode.FUNCTION_NOT_EXPOSED,
-                "'${request.name}' is not available to external agents.")
+                "'${request.name}' is never exposed to external agents.")
         }
         if (request.name !in grant.allowedFunctions) {
             return ExternalAgentCallResult.Denied(ExternalDenialCode.FUNCTION_NOT_GRANTED,

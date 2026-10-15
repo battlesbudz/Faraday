@@ -102,7 +102,10 @@ class ConversationGenerationTest {
         assertEquals(2, backend.requests.size)
         assertSame(audio, backend.requests.first().audio)
         assertSame(audio, backend.requests.last().audio)
-        assertEquals(listOf(false, false), backend.tools)
+        // Direct-audio intentionally enables tools so the model may emit tool
+        // calls (audio-native tools); the invalid-draft retry disables them
+        // again. The no-dispatch guarantee is the assertions around this one.
+        assertEquals(listOf(true, false), backend.tools)
         assertEquals(PipelineBenchmarkPurpose.RETRY, backend.requests.last().purpose)
     }
 
