@@ -7,7 +7,10 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -17,6 +20,30 @@ class PhoneTaskCoordinatorTest {
     private fun coordinator(ledger: ToolTaskLedger) = PhoneTaskCoordinator(
         CoroutineScope(Dispatchers.Unconfined), androidx.test.core.app.ApplicationProvider.getApplicationContext(), { ledger }, { false },
         { MobileActionExecutor { ExecutionResult(true, "effect") } }, { true }, { _, _, _, _ -> }, com.battlesbudz.jarvis.v2.voice.SilentWorkController(), {})
+
+    /**
+     * The coordinator runs resume/approve asynchronously as children of
+     * its scope, and the pipeline's onJournalChanged/onStorageFailure
+     * hops are separate children of that same scope. An executor latch
+     * fires inside the fake executor — before the pipeline saves the
+     * receipt, before the projection hops, and before the resume job's
+     * trailing refresh — so a latch alone must never gate teardown:
+     * closing dispatchers or deleting the journal directory while those
+     * children are still in flight is a flake. Joining the scope's
+     * children until none are active is the authoritative wait; a stuck
+     * child fails the test on timeout instead of hanging CI.
+     */
+    private fun awaitCoordinatorIdle(scope: CoroutineScope, timeoutMs: Long = 10_000) {
+        runBlocking {
+            withTimeout(timeoutMs) {
+                while (true) {
+                    val active = scope.coroutineContext[Job]?.children?.filter { it.isActive }?.toList() ?: emptyList()
+                    if (active.isEmpty()) return@withTimeout
+                    active.forEach { it.join() }
+                }
+            }
+        }
+    }
 
     @Test fun successfulRefreshClearsOnlyTheOldLoadFailure() {
         val directory = Files.createTempDirectory("phone-coordinator").toFile()
@@ -146,7 +173,8 @@ class PhoneTaskCoordinatorTest {
             try {
                 val execThreads = mutableListOf<String>()
                 val executed = java.util.concurrent.CountDownLatch(1)
-                val coordinator = PhoneTaskCoordinator(CoroutineScope(Dispatchers.Unconfined),
+                val scope = CoroutineScope(Dispatchers.Unconfined)
+                val coordinator = PhoneTaskCoordinator(scope,
                     androidx.test.core.app.ApplicationProvider.getApplicationContext(), { ledger }, { false },
                     { MobileActionExecutor { execThreads += Thread.currentThread().name; executed.countDown(); ExecutionResult(true, "effect") } },
                     { true }, { _, _, _, _ -> },
@@ -157,6 +185,19 @@ class PhoneTaskCoordinatorTest {
                     ToolTaskState.READY, ledger.get(ledger.journal().groups.single().attemptIds.single())?.state)
                 coordinator.resumePhoneTasksAfterUnlock()
                 assertTrue("the resumed task must execute", executed.await(10, TimeUnit.SECONDS))
+                // The latch fires inside the fake executor, before the
+                // receipt save and before the coordinator job's
+                // projection/refresh finish. Wait for the whole
+                // coordinator scope to idle, then verify the terminal
+                // receipt, before teardown closes the dispatchers and
+                // deletes the journal directory.
+                awaitCoordinatorIdle(scope)
+                val terminal = ledger.get(ledger.journal().groups.single().attemptIds.single())
+                assertEquals("the resumed task must record its terminal receipt before teardown",
+                    ToolTaskState.SUCCEEDED, terminal?.state)
+                assertEquals("effect", terminal?.result)
+                assertEquals("the trailing refresh must publish the terminal attempt before teardown",
+                    ToolTaskState.SUCCEEDED, coordinator.tasks.value?.attempts?.single()?.state)
                 val baseName = { name: String -> name.substringBefore(" @coroutine") }
                 assertEquals("resumed execution must run on the execution dispatcher",
                     listOf("test-exec"), execThreads.map(baseName))
@@ -228,7 +269,8 @@ class PhoneTaskCoordinatorTest {
                 val effectRan = java.util.concurrent.CountDownLatch(1)
                 val execThreads = java.util.Collections.synchronizedList(mutableListOf<String>())
                 val projected = java.util.concurrent.CountDownLatch(1)
-                val coordinator = PhoneTaskCoordinator(CoroutineScope(Dispatchers.Unconfined),
+                val scope = CoroutineScope(Dispatchers.Unconfined)
+                val coordinator = PhoneTaskCoordinator(scope,
                     androidx.test.core.app.ApplicationProvider.getApplicationContext(), { ledger }, { false },
                     { MobileActionExecutor { execThreads += Thread.currentThread().name; effectRan.countDown(); ExecutionResult(true, "effect") } },
                     { true }, { _, _, _, _ -> projected.countDown() },
@@ -239,6 +281,14 @@ class PhoneTaskCoordinatorTest {
                 assertTrue("the resumed task must project", projected.await(10, TimeUnit.SECONDS))
                 // Drain every refresh posted to the coordinator dispatcher.
                 mainExecutor.submit(Runnable {}).get(10, TimeUnit.SECONDS)
+                // The barrier above only orders executor-queue work; the
+                // authoritative wait is joining the coordinator scope's
+                // children (resume job + projection hops) before teardown.
+                awaitCoordinatorIdle(scope)
+                val terminal = ledger.get(ledger.journal().groups.single { it.conversationId == "conversation" }.attemptIds.single())
+                assertEquals("the resumed task must record its terminal receipt before teardown",
+                    ToolTaskState.SUCCEEDED, terminal?.state)
+                assertEquals("effect", terminal?.result)
                 val baseName = { name: String -> name.substringBefore(" @coroutine") }
                 assertEquals("resumed execution must run on the execution dispatcher",
                     listOf("test-exec"), execThreads.map(baseName))
