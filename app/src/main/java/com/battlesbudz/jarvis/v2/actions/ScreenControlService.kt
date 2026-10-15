@@ -47,7 +47,7 @@ class ScreenControlService : AccessibilityService() {
          * already granted this service screen access in Accessibility
          * settings. Requires android:canTakeScreenshot in the service
          * config (screen_control_service.xml): without it the platform
-         * reports onError and this returns null. Returns null when the
+         * reports onFailure and this returns null. Returns null when the
          * service is not connected, the platform errors, or the capture
          * times out — never fabricated pixels. The capture is throttled
          * by the platform; at most one is taken per launch verification.
@@ -101,7 +101,7 @@ class ScreenControlService : AccessibilityService() {
                 }
             }
 
-            override fun onError(errorCode: Int) {
+            override fun onFailure(errorCode: Int) {
                 latch.countDown()
             }
         })

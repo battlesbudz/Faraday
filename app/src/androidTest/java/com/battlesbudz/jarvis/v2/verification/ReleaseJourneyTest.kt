@@ -4295,13 +4295,17 @@ class ReleaseJourneyTest {
     @Test fun test52_openSettingsWifiShowsSettings() {
         val pipeline = MobileActionPipeline(executor = AndroidMobileActionExecutor(context, canLaunchDirectly = { true }, launchVerifier = screenshotLaunchVerifier()))
         val result = pipeline.execute(ActionRequest("open_settings", mapOf("screen" to "wifi")))
-        // Screenshot+vision verified: the opening is confirmed by a
-        // post-launch screenshot while Wi-Fi settings was in the
-        // foreground — never by the startActivity return.
-        assertEquals(ExecutionResult.Outcome.SUCCEEDED, result.outcome)
-        assertTrue("a screenshot-verified opening succeeds: ${result.message}", result.succeeded)
-        assertTrue("the receipt must say the settings opened: ${result.message}",
-            result.message.contains("Opening Wi-Fi settings."))
+        // Screenshot+vision verification confirms the Settings handler
+        // opened — but a verified handler-open is not a verified
+        // destination (viewIntentReceipt): without destination evidence
+        // (no OCR), the Wi-Fi page itself stays unconfirmed.
+        assertEquals(ExecutionResult.Outcome.UNKNOWN_COMPLETION, result.outcome)
+        assertFalse("a verified handler-open is not a verified destination: ${result.message}", result.succeeded)
+        assertTrue("the receipt must say the handler opened but the destination could not be confirmed: ${result.message}",
+            result.message.contains("The handler for Wi-Fi settings opened") &&
+                result.message.contains("could not be confirmed"))
+        assertFalse("the receipt must never claim the destination opened: ${result.message}",
+            result.message.contains("Opening") || result.message.contains("Opened"))
         assertTrue("Wi-Fi settings must actually appear, not merely report success",
             device.wait(Until.hasObject(By.pkg("com.android.settings").depth(0)), 15_000))
         // @After captures the launched Settings screen before closing Jarvis's scenario.
@@ -4310,8 +4314,14 @@ class ReleaseJourneyTest {
     @Test fun test53_openWebsiteDispatchesHonestReceipt() {
         val pipeline = MobileActionPipeline(executor = AndroidMobileActionExecutor(context, canLaunchDirectly = { true }, launchVerifier = screenshotLaunchVerifier()))
         val result = pipeline.execute(ActionRequest("open_website", mapOf("url" to "example.com")))
-        assertEquals("a screenshot-verified website launch succeeds: ${result.message}",
-            ExecutionResult.Outcome.SUCCEEDED, result.outcome)
+        // The browser handler opened (screenshot-verified), but the URL
+        // itself stays unconfirmed: the browser could be on an error page
+        // or a pre-existing tab, and there is no destination evidence.
+        assertEquals("a verified handler-open stays unconfirmed for the destination: ${result.message}",
+            ExecutionResult.Outcome.UNKNOWN_COMPLETION, result.outcome)
+        assertTrue("receipt must say the handler opened but the destination could not be confirmed: ${result.message}",
+            result.message.contains("The handler for https://example.com opened") &&
+                result.message.contains("could not be confirmed"))
         assertTrue("receipt must name the normalized URL honestly",
             result.message.contains("https://example.com"))
         val rejected = pipeline.execute(ActionRequest("open_website", mapOf("url" to "javascript:alert(1)")))
@@ -4321,8 +4331,15 @@ class ReleaseJourneyTest {
     @Test fun test54_navigateDispatchesHonestReceipt() {
         val pipeline = MobileActionPipeline(executor = AndroidMobileActionExecutor(context, canLaunchDirectly = { true }, launchVerifier = screenshotLaunchVerifier()))
         val result = pipeline.execute(ActionRequest("navigate", mapOf("destination" to "1600 Amphitheatre Parkway")))
-        assertEquals("a screenshot-verified navigation launch succeeds: ${result.message}",
-            ExecutionResult.Outcome.SUCCEEDED, result.outcome)
+        // The Maps/browser handler opened (screenshot-verified), but the
+        // navigation destination itself stays unconfirmed: Maps could be
+        // on an onboarding or error screen, and there is no destination
+        // evidence.
+        assertEquals("a verified handler-open stays unconfirmed for the destination: ${result.message}",
+            ExecutionResult.Outcome.UNKNOWN_COMPLETION, result.outcome)
+        assertTrue("receipt must say the handler opened but the destination could not be confirmed: ${result.message}",
+            result.message.contains("The handler for 1600 Amphitheatre Parkway opened") &&
+                result.message.contains("could not be confirmed"))
         assertTrue("receipt must name the destination honestly",
             result.message.contains("1600 Amphitheatre Parkway"))
         val rejected = pipeline.execute(ActionRequest("navigate", mapOf("destination" to "   ")))
