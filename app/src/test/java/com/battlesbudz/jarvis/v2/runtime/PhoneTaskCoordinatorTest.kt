@@ -197,4 +197,62 @@ class PhoneTaskCoordinatorTest {
         } finally { directory.deleteRecursively() }
     }
 
+    @Test fun pipelineProjectionCallbacksReturnToCoordinatorDispatcher() {
+        // Jerry review of 2bb66122: executeAttempt runs on the execution
+        // dispatcher, but its onJournalChanged/onStorageFailure callbacks
+        // must publish on the coordinator dispatcher (Main in production).
+        // A refresh published from IO would move UI/error/silent-work
+        // projection off Main and could publish a stale snapshot over a
+        // newer Main-thread cancellation. The silent-work clock is
+        // invoked on the refresh thread, so it records exactly which
+        // threads published.
+        val directory = Files.createTempDirectory("phone-callback-thread").toFile()
+        try {
+            val file = File(directory, "journal.json")
+            val ledger = ToolTaskLedger(FileToolTaskStore(file))
+            val question = ledger.admit(listOf(ActionRequest("read_battery")), "question-chat")
+            val questionAttempt = ledger.get(question.attemptIds.single())!!
+            ledger.requestApproval(questionAttempt.id, questionAttempt.generation, "native", MobileToolCatalog.VERSION)
+            ledger.admit(listOf(ActionRequest("read_battery")), "conversation")
+            val mainExecutor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "test-main") }
+            val execExecutor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "test-exec") }
+            val mainDispatcher = mainExecutor.asCoroutineDispatcher()
+            val executionDispatcher = execExecutor.asCoroutineDispatcher()
+            try {
+                val refreshThreads = java.util.Collections.synchronizedList(mutableListOf<String>())
+                val silentWork = com.battlesbudz.jarvis.v2.voice.SilentWorkController(clock = {
+                    refreshThreads += Thread.currentThread().name
+                    System.currentTimeMillis()
+                })
+                assertTrue(silentWork.enterSilentWork())
+                val effectRan = java.util.concurrent.CountDownLatch(1)
+                val execThreads = java.util.Collections.synchronizedList(mutableListOf<String>())
+                val projected = java.util.concurrent.CountDownLatch(1)
+                val coordinator = PhoneTaskCoordinator(CoroutineScope(Dispatchers.Unconfined),
+                    androidx.test.core.app.ApplicationProvider.getApplicationContext(), { ledger }, { false },
+                    { MobileActionExecutor { execThreads += Thread.currentThread().name; effectRan.countDown(); ExecutionResult(true, "effect") } },
+                    { true }, { _, _, _, _ -> projected.countDown() },
+                    silentWork, {},
+                    dispatcher = mainDispatcher, executionDispatcher = executionDispatcher)
+                coordinator.resumePhoneTasksAfterUnlock()
+                assertTrue("the resumed task must execute", effectRan.await(10, TimeUnit.SECONDS))
+                assertTrue("the resumed task must project", projected.await(10, TimeUnit.SECONDS))
+                // Drain every refresh posted to the coordinator dispatcher.
+                mainExecutor.submit(Runnable {}).get(10, TimeUnit.SECONDS)
+                val baseName = { name: String -> name.substringBefore(" @coroutine") }
+                assertEquals("resumed execution must run on the execution dispatcher",
+                    listOf("test-exec"), execThreads.map(baseName))
+                assertTrue("projection refreshes must run on the coordinator dispatcher, never the execution dispatcher",
+                    refreshThreads.none { baseName(it) == "test-exec" })
+                assertTrue("at least one projection refresh must have run on the coordinator dispatcher",
+                    refreshThreads.any { baseName(it) == "test-main" })
+            } finally {
+                mainDispatcher.close()
+                executionDispatcher.close()
+                mainExecutor.shutdownNow()
+                execExecutor.shutdownNow()
+            }
+        } finally { directory.deleteRecursively() }
+    }
+
 }

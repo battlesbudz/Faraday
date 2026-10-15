@@ -78,15 +78,32 @@ internal class PhoneTaskCoordinator(
     private var loadError: String? = null
     private var operationError: String? = null
 
+    /**
+     * Serializes journal/error publication: refreshPhoneTasks reads the
+     * journal file and then publishes it, so two threads publishing at
+     * once could interleave read and publish and overwrite a newer
+     * snapshot (for example a Main-thread cancellation) with a stale one.
+     * The lock makes each read-then-publish atomic; the callback hop
+     * below keeps the usual publication path on the coordinator
+     * dispatcher.
+     */
+    private val publishLock = Any()
+
     private fun publishError() {
-        error.value = listOfNotNull(loadError, operationError).distinct().takeIf { it.isNotEmpty() }?.joinToString("\n\n")
+        synchronized(publishLock) {
+            error.value = listOfNotNull(loadError, operationError).distinct().takeIf { it.isNotEmpty() }?.joinToString("\n\n")
+        }
     }
     private fun storageFailure(failure: ToolTaskStorageException, writeMessage: String? = null) {
-        if (failure.failure == ToolTaskStorageFailure.WRITE_FAILED) operationError = writeMessage ?: failure.userMessage()
-        else loadError = failure.userMessage()
-        publishError()
+        synchronized(publishLock) {
+            if (failure.failure == ToolTaskStorageFailure.WRITE_FAILED) operationError = writeMessage ?: failure.userMessage()
+            else loadError = failure.userMessage()
+            publishError()
+        }
     }
-    private fun operationStatus(message: String?) { operationError = message; publishError() }
+    private fun operationStatus(message: String?) {
+        synchronized(publishLock) { operationError = message; publishError() }
+    }
 
     fun reportError(message: String) = operationStatus(message)
 
@@ -115,15 +132,16 @@ internal class PhoneTaskCoordinator(
     }
 
     fun refreshPhoneTasks() {
-        try {
-            tasks.value = ledger.journal()
-            loadError = null
-            publishError()
-        } catch (failure: ToolTaskStorageException) {
-            tasks.value = null
-            storageFailure(failure)
-            return
-        }
+        synchronized(publishLock) {
+            try {
+                tasks.value = ledger.journal()
+                loadError = null
+                publishError()
+            } catch (failure: ToolTaskStorageException) {
+                tasks.value = null
+                storageFailure(failure)
+                return
+            }
         // M1d: a required question asked during silent work (D22) temporarily
         // opens an answer window so the user can answer by voice; the mode
         // returns to silence once the question resolves or the window lapses.
@@ -134,6 +152,7 @@ internal class PhoneTaskCoordinator(
                 ?.mapNotNull { attempt -> attempt.approvalId?.let { id -> journal.approvals.find { it.id == id } } }
                 ?.lastOrNull { !it.consumed }
             if (question != null) silentWork.requestAnswer(question.id)
+        }
         }
     }
 
@@ -152,8 +171,16 @@ internal class PhoneTaskCoordinator(
             sourceAccess = ToolSourceAccess(ledger),
             capabilityProbe = AndroidToolCapabilityProbe(appContext, isPrivate = isPrivate),
             lockGate = androidLockGate(appContext),
-            onJournalChanged = ::refreshPhoneTasks,
-            onStorageFailure = ::storageFailure
+            // Pipeline callbacks must publish on the coordinator
+            // dispatcher (Main in production). executeAttempt runs on
+            // the execution dispatcher, and a refresh published from IO
+            // would move UI/error/silent-work projection off Main and
+            // could publish a stale snapshot over a newer Main-thread
+            // cancellation. Each hop re-reads the journal on the
+            // coordinator dispatcher, so publication order follows
+            // coordinator-dispatcher order.
+            onJournalChanged = { scope.launch(dispatcher) { refreshPhoneTasks() } },
+            onStorageFailure = { failure, message -> scope.launch(dispatcher) { storageFailure(failure, message) } }
         )
 
     fun executePhoneAction(
