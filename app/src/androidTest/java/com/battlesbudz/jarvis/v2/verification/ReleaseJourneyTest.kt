@@ -90,6 +90,10 @@ class ReleaseJourneyTest {
     private val device = UiDevice.getInstance(instrumentation)
     private lateinit var activity: ActivityScenario<MainActivity>
 
+    /** Retained launch-verifier evidence for the current test: verifier diagnostics + captured screenshots. */
+    private val launchVerifyDiagnostics = mutableListOf<String>()
+    private val launchVerifyScreenshots = mutableListOf<File>()
+
     @get:Rule val testName = TestName()
 
     @Before fun launch() {
@@ -100,6 +104,33 @@ class ReleaseJourneyTest {
     @After fun close() {
         try {
             captureEvidence(testName.methodName)
+            // Export the retained launch-verification evidence: the
+            // analyzed screenshot(s) and the stage/package/timing
+            // diagnostics. The after-test screenshot + XML alone cannot
+            // prove which screen was captured mid-test. Export failures
+            // must never fail the test itself.
+            for (shot in launchVerifyScreenshots) {
+                try { exportEvidence(shot, "image/png") } catch (_: Exception) { }
+            }
+            if (launchVerifyDiagnostics.isNotEmpty()) {
+                try {
+                    val diagnosticsFile = File(
+                        File(context.cacheDir, "verification"),
+                        "${testName.methodName}_launch_verify.xml"
+                    ).apply { parentFile?.mkdirs() }
+                    diagnosticsFile.writeText(buildString {
+                        appendLine("<?xml version=\"1.0\" encoding=\"utf-8\"?>")
+                        appendLine("<launch-verify-diagnostics>")
+                        for (line in launchVerifyDiagnostics) {
+                            append("  <line>")
+                            append(line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+                            appendLine("</line>")
+                        }
+                        appendLine("</launch-verify-diagnostics>")
+                    })
+                    exportEvidence(diagnosticsFile, "text/xml")
+                } catch (_: Exception) { }
+            }
         } finally { if (::activity.isInitialized) activity.close() }
     }
 
@@ -113,16 +144,54 @@ class ReleaseJourneyTest {
      */
     private fun screenshotLaunchVerifier(): LaunchVerifier = ScreenshotLaunchVerifier(
         observationAvailable = { true },
-        foregroundPackage = { device.currentPackageName },
+        foregroundPackage = {
+            // Record every foreground observation in call order: the
+            // pre-capture poll, the after-capture recheck, and the
+            // after-analysis recheck. The verifier's own diagnostics mark
+            // the stage (and the expected package on the verified line);
+            // these lines supply the observed package ID at each step.
+            val pkg = device.currentPackageName
+            launchVerifyDiagnostics +=
+                "launch_verify_foreground t=${System.currentTimeMillis()} pkg=$pkg"
+            pkg
+        },
         captureScreenshot = {
             val file = File(context.cacheDir, "launch-verify-${System.nanoTime()}.png")
             try {
-                if (device.takeScreenshot(file)) file.readBytes() else null
+                if (device.takeScreenshot(file)) {
+                    val bytes = file.readBytes()
+                    // Retain the analyzed image: the temp file is still
+                    // deleted below, but this copy survives for evidence
+                    // export in @After. The after-test screenshot alone
+                    // cannot prove which screen was captured mid-test.
+                    val retained = File(
+                        File(context.cacheDir, "verification"),
+                        "${testName.methodName}_launch_verify_${System.nanoTime()}.png"
+                    ).apply { parentFile?.mkdirs() }
+                    retained.writeBytes(bytes)
+                    launchVerifyScreenshots += retained
+                    launchVerifyDiagnostics +=
+                        "launch_verify_capture t=${System.currentTimeMillis()} bytes=${bytes.size} file=${retained.name}"
+                    bytes
+                } else {
+                    launchVerifyDiagnostics +=
+                        "launch_verify_capture t=${System.currentTimeMillis()} failed"
+                    null
+                }
             } finally {
                 file.delete()
             }
         },
-        analyzeScreenshot = { bytes -> NativeVisionScreenshotAnalyzer(context.assets).analyze(bytes) }
+        analyzeScreenshot = { bytes ->
+            val startMs = System.currentTimeMillis()
+            try {
+                NativeVisionScreenshotAnalyzer(context.assets).analyze(bytes)
+            } finally {
+                launchVerifyDiagnostics +=
+                    "launch_verify_analysis t=$startMs duration_ms=${System.currentTimeMillis() - startMs}"
+            }
+        },
+        onDiagnostic = { launchVerifyDiagnostics += it }
     )
 
     private fun hideKeyboardWithoutNavigating() {
