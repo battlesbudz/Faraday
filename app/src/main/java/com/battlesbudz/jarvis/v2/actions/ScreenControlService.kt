@@ -75,16 +75,26 @@ class ScreenControlService : AccessibilityService() {
     fun takeScreenScreenshot(timeoutMs: Long = 5_000): ByteArray? {
         val latch = CountDownLatch(1)
         var png: ByteArray? = null
-        takeScreenshot(Display.DEFAULT_DISPLAY, Executor { it.run() }, object : ScreenshotCallback() {
+        // TakeScreenshotCallback is an interface (not ScreenshotCallback,
+        // which does not exist); ScreenshotResult carries a HardwareBuffer,
+        // not a Bitmap — wrap it, compress, then recycle and close.
+        takeScreenshot(Display.DEFAULT_DISPLAY, Executor { it.run() }, object : TakeScreenshotCallback {
             override fun onSuccess(screenshot: ScreenshotResult) {
+                val hardwareBuffer = screenshot.hardwareBuffer
                 try {
-                    val out = ByteArrayOutputStream()
-                    if (screenshot.bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) {
-                        png = out.toByteArray()
+                    val bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, screenshot.colorSpace)
+                    try {
+                        val out = ByteArrayOutputStream()
+                        if (bitmap != null && bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) {
+                            png = out.toByteArray()
+                        }
+                    } finally {
+                        bitmap?.recycle()
                     }
                 } catch (_: Exception) {
                     png = null
                 } finally {
+                    hardwareBuffer.close()
                     latch.countDown()
                 }
             }

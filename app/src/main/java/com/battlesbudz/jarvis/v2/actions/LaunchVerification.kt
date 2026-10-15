@@ -1,5 +1,7 @@
 package com.battlesbudz.jarvis.v2.actions
 
+import com.battlesbudz.jarvis.v2.vision.ScreenshotVisionEvidence
+
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 
