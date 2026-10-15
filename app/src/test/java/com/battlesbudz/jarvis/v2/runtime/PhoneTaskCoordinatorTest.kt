@@ -305,4 +305,77 @@ class PhoneTaskCoordinatorTest {
         } finally { directory.deleteRecursively() }
     }
 
+    @Test fun staleRefreshVersusDenialLeavesAnswerWindowClosed() {
+        // Jerry review of edca4b30: a refresh that read a stale pre-denial
+        // snapshot could reopen the denied approval's answer window after
+        // the denial, and no later refresh closes it (the approval is
+        // consumed, so the decision finds nothing to ask about). The deny
+        // path consumes the approval and closes the window inside
+        // publishLock, and refresh decides inside the same lock, so every
+        // interleaving ends with the window closed. The store returns a
+        // pre-denial snapshot and then sleeps, so the refresh's decision
+        // lands after the denial even though its read happened before it:
+        // the race, made deterministic.
+        val directory = Files.createTempDirectory("phone-stale-deny").toFile()
+        try {
+            val file = File(directory, "journal.json")
+            val delegate = FileToolTaskStore(file)
+            val readStarted = java.util.concurrent.CountDownLatch(1)
+            val slowNextRead = java.util.concurrent.atomic.AtomicBoolean(false)
+            val slowStore = object : ToolTaskStore {
+                override fun read() = readJournal().attempts
+                override fun update(change: (List<ToolTaskAttempt>) -> List<ToolTaskAttempt>) =
+                    updateJournal { it.copy(attempts = change(it.attempts)) }.attempts
+                override fun readJournal(): ToolTaskJournal {
+                    val snapshot = delegate.readJournal()
+                    if (slowNextRead.getAndSet(false)) {
+                        readStarted.countDown()
+                        Thread.sleep(200)
+                    }
+                    return snapshot
+                }
+                override fun updateJournal(change: (ToolTaskJournal) -> ToolTaskJournal) =
+                    delegate.updateJournal(change)
+            }
+            val ledger = ToolTaskLedger(slowStore)
+            val group = ledger.admit(listOf(ActionRequest("read_battery")), "conversation")
+            val admitted = ledger.get(group.attemptIds.single())!!
+            ledger.requestApproval(admitted.id, admitted.generation, "native", MobileToolCatalog.VERSION)
+            val pending = ledger.get(admitted.id)!!
+            assertEquals(ToolTaskState.WAITING_APPROVAL, pending.state)
+            val silentWork = com.battlesbudz.jarvis.v2.voice.SilentWorkController()
+            assertTrue(silentWork.enterSilentWork())
+            assertFalse(silentWork.isAnswerWindowOpen())
+            val scope = CoroutineScope(Dispatchers.Unconfined)
+            val coordinator = PhoneTaskCoordinator(scope,
+                androidx.test.core.app.ApplicationProvider.getApplicationContext(), { ledger }, { false },
+                { MobileActionExecutor { ExecutionResult(true, "effect") } }, { true },
+                { _, _, _, _ -> }, silentWork, {},
+                dispatcher = Dispatchers.Unconfined, executionDispatcher = Dispatchers.Unconfined)
+            // Arm the slowed read, then start the refresh: it snapshots the
+            // pre-denial journal and sleeps holding publishLock.
+            slowNextRead.set(true)
+            val refreshThread = Thread { coordinator.refreshPhoneTasks() }
+            refreshThread.start()
+            assertTrue("the refresh must reach its slowed read",
+                readStarted.await(10, TimeUnit.SECONDS))
+            // Deny while the refresh is still deciding from its stale
+            // snapshot. With the lock, the denial waits for the refresh's
+            // decision and then closes whatever window it opened; without
+            // it, the denial's close lands before the decision and the
+            // stale refresh reopens the window for a consumed approval.
+            coordinator.phoneTaskAction(pending.id, pending.generation, "deny")
+            refreshThread.join(10_000)
+            assertFalse("the refresh thread must finish", refreshThread.isAlive)
+            awaitCoordinatorIdle(scope)
+            assertTrue("the denial must consume the approval",
+                ledger.journal().approvals.single().consumed)
+            assertEquals(ApprovalDecision.DENIED, ledger.journal().approvals.single().decision)
+            assertFalse("a stale-snapshot refresh must not leave the denied approval's answer window open",
+                silentWork.isAnswerWindowOpen())
+            assertNull(silentWork.pendingQuestionId())
+        } finally { directory.deleteRecursively() }
+    }
+
 }
+

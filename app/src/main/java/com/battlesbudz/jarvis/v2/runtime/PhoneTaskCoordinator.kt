@@ -86,6 +86,15 @@ internal class PhoneTaskCoordinator(
      * The lock makes each read-then-publish atomic; the callback hop
      * below keeps the usual publication path on the coordinator
      * dispatcher.
+     *
+     * The same lock serializes the silent-work answer-window transitions
+     * with refreshPhoneTasks' window decision: refresh reads the journal
+     * and decides requestAnswer inside this lock, and the approve/deny
+     * paths consume the approval and close the window inside it. Without
+     * that, a refresh holding a stale pre-denial snapshot could reopen
+     * the denied approval's answer window after the denial, and no later
+     * refresh would close it (the approval is consumed, so the decision
+     * finds nothing to ask about).
      */
     private val publishLock = Any()
 
@@ -433,14 +442,24 @@ internal class PhoneTaskCoordinator(
                             // leave a lease behind for an undispatched task.
                             if (screenTask && admittedHere) a.groupId?.let { screenSession.releaseIf(it) }
                         } else {
-                            silentWork.onAnswerReceived(approval.id)
+                            // Close the window atomically with the approval
+                            // decision (see publishLock): a stale-snapshot
+                            // refresh must not reopen it after the approval
+                            // is consumed.
+                            synchronized(publishLock) { silentWork.onAnswerReceived(approval.id) }
                             if (screenTask && admittedHere) ScreenControlService.bridge(appContext)
                                 .showStopOverlay(a.request.describeForOverlay())
                         }
                     }
                     "deny" -> a.approvalId?.let {
-                        approvals.deny(it)
-                        silentWork.onAnswerReceived(it)
+                        // Deny and close the window atomically (see
+                        // publishLock): a refresh that read a stale
+                        // pre-denial snapshot must not reopen the denied
+                        // approval's answer window after this denial.
+                        synchronized(publishLock) {
+                            approvals.deny(it)
+                            silentWork.onAnswerReceived(it)
+                        }
                     }
                     "cancel" -> if (a.groupId != null) ledger.cancelGroup(a.groupId)
                         else ledger.cancelLegacyAttempt(a.id, a.generation)
@@ -458,3 +477,4 @@ internal class PhoneTaskCoordinator(
         ToolTaskState.SUCCEEDED, ToolTaskState.FAILED,
         ToolTaskState.CANCELLED, ToolTaskState.UNKNOWN_OUTCOME)
 }
+
