@@ -17,9 +17,13 @@ import org.junit.Test
 @org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
 @org.robolectric.annotation.Config(sdk = [35])
 class PhoneTaskCoordinatorTest {
+    // Synchronous fixtures run the coordinator dispatcher as Unconfined:
+    // the default Main dispatcher leaves onStorageFailure launches queued
+    // on Robolectric's main looper, so error assertions would see null.
     private fun coordinator(ledger: ToolTaskLedger) = PhoneTaskCoordinator(
         CoroutineScope(Dispatchers.Unconfined), androidx.test.core.app.ApplicationProvider.getApplicationContext(), { ledger }, { false },
-        { MobileActionExecutor { ExecutionResult(true, "effect") } }, { true }, { _, _, _, _ -> }, com.battlesbudz.jarvis.v2.voice.SilentWorkController(), {})
+        { MobileActionExecutor { ExecutionResult(true, "effect") } }, { true }, { _, _, _, _ -> }, com.battlesbudz.jarvis.v2.voice.SilentWorkController(), {},
+        dispatcher = Dispatchers.Unconfined)
 
     /**
      * The coordinator runs resume/approve asynchronously as children of
@@ -255,6 +259,21 @@ class PhoneTaskCoordinatorTest {
             val questionAttempt = ledger.get(question.attemptIds.single())!!
             ledger.requestApproval(questionAttempt.id, questionAttempt.generation, "native", MobileToolCatalog.VERSION)
             ledger.admit(listOf(ActionRequest("read_battery")), "conversation")
+            // Resume executes only READY attempts, and admit leaves them
+            // QUEUED, so prepare the realistic post-restart state first:
+            // recovery moves the conversation task to READY and leaves
+            // the pending question WAITING_APPROVAL with its approval
+            // unconsumed. Ledger-level, before the SilentWork fixture
+            // is created, so no recovery refresh pollutes its records.
+            ledger.recoverAfterRestart()
+            val recoveredConversation = ledger.get(ledger.journal().groups.single { it.conversationId == "conversation" }.attemptIds.single())!!
+            assertEquals("recovery must leave the resumed task READY for resume",
+                ToolTaskState.READY, recoveredConversation.state)
+            val recoveredQuestion = ledger.get(questionAttempt.id)!!
+            assertEquals("recovery must preserve the pending question",
+                ToolTaskState.WAITING_APPROVAL, recoveredQuestion.state)
+            assertFalse("recovery must not consume the pending question's approval",
+                ledger.journal().approvals.single { it.id == recoveredQuestion.approvalId }.consumed)
             val mainExecutor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "test-main") }
             val execExecutor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "test-exec") }
             val mainDispatcher = mainExecutor.asCoroutineDispatcher()
@@ -338,6 +357,10 @@ class PhoneTaskCoordinatorTest {
             val denySeamArmed = java.util.concurrent.atomic.AtomicBoolean(false)
             val denyWriteDone = java.util.concurrent.CountDownLatch(1)
             val denyWrites = java.util.concurrent.atomic.AtomicInteger(0)
+            // The denial runs inside scope.launch, so coroutine debugging
+            // may decorate its thread name ("deny-thread @coroutine#N").
+            // Identify the denial thread by Thread identity, never by name.
+            val denyThreadRef = java.util.concurrent.atomic.AtomicReference<Thread>()
             val slowStore = object : ToolTaskStore {
                 override fun read() = readJournal().attempts
                 override fun update(change: (List<ToolTaskAttempt>) -> List<ToolTaskAttempt>) =
@@ -355,7 +378,7 @@ class PhoneTaskCoordinatorTest {
                     return snapshot
                 }
                 override fun updateJournal(change: (ToolTaskJournal) -> ToolTaskJournal): ToolTaskJournal {
-                    if (Thread.currentThread().name == "deny-thread") {
+                    if (Thread.currentThread() === denyThreadRef.get()) {
                         val write = denyWrites.incrementAndGet()
                         if (write == 1 && denySeamArmed.getAndSet(false)) {
                             // The denial's first write is
@@ -368,7 +391,7 @@ class PhoneTaskCoordinatorTest {
                         }
                     }
                     val out = delegate.updateJournal(change)
-                    if (Thread.currentThread().name == "deny-thread" && denyWrites.get() == 2) {
+                    if (Thread.currentThread() === denyThreadRef.get() && denyWrites.get() == 2) {
                         // The denial's second write is the deny itself.
                         // It fires only when the denial could run while
                         // the refresh was parked (pre-fix); with the fix
@@ -399,7 +422,7 @@ class PhoneTaskCoordinatorTest {
             // operationStatus(null) lock, then parks at the
             // pauseExpiredGroups seam, NOT holding publishLock.
             denySeamArmed.set(true)
-            val denyThread = Thread({ coordinator.phoneTaskAction(pending.id, pending.generation, "deny") }, "deny-thread")
+            val denyThread = Thread({ denyThreadRef.set(Thread.currentThread()); coordinator.phoneTaskAction(pending.id, pending.generation, "deny") }, "deny-thread")
             denyThread.start()
             assertTrue("the denial must reach its store seam",
                 denyAtSeam.await(10, TimeUnit.SECONDS))
