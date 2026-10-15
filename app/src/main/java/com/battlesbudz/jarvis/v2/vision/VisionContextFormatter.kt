@@ -1,5 +1,7 @@
 package com.battlesbudz.jarvis.v2.vision
 
+import com.battlesbudz.phoneinference.Detection
+
 /**
  * Formats a [NativeVisionSnapshot] as compact context text for Gemma's
  * prompt, so a single message fuses the native model's structured
