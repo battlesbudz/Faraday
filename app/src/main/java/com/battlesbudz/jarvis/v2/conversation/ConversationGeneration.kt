@@ -115,8 +115,15 @@ internal class ConversationGeneration(
             // the owner has drained is the native policy transition safe.
             // The fallback then runs with the full ordinary audio input and
             // the correct tool policy, never tool-disabled by a spent draft.
+            // Promotion is eligible only when this turn will NOT run the
+            // tools-enabled authoritative pass: speculative drafts are
+            // tool-free by construction, so promoting one on a tools-enabled
+            // turn would publish prose and skip the only pass that can emit
+            // the tool calls a spoken action needs. A rejected promote still
+            // drains the owner, so the fallback below is safe.
             val onToken: (String) -> Unit = { token -> telemetry.token(token); stream.accept(token) }
-            val promoted = if (directAudio) input.tryPromote(submission.text, onToken) else null
+            val promoted = if (directAudio) input.tryPromote(submission.text, onToken,
+                ordinaryReplyAccepted = !allowTools) else null
             if (promoted == null && !directAudio) invocation.nativeSpeculation?.beforeNativeMutation()
             if (engine.setToolsEnabled(allowTools)) modelSession.clearContextAccounting()
             diagnostics.record("Generation tool policy allowed=$allowTools source=current_action_intent")

@@ -37,17 +37,27 @@ internal class ConversationInput(
      * speculation; the caller then runs [generateFallback] with the full
      * ordinary input. Never call [generate] after a null return here: promote
      * may be consumed only once.
+     *
+     * Speculative drafts are tool-free by construction (the coordinator
+     * rejects any draft that proposes tool calls), so [ordinaryReplyAccepted]
+     * must be true only when this turn will NOT run a tools-enabled
+     * authoritative pass afterwards. A direct-audio action turn must never
+     * promote: promotion would publish prose and skip the one pass that can
+     * emit the tool calls the action needs. When false, promote drains the
+     * speculative owner and returns null so the caller runs that pass.
      */
-    suspend fun tryPromote(prompt: String, onToken: (String) -> Unit): GenerationResult? {
+    suspend fun tryPromote(prompt: String, onToken: (String) -> Unit,
+                           ordinaryReplyAccepted: Boolean = true): GenerationResult? {
         if (!directAudio) return null
-        val prepared = nativeSpeculation?.promote(prompt, ordinaryReplyAccepted = true, onToken = onToken)
+        val prepared = nativeSpeculation?.promote(prompt, ordinaryReplyAccepted = ordinaryReplyAccepted, onToken = onToken)
         if (prepared != null) speculativeResultUsed = true
         return prepared
     }
 
     suspend fun generate(engine: ConversationBackend, prompt: String, onToken: (String) -> Unit,
-                         onIncrementalFallback: (Throwable) -> Unit): GenerationResult =
-        tryPromote(prompt, onToken) ?: generateFallback(engine, prompt, onToken, onIncrementalFallback)
+                         onIncrementalFallback: (Throwable) -> Unit,
+                         ordinaryReplyAccepted: Boolean = true): GenerationResult =
+        tryPromote(prompt, onToken, ordinaryReplyAccepted) ?: generateFallback(engine, prompt, onToken, onIncrementalFallback)
 
     /**
      * Ordinary generation without a promotion attempt. Use after [tryPromote]

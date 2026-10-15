@@ -65,7 +65,8 @@ class ConversationGenerationTest {
 
     private suspend fun generate(audio: ByteArray? = null,
                              nativeSpeculation: NativeVoiceSpeculation? = null,
-                             backend: Backend = Backend()): Pair<ConversationDraft, Backend> {
+                             backend: Backend = Backend(),
+                             supportsTools: Boolean = true): Pair<ConversationDraft, Backend> {
         val diagnostics = ConversationDiagnostics({}, {}, {}, {})
         val memory = MemoryDeliveryFence()
         val input = ConversationInvocation("Hello", emptyList(), voiceAudio = audio, directVoiceAudio = audio != null,
@@ -80,7 +81,7 @@ class ConversationGenerationTest {
             override var hasContext = false
             override var characters = 0
         }
-        val model = LocalModelSpec("test", "test.litertlm", recommendedGpu = false)
+        val model = LocalModelSpec("test", "test.litertlm", recommendedGpu = false, supportsTools = supportsTools)
         val session = ConversationModelSession(state, { model }, { true }, { }, { true }, { "unused" },
             "unused", shortTerm, {})
         val references = object : ConversationReferences {
@@ -132,11 +133,37 @@ class ConversationGenerationTest {
         override fun timing(): NativeAudioCaptureTiming? = null
     }
 
-    @Test fun directAudioPromotesMatchingNativeSpeculation() = runBlocking {
-        // The preview must carry the exact assembled submission prompt for
-        // promote to accept it. assemble is a pure function of the same
-        // inputs the production path uses, so computing it here yields the
-        // identical string.
+    @Test fun directAudioPromotesMatchingNativeSpeculationWhenToolsDisabled() = runBlocking {
+        // Promotion is eligible only when this turn will NOT run the
+        // tools-enabled authoritative pass, so this promotion case uses a
+        // tools-disabled model. The preview must carry the exact assembled
+        // submission prompt for promote to accept it. assemble is a pure
+        // function of the same inputs the production path uses, so
+        // computing it here yields the identical string.
+        val probePrompt = ConversationPrompt(ConversationPromptBuilder(ShortTermConversationContext()), true, { null }, { null })
+        val submitted = probePrompt.assemble("Hello", null, emptyList(), true, null, null, null, 10_000).text
+        var resets = 0
+        val pcm = byteArrayOf(1, 0, 2, 0)
+        val full = pcm + byteArrayOf(0, 0)
+        val wav = WavEncoder.pcm16Mono(full, 16000)
+        val candidate = NativeVoiceSpeculation(this, "call", "turn", 1, speculationDriver { resets++ },
+            NativeVoicePromptPreview(submitted) { true }, { true }, { true })
+        val proposal = NativePauseProposal("turn", 1, 1, 2, 300, pcm)
+        assertTrue(candidate.onProposal(proposal))
+        assertTrue(candidate.confirmCapture(NativePauseCertificate(proposal, full.size / 2, pcmHash(full), 1, 3, 650), wav))
+        val (draft, backend) = generate(wav, candidate, supportsTools = false)
+        assertEquals("Prepared.", draft.generated.text)
+        assertTrue("promoted speculation must not fall through to the backend", backend.requests.isEmpty())
+        assertFalse(draft.containsCurrentTurn)
+        assertTrue(candidate.closeAndDrain())
+    }
+
+    @Test fun directAudioWithToolsEnabledDoesNotPromoteSpeculation() = runBlocking {
+        // Regression: a spoken action turn with an otherwise promotable
+        // tool-free draft must NOT promote. The speculative draft can never
+        // carry tool calls, so promoting it would publish prose and skip
+        // the tools-enabled authoritative pass that can emit the action.
+        // The turn must drain the speculation and run that pass instead.
         val probePrompt = ConversationPrompt(ConversationPromptBuilder(ShortTermConversationContext()), true, { null }, { null })
         val submitted = probePrompt.assemble("Hello", null, emptyList(), true, null, null, null, 10_000).text
         var resets = 0
@@ -149,9 +176,12 @@ class ConversationGenerationTest {
         assertTrue(candidate.onProposal(proposal))
         assertTrue(candidate.confirmCapture(NativePauseCertificate(proposal, full.size / 2, pcmHash(full), 1, 3, 650), wav))
         val (draft, backend) = generate(wav, candidate)
-        assertEquals("Prepared.", draft.generated.text)
-        assertTrue("promoted speculation must not fall through to the backend", backend.requests.isEmpty())
-        assertFalse(draft.containsCurrentTurn)
+        assertEquals(1, resets)
+        assertEquals("A fresh answer.", draft.generated.text)
+        assertEquals("promoted prose must never stand in for the authoritative tools-enabled pass",
+            2, backend.requests.size)
+        assertTrue(backend.requests.all { it.audio === wav })
+        assertEquals(listOf(true, false), backend.tools)
         assertTrue(candidate.closeAndDrain())
     }
 
@@ -178,21 +208,26 @@ class ConversationGenerationTest {
             val entered = CompletableDeferred<Unit>()
             val release = CompletableDeferred<Unit>()
             var rollbacks = 0
-            // Blocked driver: the speculative draft is still generating when
+            // Blocked rollback: the speculative draft is still draining when
             // the ordinary turn starts. Nothing may mutate the native
             // conversation (notably the tool-policy reset inside
-            // setToolsEnabled) until this driver has drained via promote.
+            // setToolsEnabled) until this rollback has drained. Promotion is
+            // ineligible on this tools-enabled turn, so the drain runs
+            // through promote's rejection path (invalidate + awaitIdle).
             val driver = object : NativeSpeculationDriver {
                 override suspend fun generate(proposal: NativePauseProposal, exactPrompt: String,
                     onToken: (String) -> Unit, onProgress: (InferenceProgress) -> Unit): GenerationResult {
                     events.add("driver_entered")
-                    entered.complete(Unit)
-                    release.await()
-                    events.add("driver_returned")
                     onToken("Prepared.")
                     return GenerationResult("Prepared.", 20, null)
                 }
-                override suspend fun rollback() { rollbacks++ }
+                override suspend fun rollback() {
+                    events.add("rollback_entered")
+                    entered.complete(Unit)
+                    release.await()
+                    events.add("rollback_returned")
+                    rollbacks++
+                }
                 override fun requestCancel() {}
                 override fun safeToRelease() = true
                 override fun timing(): NativeAudioCaptureTiming? = null
@@ -210,23 +245,24 @@ class ConversationGenerationTest {
                 entered.await()
                 // Let the ordinary turn start: with the old ordering it calls
                 // setToolsEnabled at the top, before promote ever drains the
-                // blocked driver. With the fix, promote runs first and blocks
-                // on the driver, so no policy transition has happened yet.
-                // 500ms is far beyond the dispatch time of the generation
-                // coroutine and far inside the 1500ms speculation deadline.
+                // blocked rollback. With the fix, promote rejects the
+                // ineligible draft and blocks on the drain, so no policy
+                // transition has happened yet. 500ms is far beyond the
+                // dispatch time of the generation coroutine.
                 delay(500)
-                assertTrue("tool policy must not transition while the speculation driver is blocked",
+                assertTrue("tool policy must not transition while the speculation rollback is blocked",
                     backend.tools.isEmpty())
                 assertTrue(events.none { it.startsWith("tools:") })
             } finally {
                 release.complete(Unit)
             }
             val (draft, _) = generation.await()
-            assertEquals("Prepared.", draft.generated.text)
-            assertTrue("promoted speculation must not fall through to the backend", backend.requests.isEmpty())
-            // The policy transition runs only after the blocked driver drained.
-            assertEquals(listOf(true), backend.tools)
-            assertTrue(events.indexOf("driver_returned") < events.indexOf("tools:true"))
+            assertEquals("A fresh answer.", draft.generated.text)
+            assertEquals("rejected speculation must fall through to the authoritative tools-enabled pass",
+                2, backend.requests.size)
+            // The policy transition runs only after the blocked rollback drained.
+            assertEquals(listOf(true, false), backend.tools)
+            assertTrue(events.indexOf("rollback_returned") < events.indexOf("tools:true"))
             assertEquals(1, rollbacks)
             assertTrue(candidate.closeAndDrain())
         }
