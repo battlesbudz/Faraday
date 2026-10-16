@@ -3,6 +3,7 @@ package com.battlesbudz.jarvis.v2.vision
 import android.content.res.AssetManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color
 
 /**
  * Result of analyzing one launch-verification screenshot with the existing
@@ -71,20 +72,46 @@ class NativeVisionScreenshotAnalyzer(private val assets: AssetManager) {
     }
 }
 
-/** A screenshot counts as visible content when a coarse sample holds at least 8 distinct colors. */
+/**
+ * A screenshot counts as visible content when a coarse sample spans a real
+ * brightness range. The previous rule — at least 8 distinct exact colors on
+ * a 32x32 grid — misclassified real, fully rendered flat UIs as blank: the
+ * Android Settings Internet page samples only 7 distinct colors (light
+ * background, dividers, dark text, one blue toggle), so launch verification
+ * reported an opened Settings page as an unconfirmed launch. Brightness
+ * range is the property that actually separates an empty capture (solid
+ * black, solid white, or one flat color: range ~0) from any real screen
+ * (dark text or icons on a light background: range in the hundreds).
+ */
+internal fun hasVisibleContent(sampledPixels: IntArray): Boolean {
+    var minLuminance = 255
+    var maxLuminance = 0
+    for (pixel in sampledPixels) {
+        // Rec. 601 luma from the opaque RGB channels; alpha carries no visible content.
+        val luminance = (Color.red(pixel) * 299 +
+            Color.green(pixel) * 587 +
+            Color.blue(pixel) * 114) / 1000
+        if (luminance < minLuminance) minLuminance = luminance
+        if (luminance > maxLuminance) maxLuminance = luminance
+        if (maxLuminance - minLuminance > MIN_VISIBLE_LUMINANCE_RANGE) return true
+    }
+    return maxLuminance - minLuminance > MIN_VISIBLE_LUMINANCE_RANGE
+}
+
+private const val MIN_VISIBLE_LUMINANCE_RANGE = 32
+
 private fun isNonBlank(bitmap: Bitmap): Boolean {
-    val colors = HashSet<Int>()
     val xStep = maxOf(1, bitmap.width / 32)
     val yStep = maxOf(1, bitmap.height / 32)
+    val samples = ArrayList<Int>()
     var y = 0
     while (y < bitmap.height) {
         var x = 0
         while (x < bitmap.width) {
-            colors += bitmap.getPixel(x, y)
-            if (colors.size >= 8) return true
+            samples += bitmap.getPixel(x, y)
             x += xStep
         }
         y += yStep
     }
-    return colors.size >= 8
+    return hasVisibleContent(samples.toIntArray())
 }
