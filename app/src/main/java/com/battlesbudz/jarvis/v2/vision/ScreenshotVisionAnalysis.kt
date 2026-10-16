@@ -3,7 +3,6 @@ package com.battlesbudz.jarvis.v2.vision
 import android.content.res.AssetManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Color
 
 /**
  * Result of analyzing one launch-verification screenshot with the existing
@@ -87,10 +86,12 @@ internal fun hasVisibleContent(sampledPixels: IntArray): Boolean {
     var minLuminance = 255
     var maxLuminance = 0
     for (pixel in sampledPixels) {
-        // Rec. 601 luma from the opaque RGB channels; alpha carries no visible content.
-        val luminance = (Color.red(pixel) * 299 +
-            Color.green(pixel) * 587 +
-            Color.blue(pixel) * 114) / 1000
+        // Rec. 601 luma from the opaque RGB channels, via plain bit shifts
+        // (not android.graphics.Color, whose methods are stubs that throw
+        // under plain JVM unit tests); alpha carries no visible content.
+        val luminance = (((pixel shr 16) and 0xFF) * 299 +
+            ((pixel shr 8) and 0xFF) * 587 +
+            (pixel and 0xFF) * 114) / 1000
         if (luminance < minLuminance) minLuminance = luminance
         if (luminance > maxLuminance) maxLuminance = luminance
         if (maxLuminance - minLuminance > MIN_VISIBLE_LUMINANCE_RANGE) return true
