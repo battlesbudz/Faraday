@@ -23,7 +23,9 @@ class ScreenshotLaunchVerificationTest {
         sleeps: MutableList<Long> = mutableListOf(),
         settleMs: Long = 1_000L,
         timeoutMs: Long = 50L,
-        pollMs: Long = 10L
+        pollMs: Long = 10L,
+        maxBlankAttempts: Int = 3,
+        blankRetryMs: Long = 1_000L
     ) = ScreenshotLaunchVerifier(
         observationAvailable = { observationAvailable },
         foregroundPackage = foreground,
@@ -32,7 +34,9 @@ class ScreenshotLaunchVerificationTest {
         sleeper = { sleeps += it },
         settleMs = settleMs,
         timeoutMs = timeoutMs,
-        pollMs = pollMs
+        pollMs = pollMs,
+        maxBlankAttempts = maxBlankAttempts,
+        blankRetryMs = blankRetryMs
     )
 
     @Test fun verifiedWhenForegroundMatchesAndScreenshotAnalyzes() {
@@ -178,6 +182,35 @@ class ScreenshotLaunchVerificationTest {
             analyze = { ScreenshotVisionEvidence(nonBlank = false, detections = 0, classification = null, totalMs = 1.0) }
         ).verify("com.example.target", "Target")
         assertTrue("a blank screenshot is not evidence of an opening", result is LaunchVerification.Unconfirmed)
+    }
+
+    @Test fun verifiedWhenFirstCaptureBlankButRetryRenders() {
+        var captures = 0
+        var analyzes = 0
+        val result = verifier(
+            capture = { captures++; byteArrayOf(1) },
+            analyze = {
+                analyzes++
+                // Slow first frame: the first capture is blank, the
+                // re-capture after the retry delay shows real content.
+                if (analyzes == 1) ScreenshotVisionEvidence(nonBlank = false, detections = 0, classification = null, totalMs = 0.0)
+                else ScreenshotVisionEvidence(nonBlank = true, detections = 2, classification = "screen", totalMs = 42.0)
+            }
+        ).verify("com.example.target", "Target")
+        assertEquals(LaunchVerification.Verified, result)
+        assertEquals("the blank capture is re-captured once, then verification proceeds", 2, captures)
+        assertEquals("analysis runs once per capture", 2, analyzes)
+    }
+
+    @Test fun unconfirmedWhenEveryBlankRetryStaysBlank() {
+        var captures = 0
+        val result = verifier(
+            capture = { captures++; byteArrayOf(1) },
+            analyze = { ScreenshotVisionEvidence(nonBlank = false, detections = 0, classification = null, totalMs = 0.0) },
+            maxBlankAttempts = 2
+        ).verify("com.example.target", "Target")
+        assertTrue("a capture that stays blank after every retry is still not evidence", result is LaunchVerification.Unconfirmed)
+        assertEquals("one capture plus exactly the bounded retries, no unbounded polling", 3, captures)
     }
 
     @Test fun unconfirmedWhenNoExpectedPackage() {

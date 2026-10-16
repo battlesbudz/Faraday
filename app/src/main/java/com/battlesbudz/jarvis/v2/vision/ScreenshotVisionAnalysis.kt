@@ -52,11 +52,23 @@ class NativeVisionScreenshotAnalyzer(private val assets: AssetManager) {
             ?: throw IllegalStateException("Could not decode the screenshot.")
         try {
             val nonBlank = isNonBlank(bitmap)
+            if (!nonBlank) {
+                // A blank capture carries no evidence, and running the full
+                // vision stack over it wastes 15-25s of inference per
+                // attempt. Launch verification retries blank captures, so
+                // return cheaply: decode plus a pixel sample, no inference.
+                return ScreenshotVisionEvidence(
+                    nonBlank = false,
+                    detections = 0,
+                    classification = null,
+                    totalMs = 0.0
+                )
+            }
             val snapshot = NativeVision.analyzeDetectionAndClassificationBlocking(
                 imageBytes, assets, ANALYSIS_TIMEOUT_MS
             )
             return ScreenshotVisionEvidence(
-                nonBlank = nonBlank,
+                nonBlank = true,
                 detections = snapshot.detections.size,
                 classification = snapshot.classifications.firstOrNull()?.label,
                 totalMs = snapshot.totalMs

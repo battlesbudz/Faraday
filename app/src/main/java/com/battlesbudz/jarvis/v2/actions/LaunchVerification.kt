@@ -38,6 +38,11 @@ import kotlinx.coroutines.TimeoutCancellationException
  *    capture alone does not bind identity throughout the operation.
  * 4. the existing vision stack analyzed the screenshot and the pixels
  *    were non-blank (a black/empty capture is not evidence of an opening).
+ *    A blank capture is re-captured a bounded number of times before it
+ *    counts as unconfirmed: on slow emulators the app can reach the
+ *    foreground before its first frame draws, so one blank capture
+ *    proves only that the frame had not drawn yet. A capture that stays
+ *    blank after every retry is still Unconfirmed, never Verified.
  * 5. the foreground package is re-observed AFTER vision analysis and
  *    still matches: analysis runs up to 90s of inference, and a switch
  *    during analysis leaves stale pixels that prove nothing about
@@ -94,7 +99,11 @@ class ScreenshotLaunchVerifier(
     private val settleMs: Long = 1_000L,
     /** How long to poll for the expected package to reach the foreground. */
     private val timeoutMs: Long = 10_000L,
-    private val pollMs: Long = 250L
+    private val pollMs: Long = 250L,
+    /** Bounded re-captures when a capture is blank (slow first frame). */
+    private val maxBlankAttempts: Int = 3,
+    /** Delay between a blank capture and its re-capture. */
+    private val blankRetryMs: Long = 1_000L
 ) : LaunchVerifier {
     override fun verify(expectedPackage: String?, label: String): LaunchVerification {
         try {
@@ -128,48 +137,66 @@ class ScreenshotLaunchVerifier(
                 polls++
                 sleeper(pollMs)
             }
-            val bytes = captureScreenshot()
-            if (bytes == null) {
-                onDiagnostic("launch_verify label=$label result=unconfirmed reason=screenshot_unavailable")
-                return LaunchVerification.Unconfirmed("screenshot capture is unavailable")
+            // A blank capture is retried a bounded number of times: on slow
+            // emulators the app reaches the foreground before its first frame
+            // draws, so one blank capture proves only that the frame had not
+            // drawn yet. Every other failure leg returns immediately — only
+            // blank re-captures, because only blank is a timing artifact.
+            // The analyzer short-circuits blank captures without running
+            // vision inference over them, so a blank retry costs a capture
+            // plus a pixel sample, not another full analysis.
+            var attempt = 0
+            while (true) {
+                val bytes = captureScreenshot()
+                if (bytes == null) {
+                    onDiagnostic("launch_verify label=$label result=unconfirmed reason=screenshot_unavailable")
+                    return LaunchVerification.Unconfirmed("screenshot capture is unavailable")
+                }
+                // Recheck foreground identity AFTER capture, before analysis:
+                // the foreground may have switched between the pre-capture
+                // poll and the capture itself, in which case these pixels are
+                // another app's screen. Analyzing them (up to 90s of
+                // inference) would prove nothing about this launch.
+                val afterCapture = foregroundPackage()
+                if (afterCapture != expectedPackage) {
+                    onDiagnostic("launch_verify label=$label result=unconfirmed " +
+                        "reason=foreground_changed_after_capture saw=$afterCapture")
+                    return LaunchVerification.Unconfirmed(
+                        "foreground changed after screenshot capture, saw ${afterCapture ?: "nothing observable"}"
+                    )
+                }
+                val evidence = analyzeScreenshot(bytes)
+                // Recheck foreground identity AFTER analysis, before trusting
+                // the result: analysis runs up to 90s of inference, and the
+                // foreground may have switched while it ran. A Verified receipt
+                // for pixels of an app that is no longer foreground would prove
+                // nothing about this launch.
+                val afterAnalysis = foregroundPackage()
+                if (afterAnalysis != expectedPackage) {
+                    onDiagnostic("launch_verify label=$label result=unconfirmed " +
+                        "reason=foreground_changed_during_analysis saw=$afterAnalysis")
+                    return LaunchVerification.Unconfirmed(
+                        "foreground changed during screenshot analysis, saw ${afterAnalysis ?: "nothing observable"}"
+                    )
+                }
+                if (evidence.nonBlank) {
+                    onDiagnostic(
+                        "launch_verify label=$label result=verified expected=$expectedPackage " +
+                            "detections=${evidence.detections} " +
+                            "classification=${evidence.classification} vision_ms=${evidence.totalMs.toLong()}"
+                    )
+                    return LaunchVerification.Verified
+                }
+                if (attempt >= maxBlankAttempts) {
+                    onDiagnostic("launch_verify label=$label result=unconfirmed reason=blank_screenshot attempts=${attempt + 1}")
+                    return LaunchVerification.Unconfirmed("screenshot contained no visible content")
+                }
+                // Intermediate retries carry no result= token: exactly one
+                // decision line per verification keeps diagnostics parsable.
+                onDiagnostic("launch_verify label=$label blank_screenshot attempt=${attempt + 1} retrying")
+                attempt++
+                sleeper(blankRetryMs)
             }
-            // Recheck foreground identity AFTER capture, before analysis:
-            // the foreground may have switched between the pre-capture
-            // poll and the capture itself, in which case these pixels are
-            // another app's screen. Analyzing them (up to 90s of
-            // inference) would prove nothing about this launch.
-            val afterCapture = foregroundPackage()
-            if (afterCapture != expectedPackage) {
-                onDiagnostic("launch_verify label=$label result=unconfirmed " +
-                    "reason=foreground_changed_after_capture saw=$afterCapture")
-                return LaunchVerification.Unconfirmed(
-                    "foreground changed after screenshot capture, saw ${afterCapture ?: "nothing observable"}"
-                )
-            }
-            val evidence = analyzeScreenshot(bytes)
-            // Recheck foreground identity AFTER analysis, before trusting
-            // the result: analysis runs up to 90s of inference, and the
-            // foreground may have switched while it ran. A Verified receipt
-            // for pixels of an app that is no longer foreground would prove
-            // nothing about this launch.
-            val afterAnalysis = foregroundPackage()
-            if (afterAnalysis != expectedPackage) {
-                onDiagnostic("launch_verify label=$label result=unconfirmed " +
-                    "reason=foreground_changed_during_analysis saw=$afterAnalysis")
-                return LaunchVerification.Unconfirmed(
-                    "foreground changed during screenshot analysis, saw ${afterAnalysis ?: "nothing observable"}"
-                )
-            }
-            if (!evidence.nonBlank) {
-                onDiagnostic("launch_verify label=$label result=unconfirmed reason=blank_screenshot")
-                return LaunchVerification.Unconfirmed("screenshot contained no visible content")
-            }
-            onDiagnostic(
-                "launch_verify label=$label result=verified expected=$expectedPackage " +
-                    "detections=${evidence.detections} " +
-                    "classification=${evidence.classification} vision_ms=${evidence.totalMs.toLong()}"
-            )
-            return LaunchVerification.Verified
         } catch (timeout: TimeoutCancellationException) {
             onDiagnostic("launch_verify label=$label result=unconfirmed reason=analysis_timeout")
             return LaunchVerification.Unconfirmed("screenshot analysis timed out")
