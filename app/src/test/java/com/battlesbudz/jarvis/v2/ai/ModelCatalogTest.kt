@@ -38,6 +38,14 @@ class ModelCatalogTest {
         }
     }
 
+    @Test fun abliteratedModelsUseStockEquivalentContext() {
+        // The DuoNeural bundles declare max_num_tokens=1024 in metadata; the SDK
+        // honors that when contextTokens is null, so a null here reintroduces the
+        // 1024-token cap on long prompts. Stock bundles declare no cap.
+        assertEquals(4096, ModelCatalog.gemma4E2bAbliterated.contextTokens)
+        assertEquals(4096, ModelCatalog.gemma4E4bAbliterated.contextTokens)
+    }
+
     @Test fun qwenSelectionsDoNotEnableGemmaOnlyPaths() {
         assertEquals(13, ModelCatalog.qwen.size)
         ModelCatalog.qwen.forEach { spec ->

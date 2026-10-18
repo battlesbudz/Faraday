@@ -61,6 +61,11 @@ object ModelCatalog {
         recommendedGpu = true, supportsVision = true, supportsAudio = true,
         experimental = false,
         supportsTools = true, incrementalGemmaInput = true,
+        // The DuoNeural bundle metadata declares max_num_tokens=1024, which the
+        // SDK honors when contextTokens is null; stock bundles declare no cap and
+        // get a prompt-sized default instead. Pin the stock-equivalent 4096 so long
+        // prompts are not capped at 1024 tokens.
+        contextTokens = 4096,
         downloadBytes = 2556215296L, description = "Uncensored E2B · no refusals · balanced size",
         provider = "DuoNeural",
         downloadUrl = "https://huggingface.co/DuoNeural/Gemma-4-Abliterated-LiteRT/resolve/1c6b2a8b6866c5c6afad718ddec0dbacb6ad5eb8/Gemma-4-E2B-Abliterated.litertlm?download=true"
@@ -73,6 +78,9 @@ object ModelCatalog {
         recommendedGpu = true, supportsVision = true, supportsAudio = true,
         experimental = false,
         supportsTools = true, incrementalGemmaInput = true,
+        // Same 1024-token bundle metadata cap as the E2B abliterated build;
+        // pin the stock-equivalent context (see above).
+        contextTokens = 4096,
         downloadBytes = 4120150016L, description = "Uncensored E4B · no refusals · larger assistant",
         provider = "DuoNeural",
         downloadUrl = "https://huggingface.co/DuoNeural/Gemma-4-Abliterated-LiteRT/resolve/1c6b2a8b6866c5c6afad718ddec0dbacb6ad5eb8/Gemma-4-E4B-Abliterated.litertlm?download=true"
