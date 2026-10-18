@@ -27,7 +27,7 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.JarvisOSV2"
-        android:label="Jarvis OS V2"
+        android:label="Faraday"
         android:allowBackup="false"
         android:fullBackupContent="@xml/backup_rules_legacy"
         android:dataExtractionRules="@xml/backup_rules"
@@ -60,6 +60,14 @@
         </service>
         <service android:name=".voice.VoiceCallService" android:exported="false"
             android:foregroundServiceType="microphone|mediaPlayback" />
+        <!-- M7: external-agent endpoint. Other on-device apps bind here to call
+             the five exposed Jarvis functions. Caller identity comes from the
+             Binder UID; authorization is grant-based (user opt-in per caller). -->
+        <service android:name=".actions.ExternalAgentService" android:exported="true">
+            <intent-filter>
+                <action android:name="com.battlesbudz.jarvis.v2.actions.EXTERNAL_AGENT" />
+            </intent-filter>
+        </service>
         <!-- Slice 1: camera companion for video calls. Never touches audio. -->
         <service android:name=".voice.VideoCallService" android:exported="false"
             android:foregroundServiceType="camera|specialUse">

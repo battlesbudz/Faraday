@@ -12,11 +12,16 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.battlesbudz.jarvis.v2.chat.*
 import com.battlesbudz.jarvis.v2.ai.LocalModelSpec
@@ -33,6 +38,8 @@ internal fun ConversationScreen(
     onSend: (String, ChatAttachment?) -> String?,
     selectedModel: LocalModelSpec,
     onSelectConversation: (String?) -> String?,
+    onDeleteConversation: (String) -> String? = { "Delete is unavailable right now." },
+    onNewPrivateConversation: () -> String? = { "Private chat is unavailable right now." },
     onEndVoice: ((String) -> Unit) -> Unit,
     onOpenVoiceCalls: () -> Unit,
     resumedVoice: Boolean,
@@ -162,9 +169,35 @@ internal fun ConversationScreen(
             TextButton(enabled = !inputBusy, onClick = onOpenMemory, modifier = Modifier.testTag("memory_open")) { Text("Memory") }
             TextButton(enabled = !inputBusy, onClick = { settings = true }) { Text("Settings") }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            TextButton(onClick = { showHistory = true }, enabled = !sending && !armed && !inputBusy) { Text("Conversations") }
-            TextButton(onClick = { error = onSelectConversation(null) }, enabled = !sending && !armed && !inputBusy) { Text("New") }
+        // One line, always: at a large font scale on a narrow screen these
+        // buttons wrapped to two lines and ate the transcript's height.
+        // Conversations takes the flexible share (its label ellipsizes, the
+        // full label stays in semantics); Private/New keep intrinsic size
+        // so they are never clipped off-screen.
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { showHistory = true }, enabled = !sending && !armed && !inputBusy,
+                modifier = Modifier.weight(1f)) {
+                Text("Conversations", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Start)
+            }
+            if (thread.isPrivate) {
+                // Private mode indicator: unmissable so there's never confusion about what's saved.
+                Text("PRIVATE — nothing is saved",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false).testTag("private_mode_indicator"))
+            }
+            Row {
+                TextButton(onClick = { error = onNewPrivateConversation() }, enabled = !sending && !armed && !inputBusy,
+                    modifier = Modifier.testTag("new_private_chat")) {
+                    Text("Private", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                }
+                TextButton(onClick = { error = onSelectConversation(null) }, enabled = !sending && !armed && !inputBusy) {
+                    Text("New", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                }
+            }
         }
         if (pipelineBenchmarkStore != null) ConversationMetricsControls(thread, pipelineBenchmarkStore) {
             benchmarkReply = null
@@ -177,36 +210,46 @@ internal fun ConversationScreen(
                 Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
                     PhoneTaskPanel(taskJournal, thread.id, taskError, onPhoneTaskAction)
                 }
-                LazyColumn(state = listState, modifier = Modifier.weight(1f).fillMaxWidth().testTag("conversation_transcript"),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = if (effectiveVoiceVisible) 280.dp else 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(thread.messages, key = { it.id }) { message ->
-                        Surface(color = if (message.role == "You") MaterialTheme.colorScheme.secondaryContainer
-                            else MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium) {
-                            Column(Modifier.fillMaxWidth().padding(14.dp)) {
-                                Text(message.role + if (message.spoken) " · Spoken transcript" else "",
-                                    style = MaterialTheme.typography.labelMedium)
-                                message.attachment?.let { ChatAttachmentPreview(it, playbackEnabled = !dictating && !armed && !effectiveVoiceVisible) }
-                                SelectionContainer {
-                                    Text(message.text.ifBlank { if (sending) "Thinking…" else "No reply was saved." },
-                                        fontStyle = if (message.spoken) FontStyle.Italic else FontStyle.Normal,
-                                        modifier = Modifier.padding(top = 6.dp))
+                // The voice overlay reserves 280 dp of clearance so the last
+                // message never hides behind its pill — but on a short window
+                // at a large font scale that reserve can exceed the transcript
+                // itself, leaving no room for any message and dropping the
+                // transcript out of the accessibility tree. Cap the reserve
+                // so at least one message row (120 dp) always stays visible.
+                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                    val voiceClearance = if (effectiveVoiceVisible)
+                        minOf(280.dp, (maxHeight - 120.dp).coerceAtLeast(0.dp)) else 16.dp
+                    LazyColumn(state = listState, modifier = Modifier.fillMaxSize().testTag("conversation_transcript"),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = voiceClearance), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        items(thread.messages, key = { it.id }) { message ->
+                            Surface(color = if (message.role == "You") MaterialTheme.colorScheme.secondaryContainer
+                                else MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium) {
+                                Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                                    Text(message.role + if (message.spoken) " · Spoken transcript" else "",
+                                        style = MaterialTheme.typography.labelMedium)
+                                    message.attachment?.let { ChatAttachmentPreview(it, playbackEnabled = !dictating && !armed && !effectiveVoiceVisible) }
+                                    SelectionContainer {
+                                        Text(message.text.ifBlank { if (sending) "Thinking…" else "No reply was saved." },
+                                            fontStyle = if (message.spoken) FontStyle.Italic else FontStyle.Normal,
+                                            modifier = Modifier.padding(top = 6.dp))
+                                    }
+                                    if (message.role == "Jarvis")
+                                        Text((message.metrics ?: com.battlesbudz.jarvis.v2.diagnostics.ReplyMetrics.unavailable).withOutputText(message.text).summary(),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp).clickable(enabled = pipelineBenchmarkStore != null) { benchmarkReply = message.sourceReplyId ?: message.id; showingBenchmarks = true }.testTag("reply_metrics_${message.id}"))
+                                    if (!message.complete && message.role == "Jarvis" && message.text.isNotBlank() && !sending)
+                                        Text("Reply interrupted or not fully spoken", style = MaterialTheme.typography.labelSmall)
                                 }
-                                if (message.role == "Jarvis")
-                                    Text((message.metrics ?: com.battlesbudz.jarvis.v2.diagnostics.ReplyMetrics.unavailable).withOutputText(message.text).summary(),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).clickable(enabled = pipelineBenchmarkStore != null) { benchmarkReply = message.sourceReplyId ?: message.id; showingBenchmarks = true }.testTag("reply_metrics_${message.id}"))
-                                if (!message.complete && message.role == "Jarvis" && message.text.isNotBlank() && !sending)
-                                    Text("Reply interrupted or not fully spoken", style = MaterialTheme.typography.labelSmall)
                             }
                         }
-                    }
-                    if (armed && liveTranscript.isNotBlank()) item(key = "live_voice_transcript") {
-                        Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
-                            Column(Modifier.fillMaxWidth().padding(14.dp)) {
-                                Text("You · Live transcript", style = MaterialTheme.typography.labelMedium)
-                                Text(liveTranscript, fontStyle = FontStyle.Italic,
-                                    modifier = Modifier.padding(top = 6.dp).testTag("voice_call_live_transcript"))
+                        if (armed && liveTranscript.isNotBlank()) item(key = "live_voice_transcript") {
+                            Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
+                                Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                                    Text("You · Live transcript", style = MaterialTheme.typography.labelMedium)
+                                    Text(liveTranscript, fontStyle = FontStyle.Italic,
+                                        modifier = Modifier.padding(top = 6.dp).testTag("voice_call_live_transcript"))
+                                }
                             }
                         }
                     }
@@ -295,13 +338,35 @@ internal fun ConversationScreen(
                 voiceContent(effectiveVoiceVisible, settings, { settings = false }, callStartRequest)
         }
     }
+    var deleteTarget by remember { mutableStateOf<com.battlesbudz.jarvis.v2.chat.ConversationThread?>(null) }
     if (showHistory) AlertDialog(onDismissRequest = { showHistory = false }, title = { Text("Conversations") },
         text = { LazyColumn(Modifier.heightIn(max = 400.dp)) {
             items(history.list(), key = { it.id }) { saved ->
-                TextButton(onClick = { error = onSelectConversation(saved.id); if (error == null) showHistory = false }) {
-                    Text(saved.title)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(
+                        onClick = { error = onSelectConversation(saved.id); if (error == null) showHistory = false },
+                        modifier = Modifier.weight(1f),
+                    ) { Text(saved.title, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    IconButton(
+                        onClick = { deleteTarget = saved },
+                        modifier = Modifier.testTag("delete_conversation_${saved.id}"),
+                    ) { Icon(Icons.Default.Delete, contentDescription = "Delete conversation") }
                 }
             }
             item { TextButton(onClick = { showHistory = false; onOpenVoiceCalls() }) { Text("Saved voice calls") } }
         } }, confirmButton = { TextButton(onClick = { showHistory = false }) { Text("Done") } })
+    deleteTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("Delete this conversation?") },
+            text = { Text("\"${target.title}\" will be permanently deleted. This cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val deleteError = onDeleteConversation(target.id)
+                    if (deleteError == null) deleteTarget = null else error = deleteError
+                }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } },
+        )
+    }
 }

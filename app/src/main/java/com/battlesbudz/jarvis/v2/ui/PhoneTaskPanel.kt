@@ -59,6 +59,15 @@ private fun ActionRequest.description() = when (name) {
     "open_app" -> "Open ${arguments["app"] ?: arguments["package"]}"
     "media_control" -> (MediaControlAction.fromVerb(arguments["action"].orEmpty())?.label
         ?.replaceFirstChar { it.uppercase() } ?: "Control") + " media"
+    "browse_open" -> "Open ${arguments["url"]?.let { BrowserNavigationPolicy.hostOf(it) ?: it } ?: "the page"} in the browser"
+    "browse_read" -> "Read the current page"
+    "browse_click" -> "Follow link ${arguments["target"]}"
+    "browse_back" -> "Go back"
+    "browse_forward" -> "Go forward"
+    "browse_fill" -> "Fill in the form field"
+    "browse_submit" -> "Submit the form"
+    "browse_handoff" -> "Open the page in your browser"
+    "browse_login" -> "Fill the login with your password manager"
     else -> name
 }
 private fun ToolTaskState.description() = when (this) {

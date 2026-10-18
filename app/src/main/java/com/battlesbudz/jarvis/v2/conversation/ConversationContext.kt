@@ -139,6 +139,17 @@ internal class ConversationContextPreparation(
         val referenceContext = turnPlan.lookupQuery?.takeUnless { personalMemoryRecall }?.let {
             references.fetch(it)
         }
+        // Private mode: the lookup was skipped (no network call). Say so honestly
+        // instead of the generic "couldn't reach Wikipedia" failure below.
+        if (turnPlan.lookupQuery != null && !personalMemoryRecall && references.isPrivateLookupBlocked()) {
+            diagnostics.record(
+                "Private reference lookup blocked\\n" +
+                    "user=${prompt.take(1_000)}\\n" +
+                    "lookupQuery=${turnPlan.lookupQuery?.take(1_000)}"
+            )
+            postFinish("Web search, Wikipedia, and Wikidata lookups are turned off in private chats to keep this conversation fully offline.")
+            return null
+        }
         if (turnPlan.lookupQuery != null) diagnostics.summary(
             "Voice lookup durationMs=${(System.nanoTime() - lookupStarted) / 1_000_000} success=${!referenceContext.isNullOrBlank()}")
 

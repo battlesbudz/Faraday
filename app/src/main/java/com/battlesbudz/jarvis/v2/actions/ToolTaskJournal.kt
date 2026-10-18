@@ -10,6 +10,8 @@ data class ToolTaskJournal(
     val activeQuestionId: String? = null,
     /** M1e: remembered first-source access per tool family (D09, T08). */
     val sourceAccess: List<ToolSourceAccessRecord> = emptyList(),
+    /** M7: per-caller external-agent authorizations (D06, T24). */
+    val externalAgentGrants: List<ExternalAgentGrant> = emptyList(),
     /** M2: versioned workflow definitions (all versions; running occurrences pin theirs). */
     val workflows: List<WorkflowDefinition> = emptyList(),
     /** M2: workflow occurrences with idempotent dedup keys. */
@@ -22,7 +24,7 @@ data class ToolTaskGroup(
     val createdAtMs: Long, val expiresAtMs: Long, val cancelled: Boolean = false,
     val resumeAfterRestart: Boolean = true
 )
-enum class ToolAuthority { USER_REQUEST, EXACT_APPROVAL, ROUTINE }
+enum class ToolAuthority { USER_REQUEST, EXACT_APPROVAL, ROUTINE, EXTERNAL_AGENT }
 data class ToolActionGrant(
     val id: String, val routineId: String, val provider: String, val schemaVersion: Int,
     val requests: List<ActionRequest>, val createdAtMs: Long, val expiresAtMs: Long, val revoked: Boolean = false
@@ -48,6 +50,7 @@ internal fun ToolTaskJournal.frozen() = copy(
     approvals = approvals.map { it.copy(action = it.action.frozen()) },
     grants = grants.map { it.copy(requests = it.requests.map { request -> request.frozen() }) }, events = events.toList(),
     sourceAccess = sourceAccess.map { it.copy(scopes = it.scopes.toSet()) },
+    externalAgentGrants = externalAgentGrants.map { it.copy(allowedFunctions = it.allowedFunctions.toSet()) },
     occurrences = occurrences.map { it.copy(resumePath = it.resumePath.toList(),
         completedStepIds = it.completedStepIds.toList(),
         stepResults = it.stepResults.mapValues { (_, v) -> v.toMap() }) },
@@ -55,6 +58,15 @@ internal fun ToolTaskJournal.frozen() = copy(
 
 /** Screen mutations are never routine-eligible and never auto-dispatched (D23). */
 internal val SCREEN_MUTATION_TOOLS = setOf("screen_tap", "screen_scroll", "screen_type")
+
+/**
+ * M4: browse_submit is never routine-eligible and never auto-dispatched
+ * (D11). Like screen mutations it may be admitted for tracking and parked
+ * for an exact approval; dispatch additionally requires the browser
+ * session's live admission ([BrowserSession.confirmSubmit] fails closed
+ * without it).
+ */
+internal val BROWSE_APPROVAL_TOOLS = setOf("browse_submit")
 
 /** No grant can expand these tools into arbitrary or consequential operations. */
 internal fun ActionRequest.isRoutineEligible() = when (name) {
@@ -83,9 +95,15 @@ internal fun ActionRequest.isRoutineEligible() = when (name) {
  * approval, whose consumption commits atomically with the dispatch claim in
  * [ToolTaskLedger.claim]. A changed target invalidates the prior approval via
  * [ToolTaskLedger.revise], so a stale approval can never authorize a dispatch.
+ *
+ * M4 browse_submit follows the same shape one step further out: never
+ * routine-eligible, dispatch-eligible only under an exact approval, and even
+ * then the browser session's own confirmSubmit gate must see a live
+ * admission for the reviewed page — the ledger claim alone never submits.
  */
 internal fun ActionRequest.isDispatchEligible(authority: ToolAuthority): Boolean =
-    isRoutineEligible() || (authority == ToolAuthority.EXACT_APPROVAL && name in SCREEN_MUTATION_TOOLS)
+    isRoutineEligible() || (authority == ToolAuthority.EXACT_APPROVAL &&
+        (name in SCREEN_MUTATION_TOOLS || name in BROWSE_APPROVAL_TOOLS))
 
 /** Human-readable label for the screen Stop overlay and approval prompts (M1d). */
 internal fun ActionRequest.describeForOverlay(): String = when (name) {

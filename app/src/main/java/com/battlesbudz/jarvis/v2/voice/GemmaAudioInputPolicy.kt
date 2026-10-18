@@ -8,7 +8,7 @@ internal object GemmaAudioInputPolicy {
     const val PENDING_TRANSCRIPT = "[Audio request; final transcription pending]"
     fun isPendingTranscript(role: String, text: String): Boolean = role == "You" && text == PENDING_TRANSCRIPT
     const val MAX_CAPTURE_MS = 28_000
-    const val REQUEST = "Respond to the user's spoken request in the attached audio. The current request is the audio, not a caption. Do not claim you executed a phone action; this experimental mode does not execute phone actions."
+    const val REQUEST = "Respond to the user's spoken request in the attached audio. The current request is the audio, not a caption. You CAN use phone tools in this mode via native function calling: when the user asks you to do something on the phone (open an app, check battery, set volume, control media, post a notification, show schedule, set a reminder), emit the appropriate tool call with accurate arguments. Only call a tool when you are confident about what the user asked. Never claim an action succeeded unless a tool result confirms it."
     fun retainedAudioIssue(captionIssue: String?, audioEnabled: Boolean, complete: Boolean, bytes: Int): String? =
         captionIssue?.takeIf { it == "gemma_audio_request_exceeds_limit" } ?: rejection(audioEnabled, complete, bytes)
     fun rejection(audioEnabled: Boolean, complete: Boolean, bytes: Int): String? = when {

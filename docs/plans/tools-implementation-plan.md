@@ -5,6 +5,350 @@ Follow-up source baseline: `feature-tools` at `bfeca6d06dc3dba583e0f92e812046e9e
 Created: September 24, 2026. Updated: September 30, 2026 (America/New_York). Owner: Justin Battles.
 Status: existing tools scope retained; September 29 autonomous messaging/warm-inference requirements integrated. New phases below are planned, not implemented or verified by this documentation update.
 
+## Implementation checkpoint — October 11, 2026 (M8 FunctionGemma comparison and adoption decision)
+
+M8 is implemented on `feature/muse-tools` (no PR, no merge) across three
+commits (October 11): `272dfedb` adds the comparison harness and adoption
+decision with 19 JVM tests; `12609350` fixes a destructuring compile error the
+first CI run caught; `be4bef8c` fixes two test assertions (a percentile
+expectation and a fake runner that never advanced the injected clock). The M8
+plan calls for a matched comparison of the exact-command path, selected E2B/E4B,
+and FunctionGemma with a real enable/retain decision (T25, level D). What is
+implemented is the full comparison and decision harness; the D-level verdict
+itself requires a physical Fold 6 benchmark run, which has not happened — so
+this checkpoint records the framework, not a verdict. Per T25, no latency or
+reliability result is reported as measured.
+
+- Cold/warm p50/p95 full-action latency (D08,D52): `eval/ModelLatencyTracker.kt`
+  — `ModelLatencyTracker` records wall-clock samples split into cold (first
+  sample per modelId: engine init and weights warm-up) and warm (everything
+  after) and computes nearest-rank p50/p95 for each. `TimingToolCallRunner`
+  decorates any `ToolCallRunner` and measures full-action latency per utterance
+  with an injectable clock, so the harness is deterministic in JVM tests and
+  wall-clock on device.
+- FunctionGemma comparison path: `eval/FunctionGemmaAdapter.kt` — a
+  `ToolCallRunner` for FunctionGemma-family models, so FunctionGemma runs
+  through the same reliability harness as E2B/E4B on matched tasks with the same
+  schemas and conditions. `buildPrompt()` issues the developer-turn prompt with
+  the exact trigger phrase FunctionGemma needs to enter tooling mode (developer
+  role, not system). `parseFunctionCalls()` extracts
+  `<start_function_call>call:{name}{args}<end_function_call>` blocks — multiple
+  and parallel calls included — parsing `<escape>`-wrapped strings and bare
+  number/boolean tokens into the standard `ToolCall` schema. Unknown tool names
+  are rejected, malformed blocks are skipped, and plain chat output yields zero
+  calls, never an error. The `generate` function is an injection seam: wiring
+  it to a real LiteRT engine (`llm_model_type: function_gemma`) is the D-level
+  physical-device step.
+- Adoption decision: `eval/AdoptionDecision.kt` — the plan's enable/retain rule
+  as deterministic logic. A candidate is adopted only if its correctness (tool
+  choice plus argument agreement on the matched fixture set) is at least the
+  baseline's — a faster model that gets more calls wrong is never adopted — AND
+  its warm-p95 full-action latency improves on the baseline by at least 15%
+  (`MIN_LATENCY_IMPROVEMENT = 0.15`, a measured engineering default, not a
+  user-selected constant). Missing artifact fingerprints, missing latency, or a
+  cross-version suite comparison fails closed to `Retain` with a rationale; the
+  decision never consumes tokens/second.
+
+Tests: `M8ComparisonTest` (JVM, 19 tests) covers nearest-rank percentile math
+(empty, single-sample, and multi-sample trackers), cold vs warm sample
+splitting, the timing decorator against an injected clock, the FunctionGemma
+parser (plain chat yields no calls; multiple/parallel blocks; `<escape>`
+strings; bare numbers/booleans; unknown-tool rejection; malformed-block
+skipping), and the adoption rule (retain on correctness regression, retain
+below the 15% bar, adopt at or above it, fail closed on missing
+fingerprints/latency and cross-version comparison).
+
+CI: run 38153328702 on `be4bef8c` — "Build signed release APK" green (all
+release unit tests, including the 19 new M8 tests; signed release APK
+produced) and 4 of 5 emulator release journeys green. The 36-foldable-compact
+journey failed inside "Verify release on a disposable Android device" — the
+foldable-profile emulator run with its owned X display and Qt backend — with no
+app test failure; the other four journeys passed (including 35-phone-compact,
+which flaked the same way on the M7 run) and no androidTest covers the eval
+package, so this is the same environmental emulator-harness flake class, not
+an M8 regression. The downstream "Consolidate exact-build verification
+evidence" job failed only because the foldable journey's evidence was missing.
+
+Explicitly unverified per the coverage boundaries: the D-level evidence T25
+names — a matched real-device benchmark on Fold 6 (exact-command path vs
+selected E2B/E4B vs FunctionGemma) reporting memory/thermal behavior and
+artifact/backend identity alongside the harness's latency and correctness (the
+harness records and gates on artifact identity via `modelFingerprint`;
+memory/thermal collection belongs to the device run). The 15% improvement bar
+is a policy default, not a measured outcome, and stays open to change when
+real-device numbers exist. No enable/retain verdict is recorded here.
+
+M8 remaining: the physical Fold 6 benchmark run to produce the enable/retain
+verdict. The harness is complete; no further framework work is pending.
+
+## Status update — October 12, 2026 (M7 ON HOLD)
+
+Per Battles (2026-10-12): M7 follow-up work (service binding, caller-management UI) is ON HOLD — not useful enough right now to prioritize. The existing M7 library code (provider boundary, caller authorization, journal persistence) stays in place; nothing is ripped out. Focus redirected to M6 always-on wiring, chat deletion, and incognito/private chat mode. Resume M7 only on his explicit say-so.
+
+## Implementation checkpoint — October 11, 2026 (M7 external-agent access)
+
+M7 is implemented on `feature/muse-tools` (no PR, no merge). The implementation
+commit is `2bccfed6` (October 11): the protected provider boundary for
+external-agent access to narrowly scoped Jarvis functions, caller
+authorization persisted in the task journal, and 18 JVM tests; `e40c499b`
+follows with a warning-silencing cleanup of the recursion fence (no
+behavior change). M7 is the mirror of M3's consumer-side provider
+dispatch: there Jarvis calls other providers' functions; here external
+agents (other on-device agents/apps) call a fixed narrow set of Jarvis's
+own functions — through the same ledger, the same journal, and no
+separate permission system.
+
+- Narrow exposed set (D06): `actions/ExternalAgentAccess.kt` —
+  `ExternalAgentFunctions.EXPOSED` is fixed in code to five functions:
+  `read_battery`, `show_schedule`, `media_control`, `set_volume`, and
+  `post_notification` (read-only reads, local low-risk controls, one
+  user-visible notification channel). Screen functions, browser submit/
+  login, launch/navigation, and reminder scheduling are deliberately
+  absent and can never be granted.
+- Caller authorization (D06): `authorizeCaller()` opts a caller in
+  explicitly with a per-caller `ExternalAgentGrant` covering only listed
+  exposed functions; re-authorization replaces the grant (narrowing is
+  immediate); `revokeCaller()` and `setCallerEnabled()` revoke or pause
+  access. Unknown, disabled, or revoked callers get honest denials and
+  nothing dispatches.
+- No session-grant inheritance: external calls are admitted only under
+  the caller's own grant plus the user's family-level denial/revocation
+  state (`ToolSourceAccess`). Session-scoped grants and exact approvals
+  are never consulted and never inherited. A defensive D11 gate rejects
+  session/approval-gated functions even if the exposed set were
+  misconfigured, so there is no external path around individual
+  approval (D11–D17).
+- Anti-recursion checks: external calls are single-level per thread — a
+  call arriving while another external call is dispatching is rejected
+  with `RECURSION_BOUNDED`. External callers get single calls, never
+  journeys.
+- Ledger provenance: every admitted call is recorded with the new
+  `ToolAuthority.EXTERNAL_AGENT` and the authorizing grant's id, so the
+  receipt history shows exactly which external caller did what.
+  `ToolTaskLedger.create()` takes optional authority/grant id (defaults
+  keep existing callers unchanged).
+- Durable grants: caller authorizations persist in the journal's new
+  `externalAgentGrants` list with encode/decode/validate/retain. The
+  static scope cap is enforced at decode: a hand-edited journal claiming
+  functions outside the exposed set fails closed with INVALID_CONTENT.
+  Pre-M7 journals decode with an empty grant list; schema stays 3.
+
+Tests: `ExternalAgentAccessTest` (JVM, 18 tests) covers unknown/unusable
+caller ids, authorized execution with ledger receipt provenance,
+function-outside-grant and unknown-function denials, authorization
+rejecting non-exposed functions (screen_tap, browse_submit) and empty
+sets, revoked/disabled callers, grant replacement on re-authorization,
+user-denial propagation to external callers, invalid-argument rejection
+with zero effects, the recursion bound (a re-entrant call inside the
+executor is rejected while the outer call completes), no session
+authority on external attempts, grant survival across file round-trips,
+hand-edited scope broadening failing closed, and legacy journals
+without the grants key decoding cleanly.
+
+CI: run 38135854677 on `e40c499b` — "Build signed release APK" green
+(all release unit tests, including the 18 new external-agent tests;
+signed release APK produced) and 4 of 5 emulator release journeys
+green. The 35-phone-compact journey failed on emulator GPU/
+instrumentation-harness errors with no app test failure; the same
+harness flaked other profiles and commits the same day (including a
+docs-only commit), so this is environmental, not a code regression. A
+re-run of that single journey job is the remaining step to a fully
+green run.
+
+Explicitly unverified per the coverage boundaries: the on-device service
+binding (AppFunctions provider declaration and calling-package identity
+from the platform) — the boundary exposes `ExternalActionExecutor` as
+the injection seam for the native executor, and platform eligibility
+for Jarvis-as-provider is follow-up, not M7 scope; a Settings UI for
+authorizing/revoking callers (the journal API is implemented; the UI
+surface is follow-up).
+
+M7 remaining: none — caller authorization, narrow scope, anti-recursion,
+no session-grant inheritance, and durable grant provenance are
+implemented. M8 is still planned.
+
+## Implementation checkpoint — October 11, 2026 (M6 automatic memory)
+
+M6 is implemented on `feature/muse-tools` (no PR, no merge). The implementation
+commit is `19a68eee` (October 11): the automatic-memory pipeline, the evaluator
+with measured thresholds, and 19 JVM tests. It builds on the existing Memory OS
+explicit-review substrate (`MemoryOs`, `MemoryPolicy`, `MemoryWiki`) — extended,
+never duplicated.
+
+- Default-on setting (D45): `memory/AutomaticMemory.kt` —
+  `AutomaticMemorySettings(enabled = true)` is the global automatic-memory
+  setting, on by default across chat, voice, and tools. `capture()` rejects
+  immediately when disabled. Capture sources are `AutoMemorySource`
+  (CHAT/VOICE/TOOL), capturing facts, preferences, topics, ideas, people,
+  places, times, and decisions.
+- Candidate self-review (D46): `capture()` self-reviews before anything is
+  persisted. Credential-bearing content is excluded first via
+  `MemoryPolicy.containsRawRestrictedContent` (D49, D38); too-short and
+  over-limit content is rejected; the anti-resurrection fence is consulted;
+  duplicates of live approved memories are suppressed. Accepted candidates are
+  queued for background evaluation — nothing is saved at capture time.
+  Classification assigns FACT/PREFERENCE/PERSON/GOAL.
+- Separate interruptible evaluation (D46, D47): `evaluatePending(evaluator,
+  isIdle, cancel)` runs only while the local model is idle and stops
+  immediately on cancellation or when the user needs Jarvis — the evaluation
+  pass never competes with the user. Source permission is re-checked at
+  evaluation time, so revocation between capture and evaluation blocks the
+  save. The evaluation log preserves every decision with its reason.
+- Versioned scores (D46): `memory/MemoryEvaluator.kt` — every
+  `MemoryEvaluation` carries `EVALUATOR_VERSION` (1), so scores from different
+  evaluator generations are distinguishable. `HeuristicMemoryEvaluator` is the
+  deterministic on-device fallback (relevance from preference/fact/person/
+  temporal/named-entity/length signals, confidence from source reliability and
+  clarity). Thresholds are measured engineering defaults tuned on the held-out
+  fixture set in `AutomaticMemoryTest.thresholdFixtures`: positives score
+  relevance 45–60, negatives 0–10; `SAVE_RELEVANCE = 30`,
+  `SAVE_CONFIDENCE = 60`.
+- Automatic wiki/index updates: qualifying candidates commit through
+  `MemoryOs.propose` + `approve` with `MemoryWiki.suggest` assignment; the wiki
+  and `MemoryWikiIndex` are derived views, so they update automatically —
+  verified by prompt retrieval after commit in the tests. Memory facts never
+  create execution grants (the commit path only touches MemoryOs). Normal
+  memory learning requires no user review; routine/skill activation still does.
+- Anti-resurrection fences (D48): `AutomaticMemoryFence` records the
+  content-fingerprint (SHA-256 of normalized content) of every committed
+  candidate, with pluggable persistence (`InMemoryFenceStore`,
+  `FileFenceStore`). A fingerprint whose memory no longer exists in the
+  snapshot was manually deleted and is fenced at capture time and re-checked
+  at evaluation time — queued evaluations, old sources, and restarts can never
+  resurrect it. Manual correction/deletion stays authoritative through MemoryOs
+  edit/delete lineage and tombstones.
+
+Tests: `AutomaticMemoryTest` (JVM, 19 tests) covers the default-on setting,
+positive/negative/conflicting/credential fixtures, source-permission
+revocation (at capture and between capture and evaluation),
+queued-evaluation races (two pipeline instances sharing one fence store),
+fence survival across restart (file-backed store), idle yield, interruption,
+versioned scores, the held-out threshold-tuning fixture set, and prompt wiki
+retrieval after index changes.
+
+CI: run 38122855015 green on `19a68eee` — all 16 jobs (14 success, 2 skipped
+PR-only publishes), including the release unit tests.
+
+Explicitly unverified per the coverage boundaries: on-device idle scheduling
+(the pipeline exposes `isIdle`/`EvaluationCancel` hooks; production wiring to
+the local-model scheduler is follow-up, not M6 scope); a Settings UI toggle
+for the global setting (the setting and pipeline integration are implemented;
+the UI surface is follow-up).
+
+M6 remaining: none — automatic capture, self-review, idle-gated evaluation,
+versioned scoring, wiki/index updates, and anti-resurrection fences are
+implemented. M7–M8 are still planned.
+
+## Implementation checkpoint — October 11, 2026 (M5 community workflows and scripts)
+
+M5 is implemented on `feature/muse-tools` (no PR, no merge). The implementation
+commits landed October 7–8 — before the M4 head commit, so the milestones were
+built in parallel: journey registration `3a06105b`, test78/79 fixtures
+`17f3359b`/`9dcff768`, export redaction `525e74ee`/`ab426ccd`, import-review
+hardening `22495027`, redacted-regex repairs `60ae0bae`/`0daca490`/`b9352b95`/
+`28d4d96d`, and R8 keeps for the journey classes
+`6da1b2fd`/`e6cc2496`/`30e7a961`. It builds on the M2 workflow substrate —
+extended, never duplicated.
+
+- Versioned manifests (D41–D44, T19): `actions/WorkflowManifest.kt` — canonical
+  JSON (sorted keys, hand-rolled codec identical on JVM and Android),
+  `WORKFLOW_MANIFEST_VERSION = 1`. Newer versions are rejected ("needs a newer
+  app version"), unknown step/trigger/condition/wait kinds are rejected
+  (fail closed — silently dropping a step would change behavior), unknown
+  fields are ignored. A manifest carries required tool contracts (name plus
+  minimum catalog version), permitted scopes, script runtime requirements,
+  setup bindings, provenance, and documentation.
+- Import review (T19): `actions/WorkflowImportExport.kt` —
+  `reviewWorkflowManifest` parses the manifest and checks it against
+  `DeviceCapabilities` (tool catalog versions, granted scopes, script
+  runtime), reporting missing tools, missing scopes and runtime problems plus
+  a plain-language preview. `admitWorkflowManifest` admits only as a disabled
+  draft (M2 draft semantics — nothing runs until an explicit enable) with a
+  `disabledReason`, or rejects a declined import. Script runtime requirements
+  are derived from the Script steps when the manifest metadata is omitted or
+  underdeclares host functions: an omission never marks a script ready.
+- Sanitized export plus preview (T19): `exportWorkflow` redacts secret-hint
+  argument keys (token, secret, password, api_key, auth, credential, …),
+  identifier keys (email, phone, account, username, …), URL- and email-looking
+  values (private endpoints), personal-content arguments (reminder messages,
+  notification titles/bodies, screen typing text), descriptions, adaptive
+  goals, and branch-condition literals/regexes. Redacted regexes are stored
+  `\Q{{setup:name}}\E`-quoted so the exported manifest still passes regex
+  validation at import review. String literals inside script sources that look
+  like URLs, emails or secrets are redacted too. Location triggers are removed
+  (the importer adds their own); location waits refuse export with guidance.
+  The same key with the same value reuses one binding; distinct values get
+  distinct bindings. Every redaction becomes a `SetupBinding` the importer
+  must fill in, and `ExportPreview` exposes every retained value post-redaction
+  so the exporter reviews exactly what is shared. `resolveSetupBindings`
+  restores placeholders with typed whole-string replacement.
+- Update policy (D43, T19): `actions/WorkflowUpdatePolicy.kt` —
+  `classifyWorkflowUpdate` is a pure function of the canonical manifest bytes:
+  only documentation text, display name/description and the workflow version
+  number may change for DOCUMENTATION_ONLY; everything else (steps, triggers,
+  tools, scopes, script runtime, setup bindings, provenance) is a behavior
+  change. Documentation-only updates auto-apply; behavior changes wait in
+  `pendingUpdate` while the admitted version keeps running (`AdmittedWorkflow`
+  pins running workflows to their admitted version). A model's assertion is
+  never sufficient to certify code equivalence — changed scripts always go
+  through review. `diffWorkflowManifests` renders the change list for review;
+  `approvePendingWorkflowUpdate`/`rejectPendingWorkflowUpdate` resolve it.
+- Isolated scripts (D44, T20): `actions/ScriptRuntime.kt` — "JarvisScript", a
+  tiny deterministic language with no I/O primitives in the grammar: no file,
+  network, reflection or platform API can even be named. The only effects are
+  the explicit allowlist in `ScriptHost` (deny-by-default), intersected with
+  the step's declared `requiredHostFunctions` — a host function the step did
+  not declare is denied, never silently granted. Runs are bounded by an
+  operation budget, a string-allocation budget, an output cap and a wall-clock
+  deadline; exhaustion terminates the script. Cancellation is checked on every
+  operation and during parsing. Parsing is bounded too: block nesting, prefix
+  runs, expression depth and statement count are capped, so a pathological
+  source is a typed parse failure, never a stack overflow. Pure Kotlin — the
+  same interpreter runs on the JVM (unit tests) and on Android, with no
+  WebView and no platform JS engine. `WorkflowEngine` runs script steps
+  through an injected runner whose default fails closed ("No script runtime is
+  installed on this device"); `runtime/WorkflowCoordinator.kt` wires
+  production to the real interpreter with the allowlisted host and cooperative
+  cancellation.
+- Tests: `M5WorkflowsTest` (JVM) covers manifest round-trip and rejection,
+  the redaction rule table, end-to-end export, import review/admission
+  (missing dependencies saved disabled with a reason), setup bindings, the
+  update policy (doc-only auto-apply vs behavior-change review, version
+  pinning), and the script sandbox (denial of file/network/tool access,
+  infinite-loop/memory-bomb/output-bomb termination, cancellation, allowlist
+  behavior, declared-function gating) plus engine integration.
+  `ScriptRuntimeHardeningTest` (JVM) covers parse boundedness and
+  cancellation reaching the interpreter. Release journeys: `test68` (a revised
+  workflow never mutates a running occurrence's pinned version), `test78`
+  (a script step runs on device through the real interpreter with the
+  production allowlisted host; an undeclared function stays denied), `test79`
+  (export sanitizes personal content on device; the manifest re-parses and
+  validates). All named in `scripts/verification/scenarios.json`.
+- CI evidence: run 1261 (`38038631782`) at `6fb742e1` — Build signed release
+  APK, native 16 KB compatibility, sandbox release journeys on
+  36-16k-native / 35-phone / 36-phone / 36-foldable / 30-phone, and
+  exact-build evidence consolidation all succeeded. The release build runs
+  `testReleaseUnitTest` (the M5 JVM suites) before assembling the APK.
+
+M5 definition of done: satisfiable on emulator evidence — manifests version
+with contracts, scopes, runtime requirements and provenance; imports review
+with unavailable dependencies saved disabled; exports redact with a full
+preview; documentation-only updates auto-apply while changed scripts wait for
+review; running workflows stay pinned to their admitted version; and sandbox
+tests prove denial of unauthorized file/network/tool access,
+resource-exhaustion termination, and cancellation.
+
+Explicitly unverified per the coverage boundaries: physical Fold 6 evidence
+(T20 D-level) and real-model proposal of workflow steps. Follow-up work, not
+M5 scope: a production entry point for community import/export (no chat
+command or share target invokes the import/export flows yet — they are
+implemented and tested library code awaiting a surface); the production
+script host currently exposes only `log`.
+
+M5 remaining: none — community imports/exports, compatible updates and
+isolated on-phone scripts are implemented. (M4's checkpoint entry is still
+missing from this document.) M6–M8 are still planned.
+
 ## Implementation checkpoint — October 5, 2026 (audio-pr2 import)
 
 Battles ordered the deferred audio-pr2 blend into `feature/muse-tools`. The

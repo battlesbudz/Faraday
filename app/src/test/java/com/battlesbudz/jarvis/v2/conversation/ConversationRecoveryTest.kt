@@ -39,6 +39,7 @@ class ConversationRecoveryTest {
         override var onBenchmarkSubmission: (PipelineBenchmarkSubmission) -> Unit = {}
         override var benchmarkPurpose = PipelineBenchmarkPurpose.ANSWER
         override fun inputContextDescription() = "fake"
+        override val toolsEnabled = false
         override suspend fun setToolsEnabled(enabled: Boolean): Boolean {
             tools += enabled
             return false

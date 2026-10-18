@@ -168,6 +168,7 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-reflect:2.3.21")
     sherpaSdk("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.7@aar")
     implementation(files(sherpaDir.map { it.file("classes.jar") }).builtBy(extractSherpa))
+    implementation(project(":phoneinference"))
     implementation("org.apache.commons:commons-compress:1.27.1")
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     androidTestImplementation("androidx.test:runner:1.6.2")

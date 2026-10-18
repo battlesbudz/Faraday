@@ -24,6 +24,7 @@ class ConversationSealedAudioInputTest {
         val raw = mutableListOf<ByteArray>()
         val sealed = mutableListOf<Content.SealedAudioEmbeddings>()
         override fun inputContextDescription() = "fake-backend"
+        override val toolsEnabled = false
         override suspend fun setToolsEnabled(enabled: Boolean) = false
         protected fun result(mode: String, prompt: String, emit: (String) -> Unit): GenerationResult {
             modes += mode
@@ -70,7 +71,7 @@ class ConversationSealedAudioInputTest {
         retained.fill(0)
         val tokens = mutableListOf<String>()
 
-        input.generate(backend, "first prompt", tokens::add) { fail("sealed input has no incremental fallback") }
+        input.generate(backend, "first prompt", tokens::add, onIncrementalFallback = { fail("sealed input has no incremental fallback") })
         input.retry(backend, "retry prompt", tokens::add)
 
         assertEquals(listOf("sealed-audio", "sealed-audio"), backend.modes)
@@ -108,7 +109,7 @@ class ConversationSealedAudioInputTest {
         val backend = Backend()
         val input = ConversationInput(retained, true, null, null, null)
 
-        input.generate(backend, "raw prompt", {}) { fail("raw direct input cannot fall back to text") }
+        input.generate(backend, "raw prompt", {}, onIncrementalFallback = { fail("raw direct input cannot fall back to text") })
         input.retry(backend, "raw retry", {})
 
         assertEquals(listOf("raw-audio", "raw-audio"), backend.modes)
@@ -120,7 +121,7 @@ class ConversationSealedAudioInputTest {
     @Test fun retainedVoicePcmCannotOverrideAsrTextMode() = runBlocking<Unit> {
         val backend = Backend()
         val input = ConversationInput(byteArrayOf(1, 0), false, null, null, null)
-        input.generate(backend, "recognized words", {}) { fail("no incremental prefill exists") }
+        input.generate(backend, "recognized words", {}, onIncrementalFallback = { fail("no incremental prefill exists") })
         input.retry(backend, "recognized words again", {})
         assertEquals(listOf("text", "text"), backend.modes)
         assertTrue(backend.raw.isEmpty())
@@ -131,7 +132,7 @@ class ConversationSealedAudioInputTest {
         val audio = byteArrayOf(1, 2, 3)
         val backend = Backend()
         val input = ConversationInput(null, false, null, null, audio)
-        input.generate(backend, "attachment", {}) { fail("no incremental prefill exists") }
+        input.generate(backend, "attachment", {}, onIncrementalFallback = { fail("no incremental prefill exists") })
         input.retry(backend, "attachment retry", {})
         assertEquals(listOf("raw-audio", "raw-audio"), backend.modes)
         assertSame(audio, backend.raw[0])
@@ -146,7 +147,7 @@ class ConversationSealedAudioInputTest {
                 error("injected sealed backend rejection")
         }
         val input = ConversationInput(byteArrayOf(1, 0), true, null, null, null, sealed())
-        val first = runCatching { input.generate(backend, "first", {}) { fail("no incremental fallback") } }
+        val first = runCatching { input.generate(backend, "first", {}, onIncrementalFallback = { fail("no incremental fallback") }) }
         val retry = runCatching { input.retry(backend, "retry", {}) }
         assertEquals("injected sealed backend rejection", first.exceptionOrNull()?.message)
         assertEquals("injected sealed backend rejection", retry.exceptionOrNull()?.message)

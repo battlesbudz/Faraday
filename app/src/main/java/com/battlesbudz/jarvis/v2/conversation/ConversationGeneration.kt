@@ -5,6 +5,7 @@ import com.battlesbudz.jarvis.v2.ChatEntry
 import com.battlesbudz.jarvis.v2.actions.ActionRequest
 import com.battlesbudz.jarvis.v2.actions.ActionTurnPlan
 import com.battlesbudz.jarvis.v2.actions.ExecutionResult
+import com.battlesbudz.jarvis.v2.actions.NativeActionDecoder
 import com.battlesbudz.jarvis.v2.ai.ConversationPromptBuilder
 import com.battlesbudz.jarvis.v2.ai.GenerationResult
 import com.battlesbudz.jarvis.v2.ai.ToolCall
@@ -13,6 +14,11 @@ import com.battlesbudz.jarvis.v2.chat.AnswerQualityPolicy
 import com.battlesbudz.jarvis.v2.chat.AssistantStreamFilter
 import com.battlesbudz.jarvis.v2.chat.AssistantText
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkPurpose
+import com.battlesbudz.jarvis.v2.vision.NativeVision
+import com.battlesbudz.jarvis.v2.vision.PhoneVisionClient
+import com.battlesbudz.jarvis.v2.vision.VisionContextFormatter
+import com.battlesbudz.jarvis.v2.vision.VisionServerSettings
+import com.battlesbudz.jarvis.v2.voice.AudioToolGuard
 import com.battlesbudz.jarvis.v2.voice.FinalVoiceToolGuard
 import com.battlesbudz.jarvis.v2.voice.VoiceRepetitionGuard
 import com.battlesbudz.jarvis.v2.voice.comparison.LiveComparison
@@ -30,7 +36,19 @@ internal class ConversationGeneration(
      * M1d: model-proposed screen mutations never auto-dispatch (D23); the
      * runtime parks them for the user's explicit approval instead.
      */
-    private val onNeedsApproval: (suspend (ActionRequest) -> ExecutionResult)? = null
+    private val onNeedsApproval: (suspend (ActionRequest) -> ExecutionResult)? = null,
+    /**
+     * App assets for the native on-device vision models. Null disables the
+     * vision context injection (existing behavior, e.g. unit tests).
+     */
+    private val appAssets: android.content.res.AssetManager? = null,
+    /**
+     * Vision-server config snapshot for this turn. When it reports
+     * enabled with a non-blank token, chat-photo vision goes to the
+     * Phone Inference server instead of the in-process models. Read
+     * fresh per turn so a Settings change applies without restart.
+     */
+    private val visionServerConfig: () -> VisionServerSettings.Config? = { null },
 ) {
     suspend fun generate(invocation: ConversationInvocation, contextLimit: Int,
                          routed: RoutedConversation, prepared: PreparedConversation,
@@ -40,10 +58,15 @@ internal class ConversationGeneration(
                          telemetry: ConversationInferenceTelemetry): ConversationDraft {
         telemetry.attach(engine, prepared.history, prepared.captureReceipt)
         val allowTools = invocation.comparison == null && modelSession.selectedModel().supportsTools &&
-            routed.actionPlan is ActionTurnPlan.Ready
-        if (allowTools) invocation.nativeSpeculation?.beforeNativeMutation()
-        if (engine.setToolsEnabled(allowTools)) modelSession.clearContextAccounting()
-        diagnostics.record("Generation tool policy allowed=$allowTools source=current_action_intent")
+            (routed.actionPlan is ActionTurnPlan.Ready || invocation.directVoiceAudio)
+        // Split the tool-policy transition. The accounting half applies now:
+        // when the policy will flip, the native conversation is about to reset,
+        // so this turn's prompt must re-seed history (matching the speculation
+        // preview, which always seeds). The native half — engine.setToolsEnabled,
+        // whose reset would mutate the conversation under an in-flight
+        // speculative draft — is deferred to the generation step below, after
+        // the speculative owner has drained via promote/settle.
+        if (engine.toolsEnabled != allowTools) modelSession.clearContextAccounting()
         val groundedVoice = invocation.voiceAudio != null && !prepared.referenceContext.isNullOrBlank()
         val guard = repetitionGuard(invocation, routed, prepared, reply, groundedVoice)
         if (invocation.voiceAudio != null) diagnostics.record("Voice sentence streaming: " +
@@ -53,10 +76,50 @@ internal class ConversationGeneration(
                 if (guard != null) guard.accept(safe) else reply.postToken(safe)
             }
         }
-        val submission = turnPrompt.assemble(invocation.prompt, null, promptHistory, !modelSession.hasContext,
+        val attachments = readConversationAttachments(invocation.imageUri, invocation.audioUri, reply.benchmark, openAttachment)
+        // Native on-device vision: when the turn carries an image, run all
+        // four models in-process and fuse the structured detections into
+        // Gemma's prompt as authoritative context (replaces the old Termux
+        // HTTP path). One message combines detection + Gemma's understanding.
+        val visionAssets = appAssets
+        val visionImageBytes = attachments.image
+        val visionContext = if (visionImageBytes != null) {
+            val serverConfig = visionServerConfig()
+            if (serverConfig?.enabled == true) {
+                // Phone Inference server: when enabled, the server is
+                // authoritative for this turn. A failure surfaces as a
+                // failure note instead of silently falling back to
+                // in-process vision — otherwise a user testing the server
+                // path could never tell whether the server was exercised.
+                runCatching {
+                    require(serverConfig.token.isNotBlank()) {
+                        "Phone Inference server is enabled but no X-Vision-Token is saved. " +
+                            "Paste the token from the Phone Inference app into Settings."
+                    }
+                    val snapshot = PhoneVisionClient().detect(visionImageBytes, serverConfig.token)
+                    reply.benchmark.metric("phone_vision_server_ms", snapshot.totalMs.toLong())
+                    VisionContextFormatter.formatServerDetections(snapshot.detections, snapshot.totalMs)
+                }.getOrElse { error ->
+                    diagnostics.summary("Phone Inference server vision failed: ${error.message?.take(200)}")
+                    VisionContextFormatter.failureNote(error)
+                }
+            } else if (visionAssets != null) {
+                runCatching {
+                    val snapshot = NativeVision.analyze(visionImageBytes, visionAssets)
+                    reply.benchmark.metric("native_vision_ms", snapshot.totalMs.toLong())
+                    VisionContextFormatter.format(snapshot)
+                }.getOrElse { error ->
+                    diagnostics.summary("Native vision failed: ${error.message?.take(200)}")
+                    // Surface the failure instead of swallowing it: the model (and
+                    // user) should know the structured on-device analysis did not
+                    // run. The raw image remains attached as fallback.
+                    VisionContextFormatter.failureNote(error)
+                }
+            } else null
+        } else null
+        val submission = turnPrompt.assemble(invocation.prompt, visionContext, promptHistory, !modelSession.hasContext,
             routed.plan.activeSubject, routed.plan.resolvedQuestion, prepared.referenceContext, contextLimit)
         validatePrompt(invocation, routed, prepared, promptHistory, turnPrompt, submission, contextLimit)
-        val attachments = readConversationAttachments(invocation.imageUri, invocation.audioUri, reply.benchmark, openAttachment)
         val directAudio = invocation.directVoiceAudio || invocation.comparison?.request?.path == LiveComparison.Path.GEMMA_DIRECT
         check(invocation.sealedVoiceAudio == null || invocation.voiceAudioIsComplete) { "Incomplete native audio cannot be submitted" }
         val input = ConversationInput(invocation.voiceAudio, directAudio, prepared.textInput, attachments.image, attachments.audio, invocation.sealedVoiceAudio, invocation.nativeSpeculation)
@@ -74,7 +137,27 @@ internal class ConversationGeneration(
             " nativeAudioEncodeMs=${if (directAudio || attachments.audio != null) "unavailable" else "not_used"} queueMs=unavailable")
         var stoppedLoop = false
         val generated = try {
-            input.generate(engine, submission.text, { token -> telemetry.token(token); stream.accept(token) }) { error ->
+            // Promote-first: promote drains the speculative owner (join +
+            // rollback) without any native mutation, so the tool-policy
+            // transition below can never reset the conversation under an
+            // in-flight speculative draft. A non-direct-audio turn can never
+            // promote, so settle its speculation explicitly first. Only once
+            // the owner has drained is the native policy transition safe.
+            // The fallback then runs with the full ordinary audio input and
+            // the correct tool policy, never tool-disabled by a spent draft.
+            // Promotion is eligible only when this turn will NOT run the
+            // tools-enabled authoritative pass: speculative drafts are
+            // tool-free by construction, so promoting one on a tools-enabled
+            // turn would publish prose and skip the only pass that can emit
+            // the tool calls a spoken action needs. A rejected promote still
+            // drains the owner, so the fallback below is safe.
+            val onToken: (String) -> Unit = { token -> telemetry.token(token); stream.accept(token) }
+            val promoted = if (directAudio) input.tryPromote(submission.text, onToken,
+                ordinaryReplyAccepted = !allowTools) else null
+            if (promoted == null && !directAudio) invocation.nativeSpeculation?.beforeNativeMutation()
+            if (engine.setToolsEnabled(allowTools)) modelSession.clearContextAccounting()
+            diagnostics.record("Generation tool policy allowed=$allowTools source=current_action_intent")
+            promoted ?: input.generateFallback(engine, submission.text, onToken) { error ->
                 diagnostics.summary("Voice incremental fallback: reason=${error.javaClass.simpleName} " +
                     "message=${error.message?.take(300)} policy=final_text_once audioBytes=0")
             }
@@ -141,16 +224,47 @@ internal class ConversationGeneration(
             "latestReplyChars=${latestReply?.length ?: 0} scope=assembled_prompt nativeContext=${modelSession.hasContext}")
     }
 
+    /**
+     * Builds an action plan from the model's native tool calls in direct-audio
+     * mode, where no transcript exists for the deterministic router. Each call
+     * is strictly decoded and audio-guard validated; invalid calls are dropped.
+     * Returns null when no valid calls remain.
+     */
+    private fun audioPlanFromCalls(draft: ConversationDraft): ActionTurnPlan.Ready? {
+        val invocation = draft.answer.invocation
+        if (!invocation.directVoiceAudio || draft.generated.toolCalls.isEmpty()) return null
+        val steps = draft.generated.toolCalls.mapNotNull { call ->
+            val request = NativeActionDecoder.decodeStrict(call) ?: return@mapNotNull null
+            if (!AudioToolGuard.allows(request)) return@mapNotNull null
+            ActionTurnPlan.Step(request, "[audio input]")
+        }.take(3)
+        if (steps.isEmpty()) return null
+        diagnostics.summary("Audio-native tool plan steps=${steps.map { it.request.name }}")
+        return ActionTurnPlan.Ready(steps)
+    }
+
     private suspend fun executeNativeActions(draft: ConversationDraft, phoneActions: ConversationActions) {
         val answer = draft.answer
-        val plan = answer.routed.actionPlan as? ActionTurnPlan.Ready ?: return
         val invocation = answer.invocation
+        // Settle outstanding speculation before the tool phase can mutate
+        // native state: a still-running speculative draft invalidates and
+        // drains first. Harmless after a successful promote (already drained).
+        invocation.nativeSpeculation?.beforeNativeMutation()
+        val plan = answer.routed.actionPlan as? ActionTurnPlan.Ready
+            ?: audioPlanFromCalls(draft) ?: return
         if (draft.generated.toolCalls.isEmpty()) {
             draft.actionResultMessage = "I couldn't verify the requested phone actions."
             return
         }
-        val allowed = (invocation.voiceAudio == null && !invocation.frozenVoiceFinal) || plan.steps.all { step ->
-            FinalVoiceToolGuard.allows(step.sourceClause, step.request.name, step.request.arguments)
+        val allowed = if (invocation.directVoiceAudio) {
+            // Audio-native path: no transcript exists, so FinalVoiceToolGuard's
+            // spoken-argument verification cannot run. AudioToolGuard applies
+            // the allowlist + argument sanity policy instead.
+            plan.steps.all { AudioToolGuard.allows(it.request) }
+        } else {
+            (invocation.voiceAudio == null && !invocation.frozenVoiceFinal) || plan.steps.all { step ->
+                FinalVoiceToolGuard.allows(step.sourceClause, step.request.name, step.request.arguments)
+            }
         }
         if (!allowed) { draft.actionResultMessage = "I couldn't verify the requested phone actions."; return }
         val outcome = phoneActions.runNative(plan, draft.generated.toolCalls, nextCalls = { batch ->

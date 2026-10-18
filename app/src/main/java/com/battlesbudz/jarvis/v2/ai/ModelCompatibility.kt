@@ -230,6 +230,12 @@ object ModelCompatibility {
         "sarashina2.2-1b-instruct-v0.1" to Entry("7313d5f3442f0b412d975ba6fbc4567a5c2c076f6cd49038e55a3f82522f02b7", true, 1280,
             ModelEvidence(ModelEvidenceStatus.TESTED, "Shown to work on an Android phone. Performance on yours may vary.",
                 "Exact checksum has Galaxy S26 GPU result with Japanese output. Pixel INT8 CPU numbers belong to another artifact; catalog 1280 differs from export’s 4096.", "https://huggingface.co/litert-community/sarashina2.2-1b-instruct-v0.1", false)),
+        "Gemma-4-E2B-Abliterated" to Entry("e8c197596ccf8ec20553eb467675291a30212f3a27a52f75e37f9c9b1b1c6db5", true, null,
+            ModelEvidence(ModelEvidenceStatus.EXPERIMENTAL, "Android operation of this exact download and setup is not yet verified.",
+                "DuoNeural abliterated (uncensored) Gemma 4 E2B INT4 build. Publisher provides the .litertlm; on-device behavior in Jarvis not yet measured.", "https://huggingface.co/DuoNeural/Gemma-4-Abliterated-LiteRT", false)),
+        "Gemma-4-E4B-Abliterated" to Entry("7e7c6bda7396a2251338361745408e236dc34ea269572c1a41ddef8a32b3e3cb", true, null,
+            ModelEvidence(ModelEvidenceStatus.EXPERIMENTAL, "Android operation of this exact download and setup is not yet verified.",
+                "DuoNeural abliterated (uncensored) Gemma 4 E4B INT4 build. Publisher provides the .litertlm; on-device behavior in Jarvis not yet measured.", "https://huggingface.co/DuoNeural/Gemma-4-Abliterated-LiteRT", false)),
     )
     fun assess(spec: LocalModelSpec): ModelEvidence {
         val entry = entries[spec.id]

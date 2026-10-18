@@ -18,6 +18,7 @@ class ConversationSpeculativeInputTest {
         var raw: ByteArray? = null
         var calls = 0
         override fun inputContextDescription() = "fake"
+        override val toolsEnabled = false
         override suspend fun setToolsEnabled(enabled: Boolean) = false
         override suspend fun generate(prompt: String, onToken: (String) -> Unit): GenerationResult = error("must keep audio")
         override suspend fun generate(prompt: String, imageBytes: ByteArray, onToken: (String) -> Unit): GenerationResult = error("must keep audio")
@@ -51,7 +52,7 @@ class ConversationSpeculativeInputTest {
             val backend = Backend()
             val input = ConversationInput(wav, true, null, null, null, nativeSpeculation = candidate)
             val text = StringBuilder()
-            val result = input.generate(backend, if (matchingPrompt) "prompt" else "corrected prompt", text::append) { fail("no text retry") }
+            val result = input.generate(backend, if (matchingPrompt) "prompt" else "corrected prompt", text::append, onIncrementalFallback = { fail("no text retry") })
             assertEquals(1, resets)
             if (matchingPrompt) {
                 assertEquals("Prepared.", result.text); assertEquals("Prepared.", text.toString())

@@ -132,6 +132,22 @@ interface ScreenBridge {
      * cannot prove the content is unchanged must not proceed.
      */
     fun currentContentFingerprint(): String?
+    /**
+     * One screenshot of the current screen as encoded image bytes (PNG),
+     * via the accessibility service's takeScreenshot (API 30+). Null when
+     * the service is not connected or capture fails — never fabricated
+     * pixels. Launch verification's screenshot leg uses this; the default
+     * (no capture channel) keeps every caller fail-closed.
+     */
+    fun captureScreenshot(): ByteArray? = null
+
+    /**
+     * Foreground package of the active window right now; null when it
+     * cannot be observed. Default reads it off [observe]; the production
+     * bridge overrides with a cheap root-only read (no full tree walk).
+     */
+    fun foregroundPackage(): String? = observe()?.packageName?.takeIf { it.isNotBlank() }
+
     /** Mutations must fail closed unless the node carries a verified generation. */
     fun tap(node: ScreenNode): Boolean
     fun scroll(node: ScreenNode, direction: ScreenScrollDirection): Boolean

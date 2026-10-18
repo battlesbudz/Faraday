@@ -158,6 +158,8 @@ class LiteRtLmEngine(
     private var fixedVoicePreface = false
     internal val hasFixedVoicePreface: Boolean get() = fixedVoicePreface
     private var toolsEnabled = false
+    /** Read-only view of the native tool policy; never resets the conversation. */
+    internal val toolsEnabledState: Boolean get() = toolsEnabled
 
     /** Synchronous SDK prefill; caller serializes encoder compute behind this operation. */
     internal suspend fun prepareVoiceConversation(isCurrent: () -> Boolean): Boolean {

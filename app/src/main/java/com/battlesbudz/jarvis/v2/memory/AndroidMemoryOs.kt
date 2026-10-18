@@ -12,9 +12,29 @@ import java.io.File
 object AndroidMemoryOs {
     private data class Services(val memory: MemoryOs, val sources: SQLiteMemoryStore)
     @Volatile private var instance: Services? = null
+    @Volatile private var autoMemory: AutomaticMemory? = null
 
     fun get(context: Context): MemoryOs = services(context).memory
     fun sources(context: Context): MemorySourceArchive = services(context).sources
+
+    /**
+     * M6: process-wide automatic memory. Always on (no user toggle); the
+     * pending queue and the anti-resurrection fence are file-backed so both
+     * survive process death.
+     */
+    fun automaticMemory(context: Context): AutomaticMemory = autoMemory ?: synchronized(this) {
+        autoMemory ?: run {
+            val app = context.applicationContext
+            val dir = app.noBackupFilesDir
+            AutomaticMemory(
+                memoryOs = get(app),
+                settings = { AutomaticMemorySettings(enabled = true) },
+                sourceAuthorizer = { true },
+                fenceStore = FileFenceStore(File(dir, "auto-memory-fence.tsv")),
+                candidateStore = FileCandidateStore(File(dir, "auto-memory-queue.json")),
+            ).also { autoMemory = it }
+        }
+    }
 
     private fun services(context: Context): Services = instance ?: synchronized(this) {
         instance ?: run {

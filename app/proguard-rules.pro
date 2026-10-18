@@ -306,6 +306,19 @@
 -keep class com.battlesbudz.jarvis.v2.actions.BackgroundLaunchKt { *; }
 # The same test07 call crosses this enum in the retained function descriptor.
 -keep class com.battlesbudz.jarvis.v2.actions.BackgroundLaunchRoute { *; }
+# Screenshot+vision launch verification (Battles 2026-10-15): the release
+# journeys construct ScreenshotLaunchVerifier directly through the target
+# class loader (ReleaseJourneyTest.screenshotLaunchVerifier) and pass the
+# production NativeVisionScreenshotAnalyzer. Without these, R8 renames
+# them in the app APK and the tests crash with NoClassDefFoundError —
+# the same failure mode as the M1c keeps above (CI run 38700460891:
+# all 8 launch-verification journeys failed on
+# ClassNotFoundException ScreenshotLaunchVerifier).
+-keep class com.battlesbudz.jarvis.v2.actions.ScreenshotLaunchVerifier { *; }
+-keep class com.battlesbudz.jarvis.v2.actions.LaunchVerification** { *; }
+-keep class com.battlesbudz.jarvis.v2.actions.LaunchVerifier { *; }
+-keep class com.battlesbudz.jarvis.v2.vision.NativeVisionScreenshotAnalyzer { *; }
+-keep class com.battlesbudz.jarvis.v2.vision.ScreenshotVisionEvidence { *; }
 -keep class com.battlesbudz.jarvis.v2.actions.ScreenControlKt { *; }
 
 # M1d task/conversation scheduling boundary exercised by the release
@@ -538,3 +551,6 @@
 
 # Stable optional Whisper QNN JNI owner.
 -keep class com.battlesbudz.jarvis.v2.voice.whisper.WhisperQnnNative { *; }
+
+# Native on-device vision (phoneinference module): keep the ONNX Runtime Java API.
+-keep class ai.onnxruntime.** { *; }

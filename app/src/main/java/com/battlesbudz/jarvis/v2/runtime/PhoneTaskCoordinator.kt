@@ -6,6 +6,8 @@ import com.battlesbudz.jarvis.v2.actions.ActionRequest
 import com.battlesbudz.jarvis.v2.actions.ActionTurnPlan
 import com.battlesbudz.jarvis.v2.actions.AdmitResult
 import com.battlesbudz.jarvis.v2.actions.AndroidToolCapabilityProbe
+import com.battlesbudz.jarvis.v2.actions.BrowserApprovalAdmission
+import com.battlesbudz.jarvis.v2.actions.BrowserNavigationPolicy
 import com.battlesbudz.jarvis.v2.actions.ExecutionResult
 import com.battlesbudz.jarvis.v2.actions.JournaledActionPipeline
 import com.battlesbudz.jarvis.v2.actions.MobileActionExecutor
@@ -34,6 +36,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Owns durable phone-task admission, approval, recovery and conversation projections.
@@ -55,7 +58,19 @@ internal class PhoneTaskCoordinator(
     private val projectReply: (conversationId: String, replyId: String, text: String, receipts: List<ActionReceipt>) -> Unit,
     private val silentWork: SilentWorkController,
     private val recordDiagnostic: (String) -> Unit,
-    private val dispatcher: CoroutineDispatcher = Dispatchers.Main
+    private val dispatcher: CoroutineDispatcher = Dispatchers.Main,
+    /**
+     * Android execution boundary. Production: Dispatchers.IO — the executor
+     * blocks (launch settle/poll sleeps, screenshot latch, runBlocking
+     * inference), so the two dispatch sites below hop only the blocking
+     * executeAttempt call here; approval, journal and UI work stay on
+     * [dispatcher]. Same boundary as ConversationActions.
+     */
+    private val executionDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    /** M4: the shared browser session; null when the browser runtime path is not installed. */
+    private val browserSession: com.battlesbudz.jarvis.v2.actions.BrowserSession? = null,
+    /** Private/incognito mode: blocks web-browsing tools at the capability probe. */
+    private val isPrivate: () -> Boolean = { false }
 ) {
     private val ledger by lazy(ledgerFactory)
     val tasks = MutableStateFlow<ToolTaskJournal?>(null)
@@ -63,15 +78,41 @@ internal class PhoneTaskCoordinator(
     private var loadError: String? = null
     private var operationError: String? = null
 
+    /**
+     * Serializes journal/error publication: refreshPhoneTasks reads the
+     * journal file and then publishes it, so two threads publishing at
+     * once could interleave read and publish and overwrite a newer
+     * snapshot (for example a Main-thread cancellation) with a stale one.
+     * The lock makes each read-then-publish atomic; the callback hop
+     * below keeps the usual publication path on the coordinator
+     * dispatcher.
+     *
+     * The same lock serializes the silent-work answer-window transitions
+     * with refreshPhoneTasks' window decision: refresh reads the journal
+     * and decides requestAnswer inside this lock, and the approve/deny
+     * paths consume the approval and close the window inside it. Without
+     * that, a refresh holding a stale pre-denial snapshot could reopen
+     * the denied approval's answer window after the denial, and no later
+     * refresh would close it (the approval is consumed, so the decision
+     * finds nothing to ask about).
+     */
+    private val publishLock = Any()
+
     private fun publishError() {
-        error.value = listOfNotNull(loadError, operationError).distinct().takeIf { it.isNotEmpty() }?.joinToString("\n\n")
+        synchronized(publishLock) {
+            error.value = listOfNotNull(loadError, operationError).distinct().takeIf { it.isNotEmpty() }?.joinToString("\n\n")
+        }
     }
     private fun storageFailure(failure: ToolTaskStorageException, writeMessage: String? = null) {
-        if (failure.failure == ToolTaskStorageFailure.WRITE_FAILED) operationError = writeMessage ?: failure.userMessage()
-        else loadError = failure.userMessage()
-        publishError()
+        synchronized(publishLock) {
+            if (failure.failure == ToolTaskStorageFailure.WRITE_FAILED) operationError = writeMessage ?: failure.userMessage()
+            else loadError = failure.userMessage()
+            publishError()
+        }
     }
-    private fun operationStatus(message: String?) { operationError = message; publishError() }
+    private fun operationStatus(message: String?) {
+        synchronized(publishLock) { operationError = message; publishError() }
+    }
 
     fun reportError(message: String) = operationStatus(message)
 
@@ -100,15 +141,16 @@ internal class PhoneTaskCoordinator(
     }
 
     fun refreshPhoneTasks() {
-        try {
-            tasks.value = ledger.journal()
-            loadError = null
-            publishError()
-        } catch (failure: ToolTaskStorageException) {
-            tasks.value = null
-            storageFailure(failure)
-            return
-        }
+        synchronized(publishLock) {
+            try {
+                tasks.value = ledger.journal()
+                loadError = null
+                publishError()
+            } catch (failure: ToolTaskStorageException) {
+                tasks.value = null
+                storageFailure(failure)
+                return
+            }
         // M1d: a required question asked during silent work (D22) temporarily
         // opens an answer window so the user can answer by voice; the mode
         // returns to silence once the question resolves or the window lapses.
@@ -119,6 +161,7 @@ internal class PhoneTaskCoordinator(
                 ?.mapNotNull { attempt -> attempt.approvalId?.let { id -> journal.approvals.find { it.id == id } } }
                 ?.lastOrNull { !it.consumed }
             if (question != null) silentWork.requestAnswer(question.id)
+        }
         }
     }
 
@@ -135,10 +178,18 @@ internal class PhoneTaskCoordinator(
             ledger,
             executor,
             sourceAccess = ToolSourceAccess(ledger),
-            capabilityProbe = AndroidToolCapabilityProbe(appContext),
+            capabilityProbe = AndroidToolCapabilityProbe(appContext, isPrivate = isPrivate),
             lockGate = androidLockGate(appContext),
-            onJournalChanged = ::refreshPhoneTasks,
-            onStorageFailure = ::storageFailure
+            // Pipeline callbacks must publish on the coordinator
+            // dispatcher (Main in production). executeAttempt runs on
+            // the execution dispatcher, and a refresh published from IO
+            // would move UI/error/silent-work projection off Main and
+            // could publish a stale snapshot over a newer Main-thread
+            // cancellation. Each hop re-reads the journal on the
+            // coordinator dispatcher, so publication order follows
+            // coordinator-dispatcher order.
+            onJournalChanged = { scope.launch(dispatcher) { refreshPhoneTasks() } },
+            onStorageFailure = { failure, message -> scope.launch(dispatcher) { storageFailure(failure, message) } }
         )
 
     fun executePhoneAction(
@@ -190,6 +241,42 @@ internal class PhoneTaskCoordinator(
         }
     }
 
+    /**
+     * M4: a model-proposed browse_submit never auto-dispatches (D11). Park
+     * it in the ledger awaiting the user's explicit approval; the panel's
+     * Approve button then admits the browser submission for the exact page
+     * the user reviewed, and the executor re-validates against the live DOM
+     * at dispatch (a changed page fails closed). Returns a truthful
+     * not-yet receipt, never a success.
+     */
+    fun parkBrowseSubmitForApproval(request: ActionRequest, conversationId: String): ExecutionResult {
+        val session = browserSession
+            ?: return ExecutionResult(false, "The browser isn't available right now.")
+        return try {
+            val group = ledger.admit(listOf(request), conversationId)
+            val attempt = ledger.get(group.attemptIds.single())
+                ?: return ExecutionResult(false,
+                    "I couldn't save the browser submission, so I didn't start it.")
+            ledger.requestApproval(attempt.id, attempt.generation, "native",
+                MobileToolCatalog.VERSION)
+            refreshPhoneTasks()
+            recordDiagnostic("Browser submission parked for approval: group=${group.id}")
+            val dest = request.arguments["token"]
+                ?.let { session.proposeSubmit(it)?.destination }
+                ?.let { BrowserNavigationPolicy.hostOf(it) }
+            ExecutionResult(false,
+                "I need your approval before I submit this form" +
+                    (dest?.let { " to $it" } ?: "") +
+                    ". Approve \"Submit the form\" in the phone tasks panel to continue.")
+        } catch (_: ToolTaskStorageException) {
+            ExecutionResult(false,
+                "I couldn't save the browser submission, so I didn't start it.")
+        } catch (_: IllegalArgumentException) {
+            ExecutionResult(false,
+                "I couldn't verify the requested browser submission.")
+        }
+    }
+
     /** Re-evaluate only at process startup or foreground/unlock; no periodic memory polling. */
     fun resumePhoneTasksAfterUnlock() {
         scope.launch(dispatcher) {
@@ -209,7 +296,12 @@ internal class PhoneTaskCoordinator(
                         val attempt = ledger.get(id) ?: break
                         if (attempt.state == ToolTaskState.SUCCEEDED) continue
                         if (attempt.state != ToolTaskState.READY) break
-                        val result = phoneActionPipeline(createExecutor()).executeAttempt(attempt)
+                        // Blocking dispatch runs OFF the coordinator
+                        // dispatcher (Main in production): the executor
+                        // blocks for launch verification.
+                        val result = withContext(executionDispatcher) {
+                            phoneActionPipeline(createExecutor()).executeAttempt(attempt)
+                        }
                         projectPhoneTask(group.id, recovered = true)
                         if (!result.succeeded) break
                     }
@@ -320,21 +412,54 @@ internal class PhoneTaskCoordinator(
                                 return@launch
                             }
                         }
-                        val result = phoneActionPipeline(createExecutor()).executeAttempt(a, approval)
+                        // M4: approving a browse_submit admits the browser
+                        // session's one-shot submission for the exact page
+                        // the user reviewed (D11). The dispatch below still
+                        // re-validates against the live DOM in confirmSubmit:
+                        // a page changed between approval and dispatch fails
+                        // closed with no submission.
+                        val browserAdmission = browserSession?.let { BrowserApprovalAdmission(it) }
+                        if (browserAdmission?.needsAdmission(a.request) == true) {
+                            when (val verdict = browserAdmission.admitForApproval(a, approval)) {
+                                is AdmitResult.Admitted -> Unit
+                                is AdmitResult.Denied -> {
+                                    operationStatus(verdict.reason)
+                                    refreshPhoneTasks()
+                                    return@launch
+                                }
+                                else -> Unit
+                            }
+                        }
+                        // Blocking dispatch runs OFF the coordinator
+                        // dispatcher (Main in production): the executor
+                        // blocks for launch verification.
+                        val result = withContext(executionDispatcher) {
+                            phoneActionPipeline(createExecutor()).executeAttempt(a, approval)
+                        }
                         if (!result.succeeded) {
                             operationStatus(result.message)
                             // The approval did not survive the claim: never
                             // leave a lease behind for an undispatched task.
                             if (screenTask && admittedHere) a.groupId?.let { screenSession.releaseIf(it) }
                         } else {
-                            silentWork.onAnswerReceived(approval.id)
+                            // Close the window atomically with the approval
+                            // decision (see publishLock): a stale-snapshot
+                            // refresh must not reopen it after the approval
+                            // is consumed.
+                            synchronized(publishLock) { silentWork.onAnswerReceived(approval.id) }
                             if (screenTask && admittedHere) ScreenControlService.bridge(appContext)
                                 .showStopOverlay(a.request.describeForOverlay())
                         }
                     }
                     "deny" -> a.approvalId?.let {
-                        approvals.deny(it)
-                        silentWork.onAnswerReceived(it)
+                        // Deny and close the window atomically (see
+                        // publishLock): a refresh that read a stale
+                        // pre-denial snapshot must not reopen the denied
+                        // approval's answer window after this denial.
+                        synchronized(publishLock) {
+                            approvals.deny(it)
+                            silentWork.onAnswerReceived(it)
+                        }
                     }
                     "cancel" -> if (a.groupId != null) ledger.cancelGroup(a.groupId)
                         else ledger.cancelLegacyAttempt(a.id, a.generation)
@@ -352,3 +477,4 @@ internal class PhoneTaskCoordinator(
         ToolTaskState.SUCCEEDED, ToolTaskState.FAILED,
         ToolTaskState.CANCELLED, ToolTaskState.UNKNOWN_OUTCOME)
 }
+

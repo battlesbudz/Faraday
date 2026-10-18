@@ -21,10 +21,10 @@ class ActionTurnRunner(
         data class Accepted(val requests: List<ActionRequest>, val reported: List<ActionRequest>) : Batch
         data class Rejected(val message: String = "I couldn't verify the requested phone actions.") : Batch
         /**
-         * M1d: model-proposed screen mutations (D23). They never auto-dispatch:
-         * [accepted] companions (if any) dispatch normally, then each entry of
-         * [proposed] is handed to the caller's approval path instead of the
-         * Android executor.
+         * M1d: model-proposed screen mutations (D23) and M4 browse_submit
+         * (D11). They never auto-dispatch: [accepted] companions (if any)
+         * dispatch normally, then each entry of [proposed] is handed to the
+         * caller's approval path instead of the Android executor.
          */
         data class NeedsApproval(val proposed: List<ActionRequest>, val accepted: Accepted? = null) : Batch
     }
@@ -36,11 +36,11 @@ class ActionTurnRunner(
         val decoded = calls.map { NativeActionDecoder.decodeStrict(it) }
         if (decoded.any { it == null }) return Batch.Rejected()
         val requests = decoded.filterNotNull()
-        // Screen mutations proposed by the model never auto-dispatch (D23):
-        // they are parked for the user's explicit approval while the other
-        // calls validate exactly as before.
-        val proposed = requests.filter { it.name in SCREEN_MUTATION_TOOLS }
-        val rest = requests.filter { it.name !in SCREEN_MUTATION_TOOLS }
+        // Screen mutations (D23) and browse_submit (D11) proposed by the model
+        // never auto-dispatch: they are parked for the user's explicit
+        // approval while the other calls validate exactly as before.
+        val proposed = requests.filter { it.name in SCREEN_MUTATION_TOOLS || it.name == "browse_submit" }
+        val rest = requests.filter { it.name !in SCREEN_MUTATION_TOOLS && it.name != "browse_submit" }
         val accepted: Batch.Accepted? = if (rest.isEmpty()) {
             if (proposed.isEmpty()) return Batch.Rejected()
             null
@@ -176,9 +176,10 @@ suspend fun ActionTurnRunner.runNative(
     dispatch: suspend (ActionRequest) -> ExecutionResult,
     nextCalls: suspend (List<ActionTurnRunner.Receipt>) -> List<ToolCall>,
     /**
-     * M1d: handles model-proposed screen mutations. The default (null) keeps
-     * the historical behavior of rejecting them; production parks them for
-     * the user's explicit approval instead of dispatching.
+     * M1d/M4: handles model-proposed screen mutations (D23) and browse_submit
+     * (D11). The default (null) keeps the historical behavior of rejecting
+     * them; production parks them for the user's explicit approval instead of
+     * dispatching.
      */
     onNeedsApproval: (suspend (ActionRequest) -> ExecutionResult)? = null
 ): ActionTurnRunner.Outcome {

@@ -23,22 +23,28 @@ fun interface ToolCapabilityProbe {
 
 class AndroidToolCapabilityProbe(
     private val context: Context,
-    private val screenAvailable: () -> Boolean = { ScreenControlService.bridge(context).isAvailable() }
+    private val screenAvailable: () -> Boolean = { ScreenControlService.bridge(context).isAvailable() },
+    /** Private/incognito mode: web browsing would leak the user's questions off-device. */
+    private val isPrivate: () -> Boolean = { false }
 ) : ToolCapabilityProbe {
-    override fun missingReason(request: ActionRequest): String? = when (request.name) {
-        "read_battery" ->
-            if (context.getSystemService(BatteryManager::class.java) == null)
-                "Battery status is unavailable on this device." else null
-        "set_volume", "media_control" ->
-            if (context.getSystemService(AudioManager::class.java) == null)
-                "Audio control is unavailable on this device." else null
-        "screen_observe" ->
-            if (!screenAvailable()) "Screen observation is not available. Enable Jarvis screen control " +
-                "in Android Accessibility settings, then try again." else null
-        "screen_tap", "screen_scroll", "screen_type" ->
-            if (!screenAvailable()) "Screen control is not available. Enable Jarvis screen control " +
-                "in Android Accessibility settings, then try again." else null
-        else -> null
+    override fun missingReason(request: ActionRequest): String? {
+        if (isPrivate() && request.name.startsWith("browse_"))
+            return "Web browsing is disabled in private chats to keep this conversation fully offline."
+        return when (request.name) {
+            "read_battery" ->
+                if (context.getSystemService(BatteryManager::class.java) == null)
+                    "Battery status is unavailable on this device." else null
+            "set_volume", "media_control" ->
+                if (context.getSystemService(AudioManager::class.java) == null)
+                    "Audio control is unavailable on this device." else null
+            "screen_observe" ->
+                if (!screenAvailable()) "Screen observation is not available. Enable Jarvis screen control " +
+                    "in Android Accessibility settings, then try again." else null
+            "screen_tap", "screen_scroll", "screen_type" ->
+                if (!screenAvailable()) "Screen control is not available. Enable Jarvis screen control " +
+                    "in Android Accessibility settings, then try again." else null
+            else -> null
+        }
     }
 }
 

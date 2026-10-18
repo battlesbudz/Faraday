@@ -61,6 +61,8 @@ internal interface ConversationMemoryAccess {
 internal interface ConversationReferences {
     suspend fun fetch(query: String): String?
     fun isInsufficientAnswer(answer: String): Boolean
+    /** True when the current conversation blocks reference lookups (private mode). */
+    fun isPrivateLookupBlocked(): Boolean = false
 }
 
 internal class ConversationDiagnostics(

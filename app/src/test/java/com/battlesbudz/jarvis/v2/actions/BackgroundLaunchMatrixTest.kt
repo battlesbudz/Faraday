@@ -5,14 +5,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 /**
- * Finding 3 (background-launch reporting) matrix, corrected: a submitted
- * request is NEVER a verified launch. The route decision and the receipt
- * wording are JVM-pure and tested here for every combination: foreground,
- * selected assistant, granted/revoked overlay, unavailable assistant
- * binding, and denied/no-supported-route. Only an observed foreground
- * transition counts as a verified launch; a submitted request is reported
- * honestly as unconfirmed (unknown completion) so journals, workflows and
- * user reports never promote submission to success.
+ * Finding 3 (background-launch reporting) matrix, corrected: a launch
+ * submission is NEVER a verified launch on any route. The route decision
+ * and the receipt wording are JVM-pure and tested here for every
+ * combination: foreground, selected assistant, granted/revoked overlay,
+ * unavailable assistant binding, and denied/no-supported-route. Only
+ * screenshot+vision verification verifies a launch; unverified submissions
+ * are reported honestly as unconfirmed (unknown completion) so journals,
+ * workflows and user reports never promote them to success.
  */
 class BackgroundLaunchMatrixTest {
 
@@ -66,6 +66,39 @@ class BackgroundLaunchMatrixTest {
         )
     }
 
+    // Screenshot+vision verification: the clean-return heuristic is gone
+    // entirely — no route is verified by a clean return, because there is
+    // no clean-return function anymore. Only a Verified verification from
+    // ScreenshotLaunchVerifier (foreground observed, screenshot captured,
+    // vision analysis over non-blank pixels) promotes a launch to success.
+
+    @Test fun unconfirmedVerificationNeverPromotesToSuccess() {
+        // startActivity returns void: a clean return only proves the
+        // request was handed to the platform. Without a Verified
+        // verification, every route stays unconfirmed — DIRECT included.
+        for (route in BackgroundLaunchRoute.values()) {
+            val receipt = verifiedLaunchReceipt(
+                "Example App", route, platformError = null,
+                verification = LaunchVerification.Unconfirmed("no screenshot evidence")
+            )
+            assertEquals(
+                "an unverified launch never succeeds: $route",
+                Outcome.UNKNOWN_COMPLETION, receipt.outcome
+            )
+            assertFalse("an unverified launch is not success: $route", receipt.succeeded)
+        }
+    }
+
+    @Test fun screenshotVerifiedLaunchIsSuccess() {
+        val verified = verifiedLaunchReceipt(
+            "Example App", BackgroundLaunchRoute.DIRECT, platformError = null,
+            verification = LaunchVerification.Verified
+        )
+        assertEquals(Outcome.SUCCEEDED, verified.outcome)
+        assertTrue("a screenshot-verified launch is success", verified.succeeded)
+        assertEquals("Opened Example App.", verified.message)
+    }
+
     // Receipt wording: local refusal.
 
     @Test fun localRefusalWordingIsHonest() {
@@ -86,8 +119,10 @@ class BackgroundLaunchMatrixTest {
         )
     }
 
-    // Receipts: submitted/unverified vs observed vs platform rejection.
-    // A submitted request is unknown completion — never success.
+    // Receipts: submitted/unverified vs verified vs platform rejection.
+    // A background-route submission is unknown completion — never success.
+    // (Production submitLaunch passes the ScreenshotLaunchVerifier result;
+    // these test verifiedLaunchReceipt as a pure function of its inputs.)
 
     @Test fun submittedLaunchWithoutObservationIsUnverified() {
         val submitted = verifiedLaunchReceipt(
@@ -168,6 +203,57 @@ class BackgroundLaunchMatrixTest {
         assertFalse(
             "a local refusal is not a platform rejection: ${refused.message}",
             refused.message.contains("Activity not found")
+        )
+    }
+
+    // View intents: a verified handler-open proves the handler, never the
+    // requested destination (Maps onboarding/error, browser error page, or
+    // pre-existing tab all satisfy launch verification). It stays unknown
+    // completion so the turn stops instead of chaining on an unproven
+    // destination.
+
+    @Test fun verifiedHandlerOpenStaysUnknownForViewIntents() {
+        val verified = verifiedLaunchReceipt(
+            "https://example.com", BackgroundLaunchRoute.DIRECT,
+            platformError = null, verification = LaunchVerification.Verified
+        )
+        assertTrue("the app-launch receipt still counts a verified launch as success", verified.succeeded)
+        val receipt = viewIntentReceipt(verified, "https://example.com")
+        assertEquals(
+            "a verified handler-open is not a verified destination",
+            Outcome.UNKNOWN_COMPLETION, receipt.outcome
+        )
+        assertFalse("the destination must not complete the turn", receipt.succeeded)
+        assertTrue(
+            "the receipt must say the destination could not be confirmed: ${receipt.message}",
+            receipt.message.contains("could not be confirmed")
+        )
+        assertFalse(
+            "the receipt must never claim the destination opened: ${receipt.message}",
+            receipt.message.contains("Opening") || receipt.message.contains("Opened")
+        )
+    }
+
+    @Test fun viewIntentReceiptPassesThroughFailuresAndUnconfirmed() {
+        val rejected = verifiedLaunchReceipt(
+            "https://example.com", BackgroundLaunchRoute.DIRECT,
+            platformError = "Activity not found", foregroundObserved = false
+        )
+        assertEquals(Outcome.FAILED, viewIntentReceipt(rejected, "https://example.com").outcome)
+        assertEquals(
+            "a platform rejection keeps its own wording",
+            rejected.message, viewIntentReceipt(rejected, "https://example.com").message
+        )
+        val unconfirmed = verifiedLaunchReceipt(
+            "https://example.com", BackgroundLaunchRoute.DIRECT,
+            platformError = null, foregroundObserved = false
+        )
+        assertEquals(
+            Outcome.UNKNOWN_COMPLETION, viewIntentReceipt(unconfirmed, "https://example.com").outcome
+        )
+        assertEquals(
+            "an unconfirmed launch keeps its own wording",
+            unconfirmed.message, viewIntentReceipt(unconfirmed, "https://example.com").message
         )
     }
 

@@ -46,6 +46,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 
 /**
@@ -64,6 +65,8 @@ internal class WorkflowCoordinator(
     private val recordDiagnostic: (String) -> Unit,
     private val reportError: (String) -> Unit,
     private val onJournalChanged: () -> Unit = {},
+    /** M4: the shared browser runtime; null when the browser path is not installed. */
+    private val browserRuntime: com.battlesbudz.jarvis.v2.actions.BrowserRuntime? = null,
 ) : ReminderScheduling {
     /** The runtime startup barrier invokes this once, before accepting alarm work. */
     fun recoverAfterRestart(): Boolean = try {
@@ -224,18 +227,30 @@ internal class WorkflowCoordinator(
      * claimed and do nothing — triggers never double-fire.
      */
     fun onWorkflowAlarm(occurrenceId: String, done: () -> Unit) {
-        scope.launch(Dispatchers.Default) {
+        scope.launch {
             // done() fires only after the run's terminal checkpoint (or
             // resume re-arm) completes — the receiver's PendingResult is no
             // longer finished while work is still detached.
-            try { alarmRunner.onAlarm(occurrenceId) }
+            // Blocking verification (ledger/engine/dispatch) runs on IO
+            // through runInterruptible: ordinary coroutine cancellation
+            // cannot interrupt blocking calls, but scope cancellation
+            // (teardown) interrupts the thread so cleanup is reachable.
+            // Accepted actions still survive ordinary speech barge-in:
+            // barge-in never cancels this scope.
+            try { runInterruptible(Dispatchers.IO) { alarmRunner.onAlarm(occurrenceId) } }
             finally { done() }
         }
     }
 
     fun runWorkflowOccurrence(occurrence: WorkflowOccurrence) {
-        scope.launch(Dispatchers.Default) {
-            runOrResume(occurrence, resume = false, isCancelled = { !isActive })
+        scope.launch {
+            // Blocking verification on IO through runInterruptible: scope
+            // cancellation (teardown) interrupts blocking waits; ordinary
+            // speech barge-in never cancels this scope, so accepted
+            // actions survive it.
+            runInterruptible(Dispatchers.IO) {
+                runOrResume(occurrence, resume = false, isCancelled = { !isActive })
+            }
         }
     }
 
@@ -245,8 +260,14 @@ internal class WorkflowCoordinator(
      * their outputs stay available for argument bindings.
      */
     fun resumeWorkflowOccurrence(occurrence: WorkflowOccurrence) {
-        scope.launch(Dispatchers.Default) {
-            runOrResume(occurrence, resume = true, isCancelled = { !isActive })
+        scope.launch {
+            // Blocking verification on IO through runInterruptible: scope
+            // cancellation (teardown) interrupts blocking waits; ordinary
+            // speech barge-in never cancels this scope, so accepted
+            // actions survive it.
+            runInterruptible(Dispatchers.IO) {
+                runOrResume(occurrence, resume = true, isCancelled = { !isActive })
+            }
         }
     }
 
@@ -336,8 +357,12 @@ internal class WorkflowCoordinator(
         workflowLedger = workflowLedger,
         phoneActionLedger = phoneActionLedger,
         executorFactory = {
-            AndroidMobileActionExecutor(appContext,
+            val base = AndroidMobileActionExecutor(appContext,
                 canLaunchDirectly = { isActivityVisible() }, onDiagnostic = recordDiagnostic)
+            // M4: browse tools dispatch through the shared browser session;
+            // without the runtime the decorator is absent and the base
+            // executor fails browse actions closed.
+            browserRuntime?.decorate(base) ?: base
         },
         occurrencePipelineFactory = { executor, occurrence -> phoneActionPipeline(executor, occurrence.id) }
     )

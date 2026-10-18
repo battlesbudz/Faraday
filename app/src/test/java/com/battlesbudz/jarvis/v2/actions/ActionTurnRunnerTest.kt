@@ -261,4 +261,18 @@ class ActionTurnRunnerTest {
         )
     }
 
+    @Test fun modelProposedBrowseSubmitIsParkedForApproval() {
+        // M4 (D11): a model-proposed browse_submit never auto-dispatches;
+        // validateBatch parks it for the user's explicit approval, exactly
+        // like a screen mutation.
+        val plan = ActionTurnPlan.parse("Read battery") as ActionTurnPlan.Ready
+        val request = ActionRequest("browse_submit", mapOf("token" to "0123456789abcdef"))
+        val batch = ActionTurnRunner(World()).validateBatch(plan, emptyList(),
+            listOf(call("browse_submit", "{\"token\":\"0123456789abcdef\"}")))
+        assertTrue(batch is ActionTurnRunner.Batch.NeedsApproval)
+        batch as ActionTurnRunner.Batch.NeedsApproval
+        assertEquals(listOf(request), batch.proposed)
+        assertNull(batch.accepted)
+    }
+
 }

@@ -5,6 +5,11 @@ import android.os.Handler
 import android.os.Looper
 import com.battlesbudz.jarvis.v2.actions.ActionTurnPlan
 import com.battlesbudz.jarvis.v2.actions.AndroidMobileActionExecutor
+import com.battlesbudz.jarvis.v2.actions.ExternalActionExecutor
+import com.battlesbudz.jarvis.v2.actions.ExternalAgentAccess
+import com.battlesbudz.jarvis.v2.actions.ExternalAgentGrant
+import com.battlesbudz.jarvis.v2.actions.ExternalAgentProvider
+import com.battlesbudz.jarvis.v2.actions.ToolTaskLedger
 import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngine
 import com.battlesbudz.jarvis.v2.ai.ModelStore
 import com.battlesbudz.jarvis.v2.ai.ReferenceGroundingClient
@@ -30,7 +35,11 @@ import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkInput
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarks
 import com.battlesbudz.jarvis.v2.diagnostics.ReplyCaptureBenchmark
 import com.battlesbudz.jarvis.v2.memory.AndroidMemoryOs
+import com.battlesbudz.jarvis.v2.memory.AutoMemorySource
+import com.battlesbudz.jarvis.v2.memory.CandidateInput
 import com.battlesbudz.jarvis.v2.memory.ConversationMemory
+import com.battlesbudz.jarvis.v2.memory.HeuristicMemoryEvaluator
+import com.battlesbudz.jarvis.v2.memory.NoCancel
 import com.battlesbudz.jarvis.v2.memory.ConversationMemorySource
 import com.battlesbudz.jarvis.v2.memory.MemoryTurnContext
 import com.battlesbudz.jarvis.v2.presentation.AgentActivityMonitor
@@ -60,6 +69,7 @@ import com.battlesbudz.jarvis.v2.runtime.turn.VoiceTurnRecognition
 import com.battlesbudz.jarvis.v2.runtime.turn.VoiceTurnRequest
 import com.battlesbudz.jarvis.v2.runtime.turn.VoiceTurnRunner
 import com.battlesbudz.jarvis.v2.runtime.turn.VoiceTypedInputOwnership
+import com.battlesbudz.jarvis.v2.vision.VisionServerSettings
 import com.battlesbudz.jarvis.v2.voice.AudioTurnCapture
 import com.battlesbudz.jarvis.v2.voice.PiperVoiceOutput
 import com.battlesbudz.jarvis.v2.voice.SharedPreferencesVoiceCallStore
@@ -69,6 +79,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -131,6 +142,7 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         }
     }
     internal val referenceGrounding = ReferenceGroundingClient(
+        isPrivate = { conversationHistory.isCurrentPrivate() },
         onReadStarted = { publicActivity ->
             val lease = agentActivityMonitor.beginTurnReferences(conversationHistory.current.value.id, publicActivity)
             val finish: () -> Unit = { lease.close() }
@@ -193,6 +205,15 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     private val phoneActionStore by lazy {
         com.battlesbudz.jarvis.v2.actions.FileToolTaskStore(java.io.File(noBackupFilesDir, "phone-action-attempts.json"))
     }
+    /**
+     * M4: the shared browser runtime path — session owner, WebView bridge,
+     * and the browse dispatch decorator. The model-visible browse tools open
+     * exactly when this runtime is installed in the production executor
+     * factories below (see [com.battlesbudz.jarvis.v2.actions.MobileToolCatalog.BrowserRuntimeGate]).
+     */
+    private val browserRuntime by lazy {
+        com.battlesbudz.jarvis.v2.actions.BrowserRuntime(this, diagnosticRecorder::recordImportant)
+    }
     private val phoneTaskCoordinator by lazy {
         PhoneTaskCoordinator(
             scope = runtimeScope,
@@ -202,17 +223,62 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             },
             isDeviceLocked = { getSystemService(android.app.KeyguardManager::class.java)?.isDeviceLocked == true },
             createExecutor = {
-                AndroidMobileActionExecutor(this, canLaunchDirectly = { activityVisible },
-                    onDiagnostic = diagnosticRecorder::recordImportant)
+                browserRuntime.decorate(AndroidMobileActionExecutor(this, canLaunchDirectly = { activityVisible },
+                    onDiagnostic = diagnosticRecorder::recordImportant))
             },
             conversationExists = { id -> conversationHistory.list().any { it.id == id } },
             projectReply = { conversationId, replyId, text, receipts ->
                 conversationHistory.updateReply(conversationId, replyId, text, true, receipts)
             },
             silentWork = silentWork,
-            recordDiagnostic = diagnosticRecorder::recordImportant)
+            recordDiagnostic = diagnosticRecorder::recordImportant,
+            browserSession = browserRuntime.session,
+            isPrivate = { conversationHistory.isCurrentPrivate() })
     }
     internal val phoneTasks get() = phoneTaskCoordinator.tasks
+
+    /**
+     * M7: external-agent access boundary. Shares the task journal with phone
+     * tasks (same store) so grants and receipts live in one durable place.
+     * Initialized once; the exported [ExternalAgentService] reads it via
+     * [ExternalAgentProvider].
+     */
+    private val externalAgentAccess: ExternalAgentAccess by lazy {
+        val ledger = ToolTaskLedger(phoneActionStore)
+        val nativeExecutor = AndroidMobileActionExecutor(this, canLaunchDirectly = { activityVisible },
+            onDiagnostic = diagnosticRecorder::recordImportant)
+        val executor = ExternalActionExecutor { action -> nativeExecutor.execute(action) }
+        ExternalAgentAccess(ledger, executor).also {
+            ExternalAgentProvider.init(ledger, executor)
+        }
+    }
+
+    /** M7: current external-agent grants, for the Settings UI. */
+    internal fun externalAgentGrants(): List<ExternalAgentGrant> =
+        try { externalAgentAccess.grants() } catch (_: Exception) { emptyList() }
+
+    private val externalAgentGrantsFlow =
+        kotlinx.coroutines.flow.MutableStateFlow<List<ExternalAgentGrant>>(emptyList())
+
+    /** M7: observable grants for the Settings UI; refresh on open. */
+    internal val externalAgentGrantsState: kotlinx.coroutines.flow.StateFlow<List<ExternalAgentGrant>>
+        get() = externalAgentGrantsFlow
+
+    internal fun refreshExternalAgentGrants() {
+        externalAgentGrantsFlow.value = externalAgentGrants()
+    }
+
+    /** M7: authorize a caller; returns the grant or throws with a user-safe message. */
+    internal fun authorizeExternalAgent(callerId: String, displayName: String, functions: Set<String>): ExternalAgentGrant =
+        externalAgentAccess.authorizeCaller(callerId, displayName, functions).also { refreshExternalAgentGrants() }
+
+    /** M7: revoke a caller; true if a grant was actually revoked. */
+    internal fun revokeExternalAgent(callerId: String): Boolean =
+        externalAgentAccess.revokeCaller(callerId).also { if (it) refreshExternalAgentGrants() }
+
+    /** M7: enable/disable a caller without revoking. */
+    internal fun setExternalAgentEnabled(callerId: String, enabled: Boolean): Boolean =
+        externalAgentAccess.setCallerEnabled(callerId, enabled).also { if (it) refreshExternalAgentGrants() }
     internal val phoneTaskError get() = phoneTaskCoordinator.error
     internal fun admitPhoneTask(plan: ActionTurnPlan.Ready, conversationId: String): String? =
         phoneTaskCoordinator.admitPhoneTask(plan, conversationId)
@@ -235,6 +301,13 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     internal fun parkScreenTaskForApproval(request: com.battlesbudz.jarvis.v2.actions.ActionRequest):
         com.battlesbudz.jarvis.v2.actions.ExecutionResult =
         phoneTaskCoordinator.parkScreenTaskForApproval(request, conversationHistory.current.value.id)
+    /**
+     * M4: a model-proposed browse_submit never auto-dispatches (D11). Park
+     * it in the ledger awaiting the user's explicit approval.
+     */
+    internal fun parkBrowseSubmitForApproval(request: com.battlesbudz.jarvis.v2.actions.ActionRequest,
+        conversationId: String): com.battlesbudz.jarvis.v2.actions.ExecutionResult =
+        phoneTaskCoordinator.parkBrowseSubmitForApproval(request, conversationId)
     // -- M2 reusable workflows / M3 ecosystem providers / reminders --------
     private val workflowCoordinator by lazy {
         WorkflowCoordinator(
@@ -246,7 +319,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             reportError = { message -> mainHandler.post { phoneTaskCoordinator.reportError(message) }; Unit },
             // Workflow dispatch runs off Main. Snapshot its already-durable boundaries on
             // the existing presentation dispatcher; observation never resumes a task.
-            onJournalChanged = { mainHandler.post { phoneTaskCoordinator.refreshPhoneTasks() }; Unit })
+            onJournalChanged = { mainHandler.post { phoneTaskCoordinator.refreshPhoneTasks() }; Unit },
+            browserRuntime = browserRuntime)
     }
     /** Settings projection: saved workflows plus connected tools. Chat stays the operating surface. */
     internal val workflowSettings get() = workflowCoordinator.workflowSettings
@@ -311,7 +385,15 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         get() = voiceCallState.output
         set(value) { voiceCallState.output = value }
     init {
+        // M4: the browser runtime gate opens exactly when the production
+        // runtime path (decorator + session owner + approval UI) is installed
+        // — this class installs all three below. The flip lives here, not in
+        // the browserRuntime lazy: LiteRT schema generation via
+        // MobileToolCatalog.all() may run before first browser use.
+        com.battlesbudz.jarvis.v2.actions.MobileToolCatalog.BrowserRuntimeGate.wired = true
         modelStore = ModelStore(applicationContext)
+        // M6: automatic memory is always on; start the background evaluation loop.
+        startAutoMemoryEvaluation()
         sessionPreferences = getSharedPreferences("chat_session", MODE_PRIVATE)
         nativeMemoryStateToken = sessionPreferences.getString("approved_memory_context_token", null)
         voiceCallStore = com.battlesbudz.jarvis.v2.voice.CoalescingVoiceCallStore(
@@ -499,6 +581,23 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         return null
     }
 
+    /**
+     * Start a private (incognito) conversation. Nothing from this thread is
+     * persisted: no history file, no M6 capture, no memory writes. Approved
+     * memories remain readable — only writes are blocked.
+     */
+    fun newPrivateConversation(): String? {
+        if (chatBusy.value || voiceSessionArmed || voiceTurnJob?.isCompleted == false ||
+            acceptedVoiceActions.hasUnfinished() || ConversationWork.activeJobs.get() != 0 || modelStore.isModelOperationActive())
+            return "Finish the current response or voice session first."
+        conversationHistory.newPrivateConversation()
+        shortTermContext.clear()
+        turnOrchestrator.reset()
+        nativeConversationHasContext = false
+        sessionPreferences.edit().remove(ConversationPolicy.SHORT_TERM_SUMMARY_KEY).apply()
+        return null
+    }
+
     fun selectConversation(id: String? = null): String? {
         if (chatBusy.value || voiceSessionArmed || voiceTurnJob?.isCompleted == false ||
             acceptedVoiceActions.hasUnfinished() || ConversationWork.activeJobs.get() != 0 || modelStore.isModelOperationActive())
@@ -509,6 +608,19 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         nativeConversationHasContext = false
         sessionPreferences.edit().remove(ConversationPolicy.SHORT_TERM_SUMMARY_KEY).apply()
         return null
+    }
+
+    /**
+     * Delete a conversation thread. Blocked while a turn is in flight so a
+     * delete can never race an in-progress write. Returns an error message,
+     * or null on success.
+     */
+    fun deleteConversation(id: String): String? {
+        if (chatBusy.value || voiceSessionArmed || voiceTurnJob?.isCompleted == false ||
+            acceptedVoiceActions.hasUnfinished() || ConversationWork.activeJobs.get() != 0 || modelStore.isModelOperationActive())
+            return "Finish the current response or voice session first."
+        return if (conversationHistory.deleteConversation(id)) null
+        else "That conversation is already gone."
     }
 
     private val runtimeVoiceResources by lazy {
@@ -529,8 +641,11 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     internal fun isMemoryTurnCurrent(context: MemoryTurnContext): Boolean = memoryCoordinator.isMemoryTurnCurrent(context)
     internal fun consumeMemoryHistoryCutoff(): Boolean = memoryCoordinator.consumeMemoryHistoryCutoff()
     private fun captureFinalMemory(eventId: String, conversationId: String, callId: String?,
-                                   source: ConversationMemorySource, text: String, capturedAtMs: Long): Boolean =
-        memoryCoordinator.captureFinalMemory(eventId, conversationId, callId, source, text, capturedAtMs)
+                                   source: ConversationMemorySource, text: String, capturedAtMs: Long): Boolean {
+        // Private mode: memory reads stay on, but nothing is ever written.
+        if (conversationHistory.isCurrentPrivate()) return false
+        return memoryCoordinator.captureFinalMemory(eventId, conversationId, callId, source, text, capturedAtMs)
+    }
     internal fun takeMemoryCaptureReceipt(text: String): com.battlesbudz.jarvis.v2.memory.ConversationMemoryResult? =
         memoryCoordinator.takeMemoryCaptureReceipt(text)
 
@@ -603,6 +718,7 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         val references = object : ConversationReferences {
             override suspend fun fetch(query: String) = referenceGrounding.fetchIfRequested(query)?.context
             override fun isInsufficientAnswer(answer: String) = referenceGrounding.isInsufficientAnswer(answer)
+            override fun isPrivateLookupBlocked() = conversationHistory.isCurrentPrivate()
         }
         val history = { conversationHistory.contextAfterMemoryCutoff() }
         ConversationCoordinator(runtimeScope, { mainHandler.post(it) }, { conversationHistory.current.value.id }, models,
@@ -614,19 +730,24 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
                     primary = { contentResolver.openInputStream(uri) },
                     fallback = { contentResolver.openAssetFileDescriptor(uri, "r")?.createInputStream() })
             }, diagnostics,
+                appAssets = applicationContext.assets,
+                visionServerConfig = { VisionServerSettings.snapshot(applicationContext) },
                 // M1d: model-proposed screen mutations never auto-dispatch
-                // (D23); park them for the user's explicit approval.
+                // (D23); M4: model-proposed browse_submit never auto-dispatches
+                // (D11). Park them for the user's explicit approval.
                 onNeedsApproval = { request ->
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        parkScreenTaskForApproval(request)
+                        val conversationId = conversationHistory.current.value.id
+                        if (request.name == "browse_submit") parkBrowseSubmitForApproval(request, conversationId)
+                        else parkScreenTaskForApproval(request)
                     }
                 }),
             ConversationRecovery(models::reset, references, factualityVerifier, turnOrchestrator::automaticFallbackQuery, diagnostics),
             promptBuilder, { prompt, entries -> actionIntentRouter.classifyActionIntent(prompt, entries) != null },
             turnOrchestrator::recordResponse,
             createActions = { id, onResult -> ConversationActions(
-                executor = { AndroidMobileActionExecutor(this, canLaunchDirectly = { activityVisible },
-                    onDiagnostic = diagnosticRecorder::recordImportant) },
+                executor = { browserRuntime.decorate(AndroidMobileActionExecutor(this, canLaunchDirectly = { activityVisible },
+                    onDiagnostic = diagnosticRecorder::recordImportant)) },
                 admit = ::admitPhoneTask, execute = ::executePhoneAction, cancelUnfinished = ::cancelPhoneTask,
                 conversationId = id, onActionResult = onResult) },
             createBenchmark = { id, channel -> pipelineBenchmarks.create(id, channel) },
@@ -727,11 +848,66 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         onMemoryBound: (com.battlesbudz.jarvis.v2.memory.MemoryDeliveryFence.Ticket, MemoryTurnContext) -> Unit = { _, _ -> },
         benchmarkCapture: com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkCapture? = null
     ): Job? {
+        // M6: automatic memory capture, fire-and-forget. Comparison trials are
+        // not real user turns and are never captured.
+        val autoMemoryOnComplete: (String) -> Unit = { answer ->
+            try {
+                onComplete(answer)
+            } finally {
+                if (comparison == null && !conversationHistory.isCurrentPrivate()) {
+                    val source = if (voiceAudio != null || incrementalVoice != null) AutoMemorySource.VOICE else AutoMemorySource.CHAT
+                    val captureText = if (answer.isNotBlank()) "$prompt\n$answer" else prompt
+                    runtimeScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        try {
+                            AndroidMemoryOs.automaticMemory(this@JarvisRuntime).capture(
+                                CandidateInput(
+                                    eventId = "turn-${System.currentTimeMillis()}-${prompt.hashCode()}",
+                                    source = source,
+                                    text = captureText,
+                                    capturedAtMs = System.currentTimeMillis(),
+                                )
+                            )
+                        } catch (_: Exception) {
+                            // Auto-memory must never break a turn.
+                        }
+                    }
+                }
+            }
+        }
         return startConversation(
             ConversationInvocation(prompt, history, imageUri, incrementalVoice, voiceAudio, voiceAudioIsComplete,
                 directVoiceAudio, replyIdentity, conversationIdentity, callIdentity, comparison, audioUri,
                 frozenActionPlan, frozenVoiceFinal, callOwned, benchmarkCapture),
-            ConversationCallbacks(onToken, onComplete, onLatency, onLiveInference, onActionResult, onPhonePlanFinished, onMemoryBound))
+            ConversationCallbacks(onToken, autoMemoryOnComplete, onLatency, onLiveInference, onActionResult, onPhonePlanFinished, onMemoryBound))
+    }
+
+    /**
+     * M6: background automatic-memory evaluation. Runs on a 15-minute loop;
+     * each pass only evaluates while Jarvis is idle (no model op, no active
+     * work) and [AutomaticMemory.evaluatePending] stops the moment that
+     * changes. The queue is file-backed, so a drain on startup picks up
+     * anything queued before a process restart.
+     */
+    private fun startAutoMemoryEvaluation() {
+        runtimeScope.launch {
+            runAutoMemoryEvaluationPass()
+            while (isActive) {
+                kotlinx.coroutines.delay(15 * 60 * 1000L)
+                runAutoMemoryEvaluationPass()
+            }
+        }
+    }
+
+    private fun runAutoMemoryEvaluationPass() {
+        try {
+            AndroidMemoryOs.automaticMemory(this).evaluatePending(
+                HeuristicMemoryEvaluator(),
+                isIdle = { !modelStore.isModelOperationActive() && ConversationWork.activeJobs.get() == 0 },
+                cancel = NoCancel,
+            )
+        } catch (_: Exception) {
+            // Background memory work must never crash the runtime.
+        }
     }
 
     private fun startConversation(input: ConversationInvocation, callbacks: ConversationCallbacks): Job? =

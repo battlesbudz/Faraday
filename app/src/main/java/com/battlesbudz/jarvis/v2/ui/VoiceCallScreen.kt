@@ -162,6 +162,7 @@ internal fun VoiceCallScreen(
     onWorkflowSetEnabled: (String, Boolean) -> Unit = { _, _ -> },
     // M3 guided MCP setup (D07): custom server URL from the settings dialog.
     onConnectMcpServer: (String, String, String, (String) -> Unit) -> Unit = { _, _, _, done -> done("MCP setup is unavailable right now.") },
+    // M7 external agents (D06): grant list with authorize/revoke/enable.
     callEvidenceActions: CallEvidenceActions,
 ) {
     val runtime = com.battlesbudz.jarvis.v2.voice.VoiceSessionUi
@@ -318,6 +319,7 @@ internal fun VoiceCallScreen(
         Text("Voice: Piper Northern English", style = MaterialTheme.typography.bodyMedium)
         val assistantContext = androidx.compose.ui.platform.LocalContext.current
         VoiceInputSettings(enabled = !chatSending && !runtimeArmed && !turnInFlight && !inputTesting, onBusy = { inputTesting = it })
+        VisionServerSettingsSection(enabled = !chatSending && !runtimeArmed && !turnInFlight && !inputTesting)
         var assistantSettingsMessage by remember { mutableStateOf(
             if (assistantContext.getSystemService(android.app.role.RoleManager::class.java)
                 .isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT)) "Jarvis is your default assistant."

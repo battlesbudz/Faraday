@@ -4,4 +4,5 @@
     android:accessibilityFlags="flagRetrieveInteractiveWindows|flagReportViewIds"
     android:notificationTimeout="50"
     android:canRetrieveWindowContent="true"
+    android:canTakeScreenshot="true"
     android:description="@string/screen_control_description" />

@@ -28,12 +28,47 @@ internal class ConversationInput(
     private var speculativeResultUsed = false
     val nativeConversationContainsTurn: Boolean get() = !speculativeResultUsed && (textInput == null || incrementalFallbackUsed)
 
+    /**
+     * Attempts the speculative promotion on its own, without any ordinary
+     * generation. Promote drains the speculative owner (join + rollback) and
+     * is the only promotion boundary, so callers that must apply a native
+     * mutation afterwards (e.g. a tool-policy transition) run it first and
+     * mutate only once it returns. Returns null when there is no promotable
+     * speculation; the caller then runs [generateFallback] with the full
+     * ordinary input. Never call [generate] after a null return here: promote
+     * may be consumed only once.
+     *
+     * Speculative drafts are tool-free by construction (the coordinator
+     * rejects any draft that proposes tool calls), so [ordinaryReplyAccepted]
+     * must be true only when this turn will NOT run a tools-enabled
+     * authoritative pass afterwards. A direct-audio action turn must never
+     * promote: promotion would publish prose and skip the one pass that can
+     * emit the tool calls the action needs. When false, promote drains the
+     * speculative owner and returns null so the caller runs that pass.
+     */
+    suspend fun tryPromote(prompt: String, onToken: (String) -> Unit,
+                           ordinaryReplyAccepted: Boolean = true): GenerationResult? {
+        if (!directAudio) return null
+        val prepared = nativeSpeculation?.promote(prompt, ordinaryReplyAccepted = ordinaryReplyAccepted, onToken = onToken)
+        if (prepared != null) speculativeResultUsed = true
+        return prepared
+    }
+
     suspend fun generate(engine: ConversationBackend, prompt: String, onToken: (String) -> Unit,
+                         onIncrementalFallback: (Throwable) -> Unit,
+                         ordinaryReplyAccepted: Boolean = true): GenerationResult =
+        tryPromote(prompt, onToken, ordinaryReplyAccepted) ?: generateFallback(engine, prompt, onToken, onIncrementalFallback)
+
+    /**
+     * Ordinary generation without a promotion attempt. Use after [tryPromote]
+     * returned null (speculation already drained) or when no speculation
+     * exists. The direct-audio branch uses the full ordinary audio input,
+     * never a spent prefill.
+     */
+    suspend fun generateFallback(engine: ConversationBackend, prompt: String, onToken: (String) -> Unit,
                          onIncrementalFallback: (Throwable) -> Unit): GenerationResult = when {
         directAudio -> {
-            val prepared = nativeSpeculation?.promote(prompt, ordinaryReplyAccepted = true, onToken = onToken)
-            if (prepared != null) { speculativeResultUsed = true; prepared }
-            else if (sealedVoiceAudio != null) engine.generateSealedAudio(prompt, sealedVoiceAudio, onToken)
+            if (sealedVoiceAudio != null) engine.generateSealedAudio(prompt, sealedVoiceAudio, onToken)
             else engine.generateAudio(prompt, requireNotNull(voiceAudio), onToken)
         }
         textInput != null -> {

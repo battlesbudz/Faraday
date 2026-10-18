@@ -151,6 +151,13 @@ class FileToolTaskStore(
                     else root.getJSONArray("sourceAccess").objects { s -> ToolSourceAccessRecord(
                     s.getString("family"), s.getJSONArray("scopes").strings().toSet(),
                     SourceAccessState.valueOf(s.getString("state")), s.strictLong("updatedAtMs")) },
+                // M7: optional field, like sourceAccess — older journals
+                // simply have no external-agent grants.
+                externalAgentGrants = if (!root.has("externalAgentGrants")) emptyList()
+                    else root.getJSONArray("externalAgentGrants").objects { g -> ExternalAgentGrant(
+                    g.getString("id"), g.getString("callerId"), g.getString("displayName"),
+                    g.getJSONArray("allowedFunctions").strings().toSet(),
+                    g.strictLong("authorizedAtMs"), g.getBoolean("enabled"), g.getBoolean("revoked")) },
                 workflows = if (version < 3) emptyList()
                     else root.getJSONArray("workflows").objects { it.workflowDefinition() },
                 occurrences = if (version < 3) emptyList()
@@ -234,6 +241,9 @@ class FileToolTaskStore(
         return j.copy(attempts = kept, groups = j.groups.filter { it.attemptIds.any { id -> id !in drop } },
             approvals = approvals, grants = j.grants.filterNot { it.id in removableGrants },
             events = j.events.filterNot { it.attemptId in drop }.takeLast(MAX_EVENTS),
+            // M7: keep caller authorizations referenced by kept attempts,
+            // plus every live one; revoked-and-unreferenced grants are pruned.
+            externalAgentGrants = j.externalAgentGrants.filter { it.id in grantIds || !it.revoked },
             activeQuestionId = j.activeQuestionId?.takeIf { id -> approvals.any { it.id == id && !it.consumed } })
     }
 
@@ -248,7 +258,9 @@ class FileToolTaskStore(
             a.request.validateRequest()
             require(a.result == null || a.result.length <= 2048)
             require(a.groupId == null || j.groups.any { it.id == a.groupId && a.id in it.attemptIds })
-            require(a.grantId == null || j.grants.any { it.id == a.grantId })
+            require(a.grantId == null || j.grants.any { it.id == a.grantId } ||
+                // M7: external-agent attempts reference their authorizing caller grant.
+                j.externalAgentGrants.any { it.id == a.grantId })
             require(a.approvalId == null || j.approvals.any { it.id == a.approvalId })
         }
         j.groups.forEach { g ->
@@ -272,6 +284,19 @@ class FileToolTaskStore(
         j.events.forEach { e -> require(e.attemptId.isUuid() && e.generation >= 0 && e.atMs >= 0) }
         require(j.sourceAccess.size <= MAX_SOURCE_ACCESS &&
             j.sourceAccess.map { it.family }.toSet().size == j.sourceAccess.size)
+        // M7 external-agent grants (D06, T24): one authorization per
+        // caller, covering only the fixed exposed function set. A persisted
+        // grant can never exceed EXPOSED — the static cap is enforced here,
+        // so a hand-edited journal cannot broaden a caller's access.
+        require(j.externalAgentGrants.size <= MAX_EXTERNAL_AGENT_GRANTS &&
+            j.externalAgentGrants.map { it.callerId }.toSet().size == j.externalAgentGrants.size)
+        j.externalAgentGrants.forEach { g ->
+            require(g.id.isUuid() && ExternalAgentFunctions.isValidCallerId(g.callerId))
+            require(g.displayName.isNotBlank() && g.displayName.length <= 128)
+            require(g.authorizedAtMs >= 0)
+            require(g.allowedFunctions.isNotEmpty() &&
+                g.allowedFunctions.all { ExternalAgentFunctions.isExposed(it) })
+        }
         j.sourceAccess.forEach { s ->
             require(s.family.isNotBlank() && s.family.length <= 64 && s.updatedAtMs >= 0)
             require(s.scopes.size <= 16 && s.scopes.all { it.length <= 64 })
@@ -337,6 +362,13 @@ class FileToolTaskStore(
             .put("kind", e.kind.name).put("atMs", e.atMs) }))
         .put("sourceAccess", JSONArray(j.sourceAccess.map { s -> JSONObject().put("family", s.family)
             .put("scopes", JSONArray(s.scopes.toList())).put("state", s.state.name).put("updatedAtMs", s.updatedAtMs) }))
+        // M7: external-agent caller authorizations; an older journal simply
+        // has none, and an older reader fails closed on a journal that has
+        // them (verifyLosslessRead), preserving the bytes.
+        .put("externalAgentGrants", JSONArray(j.externalAgentGrants.map { g -> JSONObject().put("id", g.id)
+            .put("callerId", g.callerId).put("displayName", g.displayName)
+            .put("allowedFunctions", JSONArray(g.allowedFunctions.toList()))
+            .put("authorizedAtMs", g.authorizedAtMs).put("enabled", g.enabled).put("revoked", g.revoked) }))
         .put("workflows", JSONArray(j.workflows.map { it.json() }))
         .put("occurrences", JSONArray(j.occurrences.map { o -> JSONObject().put("id", o.id)
             .put("workflowId", o.workflowId).put("definitionVersion", o.definitionVersion)
@@ -557,6 +589,8 @@ class FileToolTaskStore(
         const val MAX_GRANTS = 128
         const val MAX_EVENTS = 256
         const val MAX_SOURCE_ACCESS = 64
+        /** M7 external-agent caller authorization storage budget. */
+        const val MAX_EXTERNAL_AGENT_GRANTS = 64
         const val RETAIN_RECEIPTS = 256
         /** M2 workflow storage budgets. */
         const val MAX_WORKFLOWS = 64

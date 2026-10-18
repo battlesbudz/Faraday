@@ -35,6 +35,8 @@ fun JarvisApp(
     callState: kotlinx.coroutines.flow.StateFlow<com.battlesbudz.jarvis.v2.voice.VoiceSessionState>,
     onSendChat: (String, com.battlesbudz.jarvis.v2.chat.ChatAttachment?) -> String?,
     onSelectConversation: (String?) -> String?,
+    onDeleteConversation: (String) -> String? = { "Delete is unavailable right now." },
+    onNewPrivateConversation: () -> String? = { "Private chat is unavailable right now." },
     onSelectModel: (com.battlesbudz.jarvis.v2.ai.LocalModelSpec) -> String?,
     onDeleteModel: (com.battlesbudz.jarvis.v2.ai.LocalModelSpec) -> String?,
     voicePlayback: kotlinx.coroutines.flow.StateFlow<com.battlesbudz.jarvis.v2.voice.VoicePlaybackFrame>,
@@ -107,6 +109,12 @@ fun JarvisApp(
                 }) {
                     if (setup.modelsReady && setup.smokeTestPassed) {
                         Box(Modifier.fillMaxSize()) {
+                            Box(
+                                Modifier.fillMaxWidth()
+                                    .align(androidx.compose.ui.Alignment.TopCenter)
+                            ) {
+                                AssistantStatusBanner()
+                            }
                             Box(Modifier.fillMaxSize().then(if (showingMemory) Modifier.clearAndSetSemantics { } else Modifier)) {
                                 when {
                                     selectedVoiceCall != null -> {
@@ -146,7 +154,10 @@ fun JarvisApp(
                                         history = conversationHistory, busy = chatBusy, callState = callState, onSend = onSendChat,
                                         phoneTasks = phoneTasks, phoneTaskError = phoneTaskError, onPhoneTaskAction = onPhoneTaskAction,
                                         selectedModel = setup.selectedModel,
-                                        onSelectConversation = onSelectConversation, onEndVoice = onEndVoiceCall,
+                                        onSelectConversation = onSelectConversation,
+                                        onDeleteConversation = onDeleteConversation,
+                                        onNewPrivateConversation = onNewPrivateConversation,
+                                        onEndVoice = onEndVoiceCall,
                                         onOpenVoiceCalls = {
                                             voiceCalls = onRefreshVoiceCalls()
                                             showingVoiceCalls = true

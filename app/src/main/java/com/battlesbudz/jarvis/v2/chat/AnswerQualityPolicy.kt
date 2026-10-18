@@ -14,6 +14,21 @@ object AnswerQualityPolicy {
         if (TurnContinuity.isCorrection(prompt) && lower.trim() in setOf("i see.", "understood.", "i apologize.")) return "empty_correction"
         return null
     }
+    /**
+     * Detects claims that a phone action was performed when no tool was
+     * executed. The model must never say it did something (posted, sent,
+     * changed, opened, played, scheduled, ...) unless a verified tool result
+     * was included in the prompt. This catches the "I have watered your
+     * notifications" class of hallucination.
+     */
+    fun claimsUnauthenticatedAction(candidate: String): Boolean {
+        val lower = candidate.lowercase()
+        if (Regex("""(?i)\bi('ve| have) (?:watered|posted|sent|set|changed|opened|played|paused|created|scheduled|deleted|turned|adjusted|checked)\b""").containsMatchIn(lower)) return true
+        if (Regex("""(?i)\bthis action has been (?:executed|completed) successfully\b""").containsMatchIn(lower)) return true
+        if (Regex("""(?i)\b(?:has been|have been) (?:executed|completed)\b""").containsMatchIn(lower)) return true
+        return false
+    }
+
     fun repairInstruction(reason: String): String =
         "Draft rejected ($reason). Answer the CURRENT request using the quoted conversation and relevant evidence. " +
             "Do not restate the request, repeat a generic explanation, defend a disputed claim, or invent details. " +
