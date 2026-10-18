@@ -3,6 +3,9 @@ package com.battlesbudz.jarvis.v2.ui
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,9 +26,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import com.battlesbudz.jarvis.v2.assistant.JarvisInteractionService
 
@@ -122,6 +128,51 @@ fun AssistantStatusBannerCard(
                     Text("Dismiss")
                 }
             }
+        }
+    }
+}
+
+/**
+ * The production popup arrangement for the assistant-status banner. JarvisApp
+ * renders its content through this layer, and the readability tests mount this
+ * same composable, so a regression in the ordering, tap handling, or semantics
+ * wiring fails the tests instead of shipping silently.
+ *
+ * The content is composed first and the banner overlay second, so the popup
+ * always draws on top. The overlay carries a no-op clickable: a popup must
+ * consume taps, otherwise they fall through to the covered controls
+ * underneath. While the popup shows, the obscured content is hidden from
+ * accessibility services (the same modal idiom used for showingMemory).
+ */
+@Composable
+fun AssistantBannerPopupLayer(
+    bannerVisible: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+    banner: @Composable () -> Unit,
+) {
+    Box(modifier.fillMaxSize()) {
+        Box(
+            Modifier.fillMaxSize()
+                .then(if (bannerVisible) Modifier.clearAndSetSemantics { } else Modifier)
+                .testTag("banner_popup_content")
+        ) {
+            content()
+        }
+        // Popup banner, drawn after the content so it renders on top.
+        // The card background is fully opaque, so no button or text
+        // underneath shows through: it looks and behaves like a popup.
+        Box(
+            Modifier.fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = { /* consume: taps must never reach covered controls */ }
+                )
+                .testTag("banner_popup_overlay")
+        ) {
+            banner()
         }
     }
 }

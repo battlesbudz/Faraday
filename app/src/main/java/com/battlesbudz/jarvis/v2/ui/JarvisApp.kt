@@ -21,7 +21,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import com.battlesbudz.jarvis.v2.ai.ModelCatalog
 import com.battlesbudz.jarvis.v2.ai.ModelStore
 import com.battlesbudz.jarvis.v2.memory.AndroidMemoryOs
@@ -109,8 +108,9 @@ fun JarvisApp(
                         })
                 }) {
                     if (setup.modelsReady && setup.smokeTestPassed) {
-                        Box(Modifier.fillMaxSize()) {
-                            Box(Modifier.fillMaxSize().then(if (showingMemory || bannerVisible) Modifier.clearAndSetSemantics { } else Modifier)) {
+                        AssistantBannerPopupLayer(
+                            bannerVisible = showingMemory || bannerVisible,
+                            content = {
                                 when {
                                     selectedVoiceCall != null -> {
                                         val selected = requireNotNull(selectedVoiceCall)
@@ -184,20 +184,15 @@ fun JarvisApp(
                                         )
                                     }
                                 }
-                            }
-                            // Popup banner, drawn after the content so it renders on top.
-                            // The card background is fully opaque, so no button or text
-                            // underneath shows through: it looks and behaves like a popup.
-                            Box(
-                                Modifier.fillMaxWidth()
-                                    .align(androidx.compose.ui.Alignment.TopCenter)
-                            ) {
+                            },
+                            banner = {
                                 AssistantStatusBanner(
                                     onVisibilityChanged = { bannerVisible = it }
                                 )
                             }
-                            // Keep the conversation and voice controller composed beneath this review surface.
-                            if (showingMemory) MemoryScreen(
+                        )
+                        // Keep the conversation and voice controller composed beneath this review surface.
+                        if (showingMemory) MemoryScreen(
                                 memoryOs = memoryOs,
                                 onBack = { showingMemory = false },
                                 callActive = activeVoiceCall,
@@ -206,7 +201,6 @@ fun JarvisApp(
                                 onOpenChat = { memoryReturnToVoice = false; memoryReturnToChat = true; showingMemory = false },
                                 onOpenVoice = { memoryReturnToChat = false; memoryReturnToVoice = true; showingMemory = false },
                             )
-                        }
                     } else if (showingMemory) {
                         MemoryScreen(
                             memoryOs = memoryOs,

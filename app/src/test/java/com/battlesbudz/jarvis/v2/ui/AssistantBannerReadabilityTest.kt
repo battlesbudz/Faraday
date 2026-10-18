@@ -1,11 +1,13 @@
 package com.battlesbudz.jarvis.v2.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
@@ -18,11 +20,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.SemanticsMatcher
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodes
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -259,5 +265,100 @@ class AssistantBannerReadabilityTest {
         compose.waitForIdle()
         val ratio = wcagContrastRatio(content, container)
         assertTrue("Banner text contrast $ratio must meet WCAG AA 4.5", ratio >= 4.5)
+    }
+
+    // ---- production arrangement tests ----
+    //
+    // These mount the REAL AssistantBannerPopupLayer that JarvisApp renders
+    // through (not a local harness copy). If production ever moves the banner
+    // before the content, drops the tap-consuming overlay, or breaks the
+    // obscured-content semantics wiring, these fail.
+
+    @Test fun productionLayer_bannerDrawsAboveContent() {
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                AssistantBannerPopupLayer(
+                    bannerVisible = true,
+                    content = { Box(Modifier.fillMaxSize().background(Color.Red)) },
+                    banner = { Box(Modifier.fillMaxWidth().height(120.dp).background(Color.Blue)) }
+                )
+            }
+        }
+        compose.waitForIdle()
+        val image = compose.onRoot().captureToImage()
+        // A pixel well inside the banner region: banner blue must win over
+        // content red. If the overlay order ever regresses, this pixel is red.
+        val pixel = image[image.width / 2, 40]
+        assertTrue(
+            "Banner must draw on top of content (expected blue, got $pixel)",
+            pixel.blue > 0.9f && pixel.red < 0.1f
+        )
+    }
+
+    @Test fun productionLayer_overlayConsumesTaps() {
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                AssistantBannerPopupLayer(
+                    bannerVisible = true,
+                    content = { FakeTabContent(Modifier.fillMaxSize()) },
+                    banner = { AssistantStatusBannerCard(onOpenSettings = {}, onDismiss = {}) }
+                )
+            }
+        }
+        compose.waitForIdle()
+        // The overlay carries a click action even though tapping it is a
+        // no-op: without it, taps fall through to the covered controls
+        // underneath (Memory, Settings, New).
+        compose.onNodeWithTag("banner_popup_overlay").assertHasClickAction()
+    }
+
+    @Test fun productionLayer_obscuredContentHiddenFromSemantics() {
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                AssistantBannerPopupLayer(
+                    bannerVisible = true,
+                    content = { FakeTabContent(Modifier.fillMaxSize()) },
+                    banner = { AssistantStatusBannerCard(onOpenSettings = {}, onDismiss = {}) }
+                )
+            }
+        }
+        compose.waitForIdle()
+        // clearAndSetSemantics collapses the covered subtree: tab texts must
+        // not be perceivable while the popup shows; banner text must be.
+        compose.onNodeWithText("JARVIS").assertDoesNotExist()
+        compose.onNodeWithText("Conversations").assertDoesNotExist()
+        compose.onNodeWithText("Open assistant settings").assertIsDisplayed()
+    }
+
+    @Test fun productionLayer_contentVisibleWhenBannerHidden() {
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                AssistantBannerPopupLayer(
+                    bannerVisible = false,
+                    content = { FakeTabContent(Modifier.fillMaxSize()) },
+                    banner = { AssistantStatusBannerCard(onOpenSettings = {}, onDismiss = {}) }
+                )
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("JARVIS").assertIsDisplayed()
+    }
+
+    @Test fun productionLayer_noTextOverlap() {
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                AssistantBannerPopupLayer(
+                    bannerVisible = true,
+                    content = { FakeTabContent(Modifier.fillMaxSize()) },
+                    banner = { AssistantStatusBannerCard(onOpenSettings = {}, onDismiss = {}) }
+                )
+            }
+        }
+        compose.waitForIdle()
+        val overlaps = findOverlappingTextBounds(displayedTextBounds())
+        assertTrue(
+            "The production popup must show no overlapping texts. Overlapping pairs: $overlaps",
+            overlaps.isEmpty()
+        )
     }
 }
