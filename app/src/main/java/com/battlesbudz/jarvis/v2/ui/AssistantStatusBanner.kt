@@ -35,13 +35,18 @@ import com.battlesbudz.jarvis.v2.assistant.JarvisInteractionService
  * button to open system assistant settings. Dismissal is persisted so it
  * only nags once per install.
  *
- * The banner must be placed in the layout flow (e.g. as the first child of a
- * Column), never as an overlay Box on top of the content: as the first child
- * of a Box it draws BEHIND the full-size content, so the screen's own text
- * renders on top of the banner and everything becomes unreadable.
+ * The banner is a popup overlay: it must be composed AFTER the content it
+ * covers so it draws on top, and its card background is fully opaque so no
+ * button or text underneath shows through.
+ *
+ * @param onVisibilityChanged reports whether the popup is currently visible,
+ * so the host can hide obscured content from accessibility services (a popup
+ * must behave like a popup).
  */
 @Composable
-fun AssistantStatusBanner() {
+fun AssistantStatusBanner(
+    onVisibilityChanged: (Boolean) -> Unit = {},
+) {
     val context = LocalContext.current
     var show by remember { mutableStateOf(false) }
 
@@ -51,6 +56,10 @@ fun AssistantStatusBanner() {
         if (!dismissed && !JarvisInteractionService.isSelected(context)) {
             show = true
         }
+    }
+
+    LaunchedEffect(show) {
+        onVisibilityChanged(show)
     }
 
     if (!show) return
