@@ -23,6 +23,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import com.battlesbudz.jarvis.v2.ai.*
+import com.battlesbudz.jarvis.v2.ai.storage.downloadProgressLabel
 import com.battlesbudz.jarvis.v2.diagnostics.AndroidPipelineBenchmarkStore
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkOutcome
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkTurn
@@ -43,6 +44,9 @@ internal fun ModelBrowser(
     onDismiss: () -> Unit,
     selectionEnabled: Boolean = true,
     downloadingId: String? = null,
+    downloadBytes: Long = 0L,
+    downloadTotalBytes: Long = -1L,
+    downloadSpeedBytesPerSec: Double = 0.0,
     onDownload: ((LocalModelSpec) -> Unit)? = null,
     reliabilityStore: ReliabilityReportStore = InMemoryReliabilityReportStore(),
     /** Identity of each spec's installed model file; scores only show for a matching fingerprint. */
@@ -166,8 +170,19 @@ internal fun ModelBrowser(
                                         Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                                     }
                                     if (!installed && !spec.requiresAccess && onDownload != null) {
+                                        val isDownloading = downloadingId == spec.id
                                         OutlinedButton(modifier = Modifier.fillMaxWidth().testTag("model_download_${spec.id}"), enabled = downloadingId == null, onClick = { onDownload(spec) }) {
-                                            Text(if (downloadingId == spec.id) "Downloading" else "Download")
+                                            Text(if (isDownloading) "Downloading…" else "Download")
+                                        }
+                                        if (isDownloading) {
+                                            Text(
+                                                downloadProgressLabel(downloadBytes, downloadTotalBytes, downloadSpeedBytesPerSec),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                modifier = Modifier.testTag("model_download_progress_${spec.id}")
+                                            )
+                                            if (downloadTotalBytes > 0L) LinearProgressIndicator(
+                                                progress = { (downloadBytes.toFloat() / downloadTotalBytes).coerceIn(0f, 1f) },
+                                                modifier = Modifier.fillMaxWidth())
                                         }
                                     }
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

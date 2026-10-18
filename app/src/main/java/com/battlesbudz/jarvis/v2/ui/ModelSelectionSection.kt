@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.testTag
 import com.battlesbudz.jarvis.v2.ai.LocalModelSpec
 import com.battlesbudz.jarvis.v2.ai.ModelCatalog
 import com.battlesbudz.jarvis.v2.ai.PhoneCheck
+import com.battlesbudz.jarvis.v2.ai.storage.downloadProgressLabel
 import com.battlesbudz.jarvis.v2.eval.AndroidReliabilityReportStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -68,6 +69,9 @@ internal fun ModelSelectionSection(
             benchmarkStore = benchmarkStore,
             selectionEnabled = canManage,
             downloadingId = state.downloadingModelId,
+            downloadBytes = state.downloadBytes,
+            downloadTotalBytes = state.downloadTotalBytes,
+            downloadSpeedBytesPerSec = state.downloadSpeedBytesPerSec,
             onDownload = state::download,
             onDismiss = { expanded = false },
             onSelect = state::select,
@@ -78,6 +82,11 @@ internal fun ModelSelectionSection(
         if (state.downloadingModelId != null) {
             Text("Downloading ${state.downloadingModelId}", style = MaterialTheme.typography.bodySmall)
             Text(state.downloadNotice, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+            Text(
+                downloadProgressLabel(state.downloadBytes, state.downloadTotalBytes, state.downloadSpeedBytesPerSec),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.testTag("model_download_progress_detail")
+            )
             if (state.downloadTotalBytes > 0L) androidx.compose.material3.LinearProgressIndicator(
                 progress = { (state.downloadBytes.toFloat() / state.downloadTotalBytes).coerceIn(0f, 1f) },
                 modifier = Modifier.fillMaxWidth())

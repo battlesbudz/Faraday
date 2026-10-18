@@ -16,6 +16,7 @@ import com.battlesbudz.jarvis.v2.ai.LocalModelSpec
 import com.battlesbudz.jarvis.v2.ai.ModelStore
 import com.battlesbudz.jarvis.v2.eval.ReliabilityReportStore
 import com.battlesbudz.jarvis.v2.eval.ToolReliabilityBenchmark
+import com.battlesbudz.jarvis.v2.ai.storage.DownloadSpeedTracker
 import com.battlesbudz.jarvis.v2.presentation.MODEL_SETUP_WORK_NAME
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -63,6 +64,9 @@ internal class ModelSetupState(
     var automaticSmokeTestAttempted by mutableStateOf(false)
     var downloadBytes by mutableStateOf(0L)
     var downloadTotalBytes by mutableStateOf(-1L)
+    var downloadSpeedBytesPerSec by mutableStateOf(0.0)
+        private set
+    private val downloadSpeedTracker = DownloadSpeedTracker()
     var setupElapsedSeconds by mutableStateOf(0L)
 
     val modelInstalled get() = store.hasModel(selectedModel)
@@ -90,13 +94,20 @@ internal class ModelSetupState(
         if (selectionError == null) setupStatus = "${selectedModel.id} deleted. Choose an installed model or download one."
     }
 
+    /** Single funnel for download progress so the speed estimate stays consistent. */
+    fun recordDownloadProgress(bytes: Long, total: Long) {
+        downloadBytes = bytes
+        downloadTotalBytes = total
+        downloadSpeedBytesPerSec = downloadSpeedTracker.addSample(bytes)
+    }
+
     fun download(spec: LocalModelSpec) {
-        downloadBytes = 0L
-        downloadTotalBytes = -1L
+        downloadSpeedTracker.reset()
+        downloadSpeedBytesPerSec = 0.0
+        recordDownloadProgress(0L, -1L)
         downloadNotice = "Preparing ${spec.id}…"
         actions().download(spec, { bytes, total ->
-            downloadBytes = bytes
-            downloadTotalBytes = total
+            recordDownloadProgress(bytes, total)
         }, { message ->
             downloadNotice = message
             if (spec.id == selectedModel.id) setupStatus = message
@@ -184,8 +195,10 @@ private fun ObserveModelSetup(state: ModelSetupState) {
                         state.downloadNotice = it
                         if (state.modelDownloadRunning) state.setupStatus = it
                     }
-                    state.downloadBytes = active.progress.getLong("downloaded", 0L)
-                    state.downloadTotalBytes = active.progress.getLong("total", -1L)
+                    state.recordDownloadProgress(
+                        active.progress.getLong("downloaded", 0L),
+                        active.progress.getLong("total", -1L)
+                    )
                 }
             }
     }

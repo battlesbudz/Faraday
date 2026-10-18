@@ -11,6 +11,8 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.battlesbudz.jarvis.v2.ai.ModelCatalog
 import com.battlesbudz.jarvis.v2.ai.ModelStore
+import com.battlesbudz.jarvis.v2.ai.storage.DownloadSpeedTracker
+import com.battlesbudz.jarvis.v2.ai.storage.downloadProgressLabel
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -38,10 +40,31 @@ class JarvisModelSetupWorker(
         var stage = "Preparing local Jarvis…"
         val progressLock = Any()
         var lastProgressAt = 0L
+        val speedTracker = DownloadSpeedTracker(clockMs = { android.os.SystemClock.elapsedRealtime() })
+        var lastNotificationAt = 0L
+        fun updateNotification() {
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (now - lastNotificationAt < 1_000L) return
+            lastNotificationAt = now
+            val manager = applicationContext.getSystemService(NotificationManager::class.java)
+            val text = if (total > 0L)
+                "Downloading ${spec.id} · " + downloadProgressLabel(downloaded, total, speedTracker.speedBytesPerSec)
+            else stage
+            val builder = Notification.Builder(applicationContext, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setContentTitle("Jarvis model setup")
+                .setContentText(text)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+            if (total > 0L) builder.setProgress(100, ((downloaded * 100L) / total).toInt().coerceIn(0, 100), false)
+            else builder.setProgress(0, 0, true)
+            manager.notify(NOTIFICATION_ID, builder.build())
+        }
         fun publishProgress(force: Boolean = false) {
             val now = android.os.SystemClock.elapsedRealtime()
             if (!force && now - lastProgressAt < 250L && downloaded != total) return
             lastProgressAt = now
+            updateNotification()
             runBlocking { setProgress(workDataOf(
                 "model_id" to spec.id,
                 "stage" to stage,
@@ -55,6 +78,7 @@ class JarvisModelSetupWorker(
                 synchronized(progressLock) {
                     downloaded = bytes
                     total = length
+                    speedTracker.addSample(bytes)
                     // Retain the actual phase: hashing starts a new byte count,
                     // but is verification, not a second download.
                     publishProgress()
