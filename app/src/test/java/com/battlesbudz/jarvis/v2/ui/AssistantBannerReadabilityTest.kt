@@ -17,6 +17,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.SemanticsMatcher
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertWidthIsAtLeast
@@ -41,10 +42,11 @@ import kotlin.math.pow
  * Regression context: the banner used to be the first child of an overlay Box in
  * JarvisApp, which draws it BEHIND the full-size content, so the conversation
  * tabs rendered on top of the banner text and the whole top of the screen became
- * unreadable. The banner now lives in the layout flow. These tests make that
- * class of bug fail loudly: no two visible texts may overlap, banner actions
- * must meet the 48 dp touch target, the banner container must be fully opaque,
- * and banner text must meet WCAG AA contrast.
+ * unreadable. The banner is now the last child (a true popup: on top, fully
+ * opaque), and obscured content is hidden from the semantics tree while it shows.
+ * These tests make that class of bug fail loudly: no two visible texts may
+ * overlap, banner actions must meet the 48 dp touch target, the banner container
+ * must be fully opaque, and banner text must meet WCAG AA contrast.
  */
 
 /** Index pairs of text bounds whose areas meaningfully intersect. Pure geometry, unit-tested below. */
@@ -156,13 +158,20 @@ class AssistantBannerReadabilityTest {
         }
     }
 
-    /** Mirrors the fixed JarvisApp structure: the banner reserves its own space in the flow. */
+    /**
+     * Mirrors the fixed JarvisApp structure: the popup is the LAST child so it
+     * draws on top with its opaque background, and the obscured content is
+     * hidden from the semantics tree (the same modal idiom production uses for
+     * showingMemory), so assistive tech never sees text stacked under the popup.
+     */
     @Composable
-    private fun FixedFlowHarness() {
+    private fun FixedPopupHarness() {
         MaterialTheme(colorScheme = darkColorScheme()) {
-            Column(Modifier.fillMaxSize()) {
-                AssistantStatusBannerCard(onOpenSettings = {}, onDismiss = {})
-                FakeTabContent(Modifier.weight(1f).fillMaxWidth())
+            Box(Modifier.fillMaxSize()) {
+                FakeTabContent(Modifier.fillMaxSize().clearAndSetSemantics { })
+                Box(Modifier.fillMaxWidth()) {
+                    AssistantStatusBannerCard(onOpenSettings = {}, onDismiss = {})
+                }
             }
         }
     }
@@ -171,8 +180,13 @@ class AssistantBannerReadabilityTest {
         node.config.contains(SemanticsProperties.Text)
     }
 
+    /**
+     * Text bounds from the merged semantics tree: this is what assistive tech
+     * (and the user) actually perceives. Subtrees hidden with
+     * clearAndSetSemantics are already collapsed away here.
+     */
     private fun displayedTextBounds(): List<Rect> =
-        compose.onAllNodes(hasAnyText, useUnmergedTree = true)
+        compose.onAllNodes(hasAnyText, useUnmergedTree = false)
             .fetchSemanticsNodes()
             .filter { node ->
                 node.config.getOrElse(SemanticsProperties.Text) { emptyList() }
@@ -194,14 +208,14 @@ class AssistantBannerReadabilityTest {
         )
     }
 
-    @Test fun inFlowBanner_hasNoTextOverlap() {
-        compose.setContent { FixedFlowHarness() }
+    @Test fun popupBanner_hasNoTextOverlap() {
+        compose.setContent { FixedPopupHarness() }
         compose.waitForIdle()
         val bounds = displayedTextBounds()
         val overlaps = findOverlappingTextBounds(bounds)
         assertTrue(
-            "Visible texts must never overlap with the banner in the layout flow. " +
-                "Overlapping pairs (indexes into collected text bounds): $overlaps",
+            "With the popup on top and obscured content hidden, no visible " +
+                "texts may overlap. Overlapping pairs: $overlaps",
             overlaps.isEmpty()
         )
     }
