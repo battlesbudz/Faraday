@@ -80,6 +80,7 @@ fun JarvisApp(
         var memoryReturnToVoice by rememberSaveable { mutableStateOf(false) }
         var memoryReturnToChat by rememberSaveable { mutableStateOf(false) }
         var voiceCalls by remember { mutableStateOf(initialVoiceCalls) }
+        var bannerVisible by remember { mutableStateOf(false) }
         var selectedVoiceCall by remember { mutableStateOf<VoiceCallRecord?>(null) }
         var resumedVoiceCall by remember { mutableStateOf<VoiceCallRecord?>(null) }
 
@@ -109,92 +110,91 @@ fun JarvisApp(
                 }) {
                     if (setup.modelsReady && setup.smokeTestPassed) {
                         Box(Modifier.fillMaxSize()) {
-                            Column(Modifier.fillMaxSize()) {
-                                // The banner lives in the layout flow, never as an overlay: it
-                                // reserves its own space at the top so it can neither cover the
-                                // conversation tabs nor be drawn underneath them. Previously it
-                                // was the first child of this Box, which draws it BEHIND the
-                                // full-size content, so every text on screen collided.
-                                AssistantStatusBanner()
-                                Box(
-                                    Modifier.weight(1f).fillMaxWidth().then(
-                                        if (showingMemory) Modifier.clearAndSetSemantics { } else Modifier
-                                    )
-                                ) {
-                                    when {
-                                        selectedVoiceCall != null -> {
-                                            val selected = requireNotNull(selectedVoiceCall)
-                                            VoiceCallDetailScreen(
-                                                call = selected,
-                                                benchmarkStore = benchmarkStore,
-                                                onBack = { selectedVoiceCall = null },
-                                                onContinueChat = {
-                                                    conversationHistory.openCall(selected)
-                                                    onSelectConversation(conversationHistory.current.value.id)
-                                                    selectedVoiceCall = null
-                                                    showingVoiceCalls = false
-                                                },
-                                                onResume = { done ->
-                                                    onResumeVoiceCall(selected) { error ->
-                                                        done(error)
-                                                        if (error == null) {
-                                                            resumedVoiceCall = selected
-                                                            selectedVoiceCall = null
-                                                            showingVoiceCalls = false
-                                                        }
+                            Box(Modifier.fillMaxSize().then(if (showingMemory || bannerVisible) Modifier.clearAndSetSemantics { } else Modifier)) {
+                                when {
+                                    selectedVoiceCall != null -> {
+                                        val selected = requireNotNull(selectedVoiceCall)
+                                        VoiceCallDetailScreen(
+                                            call = selected,
+                                            benchmarkStore = benchmarkStore,
+                                            onBack = { selectedVoiceCall = null },
+                                            onContinueChat = {
+                                                conversationHistory.openCall(selected)
+                                                onSelectConversation(conversationHistory.current.value.id)
+                                                selectedVoiceCall = null
+                                                showingVoiceCalls = false
+                                            },
+                                            onResume = { done ->
+                                                onResumeVoiceCall(selected) { error ->
+                                                    done(error)
+                                                    if (error == null) {
+                                                        resumedVoiceCall = selected
+                                                        selectedVoiceCall = null
+                                                        showingVoiceCalls = false
                                                     }
                                                 }
-                                            )
-                                        }
-                                        showingVoiceCalls -> VoiceCallsScreen(
-                                            calls = voiceCalls,
-                                            onBack = { showingVoiceCalls = false },
-                                            onSelect = { selectedVoiceCall = it },
-                                            onDelete = {
-                                                onDeleteVoiceCall(it)
-                                                voiceCalls = onRefreshVoiceCalls()
                                             }
                                         )
-                                        else -> ConversationScreen(
-                                            history = conversationHistory, busy = chatBusy, callState = callState, onSend = onSendChat,
-                                            phoneTasks = phoneTasks, phoneTaskError = phoneTaskError, onPhoneTaskAction = onPhoneTaskAction,
-                                            selectedModel = setup.selectedModel,
-                                            onSelectConversation = onSelectConversation,
-                                            onDeleteConversation = onDeleteConversation,
-                                            onNewPrivateConversation = onNewPrivateConversation,
-                                            onEndVoice = onEndVoiceCall,
-                                            onOpenVoiceCalls = {
-                                                voiceCalls = onRefreshVoiceCalls()
-                                                showingVoiceCalls = true
-                                            },
-                                            resumedVoice = resumedVoiceCall != null,
-                                            onOpenMemory = { showingMemory = true },
-                                            forceVoiceDestination = memoryReturnToVoice,
-                                            onForceVoiceConsumed = { memoryReturnToVoice = false },
-                                            forceChatDestination = memoryReturnToChat,
-                                            onForceChatConsumed = { memoryReturnToChat = false },
-                                            pipelineBenchmarkStore = benchmarkStore
-                                        ) { visible, settingsOpen, dismissSettings, startRequest ->
-                                            VoiceCallScreen(
-                                                visible = visible, settingsOpen = settingsOpen, memoryOpen = showingMemory,
-                                                onDismissSettings = dismissSettings, startRequest = startRequest,
-                                                chatBusy = chatBusy, modelSelector = modelSelector,
-                                                resumedCall = resumedVoiceCall,
-                                                onResumeConsumed = { resumedVoiceCall = null },
-                                                voicePlayback = voicePlayback,
-                                                onVoiceTurn = onVoiceTurn,
-                                                onEndVoiceCall = onEndVoiceCall,
-                                                onCopyDiagnostics = onCopyDiagnostics,
-                                                silentWork = silentWork,
-                                                onSilentWork = onSilentWork,
-                                                workflowSettings = workflowSettings,
-                                                onWorkflowSetEnabled = onWorkflowSetEnabled,
-                                                onConnectMcpServer = onConnectMcpServer,
-                                                callEvidenceActions = callEvidence,
-                                            )
+                                    }
+                                    showingVoiceCalls -> VoiceCallsScreen(
+                                        calls = voiceCalls,
+                                        onBack = { showingVoiceCalls = false },
+                                        onSelect = { selectedVoiceCall = it },
+                                        onDelete = {
+                                            onDeleteVoiceCall(it)
+                                            voiceCalls = onRefreshVoiceCalls()
                                         }
+                                    )
+                                    else -> ConversationScreen(
+                                        history = conversationHistory, busy = chatBusy, callState = callState, onSend = onSendChat,
+                                        phoneTasks = phoneTasks, phoneTaskError = phoneTaskError, onPhoneTaskAction = onPhoneTaskAction,
+                                        selectedModel = setup.selectedModel,
+                                        onSelectConversation = onSelectConversation,
+                                        onDeleteConversation = onDeleteConversation,
+                                        onNewPrivateConversation = onNewPrivateConversation,
+                                        onEndVoice = onEndVoiceCall,
+                                        onOpenVoiceCalls = {
+                                            voiceCalls = onRefreshVoiceCalls()
+                                            showingVoiceCalls = true
+                                        },
+                                        resumedVoice = resumedVoiceCall != null,
+                                        onOpenMemory = { showingMemory = true },
+                                        forceVoiceDestination = memoryReturnToVoice,
+                                        onForceVoiceConsumed = { memoryReturnToVoice = false },
+                                        forceChatDestination = memoryReturnToChat,
+                                        onForceChatConsumed = { memoryReturnToChat = false },
+                                        pipelineBenchmarkStore = benchmarkStore
+                                    ) { visible, settingsOpen, dismissSettings, startRequest ->
+                                        VoiceCallScreen(
+                                            visible = visible, settingsOpen = settingsOpen, memoryOpen = showingMemory,
+                                            onDismissSettings = dismissSettings, startRequest = startRequest,
+                                            chatBusy = chatBusy, modelSelector = modelSelector,
+                                            resumedCall = resumedVoiceCall,
+                                            onResumeConsumed = { resumedVoiceCall = null },
+                                            voicePlayback = voicePlayback,
+                                            onVoiceTurn = onVoiceTurn,
+                                            onEndVoiceCall = onEndVoiceCall,
+                                            onCopyDiagnostics = onCopyDiagnostics,
+                                            silentWork = silentWork,
+                                            onSilentWork = onSilentWork,
+                                            workflowSettings = workflowSettings,
+                                            onWorkflowSetEnabled = onWorkflowSetEnabled,
+                                            onConnectMcpServer = onConnectMcpServer,
+                                            callEvidenceActions = callEvidence,
+                                        )
                                     }
                                 }
+                            }
+                            // Popup banner, drawn after the content so it renders on top.
+                            // The card background is fully opaque, so no button or text
+                            // underneath shows through: it looks and behaves like a popup.
+                            Box(
+                                Modifier.fillMaxWidth()
+                                    .align(androidx.compose.ui.Alignment.TopCenter)
+                            ) {
+                                AssistantStatusBanner(
+                                    onVisibilityChanged = { bannerVisible = it }
+                                )
                             }
                             // Keep the conversation and voice controller composed beneath this review surface.
                             if (showingMemory) MemoryScreen(
