@@ -17,17 +17,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodes
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.text.font.FontWeight
@@ -285,7 +283,7 @@ class AssistantBannerReadabilityTest {
             }
         }
         compose.waitForIdle()
-        val image = compose.onRoot().captureToImage()
+        val image = compose.onNode(SemanticsMatcher("root node") { true }).captureToImage()
         // A pixel well inside the banner region: banner blue must win over
         // content red. If the overlay order ever regresses, this pixel is red.
         val pixel = image[image.width / 2, 40]
