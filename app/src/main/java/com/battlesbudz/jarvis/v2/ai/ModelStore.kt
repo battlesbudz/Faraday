@@ -195,7 +195,8 @@ class ModelStore @JvmOverloads constructor(
     suspend fun downloadOrReuse(
         spec: LocalModelSpec,
         onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit = { _, _ -> },
-        onStatus: (String) -> Unit = {}
+        onStatus: (String) -> Unit = {},
+        onStall: (String?) -> Unit = {}
     ): Result<File> = runCatching {
         check(operations.tryBeginDownload(spec.id, selectedModel().id,
             conversationActive())) {
@@ -251,7 +252,8 @@ class ModelStore @JvmOverloads constructor(
                 url = url,
                 temporary = temporary,
                 onProgress = reportProgress,
-                onStatus = onStatus
+                onStatus = onStatus,
+                onStall = onStall
             )
             check(temporary.isFile && temporary.length() > 0L) { "The downloaded model is empty." }
             onStatus("Verifying the downloaded AI model…")

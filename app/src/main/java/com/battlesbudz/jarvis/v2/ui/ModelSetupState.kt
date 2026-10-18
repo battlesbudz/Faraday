@@ -191,7 +191,10 @@ private fun ObserveModelSetup(state: ModelSetupState) {
                     ?: if (active != null) state.selectedModel.id else null
                 state.modelDownloadRunning = active != null && state.downloadingModelId == state.selectedModel.id
                 if (active != null) {
-                    active.progress.getString("stage")?.let {
+                    // A stall (backing off before a retry) overrides the phase
+                    // text so the UI says "Retrying…", not just "Downloading…".
+                    val stallNote = active.progress.getString("stall")?.takeIf { it.isNotEmpty() }
+                    (stallNote ?: active.progress.getString("stage"))?.let {
                         state.downloadNotice = it
                         if (state.modelDownloadRunning) state.setupStatus = it
                     }

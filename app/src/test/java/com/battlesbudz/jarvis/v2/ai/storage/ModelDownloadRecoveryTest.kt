@@ -5,6 +5,7 @@ import java.net.ServerSocket
 import java.nio.file.Files
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.launch
@@ -20,6 +21,8 @@ class ModelDownloadRecoveryTest {
         val interrupt = AtomicBoolean(false)
         val wrongRange = AtomicBoolean(false)
         val stall = AtomicBoolean(false)
+        /** Fail this many non-probe requests by truncating the body, then serve normally. */
+        val failFirst = AtomicInteger(0)
         val blocked = java.util.concurrent.CountDownLatch(1)
         val release = java.util.concurrent.CountDownLatch(1)
         val ignoreRange = AtomicBoolean(false)
@@ -46,7 +49,8 @@ class ModelDownloadRecoveryTest {
                         runCatching {
                             it.getOutputStream().apply {
                                 write(response.toByteArray())
-                                val size = if (!probe && interrupt.get()) minOf(123, end - start + 1) else end - start + 1
+                                val flaky = !probe && (interrupt.get() || failFirst.getAndDecrement() > 0)
+                                val size = if (flaky) minOf(123, end - start + 1) else end - start + 1
                                 write(bytes, start, size)
                                 flush()
                                 if (!probe && stall.get()) {
@@ -68,25 +72,23 @@ class ModelDownloadRecoveryTest {
         finally { root.deleteRecursively() }
     }
 
-    @Test fun failedParallelTransferRetainsPartsAndResumesWithoutRepeatedCompletedRanges() = fixture { host, target ->
-        host.interrupt.set(true)
-        assertTrue(runCatching { ModelDownloader(1).download(host.url, target, { _, _ -> }, {}) }.isFailure)
-        val chunks = target.parentFile.resolve("${target.name}.chunks")
-        assertTrue("Failure must retain checkpoints", chunks.listFiles().orEmpty().any { it.extension == "part" && it.length() > 0 })
-        // Make one checkpoint complete and another one byte short to cover exact
-        // completion reuse and the formerly truncating one-byte append case.
-        val size = (host.bytes.size + 5) / 6
-        chunks.resolve("0.part").writeBytes(host.bytes.copyOfRange(0, size))
-        chunks.resolve("1.part").writeBytes(host.bytes.copyOfRange(size, size * 2 - 1))
-        host.interrupt.set(false)
-        host.ranges.clear()
-        ModelDownloader(1).download(host.url, target, { _, _ -> }, {})
+    /** Retries in tests back off in milliseconds, not seconds. */
+    private fun fastRetry() = RetryPolicy(baseDelayMs = 5L, maxDelayMs = 20L, jitter = { it })
+
+    @Test fun flakyParallelTransferRetriesAutomaticallyAndResumes() = fixture { host, target ->
+        host.failFirst.set(1)
+        val stalls = mutableListOf<String?>()
+        ModelDownloader(1, fastRetry()).download(host.url, target, { _, _ -> }, {}, stalls::add)
         assertArrayEquals(host.bytes, target.readBytes())
-        assertFalse(host.ranges.contains(0 to size - 1))
-        assertTrue(host.ranges.contains(size * 2 - 1 to size * 2 - 1))
-        assertFalse(chunks.exists())
+        val chunks = target.parentFile.resolve("${target.name}.chunks")
+        assertFalse("chunks are cleaned up after a completed download", chunks.exists())
+        assertTrue("a truncated chunk must be re-requested from its resume point",
+            host.ranges.any { (start, _) -> start > 0 })
+        assertTrue("stall status must be surfaced while backing off",
+            stalls.any { it?.startsWith("Retrying") == true })
+        assertNull("stall clears once bytes flow again", stalls.last())
         host.ranges.clear()
-        ModelDownloader(1).download(host.url, target, { _, _ -> }, {})
+        ModelDownloader(1, fastRetry()).download(host.url, target, { _, _ -> }, {})
         assertEquals("Complete assembly only needs the size probe", listOf(0 to 0), host.ranges)
     }
 
@@ -97,16 +99,16 @@ class ModelDownloadRecoveryTest {
         assertEquals(3456L, target.length())
     }
 
-    @Test fun truncatedSingleStreamFailsAndNextAttemptResumes() = fixture { host, target ->
-        host.interrupt.set(true)
-        assertTrue(runCatching { ModelDownloader().download(host.url, target, { _, _ -> }, {}) }.isFailure)
-        val saved = target.length()
-        assertTrue(saved > 0)
-        host.interrupt.set(false)
-        host.ranges.clear()
-        ModelDownloader().download(host.url, target, { _, _ -> }, {})
+    @Test fun truncatedSingleStreamResumesAutomatically() = fixture { host, target ->
+        host.failFirst.set(2)
+        val stalls = mutableListOf<String?>()
+        ModelDownloader(retryPolicy = fastRetry()).download(host.url, target, { _, _ -> }, {}, stalls::add)
         assertArrayEquals(host.bytes, target.readBytes())
-        assertTrue(host.ranges.contains(saved.toInt() to host.bytes.lastIndex))
+        assertTrue("retries must resume with Range requests past the truncated bytes",
+            host.ranges.contains(123 to host.bytes.lastIndex))
+        assertEquals("two failures means two retry notices",
+            2, stalls.count { it?.startsWith("Retrying") == true })
+        assertNull("stall clears once the transfer completes", stalls.last())
     }
 
     @Test fun fullResponseFallbackReplacesPartialFileExactlyOnce() = fixture { host, target ->

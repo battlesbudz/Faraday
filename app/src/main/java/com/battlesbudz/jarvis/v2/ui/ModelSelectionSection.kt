@@ -72,6 +72,7 @@ internal fun ModelSelectionSection(
             downloadBytes = state.downloadBytes,
             downloadTotalBytes = state.downloadTotalBytes,
             downloadSpeedBytesPerSec = state.downloadSpeedBytesPerSec,
+            downloadNotice = state.downloadNotice,
             onDownload = state::download,
             onDismiss = { expanded = false },
             onSelect = state::select,

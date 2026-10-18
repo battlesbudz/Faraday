@@ -38,6 +38,7 @@ class JarvisModelSetupWorker(
         var downloaded = 0L
         var total = -1L
         var stage = "Preparing local Jarvis…"
+        var stallNote: String? = null
         val progressLock = Any()
         var lastProgressAt = 0L
         val speedTracker = DownloadSpeedTracker(clockMs = { android.os.SystemClock.elapsedRealtime() })
@@ -47,15 +48,16 @@ class JarvisModelSetupWorker(
             if (now - lastNotificationAt < 1_000L) return
             lastNotificationAt = now
             val manager = applicationContext.getSystemService(NotificationManager::class.java)
-            val text = if (total > 0L)
+            val base = if (total > 0L)
                 "Downloading ${spec.id} · " + downloadProgressLabel(downloaded, total, speedTracker.speedBytesPerSec)
             else stage
             val builder = Notification.Builder(applicationContext, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_download)
                 .setContentTitle("Jarvis model setup")
-                .setContentText(text)
+                .setContentText(stallNote ?: base)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
+            if (stallNote != null) builder.setStyle(Notification.BigTextStyle().bigText("$base\n$stallNote"))
             if (total > 0L) builder.setProgress(100, ((downloaded * 100L) / total).toInt().coerceIn(0, 100), false)
             else builder.setProgress(0, 0, true)
             manager.notify(NOTIFICATION_ID, builder.build())
@@ -69,7 +71,8 @@ class JarvisModelSetupWorker(
                 "model_id" to spec.id,
                 "stage" to stage,
                 "downloaded" to downloaded,
-                "total" to total
+                "total" to total,
+                "stall" to (stallNote ?: "")
             )) }
         }
         val gemma = models.downloadOrReuse(
@@ -89,6 +92,12 @@ class JarvisModelSetupWorker(
                     stage = status
                     downloaded = 0L
                     total = -1L
+                    publishProgress(force = true)
+                }
+            },
+            onStall = { note ->
+                synchronized(progressLock) {
+                    stallNote = note
                     publishProgress(force = true)
                 }
             }
