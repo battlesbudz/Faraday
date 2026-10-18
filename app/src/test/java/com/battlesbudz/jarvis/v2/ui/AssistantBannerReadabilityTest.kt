@@ -286,7 +286,9 @@ class AssistantBannerReadabilityTest {
         val image = compose.onNode(SemanticsMatcher("root node") { true }).captureToImage()
         // A pixel well inside the banner region: banner blue must win over
         // content red. If the overlay order ever regresses, this pixel is red.
-        val pixel = image[image.width / 2, 40]
+        val buffer = IntArray(1)
+        image.readPixels(buffer, startX = image.width / 2, startY = 40, width = 1, height = 1)
+        val pixel = Color(buffer[0])
         assertTrue(
             "Banner must draw on top of content (expected blue, got $pixel)",
             pixel.blue > 0.9f && pixel.red < 0.1f
