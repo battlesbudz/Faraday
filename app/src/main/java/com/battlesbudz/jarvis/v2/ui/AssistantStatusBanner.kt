@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
@@ -23,6 +24,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.battlesbudz.jarvis.v2.assistant.JarvisInteractionService
@@ -32,9 +34,19 @@ import com.battlesbudz.jarvis.v2.assistant.JarvisInteractionService
  * Explains that background app launches need the assistant binding, with a
  * button to open system assistant settings. Dismissal is persisted so it
  * only nags once per install.
+ *
+ * The banner is a popup overlay: it must be composed AFTER the content it
+ * covers so it draws on top, and its card background is fully opaque so no
+ * button or text underneath shows through.
+ *
+ * @param onVisibilityChanged reports whether the popup is currently visible,
+ * so the host can hide obscured content from accessibility services (a popup
+ * must behave like a popup).
  */
 @Composable
-fun AssistantStatusBanner() {
+fun AssistantStatusBanner(
+    onVisibilityChanged: (Boolean) -> Unit = {},
+) {
     val context = LocalContext.current
     var show by remember { mutableStateOf(false) }
 
@@ -46,11 +58,41 @@ fun AssistantStatusBanner() {
         }
     }
 
+    LaunchedEffect(show) {
+        onVisibilityChanged(show)
+    }
+
     if (!show) return
 
+    AssistantStatusBannerCard(
+        onOpenSettings = {
+            context.startActivity(
+                Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        },
+        onDismiss = {
+            context.getSharedPreferences("jarvis_assistant_status", Context.MODE_PRIVATE)
+                .edit().putBoolean("banner_dismissed", true).apply()
+            show = false
+        }
+    )
+}
+
+/**
+ * The presentational banner card, without the SharedPreferences /
+ * assistant-service gating, so readability tests can mount it directly.
+ */
+@Composable
+fun AssistantStatusBannerCard(
+    onOpenSettings: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    containerColor: Color = MaterialTheme.colorScheme.secondaryContainer,
+) {
     Card(
-        modifier = Modifier.fillMaxWidth().padding(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+        modifier = modifier.fillMaxWidth().padding(12.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
@@ -66,20 +108,17 @@ fun AssistantStatusBanner() {
             )
             Spacer(Modifier.height(12.dp))
             Row {
-                Button(onClick = {
-                    context.startActivity(
-                        Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    )
-                }) {
+                Button(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
                     Text("Open assistant settings")
                 }
                 Spacer(Modifier.width(8.dp))
-                TextButton(onClick = {
-                    context.getSharedPreferences("jarvis_assistant_status", Context.MODE_PRIVATE)
-                        .edit().putBoolean("banner_dismissed", true).apply()
-                    show = false
-                }) {
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
                     Text("Dismiss")
                 }
             }

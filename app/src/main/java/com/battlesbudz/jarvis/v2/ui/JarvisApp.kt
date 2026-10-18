@@ -80,6 +80,7 @@ fun JarvisApp(
         var memoryReturnToVoice by rememberSaveable { mutableStateOf(false) }
         var memoryReturnToChat by rememberSaveable { mutableStateOf(false) }
         var voiceCalls by remember { mutableStateOf(initialVoiceCalls) }
+        var bannerVisible by remember { mutableStateOf(false) }
         var selectedVoiceCall by remember { mutableStateOf<VoiceCallRecord?>(null) }
         var resumedVoiceCall by remember { mutableStateOf<VoiceCallRecord?>(null) }
 
@@ -109,13 +110,7 @@ fun JarvisApp(
                 }) {
                     if (setup.modelsReady && setup.smokeTestPassed) {
                         Box(Modifier.fillMaxSize()) {
-                            Box(
-                                Modifier.fillMaxWidth()
-                                    .align(androidx.compose.ui.Alignment.TopCenter)
-                            ) {
-                                AssistantStatusBanner()
-                            }
-                            Box(Modifier.fillMaxSize().then(if (showingMemory) Modifier.clearAndSetSemantics { } else Modifier)) {
+                            Box(Modifier.fillMaxSize().then(if (showingMemory || bannerVisible) Modifier.clearAndSetSemantics { } else Modifier)) {
                                 when {
                                     selectedVoiceCall != null -> {
                                         val selected = requireNotNull(selectedVoiceCall)
@@ -189,6 +184,17 @@ fun JarvisApp(
                                         )
                                     }
                                 }
+                            }
+                            // Popup banner, drawn after the content so it renders on top.
+                            // The card background is fully opaque, so no button or text
+                            // underneath shows through: it looks and behaves like a popup.
+                            Box(
+                                Modifier.fillMaxWidth()
+                                    .align(androidx.compose.ui.Alignment.TopCenter)
+                            ) {
+                                AssistantStatusBanner(
+                                    onVisibilityChanged = { bannerVisible = it }
+                                )
                             }
                             // Keep the conversation and voice controller composed beneath this review surface.
                             if (showingMemory) MemoryScreen(
