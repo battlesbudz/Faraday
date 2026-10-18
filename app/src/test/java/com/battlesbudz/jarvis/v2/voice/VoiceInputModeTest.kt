@@ -13,11 +13,15 @@ class VoiceInputModeTest {
         assertEquals(VoiceInputMode.TRANSCRIBED_TEXT, VoiceInputMode.fromId("transcribed_text"))
     }
 
-    @Test fun legacyCaptionSettingKeepsOffAndWhisperInsteadOfSilentlySelectingMoonshine() {
+    @Test fun legacyCaptionSettingKeepsOffAndWhisper() {
         assertNull(VoiceInputMode.resolveCaptionEngine(null, legacyEnabled = false))
         assertEquals(AsrEngine.WHISPER, VoiceInputMode.resolveCaptionEngine(null, legacyEnabled = true))
         assertNull(VoiceInputMode.resolveCaptionEngine("future_engine", legacyEnabled = false))
         assertEquals(AsrEngine.WHISPER, VoiceInputMode.resolveCaptionEngine("future_engine", legacyEnabled = true))
+    }
+    @Test fun retiredMoonshineCaptionsResolveToCpuWhisperUnlessPreviouslyOff() {
+        assertEquals(AsrEngine.WHISPER, VoiceInputMode.resolveCaptionEngine("moonshine_small", true))
+        assertNull(VoiceInputMode.resolveCaptionEngine("moonshine_small", false))
     }
     @Test fun explicitDropdownChoiceSurvivesReopeningWithoutOverridingLegacyOff() {
         assertNull(VoiceInputMode.resolveCaptionEngine("off", legacyEnabled = true))

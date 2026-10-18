@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "model": "qualcomm/Whisper-Base",
+  "release": "v0.64.0",
+  "soc": "SM8650",
+  "htp": "v75",
+  "language": "forced English",
+  "shared_ort": "1.27.1",
+  "qnn_plugin": "2.6.0",
+  "qairt": "2.50.0",
+  "provider_aar_sha256": "169add91932e27196e0ab704f53fe8cd517af3ecee0d4a73fbf14513ab4551a6",
+  "runtime_aar_sha256": "b507656e4031d8aa6a7ab0fecf725b941096737ad7440ad7ea288f7c9cc9d743",
+  "runtime_files": [
+    {
+      "name": "libonnxruntime_providers_qnn.so",
+      "bytes": 4281832,
+      "sha256": "21556616b76a82a9c5d3226c2b35f275263447235f356a13b5f208e5fa469fae"
+    },
+    {
+      "name": "libQnnSystem.so",
+      "bytes": 4068296,
+      "sha256": "ca9e5429c77380e1c3f5a401f00288915ec2f6cc478979bafd57c665391d432f"
+    },
+    {
+      "name": "libQnnHtp.so",
+      "bytes": 3979248,
+      "sha256": "30e2981965e687d71626c91397867da81247c639e598f49fa5d139cbb21255d0"
+    },
+    {
+      "name": "libQnnHtpV75Stub.so",
+      "bytes": 791696,
+      "sha256": "eca06fdf5bba9d9a291eae6d53ca46c7432e57be6c8e0565a628f2acc353b0a1"
+    },
+    {
+      "name": "libQnnHtpV75Skel.so",
+      "bytes": 18693300,
+      "sha256": "3e9774b74769915b4f54364f8fc25887b3439561a970dca57c9f4dc9612b38af"
+    }
+  ],
+  "model_files": [
+    {
+      "name": "encoder.onnx",
+      "bytes": 1542,
+      "sha256": "6a35006a70c5731f84e6c921484e9ffdadc99b5088d2867a2af8ee86d455b968"
+    },
+    {
+      "name": "encoder.bin",
+      "bytes": 49317256,
+      "sha256": "2d51e930c18a31642cde4eaeaf5e37a7ad0f98299c440804765fe5aede9fad70"
+    },
+    {
+      "name": "decoder.onnx",
+      "bytes": 4469,
+      "sha256": "f8f5620b3e5f15f3e752c1b816f804ae85412adec8ebf4bfbf18c77f8192a753"
+    },
+    {
+      "name": "decoder.bin",
+      "bytes": 152158512,
+      "sha256": "786ddc0fbbbb406b0d8ef6e4dfba7f52cabd25e52c8ff27bbe9669e598e702ac"
+    },
+    {
+      "name": "metadata.json",
+      "bytes": 14585,
+      "sha256": "35d8a35b5c9f6cd766223fc6ef400a3703716985f48f2a4bea66642dc71db229"
+    },
+    {
+      "name": "multilingual.tiktoken",
+      "bytes": 816730,
+      "sha256": "b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126"
+    }
+  ],
+  "archive": {
+    "url": "https://qaihub-public-assets.s3.us-west-2.amazonaws.com/qai-hub-models/models/whisper_base/releases/v0.64.0/whisper_base-precompiled_qnn_onnx-float-qualcomm_snapdragon_8gen3.zip",
+    "bytes": 180668860,
+    "sha256": "b4b82da6e8703ad4d284324676ee4e0ed77ebbd5a26cb9cd79baa2531e41324b"
+  },
+  "tokenizer_url": "https://raw.githubusercontent.com/openai/whisper/839639a223b92ad61851baae9ad8a695ccb41ce5/whisper/assets/multilingual.tiktoken",
+  "weights_distributed": false
+}

@@ -82,9 +82,9 @@
     }
   },
   "distribution": {
-    "activation": "Explicit opt-in phone shadow; default off; no endpoint authority",
+    "activation": "Native audio endpoint control enabled by default once the pinned local model is installed; explicit disable; bounded fallback; no call-time downloads",
     "weights_in_git_or_apk": false,
-    "runtime_downloader": "Existing explicit settings consent/ModelDownloader only; no call-time downloads",
+    "runtime_downloader": "Explicit settings download through existing ModelDownloader; installed model is checked on its background worker",
     "private_audio_upload_or_persistence": false,
     "packaged_notices": "app/src/main/assets/licenses/smart-turn"
   },
@@ -97,5 +97,21 @@
     "manifest_sha256": "1b8bf8d17de8469aca6b40c1613af35078b1af9cf90962c7fd0b8fe81bae1420",
     "decoded_original_hashes_preserved": true,
     "compressed_container_identity": "Chirp feature gzip remotely confirmed; other containers regenerated from retained generator, decoded bytes all match original pins."
+  },
+  "endpoint_semantics": {
+    "source_url": "https://github.com/pipecat-ai/pipecat/blob/7597e0c2f84fc05a31dd636daa9d91bb8405e9ff/src/pipecat/audio/turn/smart_turn/local_smart_turn_v3.py",
+    "source_git_blob": "e0cf7f251155accb1ce2f81b643eeddd1bec1907",
+    "complete": "probability > 0.5",
+    "continue": "probability <= 0.5",
+    "jarvis_policy_not_calibration": {
+      "pause_ms": 350,
+      "request_deadline_ms": 250,
+      "spacing_ms": 500,
+      "max_accepted_requests_per_turn": 8,
+      "continue_classified_quiet_ms": 3500,
+      "continue_cap_clock": "minimum of capture timestamp delta and classified quiet samples since last raw risk or confirmed speech, requiring exact current raw coverage; 3500–4200ms across existing 100 ms read phases",
+      "max_requests_per_acoustic_pause": 2,
+      "refresh_after_new_samples": 8000
+    }
   }
 }

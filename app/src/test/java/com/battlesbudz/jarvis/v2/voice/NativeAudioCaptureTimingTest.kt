@@ -8,6 +8,26 @@ import org.junit.Test
 
 /** Synthetic scalar fixtures test clock/provenance math, never native graph work. */
 class NativeAudioCaptureTimingTest {
+    @Test fun finalReceiptElapsedBoundsPreserveSignedEndpointAndConservativeAlignment() {
+        val metrics = timing().metrics()!!
+        assertEquals(2999.9998, metrics.lastStepFromAdmissionLowerMs!!, 0.0000001)
+        assertEquals(3000.0002, metrics.lastStepFromAdmissionUpperMs!!, 0.0000001)
+        assertEquals(2499.9998, metrics.firstToLastStepLowerMs!!, 0.0000001)
+        assertEquals(2500.0002, metrics.firstToLastStepUpperMs!!, 0.0000001)
+        assertEquals(-500.0001, metrics.endpointToLastStepLowerMs!!, 0.0000001)
+        assertEquals(-499.9999, metrics.endpointToLastStepUpperMs!!, 0.0000001)
+        assertEquals(499.9999, metrics.endpointToSealCommitLowerMs!!, 0.0000001)
+        assertEquals(500.0001, metrics.endpointToSealCommitUpperMs!!, 0.0000001)
+    }
+    @Test fun unmappedOrMissingEndpointDoesNotManufactureElapsedBounds() {
+        val unmapped = timing(mapping = false).metrics()!!
+        assertNull(unmapped.lastStepFromAdmissionLowerMs); assertNull(unmapped.firstToLastStepLowerMs)
+        assertNull(unmapped.endpointToLastStepLowerMs); assertNull(unmapped.endpointToSealCommitLowerMs)
+        val missing = timing().copy(endpointDecisionAtNs = null).metrics()!!
+        assertNotNull(missing.lastStepFromAdmissionLowerMs); assertNotNull(missing.firstToLastStepLowerMs)
+        assertNull(missing.endpointToLastStepLowerMs); assertNull(missing.endpointToSealCommitLowerMs)
+    }
+
     private fun interval(ms: Long) = NativeNanoInterval(ms * 1_000_000 - 100, ms * 1_000_000 + 100)
     private fun timing(first: Long = 1500, last: Long = 4000, endpoint: Long = 4500,
         mapping: Boolean = true, closed: Long? = 5400) = NativeAudioCaptureTiming(

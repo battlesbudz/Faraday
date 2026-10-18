@@ -62,6 +62,29 @@ ownership. Failed detach retains its existing controller/binder cleanup state;
 closed callbacks cannot publish and queued captures cannot enter after closure.
 Android service lifecycle and final cancellation remain main-thread serialized.
 
+## Optional audio acceleration and first delivery
+
+`voice/whisper/` owns verified QNN assets, CPU fallback and provider diagnostics;
+`cpp/whisperqnn/` owns the Whisper frontend, strict NPU sessions, autoregressive
+cache and terminal native cancellation. `VoiceModelSession` retains a single
+leased Whisper decoder alongside Piper; shared ORT remains pinned for SmartTurn.
+Moonshine runtime selection is migrated without deleting historical/downloaded data.
+`SpeechTextBoundaries`, `VoiceRepetitionGuard` and `PiperTextStream` agree on the
+first meaningful clause; later batching and stale/duplicate checks stay owned by
+the existing speech path. `EarlyGemmaPreparationGate`, `VoiceTurnPreparation`
+and `CheckedConversationLifecycle` serialize fixed-preface preparation before
+encoder/model work while microphone PCM is retained. See the [combined contract](../verification/whisper-qnn-2026-10-11.md)
+and linked component verification notes for measured versus pending coverage.
+
+`NativeInferenceMeasurement` retains per-submission app edges; `PipelineBenchmarkCapture`
+aligns only an unambiguous completed answer to the turn. `PiperFirstPcmTiming`
+latches the first nonempty validated PCM. [Measurement scopes and clocks](../verification/gemma-processing-measurements-2026-10-11.md)
+keep SDK proxy/derived durations, encoder interval bounds and actual playback
+observations distinct. `VoicePreparationTimingMetrics` projects same-clock capture,
+speech-span, early preparation and bounded Smart Turn backend-call edges into
+wall-time overlap and post-speech remainder; the [overlap contract](../verification/audio-overlap-and-incremental-prefill-2026-10-12.md)
+explicitly separates speech-span pauses, frame observation and final endpoint authority.
+
 ## Main flow
 
 ```mermaid
@@ -108,7 +131,7 @@ playback evidence; unplayed generated text must not become heard conversation co
 | `ai/storage/` | Download transport, hash/integrity and Android Downloads lookup | `ModelDownloader`, `ModelFileHash`, `DownloadedModelLookup` |
 | `chat/` | Persistent threads, shared context and display/speech text formatting | `ConversationHistory`, `ShortTermConversationContext`, `AssistantText` |
 | `voice/` | Capture/ASR, turn timing, wake/interruption, call resource leases, synthesis/playback and saved call evidence | `AudioTurnCapture`, `VoiceCallResources`, `VoiceSession`, `PiperVoiceOutput` |
-| `voice/smartturn/` / `CaptureShadowObserver` / `SmartTurnBenchmarkTelemetry` | Explicit default-off local Smart Turn observations; one retained worker, bounded immutable PCM, generation/deadline fencing, metadata-only timing; capture-first follow-ups admitted only after the exact old reply successfully drains; never endpoint authority | `SmartTurnCallOwner`, `SmartTurnCaptureObserver`, `NativeSmartTurnBackend` |
+| `voice/smartturn/` / `CaptureShadowObserver` / `SmartTurnBenchmarkTelemetry` | Default-on installed-model native endpoint control; one retained worker, bounded immutable PCM and current-pause verdicts; serialized ready events can shorten COMPLETE or hold CONTINUE within a bound; capture-first follow-ups still require exact old-reply drain; ASR-text mode unchanged | `SmartTurnCallOwner`, `SmartTurnCaptureObserver`, `SmartTurnEndpointPolicy`, `NativeSmartTurnBackend` |
 | `ai/audio/` and native audio capture | Pinned local graph reconstruction, immutable artifact leases and bounded PCM-to-native worker; sealed inputs enter ordinary Conversation | `GemmaStreamingArtifactStore`, `WeightlessEncoderRecipe`, `RetainedPcmEncoderWorker`, `GemmaStreamingAudioCapture` |
 | `voice/comparison/` | Explicit live comparison trial data; does not replace normal turn ownership | `LiveComparison` |
 | `actions/` | Strict action contracts, complete plans, authority/approval, Android effects and durable journals | `ActionTurnPlan`, `ActionTurnRunner`, `JournaledActionPipeline`, `AndroidMobileActionExecutor` |

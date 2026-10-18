@@ -51,6 +51,39 @@ class SmartTurnShadowTest {
         return requireNotNull(shadow.takeResult(generation))
     }
 
+    @Test fun backendCallEdgesDistinguishInitializationSkippedAndThrowingInference() {
+        for (mode in listOf("success", "init_failure", "inference_failure")) {
+            now.set(1_000_000_000L)
+            val completed = CountDownLatch(1)
+            val receipt = AtomicReference<SmartTurnWorkCompletion>()
+            val shadow = SmartTurnShadow({
+                now.addAndGet(20_000_000L)
+                if (mode == "init_failure") error("injected initialization failure")
+                object : SmartTurnBackend {
+                    override fun infer(samples: FloatArray, requestId: Long, cancelled: AtomicBoolean): SmartTurnInference {
+                        now.addAndGet(10_000_000L)
+                        if (mode == "inference_failure") error("injected inference failure")
+                        return SmartTurnInference(.75f, 2_000_000L, 8_000_000L)
+                    }
+                    override fun cancel(requestId: Long) {}
+                    override fun close() {}
+                }
+            }, true, 2_000_000_000L, now::get)
+            try {
+                shadow.updateGeneration(generation)
+                assertEquals(SmartTurnOffer.ACCEPTED, shadow.offer(snapshot()) { receipt.set(it); completed.countDown() })
+                assertTrue(completed.await(1, TimeUnit.SECONDS))
+                val work = receipt.get()
+                assertEquals(1_000_000_000L, work.startedAtNanos)
+                if (mode == "init_failure") {
+                    assertNull(work.backendCalledAtNanos); assertNull(work.backendReturnedAtNanos)
+                } else {
+                    assertEquals(1_020_000_000L, work.backendCalledAtNanos)
+                    assertEquals(1_030_000_000L, work.backendReturnedAtNanos)
+                }
+            } finally { stop(shadow) }
+        }
+    }
     @Test fun defaultOffDoesNotConstructBackendOrAcceptAudio() {
         val calls = AtomicInteger()
         val shadow = SmartTurnShadow({ calls.incrementAndGet(); Backend() })

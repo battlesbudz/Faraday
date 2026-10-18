@@ -1,0 +1,11 @@
+JUnit version 4.13.2
+.................................................................................TRACE complete120ms: snapshot=11200 endpoint_ns=820000000 retained=12800
+TRACE complete220ms: snapshot=11200 endpoint_ns=1600000000 retained=25600
+...TRACE continue_time_gap: gap=5000 endpoint=9000 retained=64000 quiet_pcm_ms=3700 requests=1
+...TRACE continue_cap_100ms_read_phases: speech_end_ms=300..1000 delays_ms=[3700, 3600, 3500, 4200, 4100, 4000, 3900, 3800]; extra_over_3500=0..700
+..TRACE continue->complete: speech_end=300 snapshots=700,1200 decision=1265 delay=965 requests=2; single_assessment_fallback=4000 delay=3700 requests=1
+......TRACE complete65ms: speech_end=300 admission=700 snapshot=11200 decision=765 retained=11200 final_asr=0
+....
+Time: 1.468
+
+OK (99 tests)

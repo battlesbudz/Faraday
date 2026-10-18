@@ -1,0 +1,18 @@
+{
+  "run_url": "https://github.com/battlesbudz/Jarvis-OS-V2/actions/runs/38237018210",
+  "head": "4f9c3bbad93c7ee9ecb306e9ac5786241ff4cc36",
+  "tested_merge": "1d36cc4a73f6f59fed2bcc601ee939ac2e61bb28",
+  "artifact_id": 11743394321,
+  "artifact_name": "jarvis-verification-36-foldable-compact-app-compact",
+  "artifact_sha256": "a411d461e8a4253c3bfda4c88de8e02ae0fc13a8164ddf2792facebfba535c17",
+  "artifact_bytes": 25617549,
+  "reviewed_files_sha256": {
+    "tests/pipeline_benchmark_timing_expanded_1.png": "8a370628078aaed77a7e3b3e0023a2540713c7861828cebec444101f72fb0b32",
+    "tests/pipeline_benchmark_timing_expanded_1.xml": "e22a6fe8763c6af7ae774feb2965e06a1cad4a83d9e4055e8dce9dfcdd39c1a7",
+    "tests/test45_pipelineBenchmarksScoreOriginalAsrPersistAndExportRedactedEvidence.png": "8890a3e6e9d3454a8163d5777eb3949d6a5783e6791ee10567f94f084c74d2a5",
+    "tests/test45_pipelineBenchmarksScoreOriginalAsrPersistAndExportRedactedEvidence.xml": "aaee4268937633313670a45d5861bd264f7f77f24724596f7e23c6633352223b"
+  },
+  "screenshot_observation": "Expanded PNG shows timing value and Hide label. Failure PNG shows Show (9/31) and ordinary metrics without timing rows. Failure XML/log retain a childless old timing_details node.",
+  "classification": "Harness negative state observation bypassed existing accessibility cache refresh; same5s refreshed conjunction of collapsed label and details absence required.",
+  "not_proven": "A refreshed observation on the failing device was not captured; exact-revision hosted retest required."
+}

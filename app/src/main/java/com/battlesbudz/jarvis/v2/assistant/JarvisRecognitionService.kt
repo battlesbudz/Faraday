@@ -26,10 +26,11 @@ class JarvisRecognitionService : RecognitionService() {
         job = scope.launch {
             var activeCapture: AudioTurnCapture? = null
             try {
-                val directory = AsrModelStore(applicationContext).ensureReady()
+                val engine = AsrEngine.selected(applicationContext)
+                val directory = engine.prepare(applicationContext) {}
                 activeCapture = AudioTurnCapture(AndroidAudioInput(this, audioManager = manager, dictation = true), this,
                     createDetector = { SileroSpeechDetector.create(assets) },
-                    createTranscriber = { MoonshineStreamingTranscriber(directory) },
+                    createTranscriber = { engine.create(directory) },
                     onPartialTranscript = { text ->
                         if (intent?.getBooleanExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, false) == true) {
                             handler.post { callback.partialResults(Bundle().apply {

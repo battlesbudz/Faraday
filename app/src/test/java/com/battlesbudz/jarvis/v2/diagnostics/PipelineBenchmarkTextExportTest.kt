@@ -4,6 +4,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PipelineBenchmarkTextExportTest {
+    @Test fun copiedHeaderKeepsAppSendAndSdkProxyClockOriginsDistinct() {
+        val text = render(turn("origin"))
+        assertTrue(text.contains("ttft_ms starts at app inference measurement creation"))
+        assertTrue(text.contains("submit_to_first_raw_text_ms starts at SDK send entry"))
+        assertTrue(text.contains("sdk_first_prefill_decode_ttft_proxy_ms"))
+        assertFalse(text.contains("TTFT starts at model submission"))
+    }
+
     private val provenance = PipelineBenchmarkProvenance("fixture", 1237, "fixture-source",
         deviceModel = "Fold fixture", androidVersion = "16", sdkLevel = 36,
         models = mapOf("llm" to PipelineBenchmarkModel("Gemma-fixture", "LiteRT", "test", "CPU")),

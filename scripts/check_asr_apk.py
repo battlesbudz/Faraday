@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Verify Moonshine ASR and Sherpa TTS/VAD native packaging."""
+"""Verify Whisper and shared Sherpa TTS/VAD runtime packaging and Moonshine retirement."""
 import argparse
 import hashlib
+import gzip
 import json
 
 from sherpa_jni_profile import REMOVED_CLASSES
+from prepare_whisper_qnn import FILES as QNN_FILES, DSP as QNN_DSP, check_elf, asset_name
 import re
 from pathlib import Path
 import subprocess
@@ -29,12 +31,34 @@ def check_dependencies(metadata):
         assert not missing, f'{name}: missing packaged native dependencies: {sorted(missing)}'
 
 
+RETIRED_MOONSHINE_LIBRARIES = frozenset({
+    "libmoonshine.so", "libmoonshine-jni.so", "libms_ort_1232.so",
+})
+
+
+def check_retired_moonshine(archive):
+    """Reject retired dependencies in every ABI and DEX, including stale build outputs."""
+    for entry in archive.namelist():
+        if entry.startswith("lib/"):
+            assert Path(entry).name not in RETIRED_MOONSHINE_LIBRARIES, f"Retired Moonshine library packaged: {entry}"
+        if re.fullmatch(r"classes(?:[0-9]+)?\.dex", entry):
+            assert b"Lai/moonshine/voice/" not in archive.read(entry), f"Retired Moonshine SDK classes packaged: {entry}"
+
+
+def check_qnn_asset_names(names):
+    prefix = "assets/whisper-qnn-runtime/"
+    actual = [n.removeprefix(prefix) for n in names if n.startswith(prefix) and not n.endswith('/')]
+    expected = {asset_name(n) for n in QNN_FILES} | {"manifest.json"}
+    assert len(actual) == len(expected) and set(actual) == expected, (
+        f"QNN packaged asset names changed: expected {sorted(expected)}, got {sorted(actual)}")
+
+
 def check(apk):
     with zipfile.ZipFile(apk) as archive, tempfile.TemporaryDirectory() as temporary:
         names = archive.namelist()
+        check_retired_moonshine(archive)
         prefix = "lib/arm64-v8a/"
-        required = ["libmoonshine.so", "libmoonshine-jni.so", "libms_ort_1232.so",
-                    "libsherpa-onnx-jni.so", "libonnxruntime.so", "libmicrowakeword.so",
+        required = ["libsherpa-onnx-jni.so", "libonnxruntime.so", "libmicrowakeword.so",
                     "libc++_shared.so"]
         for retired in ["libsherpa-onnx-c-api.so", "libsherpa-onnx-cxx-api.so"]:
             assert prefix + retired not in names, f"Unused native wrapper packaged: {retired}"
@@ -59,15 +83,27 @@ def check(apk):
         for retired in REMOVED_CLASSES:
             assert f"Java_com_k2fsa_sherpa_onnx_{retired}_" not in exports, f"Unused JNI wrapper retained: {retired}"
         check_dependencies(metadata)
-        for name in ["libmoonshine.so", "libmoonshine-jni.so"]:
-            assert "libms_ort_1232.so" in metadata[name], f"Missing Moonshine runtime dependency: {name}"
-            assert "libonnxruntime.so" not in metadata[name], f"Moonshine still binds Sherpa's runtime: {name}"
-        assert "Library soname: [libms_ort_1232.so]" in metadata["libms_ort_1232.so"]
-        assert "VERS_1.23.2" in metadata["libms_ort_1232.so"]
+        qnn_prefix = "assets/whisper-qnn-runtime/"
+        check_qnn_asset_names(names)
+        for name, (size, digest) in QNN_FILES.items():
+            assert names.count(qnn_prefix + asset_name(name)) == 1, f"Missing/duplicate QNN asset {name}"
+            payload = gzip.decompress(archive.read(qnn_prefix + asset_name(name)))
+            assert len(payload) == size and hashlib.sha256(payload).hexdigest() == digest, f"QNN asset changed: {name}"
+            check_elf(payload, 164 if name == QNN_DSP else 183)
+            assert prefix + name not in names, f"Optional QNN library linked into startup: {name}"
+            if name != QNN_DSP:
+                path = Path(temporary) / name; path.write_bytes(payload)
+                dynamic = subprocess.check_output(["readelf", "-d", str(path)], text=True)
+                required_vendor = {'libcdsprpc.so'} if name == 'libQnnHtpV75Stub.so' else set()
+                needed = set(re.findall(r'\(NEEDED\).*?\[([^\]]+)\]', dynamic))
+                assert needed <= ANDROID_LIBRARIES | required_vendor, f"Unreviewed QNN dependency {name}: {needed}"
+        for notice in ('LICENSE.pdf', 'NOTICE.txt', 'OpenAI-Whisper-MIT.txt', 'QNN-Plugin-MIT.txt', 'NOTICE.md', 'Native-NOTICE.md'):
+            assert "assets/licenses/whisper-qnn/" + notice in names, f"Missing QNN license: {notice}"
+
         assert "Library soname: [libonnxruntime.so]" in metadata["libonnxruntime.so"]
         assert "VERS_1.27.1" in metadata["libonnxruntime.so"]
         assert "libms_ort_1232.so" not in metadata["libsherpa-onnx-jni.so"]
-    print("ASR APK native dependency/version checks passed (separate matching ONNX runtimes).")
+    print("ASR APK checks passed (shared ORT 1.27.1 retained; Moonshine SDK/runtime absent).")
 
 
 if __name__ == "__main__":

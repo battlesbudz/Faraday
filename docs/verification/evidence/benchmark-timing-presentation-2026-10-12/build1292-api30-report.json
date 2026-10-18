@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "passed": false,
+  "source_commit": "3ddfb52e520318b544bb37774c6aacf165521893",
+  "pr_head": "f459db1388d0db18b37b2d1e4b45031ab3a946b1",
+  "run_url": "https://github.com/battlesbudz/Jarvis-OS-V2/actions/runs/38229044414",
+  "coverage": "release UI + Android actions + previous-APK upgrade + external process/permission recovery + layout/accessibility + bounded real Smart Turn JNI/control input",
+  "not_covered": [
+    "Real-model inference and model-generated tool selection",
+    "Microphone, speaker, Bluetooth and acoustic interruption behavior",
+    "Physical-device GPU/NPU compatibility, thermal behavior and latency",
+    "Successful multi-gigabyte model download/import",
+    "Real-model use of approved memory recall"
+  ],
+  "device_evidence_folder": "jarvis-verification-1791799872764162259",
+  "errors": [
+    "Instrumentation phase instrumentation.txt failed: ['Failed, skipped or incomplete instrumentation test', 'Missing/duplicate successful runner completion or wrong test count', 'Instrumentation reported a failure']",
+    "Could not collect per-test evidence: Missing or duplicate evidence for test01_accessibleChatAndCallControls.png"
+  ],
+  "profile": {
+    "id": "30-phone-normal",
+    "api": 30,
+    "apk": "app-release",
+    "device_profile": "pixel_2",
+    "screen_profile": "phone",
+    "page_size": 4096,
+    "target": "google_apis",
+    "runner": "ubuntu-latest",
+    "arch": "x86_64",
+    "acceleration": "kvm",
+    "boot_timeout": 300,
+    "job_timeout": 40,
+    "instrumentation_timeout": 900
+  },
+  "smart_turn_input": {
+    "model_bytes": 8679182,
+    "model_sha256": "2bb026316b14a660486a75b1733cd3fbab8c2fd0314dc9af7be49f8cca967e4f",
+    "host_ownership_verified": true,
+    "host_verified": true,
+    "device_verified": true,
+    "host_cleanup": "verified",
+    "device_cleanup": "verified",
+    "private_copy_cleanup": "verified"
+  },
+  "apk_sha256": "4ae4b1c65b13bd1cd337bdda575717e6c842f8b8eaee79c1a00f4a6a834185d7",
+  "test_apk_sha256": "b9abc177563b8418607904722b799460b0f43df85555c8062ab632ee5fe02b7d",
+  "device": {
+    "abi": "x86_64,x86,arm64-v8a,armeabi-v7a,armeabi",
+    "api": "30",
+    "fingerprint": "google/sdk_gphone_x86_64/generic_x86_64_arm64:11/RSR1.240422.006/12134477:userdebug/dev-keys",
+    "native_bridge": "libndk_translation.so",
+    "page_size": 4096
+  },
+  "upgrade": {
+    "passed": true,
+    "previous_apk_sha256": "c5fd1627b9bad4bc6b7e124a7e3a4723391c9d6cb4c1a4e734e14908436d9daa",
+    "previous_release": {
+      "apk": "app-release.apk",
+      "asset_id": 630330602,
+      "build": 1278,
+      "download_source": "GitHub numbered release",
+      "published_at": "2026-10-11T09:27:31Z",
+      "release_id": 409568125,
+      "repository": "battlesbudz/Jarvis-OS-V2",
+      "schema": 1,
+      "sha256": "c5fd1627b9bad4bc6b7e124a7e3a4723391c9d6cb4c1a4e734e14908436d9daa",
+      "size_bytes": 138441053,
+      "tag": "audio-pr2-pr6-build.1278"
+    },
+    "previous_version_code": 1278,
+    "seed": {
+      "passed": true,
+      "tests": {
+        "testSeedPreviousReleaseData": 0
+      },
+      "errors": []
+    },
+    "candidate_version_code": 1292,
+    "verify": {
+      "passed": true,
+      "tests": {
+        "testCandidateRetainsPreviousReleaseData": 0
+      },
+      "errors": []
+    },
+    "data_cleared_during_update": false
+  }
+}

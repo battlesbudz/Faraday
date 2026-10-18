@@ -1,5 +1,88 @@
 # Feature and acceptance map
 
+## Faraday main integration and rename repairs — 12 October 2026
+
+[Integration evidence](faraday-integration-2026-10-12.md) retains Build 1295's
+repository-rename failure: Sherpa's cached CMake build referenced the old
+Jarvis-OS-V2 checkout. A repository-scoped native cache key prevents restoring
+that non-relocatable build into Faraday. Application/native source, dependencies,
+assertions and release gates are unchanged. The regression fails against the
+old workflow. The same run's diagnostic admission also rejected Faraday because
+two exact-name guards still pinned Jarvis-OS-V2. Their expected namespace and
+synthetic fixtures are updated without loosening identity, cleanup, resource or
+quality checks; negative-repository regressions and failure evidence are retained.
+Exact-revision full release verification remains required.
+
+## Discoverable timing detail and bounded benchmark navigation — 12 October 2026
+
+[Timing presentation and API 30 repair](benchmark-timing-presentation-2026-10-12.md)
+groups the 31 newly added preparation/Smart Turn measurements behind a labelled
+expand/collapse control while retaining all measured and unavailable fields in
+exports. Required test45 exercises repeated visibility changes, immutable
+retained/exported data and the original scoring/review/export flows. Its API 30
+NOISY lookup uses existing held discovery with unchanged bounds and tap checks;
+build 1292 failure evidence is retained. Build 1293 passed all four phone/16KB
+profiles; its Fold collapse check exposed a cached childless accessibility node.
+The second bounded instrumentation repair requires fresh collapsed-label and
+details-absence observations within the original five seconds, with no extra
+action or removed assertion. Both failed artifacts are retained; full exact-revision
+Android CI is required.
+
+## Measured audio preparation overlap — 12 October 2026
+
+[Capture and speech-span overlap evidence](audio-overlap-and-incremental-prefill-2026-10-12.md)
+adds same-clock preparation/capture/speech intervals, actual Smart Turn backend
+call edges and separate endpoint-decision/final-recognition stages. Missing or
+invalid boundaries remain unavailable; internal pauses stay explicitly inside
+the detected-speech span. Source review distinguishes current incremental audio
+encoding from a future incremental language-model-prefill path and defines the
+native ordering/cache parity gate before that experiment. No physical overlap,
+phone speedup or new LLM audio-streaming implementation is claimed.
+
+## Smart Turn on Whisper text capture — 12 October 2026
+
+[Whisper Smart Turn endpointing](smart-turn-whisper-2026-10-12.md) enables the
+existing retained-PCM worker on the ordinary CPU/QNN Whisper text path while
+requiring authoritative final recognition. Whisper ASR segmentation no longer
+disables a fresh PCM verdict; committed words, overlap uncertainty/recovery,
+continued speech, playback guards, stale/deadline fallback and finalization
+drain remain protected. Gemma-direct keeps its existing eligibility and caption
+behavior; this change does not resolve its pre-existing caption/control coupling.
+Recovery repeats hardware-drain checks so a new suffix cannot be sealed out while
+the full-recording retry is running. The combined source-bound host suite passed
+218 JVM checks and both Python helper suites
+(124 and 101 tests). Full exact-revision release/Android gates and physical
+model/audio/latency acceptance remain required.
+
+## Gemma processing measurements — 11 October 2026
+
+[Clocked Gemma processing diagnostics](gemma-processing-measurements-2026-10-11.md)
+add send/callback/consumer/drain boundaries, guard-to-Piper/PCM/playback spans and
+final-receipt encoder interval bounds. Existing early fixed-preface and retained
+encoder API metrics remain separate. SDK's misleading first-recorded-turn TTFT
+proxy is explicitly relabelled; native count/rate-derived executor-prefill and
+whole-decode phases require successful checked idle. Cancelled/ambiguous/missing
+observations stay unavailable. Focused JVM/API coverage does not qualify physical
+latency, real-model execution or the integrated release candidate.
+
+## Combined audio candidate — 11 October 2026
+
+[Audio build fixture repairs](audio-build-repair-2026-10-11.md) retain the
+Android compile failure and reflection-only correction, then Build 1273's
+read-count-coupled fake-clock failure and semantic-boundary correction. Exact
+assertions remain. Build 1276 passed all 2,240 JVM tests, then exposed Android's
+automatic `.gz` asset inflation; opaque `.gz.bin` names fix the production
+packaging contract without weakening integrity checks. Full release verification
+must rerun at the repaired revision.
+
+Optional [Snapdragon Whisper QNN](whisper-qnn-2026-10-11.md) with verified assets,
+strict provider diagnostics and CPU fallback replaces the retired Moonshine option.
+[first meaningful Piper clause](first-piper-clause-2026-10-11.md) delivery retains
+later passage batching, while [early Gemma preparation](early-gemma-session-2026-10-11.md)
+uses a real fixed system preface and checked lifecycle barrier. Host tests are
+source-level evidence; Android release and Fold6 acceleration/latency qualification
+remain separate gates.
+
 ## Same-host native encoder acceptance proposal — October 10, 2026
 
 This local-only harness proposal uses the versioned
@@ -30,29 +113,36 @@ A finite final appended-cache mutation is an explicit passing counterexample to
 any broader state-reference claim. No model, native rebuild, capsule, hosted
 rerun, Android execution or new release acceptance is claimed by these tests.
 
-## Smart Turn opt-in observations — 9 October 2026
+## Smart Turn native endpoint control — 10 October 2026
 
-An explicit default-off setting verifies the pinned auxiliary model before local
-microphone probability/timing observations. Capture and endpoint authority are
-unchanged. One retained worker, bounded snapshots/candidate frequency, cancellation
-and exact call/generation fencing keep ordinary voice independent of model setup.
+The installed pinned model is enabled by default for eligible native audio. Its
+COMPLETE verdict can close a current pause; CONTINUE suppresses early close until
+speech resumes, a fresh bounded reassessment says COMPLETE, or at least 3500 ms
+of sampled/classified quiet reaches fallback at an exactly covered boundary
+(3500–4200 ms across existing read phases). Missing/loading/busy/
+expired work adds no mandatory wait to ordinary endpointing. An explicit new
+preference preserves a disable choice without inheriting the old shadow flag.
+At this checkpoint ASR-text mode remained excluded. The 12 October extension
+above enables Whisper while retaining playback/quiet and native-caption guards.
 
-The source recovered after interruption is distinguished from newly rebuilt
-build/test/license support. [Recovery scope and fresh checks](smart-turn-recovery-2026-10-09.md)
-are the current evidence. Named journey81 covers opt-in/disable/recreation without
-weights. Android/NDK/shrunk linkage, phone costs and premature-cutoff calibration
-remain pending. All five profiles remain required; the later October 10 capacity
-review sets the Fold main deadline to 1,200 seconds and retains 900 for the other
-four, as recorded in the Build 1254 section below.
+`SmartTurnAudioEndpointTest` exercises the actual collector, bounded worker and
+PCM owner with synthetic acoustic/model outputs: 100 ms and irregular reads,
+65/120/220/expired inference scheduling, concurrent ready/PCM ordering, full
+retention, stale call/revision, continued/quiet speech, eight-pause budget,
+caption skipping versus mandatory text finalization, and cleanup. Existing
+Smart Turn, native-pause, capture-first and echo/final-verdict suites remain.
+Journey81 checks default-on/disable/recreation separately from its companion
+native probe with pinned temporary model input. Its [composition-safe settings
+action](smart-turn-android-validation-2026-10-10.md#settings-composition-boundary-build-1264)
+requires the exact label under the enabled tagged parent and re-resolves that
+selector for one tap; source-extracted host/API checks are not Android evidence. No weights enter source, APK
+or output artifacts. All five release profiles retain their existing deadlines.
 
-Capture-first follow-ups now attach the same retained call observer after the old
-interruption listener joins. Observation admission additionally requires the exact
-old reply child to complete successfully, with safe native resources and current
-call/capture ownership. Raw retention never waits for that eligibility. Already
-sealed inputs keep the valid call worker while still applying disable, missing
-model and changed-call revocation. [Follow-up contract and checks](smart-turn-followup-2026-10-09.md)
-cover delayed cleanup, no-observation endpoints, echo reset, worker reuse and
-separate follow-up telemetry; this remains a host/API candidate pending release.
+[Endpoint policy, scheduling traces and coverage limits](smart-turn-endpoint-2026-10-10.md)
+distinguish source/host tests from pending release JNI and actual phone evidence.
+The [9 October shadow contract](smart-turn-recovery-2026-10-09.md) is historical;
+the same retained worker and old-reply cleanup gate now support endpoint control.
+
 
 ## Capture-first rearm candidate — 9 October 2026
 

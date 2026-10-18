@@ -78,6 +78,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/verification/artifacts.py download --manifest artifact-manifest.json --artifact-ids "${{ steps.artifacts.outputs.artifact_ids }}" --out inputs --layout named
+      - name: Allocate a unique owned Smart Turn input directory
+        id: smart-turn-input
+        run: python3 scripts/verification/smart_turn_input.py allocate --parent "$RUNNER_TEMP" --github-output "$GITHUB_OUTPUT"
+      - name: Fetch the pinned temporary Smart Turn input
+        timeout-minutes: 2
+        run: python3 scripts/verification/smart_turn_input.py fetch --directory "${{ steps.smart-turn-input.outputs.directory }}" --owner "${{ steps.smart-turn-input.outputs.owner }}"
       - name: Enable emulator acceleration
         if: matrix.acceleration == 'kvm'
         run: |
@@ -183,7 +189,10 @@ jobs:
           # Stream guest INFO-and-above diagnostics even if 16 KB unlock fails before the controller.
           # This is evidence only; no startup wait, input retry, or boot-budget change.
           emulator-options: ${{ matrix.screen_profile == 'foldable' && '-gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot' || '-no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot' }}${{ matrix.page_size == 16384 && ' -logcat \*:i' || '' }}
-          script: python3 scripts/verification/android.py run --profile "${{ matrix.id }}" --apk inputs/jarvis-os-v2-release-apk/${{ matrix.apk }}.apk --test-apk inputs/jarvis-verification-test-apk/app-release-androidTest.apk --previous-apk inputs/jarvis-previous-release/app-release.apk --previous-metadata inputs/jarvis-previous-release/previous-release.json --out verification-evidence --source-commit "${{ github.sha }}" --pr-head "${{ github.event.pull_request.head.sha }}" --allow-emulator-reset
+          script: python3 scripts/verification/android.py run --profile "${{ matrix.id }}" --apk inputs/jarvis-os-v2-release-apk/${{ matrix.apk }}.apk --test-apk inputs/jarvis-verification-test-apk/app-release-androidTest.apk --previous-apk inputs/jarvis-previous-release/app-release.apk --previous-metadata inputs/jarvis-previous-release/previous-release.json --smart-turn-input-dir "${{ steps.smart-turn-input.outputs.directory }}" --smart-turn-input-owner "${{ steps.smart-turn-input.outputs.owner }}" --out verification-evidence --source-commit "${{ github.sha }}" --pr-head "${{ github.event.pull_request.head.sha }}" --allow-emulator-reset
+      - name: Remove temporary Smart Turn host input even if boot failed
+        if: always() && steps.smart-turn-input.outputs.directory != '' && steps.smart-turn-input.outputs.owner != ''
+        run: python3 scripts/verification/smart_turn_input.py cleanup --directory "${{ steps.smart-turn-input.outputs.directory }}" --owner "${{ steps.smart-turn-input.outputs.owner }}"
       - name: Stop the owned foldable X display and retain diagnostics
         if: always() && matrix.screen_profile == 'foldable'
         run: |

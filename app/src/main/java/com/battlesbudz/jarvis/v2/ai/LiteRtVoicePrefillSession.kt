@@ -103,6 +103,7 @@ internal class LiteRtVoicePrefillSession(private val session: VoiceNativeSession
                 // This is the native submission, after final prefill has completed.
                 onInferenceProgress(InferenceProgress(submittedAtMs = System.nanoTime() / 1_000_000))
                 val nativeSubmitBeganAt = System.nanoTime()
+                benchmark.measurement.submissionStarted(nativeSubmitBeganAt)
                 onBenchmarkNativeWorkStarted()
                 try { session.generateContentStream(finalInput, object : VoiceNativeCallback {
                     override fun onNext(response: String) {
@@ -120,6 +121,7 @@ internal class LiteRtVoicePrefillSession(private val session: VoiceNativeSession
                 }
             } catch (error: Throwable) { benchmark.measurement.terminal(); throw error }
             for (token in tokens) {
+                benchmark.measurement.consumed(token.isNotEmpty())
                 if (token.isNotEmpty()) {
                     if (first == null) first = System.nanoTime()
                     events++
@@ -129,6 +131,7 @@ internal class LiteRtVoicePrefillSession(private val session: VoiceNativeSession
                 }
             }
             visible.finish()
+            benchmark.measurement.consumerDrained()
             completed = true
         } catch (error: Throwable) {
             benchmarkError = error

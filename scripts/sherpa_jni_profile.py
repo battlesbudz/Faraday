@@ -8,11 +8,16 @@ import re
 import shutil
 
 APP_SOURCE_DIR = Path(__file__).resolve().parents[1] / 'app/src/main/cpp/smartturn'
-APP_SOURCES = ('jarvis-smart-turn/smart_turn_jni.cc', 'jarvis-smart-turn/whisper_features.cc')
+APP_QNN_DIR = Path(__file__).resolve().parents[1] / 'app/src/main/cpp/whisperqnn'
+APP_SOURCES = ('jarvis-smart-turn/smart_turn_jni.cc', 'jarvis-smart-turn/whisper_features.cc',
+               'jarvis-whisper-qnn/whisper_qnn_jni.cc', 'jarvis-whisper-qnn/whisper_qnn_session.cc',
+               'jarvis-whisper-qnn/whisper_features.cc')
 APP_SYMBOLS = tuple('Java_com_battlesbudz_jarvis_v2_voice_smartturn_SmartTurnNative_' + name
                     for name in ('create', 'prepare', 'infer', 'cancel', 'close'))
+QNN_SYMBOLS = tuple('Java_com_battlesbudz_jarvis_v2_voice_whisper_WhisperQnnNative_' + name
+                    for name in ('create', 'decode', 'cancel', 'close'))
 UPSTREAM_EXPORTS = '{\n global: Java_com_k2fsa_sherpa_onnx*;\n local: *;\n};\n'
-APP_EXPORTS = '{\n global: Java_com_k2fsa_sherpa_onnx*;\n  ' + ';\n  '.join(APP_SYMBOLS) + ';\n local: *;\n};\n'
+APP_EXPORTS = '{\n global: Java_com_k2fsa_sherpa_onnx*;\n  ' + ';\n  '.join((*APP_SYMBOLS, *QNN_SYMBOLS)) + ';\n local: *;\n};\n'
 
 JNI_SOURCES = (
     'common.cc', 'jni.cc', 'offline-recognizer.cc', 'offline-stream.cc',
@@ -49,10 +54,15 @@ def configure(source):
     for name in ('smart_turn_jni.cc', 'smart_turn_session.h', 'whisper_features.cc', 'whisper_features.h'):
         if not (APP_SOURCE_DIR / name).is_file():
             raise ValueError(f'Missing app Smart Turn source: {name}')
+    for name in ('whisper_qnn_jni.cc', 'whisper_qnn_session.cc', 'whisper_qnn_session.h',
+                 'whisper_decode_state.h', 'whisper_run_state.h', 'whisper_features.cc', 'whisper_features.h'):
+        if not (APP_QNN_DIR / name).is_file():
+            raise ValueError(f'Missing app Whisper QNN source: {name}')
     exports = path.parent / 'sherpa-onnx-symbols.lds'
     if re.sub(r'\s', '', exports.read_text()) not in {re.sub(r'\s', '', value) for value in (UPSTREAM_EXPORTS, APP_EXPORTS)}:
         raise ValueError('Pinned Sherpa JNI export script changed; review the app profile')
     shutil.copytree(APP_SOURCE_DIR, path.parent / 'jarvis-smart-turn', dirs_exist_ok=True)
+    shutil.copytree(APP_QNN_DIR, path.parent / 'jarvis-whisper-qnn', dirs_exist_ok=True)
     text = text[:match.start()] + 'set(sources\n  ' + '\n  '.join((*JNI_SOURCES, *APP_SOURCES)) + '\n)' + text[match.end():]
     path.write_text(text)
     exports.write_text(APP_EXPORTS)

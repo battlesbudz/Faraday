@@ -115,7 +115,9 @@ class LiteRtLmEngine(
     private var nativeSession = 0L
     private var nativeSubmissions = 0
     fun inputContextDescription(): String =
-        "nativeSession=$nativeSession nativePriorSubmissions=$nativeSubmissions toolsEnabled=$toolsEnabled"
+        "nativeSession=$nativeSession nativePriorSubmissions=$nativeSubmissions toolsEnabled=$toolsEnabled " +
+            "fixedVoicePreface=${if (fixedVoicePreface) GemmaVoicePreface.POLICY else "none"} " +
+            "systemInstructionChars=${if (fixedVoicePreface) GemmaVoicePreface.instructions.length else 0}"
 
     internal fun createVoicePrefillSession(): com.battlesbudz.jarvis.v2.voice.VoicePrefillSession {
         checkNativeWorkerThread()
@@ -153,18 +155,66 @@ class LiteRtLmEngine(
         )
     }
 
+    private var fixedVoicePreface = false
+    internal val hasFixedVoicePreface: Boolean get() = fixedVoicePreface
     private var toolsEnabled = false
     /** Read-only view of the native tool policy; never resets the conversation. */
     internal val toolsEnabledState: Boolean get() = toolsEnabled
-    override suspend fun setToolsEnabled(enabled: Boolean): Boolean {
-        if (toolsEnabled == enabled) return false
+
+    /** Synchronous SDK prefill; caller serializes encoder compute behind this operation. */
+    internal suspend fun prepareVoiceConversation(isCurrent: () -> Boolean): Boolean {
+        checkNativeWorkerThread()
+        currentCoroutineContext().ensureActive()
+        check(modelSpec.incrementalGemmaInput && audioEnabled && !toolsEnabled)
+        if (!fixedVoicePreface) { resetConversation(); fixedVoicePreface = true }
+        return try {
+            val prepared = lifecycle.prepareConversation(isCurrent)
+            currentCoroutineContext().ensureActive()
+            if (!isCurrent()) { resetConversation(); false } else prepared
+        } catch (cancelled: CancellationException) {
+            resetConversation()
+            throw cancelled
+        }
+    }
+
+    /** Never preserve a used history merely to save preparation time. */
+    internal suspend fun resetForVoiceSpeculation() {
+        if (!lifecycle.hasUnusedPreparedConversation) resetConversation()
+    }
+
+    /** Called by the session owner before deciding whether to seed confirmed history. */
+    internal suspend fun prepareOrdinaryConversation(): Boolean {
+        if (!fixedVoicePreface) return false
         resetConversation()
+        return true
+    }
+
+    private fun ordinaryPrompt(prompt: String): String {
+        check(!fixedVoicePreface) { "Ordinary input mode must be prepared before prompt assembly" }
+        return prompt
+    }
+
+    private suspend fun audioPrompt(prompt: String): String {
+        val dynamic = if (modelSpec.incrementalGemmaInput && !toolsEnabled) GemmaVoicePreface.userText(prompt) else null
+        val requested = dynamic != null
+        if (fixedVoicePreface != requested) {
+            check(!lifecycle.hasConversationHistory) { "Audio input mode change requires confirmed-history reset before prompt assembly" }
+            resetConversation()
+            fixedVoicePreface = requested
+        }
+        return dynamic ?: prompt
+    }
+
+    override suspend fun setToolsEnabled(enabled: Boolean): Boolean {
+        if (toolsEnabled == enabled && !(enabled && fixedVoicePreface)) return false
+        resetConversation()
+        if (enabled) fixedVoicePreface = false
         toolsEnabled = enabled
         return true
     }
 
     private fun createConversation() = engine.createConversation(
-        modelConversationConfig(modelSpec, tools, toolsEnabled)
+        modelConversationConfig(modelSpec, tools, toolsEnabled, fixedVoicePreface)
     )
 
     @OptIn(ExperimentalApi::class)
@@ -187,6 +237,7 @@ class LiteRtLmEngine(
     /** The next prompt must be rebuilt from confirmed history and actual tool receipts. */
     override suspend fun resetConversation() = withContext(NonCancellable) {
         lifecycle.resetForConfirmedHistory()
+        fixedVoicePreface = false
         nativeSession++
         nativeSubmissions = 0
     }
@@ -195,8 +246,9 @@ class LiteRtLmEngine(
         prompt: String,
         onToken: (String) -> Unit
     ): GenerationResult {
-        onPromptSubmitted(prompt, 0)
-        return generateWithContents(Contents.of(prompt), onToken, prompt.length, "text")
+        val userPrompt = ordinaryPrompt(prompt)
+        onPromptSubmitted(userPrompt, 0)
+        return generateWithContents(Contents.of(userPrompt), onToken, userPrompt.length, "text")
     }
 
     suspend fun generate(
@@ -205,9 +257,10 @@ class LiteRtLmEngine(
         onToken: (String) -> Unit
     ): GenerationResult {
         require(visionEnabled && modelSpec.supportsVision) { "$modelId does not support image input. Select a vision model." }
-        onPromptSubmitted(prompt, 0)
-        return generateWithContents(Contents.of(Content.ImageBytes(imageBytes), Content.Text(prompt)), onToken,
-            prompt.length, "image_text", imageBytes = imageBytes.size)
+        val userPrompt = ordinaryPrompt(prompt)
+        onPromptSubmitted(userPrompt, 0)
+        return generateWithContents(Contents.of(Content.ImageBytes(imageBytes), Content.Text(userPrompt)), onToken,
+            userPrompt.length, "image_text", imageBytes = imageBytes.size)
     }
 
     /**
@@ -220,10 +273,11 @@ class LiteRtLmEngine(
         audioBytes: ByteArray,
         onToken: (String) -> Unit
     ): GenerationResult {
-        require(audioEnabled && modelSpec.supportsAudio) { "$modelId requires Moonshine or Whisper for speech recognition." }
-        onPromptSubmitted(prompt, audioBytes.size)
-        return generateWithContents(audioMessageContents(prompt, audioBytes), onToken,
-            prompt.length, "audio_text", audioBytes = audioBytes.size)
+        require(audioEnabled && modelSpec.supportsAudio) { "$modelId requires Whisper for speech recognition." }
+        val userPrompt = audioPrompt(prompt)
+        onPromptSubmitted(userPrompt, audioBytes.size)
+        return generateWithContents(audioMessageContents(userPrompt, audioBytes), onToken,
+            userPrompt.length, "audio_text", audioBytes = audioBytes.size)
     }
 
     /** Consume only a completed, fenced capture; SDK validation also forbids automatic tools. */
@@ -235,9 +289,10 @@ class LiteRtLmEngine(
     ): GenerationResult {
         require(audioEnabled && modelSpec.supportsAudio) { "$modelId does not support native audio input." }
         val pcmBytes = artifact.pcmSampleCount * 2
-        onPromptSubmitted(prompt, pcmBytes)
-        return generateWithContents(Contents.of(Content.Text(prompt), artifact), onToken,
-            prompt.length, "sealed_audio_text", audioBytes = pcmBytes, maxPendingCallbacks = maxPendingCallbacks)
+        val userPrompt = audioPrompt(prompt)
+        onPromptSubmitted(userPrompt, pcmBytes)
+        return generateWithContents(Contents.of(Content.Text(userPrompt), artifact), onToken,
+            userPrompt.length, "sealed_audio_text", audioBytes = pcmBytes, maxPendingCallbacks = maxPendingCallbacks)
     }
 
     private suspend fun generateWithContents(
@@ -295,13 +350,17 @@ class LiteRtLmEngine(
         val toolCalls = mutableListOf<ToolCall>()
         var streamEvents = 0
         val firstCallbackAt = java.util.concurrent.atomic.AtomicLong()
+        val firstRawTextReported = java.util.concurrent.atomic.AtomicBoolean(false)
         var nativeSubmitMs: Long? = null
         var benchmarkOutcome = PipelineBenchmarkOutcome.ERROR
         var benchmarkError: Throwable? = null
         var nativeTokens: NativeTokenTelemetry? = null
 
         val responses = Channel<Message>(maxPendingCallbacks)
+        val preparationStartedAt = System.nanoTime()
+        val wasEarlyPrepared = lifecycle.hasUnusedPreparedConversation
         val nativeTurn = lifecycle.beginTurn()
+        benchmark.measurement.conversationReady(preparationStartedAt, wasEarlyPrepared)
         val activeConversation = nativeTurn.conversation
         val ownerJob = currentCoroutineContext()[Job]
         nativeSubmissions++
@@ -312,11 +371,13 @@ class LiteRtLmEngine(
             val submittedAt = System.nanoTime() / 1_000_000
             progressSink(InferenceProgress(submittedAtMs = submittedAt))
             val nativeSubmitBeganAt = System.nanoTime()
+            benchmark.measurement.submissionStarted(nativeSubmitBeganAt)
             try { activeConversation.sendMessageAsync(message, object : MessageCallback {
                 override fun onMessage(message: Message) = nativeCallback {
-                    val callbackAt = System.nanoTime()
-                    benchmark.measurement.callback(message.toString().isNotEmpty())
-                    if (firstCallbackAt.compareAndSet(0L, callbackAt))
+                    val hasText = message.toString().isNotEmpty()
+                    val callbackAt = benchmark.measurement.callback(hasText)
+                    firstCallbackAt.compareAndSet(0L, callbackAt)
+                    if (hasText && firstRawTextReported.compareAndSet(false, true))
                         progressSink(InferenceProgress(firstRawTokenAtMs = callbackAt / 1_000_000))
                     if (responses.trySend(message).isFailure)
                         responses.close(IllegalStateException("native_response_queue_capacity"))
@@ -336,10 +397,11 @@ class LiteRtLmEngine(
                 throw error
             }
             for (response in responses) {
+                val messageText = response.toString()
+                benchmark.measurement.consumed(messageText.isNotEmpty())
                 response.toolCalls.forEach {
                     toolCalls += ToolCall(it.name, JSONObject(it.arguments).toString())
                 }
-                val messageText = response.toString()
                 if (messageText.isNotEmpty()) {
                     benchmark.measurement.visibleText()
                     firstTokenAt = firstTokenAt ?: System.nanoTime()
@@ -348,6 +410,7 @@ class LiteRtLmEngine(
                     onToken(messageText)
                 }
             }
+            benchmark.measurement.consumerDrained()
             completed = true
         } catch (error: Throwable) {
             benchmarkError = error

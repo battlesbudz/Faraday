@@ -46,15 +46,12 @@ def contract() -> dict:
 def model_specs() -> dict[str, list[dict]]:
     """Read authoritative production hashes; never maintain a second weight pin."""
     voice = ROOT / "app/src/main/java/com/battlesbudz/jarvis/v2/voice"
-    moon = (voice / "AsrModelStore.kt").read_text()
     whisper = (voice / "RecognitionModelStore.kt").read_text()
     result = {
-        "moonshine": [{"name": name, "bytes": int(size), "sha256": digest}
-                      for name, size, digest in re.findall(r'ModelFile\("([^"]+)", (\d+), "([0-9a-f]{64})"\)', moon)],
         "whisper": [{"name": name, "bytes": int(size), "sha256": digest}
                     for name, size, digest in re.findall(r'Spec\("([^"]+)", (\d+), "([0-9a-f]{64})"\)', whisper)],
     }
-    if len(result["moonshine"]) != 8 or len(result["whisper"]) != 3:
+    if len(result["whisper"]) != 3:
         raise ValueError("Production ASR weight contract changed; review the host adapter.")
     return result
 
@@ -155,7 +152,6 @@ def download(url: str, path: Path, expected_bytes: int, expected_sha256: str) ->
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".part")
     try:
-        # The Moonshine CDN rejects Python's default User-Agent (Cloudflare 1010).
         # Identify this public release verification client explicitly.
         request = urllib.request.Request(url, headers={"User-Agent": "Jarvis-OS-V2/recorded-audio-verification"})
         with urllib.request.urlopen(request, timeout=60) as response, temporary.open("wb") as output:
@@ -176,13 +172,6 @@ def prepare_models(directory: Path, allow_download: bool) -> dict[str, list[dict
     specs = model_specs()
     voice = ROOT / "app/src/main/java/com/battlesbudz/jarvis/v2/voice"
     if allow_download:
-        moon_source = (voice / "AsrModelStore.kt").read_text()
-        base = re.search(r'MOONSHINE_BASE = "([^"]+)"', moon_source).group(1)
-        for spec in specs["moonshine"]:
-            path = directory / "moonshine" / spec["name"]
-            if not valid_model(path, spec):
-                print(f"Downloading pinned Moonshine {spec['name']}", flush=True)
-                download(f"{base}/{spec['name']}", path, spec["bytes"], spec["sha256"])
         if not all(valid_model(directory / "whisper" / spec["name"], spec) for spec in specs["whisper"]):
             whisper_source = (voice / "RecognitionModelStore.kt").read_text()
             match = re.search(r'download\("([^"]+)", part,\s*(\d+), "([0-9a-f]{64})"', whisper_source)
@@ -230,37 +219,6 @@ def recognize_whisper(recognizer, pcm: bytes) -> tuple[str, str]:
     return stream.result.text, str(stream.result)
 
 
-def recognize_moonshine(directory: Path, pcm: bytes) -> tuple[str, str]:
-    import numpy as np
-    from moonshine_voice import ModelArch, Transcriber
-    transcriber = Transcriber(str(directory), ModelArch.SMALL_STREAMING, update_interval=.25,
-        options={"vad_threshold": "0.0", "identify_speakers": "false", "return_audio_data": "false", "transcription_interval": "0.25"})
-    lines = {}
-    events = []
-
-    def event(item):
-        if hasattr(item, "line") and item.line is not None:
-            lines[item.line.line_id] = item.line.text
-            events.append({"kind": type(item).__name__, "text": item.line.text})
-
-    try:
-        transcriber.add_listener(event)
-        transcriber.start()
-        samples = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768
-        for offset in range(0, len(samples), 1600):
-            transcriber.add_audio(samples[offset:offset + 1600], 16000)
-        # Pinned 0.1.5 stopStream semantics match Android's forced final update.
-        # This private-API adapter deliberately fails if that host SDK changes.
-        stream = transcriber.get_default_stream()
-        result = transcriber._lib.moonshine_stop_stream(transcriber._handle, stream._handle)
-        if result != 0:
-            raise RuntimeError(f"Moonshine native finalization failed: {result}")
-        final = stream.update_transcription(1)
-        return " ".join(text for text in lines.values() if text), json.dumps({"events": events, "final": str(final)})
-    finally:
-        transcriber.close()
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--models", type=Path, required=True)
@@ -283,7 +241,9 @@ def main() -> int:
         for spec in required["checks"]:
             data = variant_pcm(pcm, spec["variant"])
             start = time.monotonic()
-            text, raw = recognize_whisper(whisper, data) if spec["backend"] == "whisper" else recognize_moonshine(args.models / "moonshine", data)
+            if spec["backend"] != "whisper":
+                raise ValueError("Unsupported recorded-audio backend")
+            text, raw = recognize_whisper(whisper, data)
             result = score(sample["text"], text)
             passed = result["word_error_rate"] <= spec["max_word_error_rate"] and result["first_word_correct"] and result["last_word_correct"]
             item = {"name": spec["name"], "backend": spec["backend"], "variant": spec["variant"], "sample_id": sample["id"],

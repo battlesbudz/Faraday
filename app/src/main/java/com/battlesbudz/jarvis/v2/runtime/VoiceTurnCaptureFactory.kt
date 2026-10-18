@@ -56,7 +56,7 @@ internal class VoiceTurnCaptureFactory(
                 if (it.startsWith("followup_speech_evidence") || it.startsWith("followup_candidate_rejected")) {
                     diagnosticRecorder.recordTurnEvidence(plan.turnId, "followup_speech", it)
                 }
-                if (it.startsWith("capture_endpoint_timing") || it.startsWith("caption_finalization") || it.startsWith("native_pause_") || it.startsWith("native_endpoint_cue")) {
+                if (it.startsWith("capture_endpoint_timing") || it.startsWith("caption_finalization") || it.startsWith("native_pause_") || it.startsWith("native_endpoint_cue") || it.startsWith("smart_turn_endpoint")) {
                     diagnosticRecorder.recordTurnEvidence(plan.turnId, "capture_endpoint", it)
                 }
                 if (it.startsWith("asr_recovery_") || it.startsWith("empty_speech_candidate") || it.startsWith("nonverbal_candidate")) {
@@ -78,6 +78,9 @@ internal class VoiceTurnCaptureFactory(
             nativePauseObserver = nativePauseObserver,
             nativePauseTurnId = nativePauseTurnId,
             nativePauseGeneration = nativePauseGeneration,
+            canUseSmartTurn = { onset ->
+                comparison == null && !needsFollowupTranscript(onset)
+            },
             canUseNativePause = { onset ->
                 plan.directAudioTurn && comparison == null && retainedPcmObserver != null && !needsFollowupTranscript(onset)
             },

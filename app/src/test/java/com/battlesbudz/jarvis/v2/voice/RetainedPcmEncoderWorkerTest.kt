@@ -49,6 +49,58 @@ class RetainedPcmEncoderWorkerTest {
     }
     private fun await(latch: CountDownLatch) = assertTrue(latch.await(3, TimeUnit.SECONDS))
 
+    @Test fun earlyPreparationQueueRetainsExistingFullPcmBudgetAndCancellationWipesIt() = runBlocking {
+        val gate = EarlyGemmaPreparationGate { true }
+        val entered = CountDownLatch(1)
+        val created = AtomicInteger()
+        val owner = RetainedPcmEncoderWorker({ _: Long ->
+            entered.countDown()
+            gate.awaitReady()
+            created.incrementAndGet()
+            FakeEncoder()
+        }, { true }, maxQueuedBytes = GemmaStreamingAudioCapture.PREPARATION_QUEUED_BYTES,
+            maxEvents = GemmaStreamingAudioCapture.PREPARATION_MAX_EVENTS)
+        val packets = (1..300).map { ByteArray(3200) { 1 } }
+        try {
+            owner.onPcm(packets.first()); await(entered)
+            // Actual microphone packets are 100 ms. The full existing 30 seconds
+            // must fit while fixed prefill runs, rather than failing at packet258.
+            packets.drop(1).forEach(owner::onPcm)
+            assertEquals(0, created.get())
+            assertEquals("native_audio_sample_budget",
+                runCatching { owner.onPcm(pcm(1)) }.exceptionOrNull()?.message)
+        } finally {
+            gate.cancel(); owner.requestCancel()
+            assertTrue(owner.closeAndDrain(3000))
+        }
+        assertEquals(0, created.get())
+        assertTrue(packets.all { packet -> packet.all { it == 0.toByte() } })
+    }
+
+    @Test fun nativeWorkClocksAreSeparateAndObserverCannotBreakCapture() = runBlocking {
+        var clock = 0L; var count = 0
+        val snapshots = java.util.Collections.synchronizedList(mutableListOf<RetainedPcmEncoderWorker.WorkSnapshot>())
+        val encoder = object : RetainedPcmEncoderWorker.Encoder<String> {
+            override fun append(pcm: FloatArray) { count += pcm.size; clock += 3_000_000 }
+            override fun seal(): RetainedPcmEncoderWorker.Sealed<String> {
+                clock += 7_000_000; return RetainedPcmEncoderWorker.Sealed(count, "sealed")
+            }
+            override fun requestCancel() = Unit
+            override fun closeOnWorker(timeoutMs: Long) = true
+        }
+        val owner = RetainedPcmEncoderWorker({ encoder }, { true }, nowNs = { clock }, onWork = {
+            snapshots += it; error("diagnostics observer failure")
+        })
+        val original = pcm(1, 2, 3, 4); owner.onPcm(original.copyOf())
+        assertEquals(4, withTimeout(3000) { owner.sealAfterCaptureJoined(original) }.pcmSampleCount)
+        assertTrue(owner.closeAndDrain())
+        val last = snapshots.last()
+        assertEquals(1, last.appendCalls); assertEquals(3_000_000L, last.appendWorkNs)
+        assertEquals(3_000_000L, last.maxAppendWorkNs); assertEquals(7_000_000L, last.sealWorkNs)
+        assertFalse(last.busy)
+        assertEquals(listOf("append", "append", "seal", "seal"), snapshots.map { it.phase })
+        assertEquals(listOf(true, false, true, false), snapshots.map { it.busy })
+    }
     @Test fun exactPcmConversionAndLargePreRollAreLosslesslySplitOnOneWorker() = runBlocking {
         val encoder = FakeEncoder()
         val owner = RetainedPcmEncoderWorker({ encoder }, { true })

@@ -1,17 +1,6 @@
 # These SDKs use native string lookups for Kotlin classes, fields and callbacks.
 # Preserve their Java/Kotlin ABI while R8 shrinks unused application/AndroidX code.
 -keep class com.k2fsa.sherpa.onnx.** { *; }
-# Only JNI entry points and native-created DTOs need stable names. Keeping the
-# entire SDK would retain unused download/TTS/UI helpers and their dependencies.
--keep class ai.moonshine.voice.JNI { *; }
--keep class ai.moonshine.voice.Transcript { *; }
--keep class ai.moonshine.voice.TranscriptLine { *; }
--keep class ai.moonshine.voice.TranscriberOption { *; }
--keep class ai.moonshine.voice.WordTiming { *; }
--keep class ai.moonshine.voice.SpeakerSpan { *; }
--keep class ai.moonshine.voice.TtsSynthesisResult { *; }
--keep class ai.moonshine.voice.SpeechClip { *; }
--keep class ai.moonshine.voice.TtsChunk { *; }
 -keep class com.google.ai.edge.litertlm.** { *; }
 # Release instrumentation calls this exact production asset-reader boundary.
 -keep class com.battlesbudz.jarvis.v2.ai.audio.GemmaStreamingArtifactStore {
@@ -508,6 +497,60 @@
 
 # Smart Turn JNI is compiled into the existing Sherpa library; retain exactly this bridge.
 -keep class com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnNative { *; }
+
+# test81 runs the pinned native turn model through the production endpoint adapter in
+# the separately shrunk test APK. Retain only these exact cross-DEX entry points.
+-keep,includedescriptorclasses class com.battlesbudz.jarvis.v2.voice.smartturn.NativeSmartTurnBackend {
+    public <init>(java.io.File);
+    public com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnInference infer(float[],long,java.util.concurrent.atomic.AtomicBoolean);
+    public void cancel(long);
+    public void close();
+}
+-keep class com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnInference {
+    public float getProbability();
+    public long getFrontendNanos();
+    public long getInferenceNanos();
+}
+-keep,includedescriptorclasses class com.battlesbudz.jarvis.v2.voice.SmartTurnEndpointPolicy {
+    public static final com.battlesbudz.jarvis.v2.voice.SmartTurnEndpointPolicy INSTANCE;
+    public com.battlesbudz.jarvis.v2.voice.CaptureEndpointState modelState(float);
+    public com.battlesbudz.jarvis.v2.voice.AdaptiveTurnEnd$Decision decision(com.battlesbudz.jarvis.v2.voice.AdaptiveTurnEnd$Decision,com.battlesbudz.jarvis.v2.voice.CaptureEndpointDecision,com.battlesbudz.jarvis.v2.voice.NativePauseEndpointPolicy$Eligibility,boolean,com.battlesbudz.jarvis.v2.voice.RawVadCoverage,long,long);
+}
+-keep enum com.battlesbudz.jarvis.v2.voice.CaptureEndpointState {
+    public static final com.battlesbudz.jarvis.v2.voice.CaptureEndpointState FALLBACK;
+    public static final com.battlesbudz.jarvis.v2.voice.CaptureEndpointState PENDING;
+    public static final com.battlesbudz.jarvis.v2.voice.CaptureEndpointState COMPLETE;
+    public static final com.battlesbudz.jarvis.v2.voice.CaptureEndpointState CONTINUE;
+    public static com.battlesbudz.jarvis.v2.voice.CaptureEndpointState[] values();
+    public static com.battlesbudz.jarvis.v2.voice.CaptureEndpointState valueOf(java.lang.String);
+}
+-keep,includedescriptorclasses class com.battlesbudz.jarvis.v2.voice.CaptureEndpointDecision {
+    public <init>(com.battlesbudz.jarvis.v2.voice.CaptureEndpointState,java.lang.Long);
+}
+-keep class com.battlesbudz.jarvis.v2.voice.AdaptiveTurnEnd$Decision {
+    public <init>(long,java.lang.String);
+    public long getSilenceMs();
+    public java.lang.String getCue();
+}
+-keep,includedescriptorclasses class com.battlesbudz.jarvis.v2.voice.NativePauseEndpointPolicy {
+    public static final com.battlesbudz.jarvis.v2.voice.NativePauseEndpointPolicy INSTANCE;
+    public com.battlesbudz.jarvis.v2.voice.NativePauseEndpointPolicy$Eligibility eligibility(boolean,long,boolean,long,com.battlesbudz.jarvis.v2.voice.RawVadCoverage,boolean,long,boolean);
+}
+-keep class com.battlesbudz.jarvis.v2.voice.NativePauseEndpointPolicy$Eligibility {
+    public <init>(boolean,java.lang.String);
+    public boolean getAllowed();
+    public java.lang.String getReason();
+}
+-keep class com.battlesbudz.jarvis.v2.voice.RawVadCoverage {
+    public <init>(long,long,long,int);
+}
+-keep class com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnSettings {
+    public static final com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnSettings INSTANCE;
+    public boolean enabled(android.content.Context);
+}
+
+# Stable optional Whisper QNN JNI owner.
+-keep class com.battlesbudz.jarvis.v2.voice.whisper.WhisperQnnNative { *; }
 
 # Native on-device vision (phoneinference module): keep the ONNX Runtime Java API.
 -keep class ai.onnxruntime.** { *; }

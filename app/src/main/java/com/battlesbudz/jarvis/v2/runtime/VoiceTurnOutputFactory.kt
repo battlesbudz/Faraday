@@ -23,7 +23,8 @@ internal class VoiceTurnOutputFactory(
     fun create(asrTurnId: String, ttsDirectory: File, ttsEngine: TtsEngine,
                models: VoiceModelSession, callResources: VoiceCallResources,
                comparison: LiveComparison.Trial?, onDelivery: (SpeechDelivery) -> Unit,
-               onMetrics: (TtsSessionMetrics) -> Unit): PiperVoiceOutput {
+               onMetrics: (TtsSessionMetrics) -> Unit,
+               onTiming: (String, Long) -> Unit = { _, _ -> }): PiperVoiceOutput {
         return PiperVoiceOutput(ttsDirectory.path, engine = ttsEngine,
             modelSession = models,
             deliveryLedger = SpeechDeliveryLedger(asrTurnId) { delivery ->
@@ -40,6 +41,7 @@ internal class VoiceTurnOutputFactory(
                 log = { diagnosticRecorder.recordImportant(it) }),
             onPlayback = onPlayback,
             onMetrics = onMetrics,
+            onTiming = onTiming,
             log = {
                 comparison?.log("tts $it")
                 if (it.startsWith("tts_session_finished"))

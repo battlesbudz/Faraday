@@ -47,10 +47,33 @@ class PipelineBenchmarkCapture(
         val nativeStart = value.metadata["started_monotonic_ms"]?.toLongOrNull()
         passes[value.submissionId] = value.copy(startedOffsetMs = nativeStart?.let { (it - started).takeIf { offset -> offset >= 0 } })
     }
+    /** Never attribute a retry/draft/tool's guard or PCM to another native submission. */
+    private fun alignSingleAnswerEvents() {
+        val candidates = passes.values.filter { it.purpose != PipelineBenchmarkPurpose.TRANSCRIPTION_FALLBACK &&
+            it.metadata["generation_attempted"] != "false" }
+        val answer = candidates.singleOrNull()?.takeIf { it.purpose == PipelineBenchmarkPurpose.ANSWER &&
+            it.outcome == PipelineBenchmarkOutcome.COMPLETE && it.metadata["app_event_clock"] == "System.nanoTime" }
+        val reason = when {
+            droppedSubmissions > 0 -> "unavailable_omitted_submissions"
+            candidates.size != 1 -> "unavailable_ambiguous_or_missing_answer"
+            answer == null -> "unavailable_incomplete_answer_or_missing_clock"
+            else -> "single_completed_answer_same_java_clock"
+        }
+        configuration("answer_processing_alignment", reason)
+        if (answer == null || droppedSubmissions > 0) return
+        val latest = started + (stages["turn_finished"] ?: return)
+        listOf("submit_enter", "submit_return", "first_native_callback", "first_native_raw_text",
+            "first_consumer_callback", "first_consumer_raw_text", "native_terminal", "consumer_drained").forEach { event ->
+            answer.metadata["app_event_${event}_monotonic_ms"]?.toLongOrNull()
+                ?.takeIf { it in started..latest }?.let { markAt("answer_$event", it) }
+        }
+    }
+
     @Synchronized fun finish(outcome: PipelineBenchmarkOutcome, callId: String? = null,
                              failureCode: String? = null): PipelineBenchmarkTurn? {
         if (ended) return null
         mark("turn_finished")
+        alignSingleAnswerEvents()
         ended = true
         measurements["submissions_omitted"] = droppedSubmissions.toDouble()
         val resolvedOutcome = if (outcome in setOf(PipelineBenchmarkOutcome.COMPLETE, PipelineBenchmarkOutcome.UNKNOWN)) childOutcome ?: outcome else outcome

@@ -30,7 +30,7 @@ object PipelineBenchmarkTextExport {
         appendLine("speech_end_* starts at last detected user speech; endpoint_* starts at recognition finalization. *_first_answer_playback ends at first answer playback-head advancement; *_first_answer_text ends at first answer text event.")
         appendLine("Stage offsets use the turn's named monotonic clock from its origin; epoch timestamps identify attempts and are not latency clocks.")
         appendLine("ASR real-time factor is busy decode work / input audio; TTS real-time factor is synthesis work / generated audio, excluding model loading.")
-        appendLine("TTFT starts at model submission; estimates are not native tokens. Timings overlap: do not add them.")
+        appendLine("ttft_ms starts at app inference measurement creation, including lazy conversation preparation; submit_to_first_raw_text_ms starts at SDK send entry. SDK TTFT proxy is separate. Estimates are not native tokens. Timings overlap: do not add them.")
         appendLine("Statistics below use COMPLETE turns only within each comparable group. Cancelled/error attempts remain in raw rows and outcome counts.")
         appendLine("Groups separate build/source/device/model/runtime/backend/configuration/environment/warm state. No cross-group averages.")
         appendLine("Percentiles: nearest rank. p95 n<20 and p99 n<100 are exploratory; unknowns excluded, with n/missing reported.")

@@ -231,6 +231,16 @@ data class PipelineBenchmarkTurn(
         "speech_end_to_first_answer_text_ms" to span("speech_ended", "first_reply_text"),
         "speech_end_to_first_answer_playback_ms" to span("speech_ended", "first_reply_audio"),
         "reply_dispatch_to_first_answer_text_ms" to span("reply_dispatched", "first_reply_text"),
+        "answer_submit_to_first_native_callback_ms" to span("answer_submit_enter", "answer_first_native_callback"),
+        "answer_submit_to_first_native_raw_text_ms" to span("answer_submit_enter", "answer_first_native_raw_text"),
+        "answer_native_callback_to_consumer_ms" to span("answer_first_native_callback", "answer_first_consumer_callback"),
+        "answer_native_raw_text_to_consumer_ms" to span("answer_first_native_raw_text", "answer_first_consumer_raw_text"),
+        "answer_consumer_raw_text_to_guard_ms" to span("answer_first_consumer_raw_text", "first_guard_release"),
+        "guard_to_piper_first_text_ms" to span("first_guard_release", "first_piper_text"),
+        "piper_first_text_to_pcm_ms" to span("first_piper_text", "first_piper_pcm"),
+        "piper_first_pcm_to_answer_playback_ms" to span("first_piper_pcm", "first_reply_audio"),
+        "answer_native_raw_text_to_piper_pcm_ms" to span("answer_first_native_raw_text", "first_piper_pcm"),
+        "answer_native_raw_text_to_playback_ms" to span("answer_first_native_raw_text", "first_reply_audio"),
         "asr_load_ms" to asr?.loadMs.benchmarkNumber(), "asr_capture_ready_ms" to asr?.captureReadyMs.benchmarkNumber(),
         "asr_input_audio_ms" to asr?.inputAudioMs.benchmarkNumber(), "asr_decode_work_ms" to asr?.decodeWorkMs.benchmarkNumber(),
         "asr_finalization_ms" to asr?.finalizationMs.benchmarkNumber(), "asr_first_partial_ms" to asr?.firstPartialMs.benchmarkNumber(),
@@ -241,7 +251,10 @@ data class PipelineBenchmarkTurn(
         "tts_generated_audio_ms" to tts?.generatedAudioMs.benchmarkNumber(), "tts_queue_wait_ms" to tts?.queueWaitMs.benchmarkNumber(),
         "tts_playback_starvation_ms" to tts?.playbackStarvationMs.benchmarkNumber(), "tts_underruns" to tts?.underruns.benchmarkNumber(),
         "tts_realtime_factor" to tts?.realtimeFactor, "asr_wer" to accuracy?.wer, "asr_cer" to accuracy?.cer
-    ).also { it.putAll(observedMetrics.mapValues { (_,v) -> v?.takeIf(Double::isFinite) }) }
+    ).also {
+        it.putAll(VoicePreparationTimingMetrics.from(stageOffsetsMs))
+        it.putAll(observedMetrics.mapValues { (_,v) -> v?.takeIf(Double::isFinite) })
+    }
     private fun span(start: String, end: String): Double? = benchmarkDuration(stageOffsetsMs[start], stageOffsetsMs[end]).benchmarkNumber()
     fun json(includeText: Boolean = false): JSONObject = benchmarkJson("turnId" to turnId, "callId" to callId,
         "conversationId" to conversationId, "channel" to channel, "capturedAtEpochMs" to capturedAtEpochMs, "outcome" to outcome.name,

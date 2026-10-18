@@ -117,6 +117,7 @@ class InstallTransportTest(unittest.TestCase):
             args = SimpleNamespace(out=str(folder / "evidence"), serial="emulator-5554", adb="adb",
                                    profile=profile["id"], apk=str(candidate), test_apk=str(tests),
                                    previous_apk=str(previous), previous_metadata=str(metadata),
+                                   smart_turn_input_dir=str(folder / "model-input"), smart_turn_input_owner="a" * 64,
                                    source_commit="a" * 40, pr_head="b" * 40, allow_emulator_reset=True)
             calls = []
 
@@ -161,7 +162,12 @@ class InstallTransportTest(unittest.TestCase):
             # This fixture owns upgrade ordering; the separate ART setup suite
             # exercises readiness/admission and collector failure behavior.
             with patch("android.Device", UpgradeDevice), patch("android.RuntimeGcSetup") as setup, \
+                    patch("android.SmartTurnInput") as model_input, \
                     patch("android.load_profiles", return_value=[profile]), redirect_stdout(io.StringIO()):
+                model_input.return_value.report = {}
+                model_input.return_value.remote_model = "/data/local/tmp/jarvis-smart-turn-input-123/model.onnx"
+                model_input.return_value.stage.side_effect = lambda *a: calls.append((("model_stage",), {}))
+                model_input.return_value.cleanup.side_effect = lambda *a: calls.append((("model_cleanup",), {}))
                 setup.return_value.report = {}
                 setup.return_value.prepare.side_effect = lambda: calls.append((("gc_prepare",), {}))
                 def app_collector(package):
@@ -230,6 +236,15 @@ class InstallTransportTest(unittest.TestCase):
                 self.assertEqual([180, 180], [kwargs["timeout"] for _, kwargs in phases[:2]])
                 self.assertEqual(profile, report["profile"])
                 self.assertIn("Controlled stop at main suite", report["errors"][0])
+                self.assertIsNone(phases[0][1]["smart_turn_input"])
+                self.assertIsNone(phases[1][1]["smart_turn_input"])
+                self.assertEqual("/data/local/tmp/jarvis-smart-turn-input-123/model.onnx", phases[-1][1]["smart_turn_input"])
+                stage = next(i for i, (argv, _) in enumerate(calls) if argv[0] == "model_stage")
+                resets = [i for i, (argv, _) in enumerate(calls) if argv[0] == "shell" and shlex.split(argv[1])[:2] == ["pm", "clear"]]
+                self.assertLess(resets[-1], stage)
+                pull = next(i for i, (argv, _) in enumerate(calls) if argv[0] == "pull")
+                cleanup = next(i for i, (argv, _) in enumerate(calls) if argv[0] == "model_cleanup")
+                self.assertLess(pull, cleanup)
 
     def test_api36_large_page_profile_requires_actual_api_page_size_and_bridge(self):
         profile = next(p for p in load_profiles() if p["id"] == "36-16k-normal")

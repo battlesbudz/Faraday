@@ -31,6 +31,14 @@ class PublicStatusTests(unittest.TestCase):
     def create(self): return status.Status(self.root, CONTEXT)
     def read(self): return status.read(self.root/status.NAME, CONTEXT)
 
+    def test_current_repository_identity_is_exact_after_rename(self):
+        current = dict(CONTEXT, repository='battlesbudz/Faraday')
+        self.assertEqual(current, status.validate_context(current))
+        for repository in ('battlesbudz/Jarvis-OS-V2', 'other/Faraday',
+                           'battlesbudz/Other', 'battlesbudz/Faraday-extra'):
+            with self.subTest(repository=repository), self.assertRaises(ValueError):
+                status.validate_context(dict(current, repository=repository))
+
     def test_failure_preserves_stage_and_exact_identity_after_cleanup(self):
         owner = self.create()
         child = status.Status(self.root, CONTEXT, owner.invocation_id)

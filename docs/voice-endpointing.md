@@ -1,5 +1,9 @@
 # Voice turn endpointing
 
+Installed Smart Turn now participates in eligible native-audio endpoints by default.
+See [the current model authority and fallback contract](verification/smart-turn-endpoint-2026-10-10.md).
+ASR-text mode keeps its existing transcript policy.
+
 > Current policy: [voice-pipeline-current.md](voice-pipeline-current.md). Ordinary calls use no added software gain; the shared acoustic gate retains a call-scoped room floor across listening turns. Complete/stable text targets 350 ms, settling 1100 ms, uncertain 1500 ms, unfinished 1800 ms, explicit hesitation 3500 ms; no-text is 900 ms for Whisper and 3000 ms for Moonshine. These are targets before final decoding/speaker checks. Long speech is segmented, not ended at the 25-second raw-audio bound. The older tuning history below is retained for evidence.
 
 Audio PR2 uses bundled Silero VAD through Sherpa-ONNX 1.13.7. RMS and peak are diagnostics only: the previous fixed energy threshold could classify continuous room noise as speech and prevent a turn from ending.

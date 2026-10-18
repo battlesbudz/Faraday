@@ -6,11 +6,10 @@ import java.security.MessageDigest
 
 /** No microphone, playback, call history, tools, or ASR setting changes. Models run sequentially. */
 internal object EchoRecognitionReplay {
-    private enum class Path { OLD_RAW_BYPASS, CALL_INPUT_ADAPTER, RAW_NATIVE_GATE, WHISPER_CONTROL }
+    private enum class Path { WHISPER_FULL_CLIP, WHISPER_CALL_ADAPTER }
 
     suspend fun run(context: Context, originals: List<DuplexAudioEvidence.Result>, status: (String) -> Unit): List<DuplexAudioEvidence.Result> =
         withContext(Dispatchers.Default) {
-            val moonshine = AsrEngine.MOONSHINE.prepare(context, status)
             val whisper = AsrEngine.WHISPER.prepare(context, status)
             originals.map { original ->
                 val sections = mutableListOf<String>()
@@ -23,13 +22,12 @@ internal object EchoRecognitionReplay {
                     val started = System.nanoTime()
                     var detector: SpeechDetector? = null
                     val text = try {
-                        if (path == Path.CALL_INPUT_ADAPTER) detector = SileroSpeechDetector.create(context.assets)
+                        if (path == Path.WHISPER_CALL_ADAPTER) detector = SileroSpeechDetector.create(context.assets)
                         val transcriber = when (path) {
-                            Path.RAW_NATIVE_GATE -> AsrEngine.MOONSHINE.createDiagnostic(moonshine, log, inputEvidence)
-                            Path.WHISPER_CONTROL -> AsrEngine.WHISPER.createDiagnostic(whisper, log, inputEvidence)
-                            else -> AsrEngine.MOONSHINE.create(moonshine, log = log, audioEvidence = inputEvidence)
+                            Path.WHISPER_FULL_CLIP -> AsrEngine.WHISPER.createDiagnostic(whisper, log, inputEvidence)
+                            Path.WHISPER_CALL_ADAPTER -> AsrEngine.WHISPER.create(whisper, log = log, audioEvidence = inputEvidence)
                         }
-                        if (path == Path.CALL_INPUT_ADAPTER) recognizeCallAdapterClip(transcriber, original.microphone, requireNotNull(detector), log)
+                        if (path == Path.WHISPER_CALL_ADAPTER) recognizeCallAdapterClip(transcriber, original.microphone, requireNotNull(detector), log)
                         else recognizeDiagnosticClip(transcriber, original.microphone)
                     } catch (cancelled: CancellationException) { throw cancelled }
                     catch (error: Exception) { log("error=${error.javaClass.simpleName}: ${error.message}"); "" }

@@ -8,6 +8,25 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LiteRtVoicePrefillSessionTest {
+    @Test fun synchronousRawSessionRetainsSendConsumerAndDrainEdgesBeforeCheckedCleanup() = runBlocking {
+        val records = mutableListOf<PipelineBenchmarkSubmission>()
+        val native = Native().apply { stream = { callback ->
+            callback.onNext(""); callback.onNext("Hello."); callback.onDone()
+        } }
+        val session = LiteRtVoicePrefillSession(native, benchmarkSink = { records += it })
+        session.append("Hello")
+        assertEquals("Hello.", session.decode {}.text)
+        val record = records.single()
+        assertEquals(1.0, record.measurements["first_callback_before_submit_return"]!!, 0.0)
+        for (key in listOf("submit_return_ms", "first_consumer_callback_ms", "first_consumer_raw_text_ms",
+            "callback_to_consumer_ms", "raw_text_to_consumer_ms", "consumer_drained_ms",
+            "terminal_to_consumer_drained_ms", "consumer_drained_to_return_ms")) assertNotNull(key, record.measurements[key])
+        assertEquals("System.nanoTime", record.metadata["app_event_clock"])
+        assertFalse(record.metadata.values.any { it.contains("Hello") })
+        assertEquals(1, native.drains)
+        session.close()
+    }
+
     private class Native : VoiceNativeSession {
         val prefilled = StringBuilder()
         val submitted = StringBuilder()

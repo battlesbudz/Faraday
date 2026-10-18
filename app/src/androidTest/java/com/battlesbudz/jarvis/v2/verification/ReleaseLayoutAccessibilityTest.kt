@@ -448,11 +448,14 @@ class ReleaseLayoutAccessibilityTest {
                 .map { it.substringAfterLast('/').removePrefix("lib").removeSuffix(".so") }.toList()
         }
         assertTrue("Shipping native runtimes must be present", names.containsAll(listOf(
-            "c++_shared", "onnxruntime", "moonshine", "moonshine-jni", "sherpa-onnx-jni", "microwakeword", "litertlm_jni",
+            "c++_shared", "onnxruntime", "sherpa-onnx-jni", "microwakeword", "litertlm_jni",
             "native_audio_owner_jni")))
         assertFalse("The injected native owner test runtime must never ship", names.any { it.contains("native_audio_owner_jni_test") })
         assertEquals("Native entries must be unique", names.size, names.toSet().size)
-        val priority = listOf("c++_shared", "onnxruntime", "ms_ort_1232", "moonshine", "moonshine-jni")
+        assertFalse("Retired Moonshine native runtimes must not ship", names.any {
+            it in setOf("moonshine", "moonshine-jni", "ms_ort_1232")
+        })
+        val priority = listOf("c++_shared", "onnxruntime")
         val loaded = mutableListOf<String>()
         var encoderAssets: Map<String, String>? = null
         var timingPreflight: NativeAudioTimingPreflightProbe.Result? = null

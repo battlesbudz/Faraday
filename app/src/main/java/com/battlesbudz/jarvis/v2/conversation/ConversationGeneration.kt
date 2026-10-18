@@ -185,6 +185,7 @@ internal class ConversationGeneration(
         if (routed.actionPlan !is ActionTurnPlan.NotAction || invocation.imageUri != null || invocation.audioUri != null) return null
         val previous = prepared.history.lastOrNull { it.role == "Jarvis" }?.text
         return VoiceRepetitionGuard(invocation.prompt, previous, emit = { safe ->
+            if (invocation.voiceAudio != null && safe.isNotBlank()) reply.benchmark.mark("first_guard_release")
             reply.postToken(if (invocation.voiceAudio != null) VoiceRepetitionGuard.speechReady(safe) else safe)
         }).also { guard ->
             guard.preserveFormatting = invocation.voiceAudio == null

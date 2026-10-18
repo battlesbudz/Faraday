@@ -5,7 +5,7 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Observations only. No endpoint decision, transcript, audio, or action authority. */
+/** Raw model evidence. Only the current capture adapter may grant endpoint authority. */
 internal data class SmartTurnShadowResult(
     val generation: SmartTurnGeneration,
     val captureSampleBoundary: Long,
@@ -29,6 +29,10 @@ internal data class SmartTurnWorkCompletion(
     val finishedAtNanos: Long,
     val cancelled: Boolean,
     val timing: SmartTurnTiming,
+    // Actual backend call edges, separate from request admission/worker queue.
+    // Includes frontend and inference, not isolated ORT CPU time. Null if never called.
+    val backendCalledAtNanos: Long? = null,
+    val backendReturnedAtNanos: Long? = null,
 )
 internal enum class SmartTurnUnknown { DEADLINE, INITIALIZATION_FAILED, INFERENCE_FAILED, INVALID_RESULT }
 internal enum class SmartTurnOffer { DISABLED, STALE, BUSY, CLOSED, ACCEPTED }
@@ -41,7 +45,7 @@ internal interface SmartTurnBackend : AutoCloseable {
 }
 
 /**
- * Explicit opt-in, unconnected shadow observer. One inference worker, zero queued requests,
+ * One retained inference worker, zero queued requests,
  * one expiring result slot. Timeout revokes publication and requests cooperative native stop;
  * it never frees/replaces a busy native owner or promises hard real-time cancellation.
  */
@@ -145,6 +149,8 @@ internal class SmartTurnShadow(
                 }
                 var initNanos: Long? = null
                 var prediction: SmartTurnInference? = null
+                var backendCalledAt: Long? = null
+                var backendReturnedAt: Long? = null
                 var unknown: SmartTurnUnknown? = null
                 try {
                     if (!request.cancelled.get() && clock() - request.snapshot.capturedAtNanos < deadlineNanos) {
@@ -159,9 +165,12 @@ internal class SmartTurnShadow(
                         } else {
                             initNanos = 0L // Existing worker-owned session reused; no setup performed.
                         }
-                        if (!request.cancelled.get() && clock() - request.snapshot.capturedAtNanos < deadlineNanos) prediction = backend!!.infer(
-                            request.snapshot.copySamples(), request.id, request.cancelled,
-                        )
+                        if (!request.cancelled.get() && clock() - request.snapshot.capturedAtNanos < deadlineNanos) {
+                            val samples = request.snapshot.copySamples()
+                            backendCalledAt = clock()
+                            try { prediction = backend!!.infer(samples, request.id, request.cancelled) }
+                            finally { backendReturnedAt = clock() }
+                        }
                         prediction?.let {
                             if (!it.probability.isFinite() || it.probability !in 0f..1f ||
                                 it.frontendNanos < 0 || it.inferenceNanos < 0) {
@@ -193,7 +202,8 @@ internal class SmartTurnShadow(
                         request.snapshot.captureSampleBoundary, request.started, finishedAt, request.cancelled.get(),
                         SmartTurnTiming((request.started - request.snapshot.capturedAtNanos).coerceAtLeast(0),
                             initNanos, prediction?.frontendNanos, prediction?.inferenceNanos,
-                            (finishedAt - request.started).coerceAtLeast(0)))) }
+                            (finishedAt - request.started).coerceAtLeast(0)),
+                        backendCalledAt, backendReturnedAt)) }
                 }
             }
         } finally {

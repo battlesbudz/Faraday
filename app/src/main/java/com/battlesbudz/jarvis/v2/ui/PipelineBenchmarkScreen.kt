@@ -104,11 +104,7 @@ fun PipelineBenchmarkScreen(store: AndroidPipelineBenchmarkStore, onClose: () ->
                                 if (!hypothesisAvailable) Text("The original transcript is no longer held in memory. Reference scoring is available for new voice turns in this app session.", style = MaterialTheme.typography.bodySmall)
                             }
                             BenchmarkQualityReview(sample) { store.setQuality(sample.turnId, it) }
-                            Text("Measured pipeline values", style = MaterialTheme.typography.titleSmall)
-                            sample.metrics().forEach { (key, value) ->
-                                Text("$key: ${number(value)}", style = MaterialTheme.typography.bodySmall)
-                                PipelineBenchmarkDefinitions.notes[key]?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
-                            }
+                            BenchmarkMeasuredValues(sample)
                             sample.submissions.forEach { submission ->
                                 Text("${submission.purpose} · ${submission.outcome} · ${submission.warmState} · ${submission.modelId ?: "model unavailable"}", style = MaterialTheme.typography.titleSmall)
                                 submission.metrics().forEach { (key, value) -> Text("$key: ${number(value)}", style = MaterialTheme.typography.bodySmall) }
@@ -127,6 +123,37 @@ fun PipelineBenchmarkScreen(store: AndroidPipelineBenchmarkStore, onClose: () ->
             scope.launch { store.clear(); selectedId = null; status = if (store.storageStatus.value == null) "Retained benchmarks reset." else "Reset could not be saved. Try again before closing Jarvis." }
         }, modifier = Modifier.testTag("pipeline_benchmark_reset_confirm")) { Text("Reset") } },
         dismissButton = { TextButton(onClick = { showReset = false }) { Text("Cancel") } })
+}
+
+/** Detail visibility is local UI state; it never filters retained samples or exports. */
+@Composable
+private fun BenchmarkMeasuredValues(sample: PipelineBenchmarkTurn) {
+    var timingExpanded by remember(sample.turnId) { mutableStateOf(false) }
+    val metrics = remember(sample) { sample.metrics() }
+    val timingMetrics = remember(metrics) { metrics.filterKeys { it in VoicePreparationTimingMetrics.keys } }
+    Text("Preparation and Smart Turn timing", style = MaterialTheme.typography.titleSmall)
+    TextButton(onClick = { timingExpanded = !timingExpanded },
+        modifier = Modifier.testTag("pipeline_benchmark_timing_toggle")) {
+        Text(if (timingExpanded) "Hide timing measurements" else
+            "Show timing measurements (${timingMetrics.values.count { it != null }}/${timingMetrics.size} available)")
+    }
+    Text("Capture and speech-span overlap, endpoint stages and up to eight Smart Turn calls. All values are included in exports; unobserved values stay unavailable.",
+        style = MaterialTheme.typography.bodySmall)
+    if (timingExpanded) {
+        Column(Modifier.testTag("pipeline_benchmark_timing_details"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            timingMetrics.forEach { (key, value) -> BenchmarkMeasuredValue(key, value) }
+        }
+    }
+    Text("Measured pipeline values", style = MaterialTheme.typography.titleSmall)
+    metrics.filterKeys { it !in VoicePreparationTimingMetrics.keys }.forEach { (key, value) ->
+        BenchmarkMeasuredValue(key, value)
+    }
+}
+
+@Composable
+private fun BenchmarkMeasuredValue(key: String, value: Double?) {
+    Text("$key: ${number(value)}", style = MaterialTheme.typography.bodySmall)
+    PipelineBenchmarkDefinitions.notes[key]?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
 }
 
 @Composable

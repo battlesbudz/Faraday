@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "scope": "actual AGP asset-merge classes and AAPT2; not full Gradle or device verification",
+  "agp": "8.7.3",
+  "sdk_common": "31.7.3",
+  "aapt2": "Android Asset Packaging Tool (aapt) 2.19-12006047",
+  "tools": {
+    "sdk-common-31.7.3.jar": {
+      "url": "https://dl.google.com/dl/android/maven2/com/android/tools/sdk-common/31.7.3/sdk-common-31.7.3.jar",
+      "bytes": 1491331,
+      "sha256": "4fa44a7d9675df13da614dee512df90ad3e4308d0addb32ead99f57ce58f675f"
+    },
+    "common-31.7.3.jar": {
+      "url": "https://dl.google.com/dl/android/maven2/com/android/tools/common/31.7.3/common-31.7.3.jar",
+      "bytes": 569070,
+      "sha256": "abb5b2f28954ac09dcfb5d192e355af41236c8337afc08b16aa1adc0e8aebf63"
+    },
+    "guava-32.0.1-jre.jar": {
+      "url": "https://repo.maven.apache.org/maven2/com/google/guava/guava/32.0.1-jre/guava-32.0.1-jre.jar",
+      "bytes": 3037368,
+      "sha256": "bd7fa227591fb8509677d0d1122cf95158f3b8a9f45653f58281d879f6dc48c5"
+    },
+    "aapt2": {
+      "url": "https://dl.google.com/dl/android/maven2/com/android/tools/build/aapt2/8.7.3-12006047/aapt2-8.7.3-12006047-linux.jar",
+      "bytes": 6448048,
+      "sha256": "5c2d1f8c7a78809bddac9be986b28f1d59c5d7bc6d3c28ce58a6dd13ff328bd5",
+      "note": "Hash identifies extracted aapt2 binary, not the containing JAR."
+    }
+  },
+  "synthetic": {
+    "aapt2_only_preserves_both_names_and_gzip": true,
+    "agp_removes_final_gz_and_inflates": true,
+    "opaque_gzip_identical_after_agp_and_aapt2": true,
+    "plain_bytes": 26624,
+    "gzip_bytes": 130,
+    "plain_sha256": "0350ab1f1ff4022ffa015fd46dfa6a35feec79fcb346e76921c7939b19ddee87",
+    "gzip_sha256": "c5bc2e0e4a7ab70a81bc4b7093b77cf6801df0af793b98e632113723ecc4f141"
+  },
+  "qnn": [
+    {
+      "asset": "libonnxruntime_providers_qnn.so.gz.bin",
+      "gzip_bytes": 1587694,
+      "gzip_sha256": "b262c4ae2aa94718d056b19da6c82f6afa2685ce85b44f8b542a3fe8ca3848c3",
+      "elf_bytes": 4281832,
+      "elf_sha256": "21556616b76a82a9c5d3226c2b35f275263447235f356a13b5f208e5fa469fae"
+    },
+    {
+      "asset": "libQnnSystem.so.gz.bin",
+      "gzip_bytes": 1494485,
+      "gzip_sha256": "3cb8b8ce7b0d828f5202a78b994ca7d65d7c6760b4ce5bdabf96ea27aa814ebf",
+      "elf_bytes": 4068296,
+      "elf_sha256": "ca9e5429c77380e1c3f5a401f00288915ec2f6cc478979bafd57c665391d432f"
+    },
+    {
+      "asset": "libQnnHtp.so.gz.bin",
+      "gzip_bytes": 1539372,
+      "gzip_sha256": "a92d42ded88fba6f0ee12c30f0b64c6e9e1e939460ffef467f7b070cf94e748f",
+      "elf_bytes": 3979248,
+      "elf_sha256": "30e2981965e687d71626c91397867da81247c639e598f49fa5d139cbb21255d0"
+    },
+    {
+      "asset": "libQnnHtpV75Stub.so.gz.bin",
+      "gzip_bytes": 289255,
+      "gzip_sha256": "1c70e1e5a589d46405a9ee6abfe2cc6e74c9b81487b3c45354321f70ee452233",
+      "elf_bytes": 791696,
+      "elf_sha256": "eca06fdf5bba9d9a291eae6d53ca46c7432e57be6c8e0565a628f2acc353b0a1"
+    },
+    {
+      "asset": "libQnnHtpV75Skel.so.gz.bin",
+      "gzip_bytes": 4396153,
+      "gzip_sha256": "6dbaaf8c5a19d4bf5010606ad61713ee737223dedea45d8dbab96918f876256a",
+      "elf_bytes": 18693300,
+      "elf_sha256": "3e9774b74769915b4f54364f8fc25887b3439561a970dca57c9f4dc9612b38af"
+    }
+  ],
+  "passed": true
+}

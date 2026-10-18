@@ -16,7 +16,7 @@ internal class NativeSpeculativeResponseBackend(private val engine: LiteRtLmEngi
 
     suspend fun generate(input: Input, onToken: (String) -> Unit): GenerationResult {
         check(!engine.isNativeQuarantined && engine.nativeResourcesSafeToRelease)
-        engine.resetConversation()
+        engine.resetForVoiceSpeculation()
         engine.setToolsEnabled(false)
         val previousProgress = engine.onInferenceProgress
         engine.onInferenceProgress = progress

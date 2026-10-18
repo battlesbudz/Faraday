@@ -1,0 +1,18 @@
+app/src/main/java/com/battlesbudz/jarvis/v2/voice/NativePauseCapture.kt:47:28: error: unresolved reference 'WavEncoder'.
+    fun wav(): ByteArray = WavEncoder.pcm16Mono(pcm, 16_000)
+                           ^^^^^^^^^^
+app/src/main/java/com/battlesbudz/jarvis/v2/voice/NativePauseCapture.kt:64:27: error: unresolved reference 'WavEncoder'.
+        wav.contentEquals(WavEncoder.pcm16Mono(pcm, 16_000)) && pcmHash(pcm) == fullRecordingPcmSha256
+                          ^^^^^^^^^^
+app/src/main/java/com/battlesbudz/jarvis/v2/voice/NativePauseCapture.kt:92:39: error: unresolved reference 'SpeechDecision'.
+    @Synchronized fun observeRaw(raw: SpeechDecision) {
+                                      ^^^^^^^^^^^^^^
+app/src/main/java/com/battlesbudz/jarvis/v2/voice/NativePauseCapture.kt:93:28: error: unresolved reference 'rawCoverage'.
+        val coverage = raw.rawCoverage
+                           ^^^^^^^^^^^
+app/src/main/java/com/battlesbudz/jarvis/v2/voice/NativePauseCapture.kt:97:27: error: unresolved reference 'quietFromSample'.
+        else if (coverage.quietFromSample > candidate.captureSampleBoundary || raw.isSpeech) {
+                          ^^^^^^^^^^^^^^^
+app/src/main/java/com/battlesbudz/jarvis/v2/voice/NativePauseCapture.kt:97:84: error: unresolved reference 'isSpeech'.
+        else if (coverage.quietFromSample > candidate.captureSampleBoundary || raw.isSpeech) {
+                                                                                   ^^^^^^^^

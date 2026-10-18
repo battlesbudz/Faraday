@@ -386,7 +386,7 @@ internal class OrdinaryVoiceReplyStage(
                         diagnosticRecorder.recordTurnEvidence(nextId, category, evidence)
                     }
                     observation.benchmark.configuration("followup_smart_turn_utterance_id", nextId)
-                    observation.benchmark.configuration("followup_smart_turn_scope", "next_capture_in_previous_reply_row;correlation_id_only;shadow_not_answer_endpoint;no_wait")
+                    observation.benchmark.configuration("followup_smart_turn_scope", "next_capture_in_previous_reply_row;correlation_id_only;native_endpoint_when_enabled;no_reply_cleanup_wait")
                     replyCapture.captureFirstFollowup(input,
                         com.battlesbudz.jarvis.v2.runtime.VoiceCapturePlan(nextId, request.asrEngine, prepared.asrDirectory,
                             prepared.directAudioTurn, request.captionAsrEnabled, guardFollowupSpeech = true),

@@ -1,0 +1,24 @@
+Time: 812.056
+There was 1 failure:
+1) test45_pipelineBenchmarksScoreOriginalAsrPersistAndExportRedactedEvidence(com.battlesbudz.jarvis.v2.verification.ReleaseJourneyTest)
+java.lang.AssertionError
+	at org.junit.Assert.fail(Assert.java:87)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertFalse(Assert.java:65)
+	at org.junit.Assert.assertFalse(Assert.java:75)
+	at com.battlesbudz.jarvis.v2.verification.ReleaseJourneyTest$test45_pipelineBenchmarksScoreOriginalAsrPersistAndExportRedactedEvidence$1.invokeSuspend(ReleaseJourneyTest.kt:3213)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(r8-map-id-426f01189ee784cac5bd6e21a1e18f71412f42018e43e4ae705a90aa2c189132:11)
+	at kotlinx.coroutines.DispatchedTask.run(r8-map-id-426f01189ee784cac5bd6e21a1e18f71412f42018e43e4ae705a90aa2c189132:126)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(r8-map-id-426f01189ee784cac5bd6e21a1e18f71412f42018e43e4ae705a90aa2c189132:19)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(r8-map-id-426f01189ee784cac5bd6e21a1e18f71412f42018e43e4ae705a90aa2c189132:30)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(r8-map-id-426f01189ee784cac5bd6e21a1e18f71412f42018e43e4ae705a90aa2c189132:77)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source:1)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(r8-map-id-426f01189ee784cac5bd6e21a1e18f71412f42018e43e4ae705a90aa2c189132:7)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source:1)
+	at com.battlesbudz.jarvis.v2.verification.ReleaseJourneyTest.test45_pipelineBenchmarksScoreOriginalAsrPersistAndExportRedactedEvidence(ReleaseJourneyTest.kt:3087)
+
+FAILURES!!!
+Tests run: 82,  Failures: 1
+
+
+INSTRUMENTATION_CODE: -1

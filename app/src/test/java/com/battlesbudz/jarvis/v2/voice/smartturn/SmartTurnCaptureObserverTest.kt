@@ -14,6 +14,8 @@ class SmartTurnCaptureObserverTest {
     private class Telemetry : SmartTurnTelemetry {
         val numbers = java.util.Collections.synchronizedMap(mutableMapOf<String, Number?>())
         val strings = java.util.Collections.synchronizedMap(mutableMapOf<String, String>())
+        val stages = java.util.Collections.synchronizedMap(mutableMapOf<String, Long>())
+        override fun markAt(name: String, monotonicMs: Long) { stages.putIfAbsent(name, monotonicMs) }
         override fun metric(name: String, value: Number?) { numbers[name] = value }
         override fun configuration(name: String, value: String) { strings[name] = value }
         override fun event(message: String) { assertFalse(message.contains("transcript")) }
@@ -38,6 +40,27 @@ class SmartTurnCaptureObserverTest {
     private fun frame(now: Long, boundary: Long = 1600, speech: Boolean = false, backlog: Long = 0) =
         CaptureShadowFrame(boundary, now, true, speech, if (speech) 0 else 250, backlog)
 
+    @Test fun observingSpeechFramesDoesNotClaimInferenceUntilPauseAdmission() {
+        val now = AtomicLong(1_000_000_000L); val backend = Backend(); val telemetry = Telemetry()
+        val shadow = SmartTurnShadow({ backend }, true, TimeUnit.SECONDS.toNanos(2), now::get)
+        val observer = SmartTurnCaptureObserver(shadow, "turn", 1, telemetry, { true }, { null }, now::get,
+            endpointEnabled = true)
+        try {
+            observer.onPcm(ByteArray(3200), 1600)
+            observer.onFrame(frame(now.get(), speech = true))
+            assertEquals(1000L, telemetry.stages["smart_turn_first_frame_observed"])
+            assertEquals(1000L, telemetry.stages["smart_turn_first_possible_speech_frame_captured"])
+            assertEquals(1000L, telemetry.stages["smart_turn_first_possible_speech_frame_observed"])
+            assertEquals(0, backend.calls.get())
+            now.addAndGet(350_000_000L)
+            observer.onFrame(frame(now.get()).copy(silenceMs = 349))
+            assertFalse(telemetry.stages.containsKey("smart_turn_0_request_accepted"))
+            observer.onFrame(frame(now.get()).copy(silenceMs = 350))
+            waitFor { backend.calls.get() == 1 && !shadow.isBusy() }
+            assertEquals(1350L, telemetry.stages["smart_turn_0_request_accepted"])
+            assertEquals(1350L, telemetry.stages["smart_turn_0_source_captured"])
+        } finally { observer.close(); shadow.close(); assertTrue(shadow.awaitClosed(1000)) }
+    }
     @Test fun realPcmSnapshotAndPredictionEnterMetadataOnly() {
         val now = AtomicLong(1_000_000_000); val backend = Backend(); val telemetry = Telemetry()
         val shadow = SmartTurnShadow({ backend }, true, TimeUnit.SECONDS.toNanos(2), now::get)
@@ -185,6 +208,7 @@ class SmartTurnCaptureObserverTest {
             override fun metric(name: String, value: Number?) { error("diagnostics failed") }
             override fun configuration(name: String, value: String) { error("diagnostics failed") }
             override fun event(message: String) { error("diagnostics failed") }
+            override fun markAt(name: String, monotonicMs: Long) { error("diagnostics failed") }
         }
         val shadow = SmartTurnShadow({ backend }, true, TimeUnit.SECONDS.toNanos(2))
         val observer = SmartTurnCaptureObserver(shadow, "turn", 1, broken, { true }, { null })

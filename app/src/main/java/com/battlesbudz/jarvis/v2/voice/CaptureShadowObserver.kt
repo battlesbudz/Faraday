@@ -11,6 +11,16 @@ interface CaptureShadowObserver {
     fun close()
 }
 
+/** A model may advise only the serialized acoustic owner; it never owns or seals PCM. */
+interface CaptureEndpointObserver : CaptureShadowObserver {
+    val controlsEndpoint: Boolean
+    fun endpointDecision(frame: CaptureShadowFrame): CaptureEndpointDecision
+    fun setEndpointReadyListener(listener: (() -> Unit)?)
+}
+
+enum class CaptureEndpointState { FALLBACK, PENDING, COMPLETE, CONTINUE }
+data class CaptureEndpointDecision(val state: CaptureEndpointState, val modelThroughSample: Long? = null)
+
 data class CaptureShadowFrame(
     val captureSampleBoundary: Long,
     val capturedAtNanos: Long,

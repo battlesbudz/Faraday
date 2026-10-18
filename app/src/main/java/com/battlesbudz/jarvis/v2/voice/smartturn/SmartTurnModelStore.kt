@@ -30,7 +30,7 @@ internal class SmartTurnModelStore(
             val temporary = File(directory, SmartTurnModelSpec.FILE_NAME + ".part")
             if (temporary.length() > SmartTurnModelSpec.BYTES) temporary.delete()
             try {
-                report("Downloading Smart Turn shadow model: 8.7 MB…")
+                report("Downloading Smart Turn turn-ending model: 8.7 MB…")
                 download(temporary,
                     { received, total ->
                         check(received <= SmartTurnModelSpec.BYTES && (total <= 0 || total == SmartTurnModelSpec.BYTES)) {

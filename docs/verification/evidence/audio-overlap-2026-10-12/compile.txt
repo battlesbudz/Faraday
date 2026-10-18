@@ -1,0 +1,3 @@
+app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnShadow.kt:60:24: warning: this class is not recommended for use in Kotlin. Use 'kotlin.Any' instead.
+    private val lock = Object()
+                       ^^^^^^

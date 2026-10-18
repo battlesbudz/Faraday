@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -18,9 +19,11 @@ import xml.etree.ElementTree as ET
 try:
     from .profiles import load_profiles
     from .runtime_gc import PROFILE_ID as GC_PROFILE_ID, RuntimeGcSetup
+    from .smart_turn_input import stop_target, SmartTurnInput, MODEL_BYTES, MODEL_SHA256
 except ImportError:
     from profiles import load_profiles
     from runtime_gc import PROFILE_ID as GC_PROFILE_ID, RuntimeGcSetup
+    from smart_turn_input import stop_target, SmartTurnInput, MODEL_BYTES, MODEL_SHA256
 
 PACKAGE = "com.battlesbudz.jarvis.v2"
 ACTIVITY = f"{PACKAGE}/.MainActivity"
@@ -28,6 +31,41 @@ RUNNER = f"{PACKAGE}.test/androidx.test.runner.AndroidJUnitRunner"
 SCENARIOS = Path(__file__).with_name("scenarios.json")
 LIFECYCLE_SCENARIOS = Path(__file__).with_name("lifecycle_scenarios.json")
 LAYOUT_SCENARIOS = Path(__file__).with_name("layout_scenarios.json")
+
+
+def smart_turn_result(output):
+    prefix = "INSTRUMENTATION_STATUS: jarvisSmartTurnResult="
+    rows = [line[len(prefix):] for line in output.splitlines() if line.startswith(prefix)]
+    if len(rows) != 1 or len(rows[0]) > 4096:
+        raise RuntimeError("Missing, duplicate or oversized Smart Turn native probe receipt")
+    try:
+        result = json.loads(rows[0])
+    except ValueError as error:
+        raise RuntimeError("Malformed Smart Turn native probe receipt") from error
+    fixed = {
+        "schema": "android-smart-turn-native-v1", "passed": True,
+        "model_bytes": MODEL_BYTES, "model_sha256": MODEL_SHA256,
+        "input_hash_verified": True, "private_copy_deleted": True, "closed_on_worker": True,
+        "worker_terminated": True, "pre_cancel_rejected": True, "session_reused_after_cancel": True,
+        "control_input_compatible": True, "no_speech_complete_ignored": True,
+        "worker_timed_out": False, "caller_interrupted": False, "unexpected_failure": False,
+        "fixtures": 2, "native_requests": 3, "worker_timeout_ms": 45_000, "cleanup_timeout_ms": 2_000,
+        "coverage": "Real Android JNI, production hash-bound wrapper, synthetic control input compatibility",
+        "not_covered": "Natural-language endpoint accuracy; physical microphone/audio; Fold latency",
+    }
+    timings = ("silence_frontend_nanos", "silence_inference_nanos", "tone_frontend_nanos", "tone_inference_nanos")
+    allowed = set(fixed) | set(timings) | {"silence_probability", "tone_probability"}
+    if (not isinstance(result, dict) or set(result) != allowed or
+            any(type(result[key]) is not type(value) or result[key] != value for key, value in fixed.items())):
+        raise RuntimeError("Invalid, failed or unbounded Smart Turn native probe receipt")
+    if any(type(result[key]) not in (float, int) or not math.isfinite(result[key]) or result[key] < 0
+           for key in timings):
+        raise RuntimeError("Invalid Smart Turn native probe timing")
+    silence, tone = result.get("silence_probability"), result.get("tone_probability")
+    if (any(type(value) not in (float, int) or not math.isfinite(value) for value in (silence, tone)) or
+            not 0.5 < silence <= 1 or not 0 <= tone <= 0.5):
+        raise RuntimeError("Smart Turn fixture classification disagrees with pinned host semantics")
+    return result
 
 
 def sha256(path):
@@ -156,16 +194,20 @@ class Device:
             else:
                 ET.parse(target)
 
-    def instrument(self, test_class, tests, evidence_folder, timeout=600, boundary=None, foldable=False, expected_page_size=4096):
+    def instrument(self, test_class, tests, evidence_folder, timeout=600, boundary=None, foldable=False, expected_page_size=4096, smart_turn_input=None):
         """Stream explicit test handshakes so adb can interrupt/change the real target."""
         selector = test_class if len(tests) != 1 else f"{test_class}#{tests[0]}"
         args = ["am", "instrument", "-w", "-r", "-e", "class", selector,
                 "-e", "jarvisEvidenceDir", evidence_folder, "-e", "jarvisFoldable", str(foldable).lower(),
-                "-e", "jarvisExpectedPageSize", str(expected_page_size), RUNNER]
+                "-e", "jarvisExpectedPageSize", str(expected_page_size)]
+        if smart_turn_input is not None:
+            args += ["-e", "jarvisSmartTurnInput", smart_turn_input]
+        args.append(RUNNER)
         command = [self.adb, "-s", self.serial, "shell", shlex.join(args)]
         started = time.monotonic()
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
         lines, events = [], []
+        model_started_at, model_completed = None, False
         incoming = queue.Queue()
 
         def read_lines():
@@ -180,6 +222,8 @@ class Device:
             while not ended:
                 if time.monotonic() - started > timeout:
                     raise RuntimeError(f"Instrumentation exceeded {timeout} seconds")
+                if model_started_at is not None and not model_completed and time.monotonic() - model_started_at > 55:
+                    raise RuntimeError("Smart Turn native probe exceeded its 55-second controller deadline")
                 try:
                     line = incoming.get(timeout=.1)
                 except queue.Empty:
@@ -189,7 +233,17 @@ class Device:
                     continue
                 lines.append(line)
                 stripped = line.strip()
-                if stripped.startswith("INSTRUMENTATION_STATUS: jarvisBoundary="):
+                if stripped.startswith("INSTRUMENTATION_STATUS: jarvisSmartTurnStart="):
+                    if (smart_turn_input is None or model_started_at is not None or
+                            stripped != "INSTRUMENTATION_STATUS: jarvisSmartTurnStart=android-smart-turn-native-v1"):
+                        raise RuntimeError("Unexpected or duplicate Smart Turn native probe start")
+                    model_started_at = time.monotonic()
+                elif stripped.startswith("INSTRUMENTATION_STATUS: jarvisSmartTurnResult="):
+                    if smart_turn_input is None or model_started_at is None or model_completed:
+                        raise RuntimeError("Unexpected or duplicate Smart Turn native probe result")
+                    smart_turn_result(stripped)  # Fail immediately; do not let a live failed worker run later tests.
+                    model_completed = True
+                elif stripped.startswith("INSTRUMENTATION_STATUS: jarvisBoundary="):
                     received = stripped.split("=", 1)[1]
                     if received != boundary or events:
                         raise RuntimeError("Unexpected or duplicate external interruption request")
@@ -217,6 +271,8 @@ class Device:
                         raise RuntimeError("Unexpected emulator posture request")
                     self.run("emu", posture)
                     events.append({"posture": posture})
+            if smart_turn_input is not None and not model_completed:
+                raise RuntimeError("Missing completed Smart Turn native probe handshake")
             process.wait(timeout=30)
             if process.returncode and not boundary:
                 raise RuntimeError(f"Instrumentation adb exited {process.returncode}")
@@ -231,6 +287,15 @@ class Device:
             else:
                 result = instrumentation_results(output, tests, test_class)
             return output, result, events
+        except BaseException as error:
+            if smart_turn_input is not None:
+                # This phase is entered only after disposable-emulator admission and
+                # acknowledged model staging. Stop its native owner before evidence work.
+                try:
+                    stop_target(self)
+                except Exception as stop_error:
+                    raise RuntimeError(f"{error}; immediate Smart Turn process stop could not be verified: {stop_error}") from error
+            raise
         finally:
             if process.poll() is None:
                 process.kill()
@@ -359,15 +424,16 @@ def verify(args):
     report = {"schema": 1, "passed": False, "source_commit": args.source_commit,
               "pr_head": args.pr_head, "run_url": os.getenv("GITHUB_SERVER_URL", "https://github.com") + "/" +
               os.getenv("GITHUB_REPOSITORY", "") + "/actions/runs/" + os.getenv("GITHUB_RUN_ID", ""),
-              "coverage": "release UI + Android actions + previous-APK upgrade + external process/permission recovery + layout/accessibility; no model inference",
+              "coverage": "release UI + Android actions + previous-APK upgrade + external process/permission recovery + layout/accessibility + bounded real Smart Turn JNI/control input",
               "not_covered": scenarios["not_covered"], "device_evidence_folder": evidence_folder, "errors": []}
     report["profile"] = profile
     gc_setup = None
+    smart_turn_input = None
     evidence_tests = (list(scenarios["tests"]) + list(layout["tests"]) +
                       [phase["test"] for phase in lifecycle["upgrade"].values()] +
                       [phase["test"] for phase in lifecycle["phases"].values()])
 
-    def instrument_phase(contract, target, *, boundary=None, foldable=False, timeout=180):
+    def instrument_phase(contract, target, *, boundary=None, foldable=False, timeout=180, model_input=None):
         test_class = contract.get("class", lifecycle["class"])
         tests = contract.get("tests", [contract.get("test")])
         path = out / target
@@ -375,7 +441,7 @@ def verify(args):
         try:
             output, result, events = device.instrument(test_class, tests, evidence_folder,
                                                        timeout=timeout, boundary=boundary, foldable=foldable,
-                                                       expected_page_size=profile["page_size"])
+                                                       expected_page_size=profile["page_size"], smart_turn_input=model_input)
         except Exception:
             partial = out / "last-instrumentation.txt"
             if partial.is_file():
@@ -419,6 +485,10 @@ def verify(args):
             raise RuntimeError("Runtime loading evidence disagrees with shipping APK libraries/page size")
         report["layout"]["native_loading"] = native
     try:
+        if getattr(args, "smart_turn_input_dir", None):
+            smart_turn_input = SmartTurnInput(args.smart_turn_input_dir, out, evidence_folder.rsplit("-", 1)[1],
+                                             args.smart_turn_input_owner)
+            report["smart_turn_input"] = smart_turn_input.report
         # Reset is intentionally restricted to an emulator; never clear a user's phone.
         if not args.allow_emulator_reset or device.shell("getprop", "ro.kernel.qemu").strip() != "1":
             raise RuntimeError("Verification requires a disposable emulator and --allow-emulator-reset")
@@ -476,6 +546,9 @@ def verify(args):
         # Existing isolated fresh-install journeys remain an independent gate.
         if "Success" not in device.shell("pm", "clear", PACKAGE):
             raise RuntimeError("Candidate fresh-install data reset failed")
+        if smart_turn_input is None:
+            raise RuntimeError("The pinned temporary Smart Turn input directory is required")
+        smart_turn_input.stage(device, [args.apk, args.test_apk])
         device.run("logcat", "-c")
         # Permissions remain ungranted: first-run UI must function without microphone access.
         device.shell("dumpsys", "battery", "set", "level", "73")
@@ -486,7 +559,9 @@ def verify(args):
             gc_setup.verify_app(PACKAGE)
         device.snapshot("first-launch")
         report["instrumentation"], _ = instrument_phase(scenarios, "instrumentation.txt",
-                                                       timeout=profile["instrumentation_timeout"])
+                                                       timeout=profile["instrumentation_timeout"],
+                                                       model_input=smart_turn_input.remote_model)
+        report["smart_turn_native"] = smart_turn_result((out / "instrumentation.txt").read_text())
         device.shell("am", "force-stop", PACKAGE)
         device.shell("am", "start", "-W", "-n", ACTIVITY)
         for _ in range(6):
@@ -552,6 +627,12 @@ def verify(args):
             device.shell("dumpsys", "battery", "reset", check=False)
         except Exception:
             pass
+        if smart_turn_input is not None:
+            try:
+                smart_turn_input.cleanup(device)
+            except Exception as error:
+                report["errors"].append(str(error))
+                report["passed"] = False
         (out / "report.json").write_text(json.dumps(report, indent=2) + "\n")
         (out / "summary.md").write_text(
             f"Jarvis verification: {'PASS' if report['passed'] else 'FAIL'}\n\n"
@@ -572,6 +653,8 @@ def main():
     run.add_argument("--test-apk", required=True)
     run.add_argument("--previous-apk", required=True, help="Previous published signed release APK for a real update")
     run.add_argument("--previous-metadata", required=True, help="SHA-bound previous-release provenance JSON")
+    run.add_argument("--smart-turn-input-dir", required=True, help="Task-owned pinned model input directory, consumed and deleted")
+    run.add_argument("--smart-turn-input-owner", required=True, help="Allocation receipt nonce binding this input to its owning attempt")
     run.add_argument("--profile", required=True, help="Required profile ID from profiles.json")
     run.add_argument("--out", required=True, help="New evidence directory; existing evidence is never overwritten")
     run.add_argument("--source-commit", required=True)

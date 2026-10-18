@@ -14,7 +14,7 @@ class AsrComparisonStore(private val preferences: SharedPreferences) {
         (0 until array.length()).map { array.getJSONObject(it) }.takeLast(20)
     }.getOrDefault(emptyList())
 
-    @Synchronized fun add(id: String, metrics: AsrCaptureMetrics, transcript: String, engine: AsrEngine = AsrEngine.MOONSHINE) {
+    @Synchronized fun add(id: String, metrics: AsrCaptureMetrics, transcript: String, engine: AsrEngine = AsrEngine.WHISPER) {
         val entry = JSONObject().put("id", id).put("atMs", System.currentTimeMillis())
             .put("engine", engine.id).put("model", engine.modelVersion)
             .put("transcript", transcript.take(4000)).put("model_load_ms", metrics.modelLoadMs)
@@ -48,7 +48,7 @@ class AsrComparisonStore(private val preferences: SharedPreferences) {
 
     companion object {
         private fun engineLabel(id: String) = when (id) {
-            MoonshineModelInfo.id -> MoonshineModelInfo.label
+            "moonshine_small" -> "Moonshine Small Streaming (retired)"
             "zipformer" -> "Zipformer (retired)"
             else -> id.ifBlank { "Unknown recognizer" }
         }

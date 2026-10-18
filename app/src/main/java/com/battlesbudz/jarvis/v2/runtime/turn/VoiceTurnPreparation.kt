@@ -188,7 +188,7 @@ internal class VoiceTurnPreparation(
                 com.battlesbudz.jarvis.v2.voice.NormalReplyPlayback.from(
                     request.asrTurnId, delivery, System.nanoTime() / 1_000_000
                 )?.let { lifetime.normalReplyPlayback.complete(it) }
-            }, onMetrics = observation.telemetry::recordTts)
+            }, onMetrics = observation.telemetry::recordTts, onTiming = observation.benchmark::markAt)
         lifetime.output = output
         call.state.output = output
         output.setInterrupted(com.battlesbudz.jarvis.v2.voice.MicrophoneHandoff.interrupted.value)
@@ -239,6 +239,13 @@ internal class VoiceTurnPreparation(
             }
         }
         if (correction?.origin == com.battlesbudz.jarvis.v2.voice.TranscriptOrigin.TYPED) directAudioTurn = false
+        val earlyPreparationJob = lifetime.scope.coroutineContext[kotlinx.coroutines.Job]
+        val earlyGemma = if (directAudioTurn && correction == null && selectedSpec.incrementalGemmaInput)
+            com.battlesbudz.jarvis.v2.voice.EarlyGemmaPreparationGate {
+                earlyPreparationJob?.isActive == true && lifetime.modelLease.owned &&
+                    call.controller.currentCallId() == expectedCallId && call.state.armed
+            }.also { gate -> earlyPreparationJob?.invokeOnCompletion { gate.cancel() } }
+        else null
         if (directAudioTurn && selectedSpec == com.battlesbudz.jarvis.v2.ai.ModelCatalog.gemma4E2b &&
             request.comparison == null && correction == null) {
             val preparationContext = kotlin.coroutines.coroutineContext
@@ -262,7 +269,25 @@ internal class VoiceTurnPreparation(
                 lifetime.nativeAudioCapture = com.battlesbudz.jarvis.v2.voice.GemmaStreamingAudioCapture(
                     artifact, request.asrTurnId,
                     turnIsCurrent = { exactTurnJob?.isActive == true &&
-                        call.controller.currentCallId() == expectedCallId && call.state.armed })
+                        call.controller.currentCallId() == expectedCallId && call.state.armed },
+                    beforeEncoderCreate = { earlyGemma?.awaitReady() },
+                    onEncoderPreparationWait = { waitMs ->
+                        observation.benchmark.metric("native_encoder_early_prefill_wait_ms", waitMs)
+                    }, cancelEncoderPreparation = { earlyGemma?.cancel() },
+                    onEncoderWork = { work ->
+                        observation.benchmark.configuration("native_encoder_work_scope", "append_and_seal_api_wall_all_candidates_not_llm_prefill_or_individual_graph_steps")
+                        observation.benchmark.metric("native_encoder_busy", if (work.busy) 1 else 0)
+                        observation.benchmark.metric("native_encoder_append_calls", work.appendCalls)
+                        observation.benchmark.metric("native_encoder_append_cumulative_ms", work.appendWorkNs / 1_000_000)
+                        observation.benchmark.metric("native_encoder_append_max_ms", work.maxAppendWorkNs / 1_000_000)
+                        observation.benchmark.metric("native_encoder_seal_work_ms", work.sealWorkNs / 1_000_000)
+                        observation.benchmark.metric("native_encoder_queued_pcm_ms", work.queuedBytes / 32)
+                        observation.benchmark.metric("native_encoder_peak_queued_pcm_ms", work.peakQueuedBytes / 32)
+                        if (!work.busy) diagnosticRecorder.recordSummary("Voice encoder work turn=${request.asrTurnId} " +
+                            "phase=${work.phase} appendCalls=${work.appendCalls} cumulativeMs=${work.appendWorkNs / 1_000_000} " +
+                            "lastMs=${work.lastWorkNs / 1_000_000} maxMs=${work.maxAppendWorkNs / 1_000_000} " +
+                            "sealMs=${work.sealWorkNs / 1_000_000} queuedPcmMs=${work.queuedBytes / 32}")
+                    })
             } catch (error: Throwable) { artifact.close(); lifetime.nativeAudioArtifact = null; throw error }
             observation.benchmark.configuration("native_audio_encoder", "gemma4_e2b_stateful_cpu_v1")
             observation.benchmark.configuration("native_audio_encoder_sha256",
@@ -279,7 +304,7 @@ internal class VoiceTurnPreparation(
                 admissible = {
                     val thermal = context.getSystemService(android.os.PowerManager::class.java)?.currentThermalStatus ?: 0
                     directAudioTurn && correction == null && request.comparison == null &&
-                        input.bufferedAudioMs == 0L && thermal < 5
+                        (earlyGemma == null || earlyGemma.ready) && input.bufferedAudioMs == 0L && thermal < 5
                 }, ownerIsCurrent = {
                     exactTurnJob?.isActive == true && lifetime.modelLease.owned &&
                         call.controller.currentCallId() == expectedCallId && call.state.armed
@@ -294,6 +319,7 @@ internal class VoiceTurnPreparation(
         val shadowTelemetry = com.battlesbudz.jarvis.v2.diagnostics.SmartTurnBenchmarkTelemetry(observation.benchmark) { category, evidence ->
             diagnosticRecorder.recordTurnEvidence(request.asrTurnId, category, evidence)
         }
+        observation.benchmark.configuration("smart_turn_capture_route", if (directAudioTurn) "gemma_direct_audio" else "whisper_text")
         val shadowObserver = try { resources.smartTurn.beginCapture(
             expectedCallId, request.asrTurnId, nativePauseGeneration,
             enabled = request.comparison == null &&
@@ -303,6 +329,7 @@ internal class VoiceTurnPreparation(
             ownerIsCurrent = { exactShadowTurnJob?.isActive == true && call.state.armed &&
                 call.controller.currentCallId() == expectedCallId },
             observeCapture = correction == null,
+            endpointEnabled = true,
             admissionBlocker = {
                 when {
                     lifetime.nativeSpeculation?.consumedEncoder == true -> "gemma_speculation"
@@ -346,6 +373,29 @@ internal class VoiceTurnPreparation(
         if (correction == null) {
             observation.turnTrace.mark(com.battlesbudz.jarvis.v2.voice.VoiceTurnTrace.Stage.MICROPHONE_READY)
             observation.benchmark.mark("microphone_ready")
+        }
+        if (earlyGemma != null) {
+            val started = System.nanoTime()
+            observation.benchmark.mark("early_gemma_session_prepare_started")
+            observation.benchmark.configuration("early_gemma_preface_policy", com.battlesbudz.jarvis.v2.ai.GemmaVoicePreface.POLICY)
+            observation.benchmark.configuration("early_gemma_preface_scope", "immutable_app_instructions_only_system_role_no_history_memory_or_audio")
+            try {
+                check(engine.prepareVoiceConversation {
+                    earlyPreparationJob?.isActive == true && lifetime.modelLease.owned &&
+                        call.controller.currentCallId() == expectedCallId && call.state.armed
+                }) { "early_gemma_preparation_owner_changed" }
+                val elapsed = (System.nanoTime() - started) / 1_000_000
+                observation.benchmark.metric("early_gemma_session_with_fixed_prefill_ms", elapsed)
+                observation.benchmark.mark("early_gemma_fixed_prefill_completed")
+                diagnosticRecorder.recordSummary("Voice early Gemma turn=${request.asrTurnId} " +
+                    "sessionAndFixedPrefillMs=$elapsed completed=true historyPrefilled=false audioPrefilled=false " +
+                    "policy=${com.battlesbudz.jarvis.v2.ai.GemmaVoicePreface.POLICY}")
+                earlyGemma.complete()
+            } catch (error: Throwable) {
+                earlyGemma.cancel()
+                observation.benchmark.configuration("early_gemma_preparation_failure", error.javaClass.simpleName)
+                throw error
+            }
         }
         val callAudioManager = context.getSystemService(android.media.AudioManager::class.java)
         val callStream = com.battlesbudz.jarvis.v2.voice.CallAudioRouting.stream

@@ -82,7 +82,7 @@
     "test78_scriptStepRunsOnDeviceWithAllowlistedHost",
     "test79_workflowExportSanitizesPersonalContent",
     "test80_cameraCaptureEndsWithSpokenFarewell",
-    "test81_smartTurnShadowIsOptInAndDisablePersistsWithoutModels",
+    "test81_smartTurnEndpointPersistsAndNativeControlMatchesPinnedModel",
     "test90_modelSelectionPersistsAcrossRecreation"
   ],
   "restart_model": "Gemma-4-E4B-it",

@@ -35,6 +35,7 @@ import androidx.test.uiautomator.Configurator
 import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
+import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.Until
 import com.battlesbudz.jarvis.v2.MainActivity
@@ -3235,6 +3236,28 @@ class ReleaseJourneyTest {
         throw AssertionError("Benchmark control did not become stably enabled inside its viewport: $selector")
     }
 
+    private fun benchmarkAssertTimingCollapsed() {
+        val deadline = SystemClock.uptimeMillis() + 5_000
+        val settled = observeBenchmarkNavigation {
+            var matched = false
+            while (SystemClock.uptimeMillis() < deadline) {
+                val collapsed = benchmarkFindNavigationObject(By.res("pipeline_benchmark_timing_toggle")
+                    .hasDescendant(By.text("Show timing measurements (9/31 available)"))) != null
+                // The label and an already removed details parent can coexist in
+                // the accessibility cache. Use the same fresh observation path
+                // as benchmark navigation; a cached negative/positive is not proof.
+                val detailsAbsent = benchmarkFindNavigationObject(By.res("pipeline_benchmark_timing_details")) == null
+                val remaining = deadline - SystemClock.uptimeMillis()
+                android.util.Log.i("JarvisVerification", "benchmark_timing_collapse_observed collapsed=$collapsed detailsAbsent=$detailsAbsent remainingMs=$remaining")
+                if (remaining <= 0) break
+                if (collapsed && detailsAbsent) { matched = true; break }
+                SystemClock.sleep(remaining.coerceAtMost(100))
+            }
+            matched
+        }
+        assertTrue("Timing collapse must show its collapsed label and remove details within 5 seconds", settled)
+    }
+
     /** Controlled observations exercise the release dashboard; they are not model/audio performance evidence. */
     @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
     @Test fun test45_pipelineBenchmarksScoreOriginalAsrPersistAndExportRedactedEvidence() = runBlocking {
@@ -3292,7 +3315,10 @@ class ReleaseJourneyTest {
                 provenance = provenance, outcome = PipelineBenchmarkOutcome.COMPLETE,
                 clock = "controlled_fixture_monotonic",
                 stageOffsetsMs = mapOf("turn_started" to 0, "microphone_ready" to 20, "recognition_finalized" to 200,
-                    "reply_dispatched" to 210, "first_reply_text" to 350, "turn_finished" to 900),
+                    "reply_dispatched" to 210, "first_reply_text" to 350, "turn_finished" to 900,
+                    "speech_started" to 40, "speech_ended" to 150, "endpoint_decided" to 190,
+                    "early_gemma_session_prepare_started" to 30, "early_gemma_fixed_prefill_completed" to 100,
+                    "smart_turn_0_backend_called" to 110, "smart_turn_0_backend_returned" to 160),
                 asr = PipelineBenchmarkAsr("controlled-whisper-fixture", inputAudioMs = 400, decodeWorkMs = 200,
                     transcriptCharacters = originalAsr.length),
                 submissions = listOf(PipelineBenchmarkSubmission(
@@ -3302,7 +3328,11 @@ class ReleaseJourneyTest {
             store.flush()
             render(store)
             benchmarkClickEnabled(By.res("pipeline_benchmark_sample_$completedId"))
-            benchmarkClickEnabled(By.res("benchmark_environment_NOISY"))
+            // The expanded header starts at the lower edge on API 30. Discover the
+            // adjacent controls with an overlapping held stroke, keeping the same
+            // deadline, gesture budget, fresh safe bounds and exactly-one-tap rule.
+            benchmarkClickEnabled(By.res("benchmark_environment_NOISY"),
+                holdDiscovery = android.os.Build.VERSION.SDK_INT == 30)
             benchmarkClickEnabled(By.res("pipeline_benchmark_reference"))
             assertTrue(find(By.text("Original ASR: $originalAsr")).text.contains(originalAsr))
             assertFalse(find(By.res("pipeline_benchmark_reference_score")).isEnabled)
@@ -3328,7 +3358,8 @@ class ReleaseJourneyTest {
             // overlapping discovery path instead of a blind fling across the review section.
             benchmarkClickEnabled(By.res("benchmark_quality_intent_PASS"), holdDiscovery = true,
                 sparseHeldDiscovery = android.os.Build.VERSION.SDK_INT >= 35)
-            benchmarkClickEnabled(By.res("benchmark_quality_factuality_FAIL"))
+            benchmarkClickEnabled(By.res("benchmark_quality_factuality_FAIL"),
+                holdDiscovery = android.os.Build.VERSION.SDK_INT == 30)
             assertFalse(benchmarkScrollTo(By.res("pipeline_benchmark_quality_save"),
                 sparseHeldDiscovery = android.os.Build.VERSION.SDK_INT >= 35).isEnabled)
             benchmarkClickEnabled(By.res("pipeline_benchmark_quality_verify"))
@@ -3340,6 +3371,24 @@ class ReleaseJourneyTest {
             assertEquals(PipelineBenchmarkVerdict.FAIL, quality.factualityVerdict)
             assertEquals(PipelineBenchmarkOutcome.COMPLETE, store.samples.value.single { it.turnId == completedId }.outcome)
             assertEquals(PipelineBenchmarkEnvironment.NOISY, store.samples.value.single { it.turnId == completedId }.environment)
+            // Timing details remain discoverable without adding 31 verbose rows
+            // to every expanded sample. Opening/closing them cannot change data.
+            val beforeTiming = store.samples.value.single { it.turnId == completedId }.json().toString()
+            fun timingToggle() = By.res("pipeline_benchmark_timing_toggle")
+            assertNotNull(benchmarkScrollTo(timingToggle().hasDescendant(By.text("Show timing measurements (9/31 available)")),
+                holdDiscovery = true, sparseHeldDiscovery = android.os.Build.VERSION.SDK_INT >= 35))
+            assertNull("Timing details start collapsed", benchmarkFindNavigationObject(By.res("pipeline_benchmark_timing_details")))
+            repeat(2) {
+                benchmarkClickEnabled(timingToggle(), holdDiscovery = true,
+                    sparseHeldDiscovery = android.os.Build.VERSION.SDK_INT >= 35)
+                assertNotNull(benchmarkRevealText("early_gemma_preparation_capture_overlap_ms: 70.00", holdDiscovery = true))
+                captureEvidence("pipeline_benchmark_timing_expanded_$it")
+                benchmarkClickEnabled(timingToggle().hasDescendant(By.text("Hide timing measurements")), towardTop = true,
+                    holdDiscovery = true, sparseHeldDiscovery = android.os.Build.VERSION.SDK_INT >= 35)
+                benchmarkAssertTimingCollapsed()
+                assertEquals("Timing visibility must not mutate retained/exported data", beforeTiming,
+                    store.samples.value.single { it.turnId == completedId }.json().toString())
+            }
             assertNotNull(if (android.os.Build.VERSION.SDK_INT == 30)
                 benchmarkRevealText("tts_load_ms: unavailable", holdDiscovery = true)
                 else benchmarkScrollTo(By.text("tts_load_ms: unavailable"), sparseHeldDiscovery = true))
@@ -3365,7 +3414,9 @@ class ReleaseJourneyTest {
             find(By.res("pipeline_benchmark_save_text")).click()
             exportProbe.awaitObserved("Picker request observed") { exportProbe.creates.size == 1 }
             // The picker is controlled so the underlying screen can scroll/recompose while pending.
-            benchmarkScrollTo(By.res("pipeline_benchmark_sample_$completedId"))
+            // Overlap discovery viewports and settle the expanded sample header before observing it.
+            benchmarkScrollTo(By.res("pipeline_benchmark_sample_$completedId"),
+                sparseHeldDiscovery = android.os.Build.VERSION.SDK_INT >= 35)
             assertFalse(device.hasObject(By.res("pipeline_benchmark_save_text")))
             exportProbe.completePending()
             benchmarkScrollTo(By.res("pipeline_benchmark_save_text").enabled(true), towardTop = true)
@@ -3385,6 +3436,8 @@ class ReleaseJourneyTest {
                 assertTrue(text.contains("id=\"$cancelledId\""))
                 assertFalse(text.contains(originalAsr))
                 assertFalse(text.contains(reference))
+                assertTrue(text.contains("early_gemma_preparation_capture_overlap_ms"))
+                assertTrue(text.contains("smart_turn_7_backend_after_speech_ms"))
                 assertTrue("Pending export keeps its original scope/settings despite recomposition", text.contains("environment=NOISY"))
                 store.setEnvironment(completedId, PipelineBenchmarkEnvironment.NOISY)
                 activity.onActivity { } // drain the state change before requesting the next snapshot
@@ -3446,6 +3499,11 @@ class ReleaseJourneyTest {
             assertEquals(1, export.getJSONObject("completedTurns").getInt("turnCount"))
             val exportedCompleted = (0 until export.getJSONArray("turns").length())
                 .map { export.getJSONArray("turns").getJSONObject(it) }.single { it.getString("turnId") == completedId }
+            val exportedTiming = PipelineBenchmarkTurn.read(exportedCompleted).metrics()
+            assertEquals(70.0, exportedTiming["early_gemma_preparation_capture_overlap_ms"])
+            assertEquals(40.0, exportedTiming["smart_turn_0_backend_speech_span_overlap_ms"])
+            assertTrue(exportedTiming.containsKey("smart_turn_7_backend_after_speech_ms"))
+            assertNull(exportedTiming["smart_turn_7_backend_after_speech_ms"])
             assertTrue("Missing playback measurements remain JSON null", exportedCompleted.isNull("tts"))
             assertTrue("Token estimates do not invent native counts", exportedCompleted.getJSONArray("submissions")
                 .getJSONObject(0).isNull("exactOutputTokens"))
@@ -3569,7 +3627,7 @@ class ReleaseJourneyTest {
             // Exercise the actual dropdown and rebuild the UI for each persisted choice.
             // Expected UI labels are fixture data, not getters across the independently
             // optimized app/test APK boundary (the app can inline AsrEngine.label).
-            for ((label, engine) in listOf("Moonshine" to AsrEngine.MOONSHINE,
+            for ((label, engine) in listOf("Whisper base · Snapdragon NPU" to AsrEngine.WHISPER_NPU,
                 "Whisper base.en" to AsrEngine.WHISPER, "Off" to null)) {
                 find(By.res("gemma_caption_engine")).click()
                 // The separate popup window does not inherit testTagsAsResourceId.
@@ -5933,9 +5991,12 @@ class ReleaseJourneyTest {
 
 
     @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
-    @Test fun test81_smartTurnShadowIsOptInAndDisablePersistsWithoutModels() {
+    @Test fun test81_smartTurnEndpointPersistsAndNativeControlMatchesPinnedModel() {
         val preferences = context.getSharedPreferences("voice_input", Context.MODE_PRIVATE)
-        val key = "smart_turn_shadow_enabled"
+        val key = "smart_turn_endpoint_enabled"
+        val oldKey = "smart_turn_shadow_enabled"
+        val hadOldValue = preferences.contains(oldKey)
+        val oldValue = preferences.getBoolean(oldKey, false)
         val hadValue = preferences.contains(key)
         val original = preferences.getBoolean(key, false)
         val mode = VoiceInputMode.selected(context)
@@ -5953,33 +6014,58 @@ class ReleaseJourneyTest {
             device.waitForIdle()
         }
         try {
-            preferences.edit().remove(key).commit()
+            preferences.edit().remove(key).putBoolean(oldKey, false).commit()
             render(false)
-            val disabled = scrollTo(By.res("smart_turn_shadow_toggle"))
-            assertFalse("Live-call settings must not enable shadow/model setup", disabled.isEnabled)
-            assertFalse(preferences.getBoolean(key, false))
-            // Restore an already-enabled preference without downloading or loading weights.
+            scrollTo(By.res("smart_turn_endpoint_toggle"))
+            assertTrue("Live-call settings must not change endpoint/model setup",
+                device.wait(Until.hasObject(By.res("smart_turn_endpoint_toggle").enabled(false)), 15_000))
+            assertTrue(com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnSettings.enabled(context))
+            assertNotNull(scrollTo(By.text("Download Smart Turn (8.7 MB)")))
+            // Default-on endpoint control remains independently disableable without loading weights.
             preferences.edit().putBoolean(key, true).commit()
             render(true)
-            val disable = scrollTo(By.text("Disable Smart Turn shadow"))
-            assertEquals("Disable Smart Turn shadow", disable.text)
-            val toggle = scrollTo(By.res("smart_turn_shadow_toggle"))
-            assertTrue("Disable control must be enabled and clickable", toggle.isEnabled && toggle.isClickable)
-            toggle.click()
+            scrollTo(By.res("smart_turn_endpoint_toggle"))
+            // UiObject resolves this complete selector inside click(), not a UiObject2
+            // cached from either composition. Tap the exact label within its enabled,
+            // clickable tagged parent. Only lookup polls; the action is dispatched once.
+            val disable = UiSelector().resourceId("smart_turn_endpoint_toggle")
+                .enabled(true).clickable(true).childSelector(UiSelector().text("Disable Smart Turn"))
+            assertTrue("Disable Smart Turn must be inside the enabled, clickable control",
+                device.findObject(disable).waitForExists(15_000))
+            val configuration = Configurator.getInstance()
+            val selectorTimeout = configuration.waitForSelectorTimeout
+            try {
+                // Re-resolve at dispatch; disappearance fails without a second wait.
+                configuration.waitForSelectorTimeout = 0
+                device.findObject(disable).click()
+            } finally {
+                configuration.waitForSelectorTimeout = selectorTimeout
+            }
             // Input injection can return before the UI handler. Its Enable label is
             // published only after the synchronous preference update; find is bounded.
-            find(By.text("Enable Smart Turn shadow (8.7 MB)"))
+            find(By.text("Enable Smart Turn"))
             assertFalse(preferences.getBoolean(key, true))
             activity.recreate()
             render(true)
-            assertNotNull(scrollTo(By.text("Enable Smart Turn shadow (8.7 MB)")))
+            assertNotNull(scrollTo(By.text("Enable Smart Turn")))
             assertFalse(preferences.getBoolean(key, true))
             assertEquals(mode, VoiceInputMode.selected(context))
             assertEquals(captions, VoiceInputMode.captionEngine(context))
-            captureEvidence("smart_turn_shadow_opt_in_settings")
+            captureEvidence("smart_turn_endpoint_default_settings")
+            instrumentation.sendStatus(1, android.os.Bundle().apply {
+                putString("jarvisSmartTurnStart", "android-smart-turn-native-v1")
+            })
+            val nativeProbe = SmartTurnNativeJourneyProbe.run(instrumentation,
+                InstrumentationRegistry.getArguments().getString("jarvisSmartTurnInput"))
+            instrumentation.sendStatus(1, android.os.Bundle().apply {
+                putString("jarvisSmartTurnResult", org.json.JSONObject(nativeProbe.reportFields()).toString())
+            })
+            nativeProbe.assertPassed()
         } finally {
             if (hadValue) preferences.edit().putBoolean(key, original).commit()
             else preferences.edit().remove(key).commit()
+            if (hadOldValue) preferences.edit().putBoolean(oldKey, oldValue).commit()
+            else preferences.edit().remove(oldKey).commit()
         }
     }
 

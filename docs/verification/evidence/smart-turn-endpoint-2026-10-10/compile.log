@@ -1,0 +1,12 @@
+app/src/main/java/com/battlesbudz/jarvis/v2/ai/storage/ModelDownloader.kt:104:27: warning: 'constructor(p0: String!): URL' is deprecated. Deprecated in Java.
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                          ^^^
+app/src/main/java/com/battlesbudz/jarvis/v2/ai/storage/ModelDownloader.kt:134:27: warning: 'constructor(p0: String!): URL' is deprecated. Deprecated in Java.
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                          ^^^
+app/src/main/java/com/battlesbudz/jarvis/v2/ai/storage/ModelDownloader.kt:191:27: warning: 'constructor(p0: String!): URL' is deprecated. Deprecated in Java.
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                          ^^^
+app/src/main/java/com/battlesbudz/jarvis/v2/voice/smartturn/SmartTurnShadow.kt:56:24: warning: this class is not recommended for use in Kotlin. Use 'kotlin.Any' instead.
+    private val lock = Object()
+                       ^^^^^^

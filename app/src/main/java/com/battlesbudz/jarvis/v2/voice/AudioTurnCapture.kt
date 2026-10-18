@@ -11,6 +11,10 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -51,12 +55,14 @@ class AudioTurnCapture(
     private val nativePauseObserver: NativePauseObserver? = null,
     private val nativePauseTurnId: String = "",
     private val nativePauseGeneration: Long = 0,
-    private val canUseNativePause: (Long?) -> Boolean = { false }
+    private val canUseNativePause: (Long?) -> Boolean = { false },
+    private val canUseSmartTurn: (Long?) -> Boolean = { false }
 ) {
-    // Shadow callbacks can neither veto capture nor escape into the audio owner.
+    // Observer failures cannot escape into the PCM owner; endpoint advice is separately fenced.
     private inline fun shadow(action: (CaptureShadowObserver) -> Unit) {
         shadowObserver?.let { runCatching { action(it) } }
     }
+    private val endpointObserver = (shadowObserver as? CaptureEndpointObserver)?.takeIf { it.controlsEndpoint }
     private val nativePause = nativePauseObserver?.let { NativePauseCapture(it, nativePauseTurnId, nativePauseGeneration) }
     /** Only published by stop(), after capture's collector and VAD producer have joined. */
     @Volatile var nativePauseCertificate: NativePauseCertificate? = null
@@ -144,6 +150,7 @@ class AudioTurnCapture(
         var pendingEndpoint = false
         var finalNativeEndpointGuard: AdaptiveTurnEnd.Decision? = null
         var retiredCaptionAtPendingEndpoint = false
+        var skippedSmartCaptionAtPendingEndpoint = false
         var quietEvidenceUsed = false
         var unconfirmedOnsetAt: Long? = null
         val followupEvidence = FollowupSpeechEvidence()
@@ -157,153 +164,180 @@ class AudioTurnCapture(
         collectionJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
                 var acceptedTurn: Boolean? = null
-                speechQueue.frames().transformWhile { emit(it); acceptedTurn == null && !turnCompleted.isCompleted }.collect { frame ->
+                val wake = Channel<Unit>(Channel.CONFLATED)
+                endpointObserver?.setEndpointReadyListener { wake.trySend(Unit) }
+                var lastFrame: CaptureSpeechQueue.Frame? = null
+                val frames = if (endpointObserver == null) speechQueue.frames() else channelFlow<CaptureSpeechQueue.Frame?> {
+                    val wakeJob = launch { wake.receiveAsFlow().collect { send(null) } }
+                    try { speechQueue.frames().collect { send(it) } } finally { wakeJob.cancel() }
+                }.buffer(Channel.RENDEZVOUS)
+                try { frames.transformWhile { emit(it); acceptedTurn == null && !turnCompleted.isCompleted }.collect { event ->
                     if (turnCompleted.isCompleted) return@collect
-                    speechQueue.consumed(frame)
+                    val isModelWake = event == null
+                    val frame = event?.also { lastFrame = it } ?: lastFrame ?: return@collect
                     val chunk = frame.pcm
-                    audioBytes += chunk.size
-                    recoveryAudio.append(chunk)
                     val signal = Pcm16Signal.measure(chunk)
                     val decision = frame.decision
-                    acousticMetrics.record(signal, decision, frame.noiseFloorRms)
-                    nativeSpeechEvidence.observe(chunk.size, decision)
                     val now = nowMs()
                     val audioAt = frame.capturedAtMs
-                    // Give a possible onset one confirmation window before sealing.
-                    // It cannot refresh lastSpeechAt or reopen ASR on its own.
-                    if (!decision.isSpeech && decision.probability >= 0.5f) {
-                        if (unconfirmedOnsetAt == null) unconfirmedOnsetAt = audioAt
-                    } else unconfirmedOnsetAt = null
-                    val awaitingConfirmation = unconfirmedOnsetAt?.let { audioAt - it < 96 } == true
-                    var resumedAudio: ByteArray? = null
-                    if (pendingEndpoint) pendingAudio.append(chunk)
-                    if (pendingEndpoint && (decision.isSpeech || (nativePause != null &&
-                        (frame.rawDecision.probability >= .15f || frame.rawDecision.rawCoverage == null)))) {
-                        (transcriber as? SegmentedTranscriber)?.resumeAfterEndpoint()
-                        pendingEndpoint = false
-                        finalNativeEndpointGuard = null
-                        retiredCaptionAtPendingEndpoint = false
-                        resumedAudio = pendingAudio.snapshot(); pendingAudio.clear()
-                        onSpeechResumed()
-                        log("turn_endpoint_invalidated reason=resumed_speech")
-                    }
-                    var retainedAudio: ByteArray? = null
-                    var retainedWindowRolled = false
-                    synchronized(pcm) {
-                        if (hasSpeech) {
-                            pcm.append(chunk)
-                            if (retainedPcmObserver != null || nativePause != null || shadowObserver != null) retainedAudio = chunk.copyOf()
-                            val wasComplete = audioIsComplete
-                            capturedPcmBytes += chunk.size
-                            if (wasComplete && !audioIsComplete) {
-                                retainedWindowRolled = true
-                                onSpeechResumed()
-                                log("audio_window_rolled full_request_text_required=true speculation_invalidated=true")
-                            }
-                        } else {
-                            preRoll.append(chunk)
+                    var awaitingConfirmation = unconfirmedOnsetAt?.let { audioAt - it < 96 } == true
+                    if (!isModelWake) {
+                        speechQueue.consumed(frame)
+                        audioBytes += chunk.size
+                        recoveryAudio.append(chunk)
+                        acousticMetrics.record(signal, decision, frame.noiseFloorRms)
+                        nativeSpeechEvidence.observe(chunk.size, decision)
+                        // Give a possible onset one confirmation window before sealing.
+                        // It cannot refresh lastSpeechAt or reopen ASR on its own.
+                        if (!decision.isSpeech && decision.probability >= 0.5f) {
+                            if (unconfirmedOnsetAt == null) unconfirmedOnsetAt = audioAt
+                        } else unconfirmedOnsetAt = null
+                        awaitingConfirmation = unconfirmedOnsetAt?.let { audioAt - it < 96 } == true
+                        var resumedAudio: ByteArray? = null
+                        if (pendingEndpoint) pendingAudio.append(chunk)
+                        if (pendingEndpoint && (decision.isSpeech || ((nativePause != null || endpointObserver != null) &&
+                            (frame.rawDecision.probability >= .15f || frame.rawDecision.rawCoverage == null)))) {
+                            if (!skippedSmartCaptionAtPendingEndpoint) (transcriber as? SegmentedTranscriber)?.resumeAfterEndpoint()
+                            skippedSmartCaptionAtPendingEndpoint = false
+                            pendingEndpoint = false
+                            finalNativeEndpointGuard = null
+                            retiredCaptionAtPendingEndpoint = false
+                            resumedAudio = pendingAudio.snapshot(); pendingAudio.clear()
+                            onSpeechResumed()
+                            log("turn_endpoint_invalidated reason=resumed_speech")
                         }
-                        if (decision.isSpeech) {
-                            if (hasSpeech && audioAt - lastSpeechAt >= 180) onSpeechResumed()
-                            if (!hasSpeech) {
-                                firstSpeechAt = now
-                                firstSpeechCaptureAtMs = audioAt
-                                val acceptedPreRoll = preRoll.snapshot()
-                                pcm.append(acceptedPreRoll)
-                                retainedPreRollSampleCount = (pcm.sizeBytes() / 2).toInt()
-                                if (retainedPcmObserver != null || nativePause != null || shadowObserver != null) retainedAudio = pcm.snapshot()
-                                capturedPcmBytes = pcm.sizeBytes()
-                                preRoll.clear()
-                                log("speech_started vad=silero elapsedMs=${now - startedAt}")
-                            }
-                            hasSpeech = true
-                            lastSpeechAt = audioAt
-                            lastSpeechAtMs = audioAt
-                            lastSpeechSample = audioBytes / 2
-                        }
-                    }
-                    // Observe the retained request, not raw/VAD frames. The copied
-                    // bytes leave the PCM lock before any external queue admission.
-                    if (retainedWindowRolled) {
-                        shadow { it.onInvalidated("window_rolled") }
-                        nativePause?.invalidate(NativePauseInvalidation.WINDOW_ROLLED)
-                        retainedPcmObserver?.onCaptureInvalidated(RetainedPcmObserver.Invalidation.WINDOW_ROLLED)
-                    }
-                    if (audioIsComplete) retainedAudio?.let {
-                        shadow { observer -> observer.onPcm(it, audioBytes / 2) }
-                        nativePause?.retain(it)
-                        if (nativePause?.encoderFrozen != true) retainedPcmObserver?.onPcm(it)
-                    }
-                    // ASR receives every frame from microphone startup. VAD controls
-                    // submission and endpointing, not whether initial words reach the recognizer.
-                    val decodeStartedAt = nowMs()
-                    if (!pendingEndpoint) transcriber?.observeSpeech(decision.isSpeech)
-                    val backlogMs = speechQueue.bufferedAudioMs
-                    maxRecognitionBacklogMs = maxOf(maxRecognitionBacklogMs, backlogMs)
-                    val allowPartial = recognitionBudget.allows(decodeStartedAt, backlogMs) &&
-                        !(hasSpeech && decision.probability < 0.15f)
-                    if (!pendingEndpoint && !allowPartial) deferredPartialChunks++
-                    val segmentsBefore = (transcriber as? SegmentedTranscriber)?.segments
-                    val partial = if (pendingEndpoint) null else transcriber?.accept(resumedAudio ?: chunk, allowPartial)?.let {
-                        // An unchanged cached hypothesis is not fresh evidence of speech
-                        // in a queued or silent frame. Finalization still consumes all PCM.
-                        val committed = (transcriber as? SegmentedTranscriber)?.segments != segmentsBefore
-                        if (!allowPartial && !committed) null else if (TranscriptContent.isSoundOnly(it)) "" else TranscriptContent.speech(it)
-                    }
-                    currentCoroutineContext().ensureActive()
-                    if (turnCompleted.isCompleted) return@collect
-                    val chunkDecodeMs = nowMs() - decodeStartedAt
-                    if (!pendingEndpoint) recognitionBudget.completed(decodeStartedAt, nowMs())
-                    decodeMs += chunkDecodeMs
-                    maxDecodeChunkMs = maxOf(maxDecodeChunkMs, chunkDecodeMs)
-                    // Stable words corroborate weak whisper VAD; blank/noisy audio cannot
-                    // qualify on amplitude alone. Strong VAD retains its existing fast path.
-                    val corroborated = quietEvidence.accept(if (allowPartial) partial else null, decision.probability, audioAt, hasSpeech)
-                    followupEvidence.observe(decision.speechSamples?.times(2) ?: chunk.size, decision.probability, partial?.takeIf { it.isNotBlank() } ?: initialConfirmedSpeech().takeIf { initialEvidenceAvailable && it.isNotBlank() }, corroborated, decision.isSpeech)
-                    if (corroborated) {
-                        quietEvidenceUsed = true
-                        nativePause?.invalidate(NativePauseInvalidation.RESUMED_OR_UNCERTAIN_AUDIO)
-                    }
-                    if (hasSpeech && corroborated) {
-                        if (audioAt - lastSpeechAt >= 180) onSpeechResumed()
-                        lastSpeechAt = audioAt
-                        lastSpeechAtMs = audioAt
-                        lastSpeechSample = audioBytes / 2
-                    }
-                    if (!hasSpeech && corroborated) {
-                        var acceptedPreRoll: ByteArray? = null
+                        var retainedAudio: ByteArray? = null
+                        var retainedWindowRolled = false
                         synchronized(pcm) {
-                            firstSpeechAt = now
-                                firstSpeechCaptureAtMs = audioAt
-                            val onsetPcm = preRoll.snapshot()
-                            pcm.append(onsetPcm)
-                            retainedPreRollSampleCount = (pcm.sizeBytes() / 2).toInt()
-                            if (retainedPcmObserver != null || nativePause != null || shadowObserver != null) acceptedPreRoll = pcm.snapshot()
-                            capturedPcmBytes = pcm.sizeBytes()
-                            preRoll.clear()
-                            hasSpeech = true
-                            lastSpeechAt = audioAt
-                            lastSpeechAtMs = audioAt
-                            lastSpeechSample = audioBytes / 2
+                            if (hasSpeech) {
+                                pcm.append(chunk)
+                                if (retainedPcmObserver != null || nativePause != null || shadowObserver != null) retainedAudio = chunk.copyOf()
+                                val wasComplete = audioIsComplete
+                                capturedPcmBytes += chunk.size
+                                if (wasComplete && !audioIsComplete) {
+                                    retainedWindowRolled = true
+                                    onSpeechResumed()
+                                    log("audio_window_rolled full_request_text_required=true speculation_invalidated=true")
+                                }
+                            } else {
+                                preRoll.append(chunk)
+                            }
+                            if (decision.isSpeech) {
+                                if (hasSpeech && audioAt - lastSpeechAt >= 180) onSpeechResumed()
+                                if (!hasSpeech) {
+                                    firstSpeechAt = now
+                                    firstSpeechCaptureAtMs = audioAt
+                                    val acceptedPreRoll = preRoll.snapshot()
+                                    pcm.append(acceptedPreRoll)
+                                    retainedPreRollSampleCount = (pcm.sizeBytes() / 2).toInt()
+                                    if (retainedPcmObserver != null || nativePause != null || shadowObserver != null) retainedAudio = pcm.snapshot()
+                                    capturedPcmBytes = pcm.sizeBytes()
+                                    preRoll.clear()
+                                    log("speech_started vad=silero elapsedMs=${now - startedAt}")
+                                }
+                                hasSpeech = true
+                                lastSpeechAt = audioAt
+                                lastSpeechAtMs = audioAt
+                                lastSpeechSample = audioBytes / 2
+                            }
                         }
-                        acceptedPreRoll?.let {
+                        // Observe the retained request, not raw/VAD frames. The copied
+                        // bytes leave the PCM lock before any external queue admission.
+                        if (retainedWindowRolled) {
+                            shadow { it.onInvalidated("window_rolled") }
+                            nativePause?.invalidate(NativePauseInvalidation.WINDOW_ROLLED)
+                            retainedPcmObserver?.onCaptureInvalidated(RetainedPcmObserver.Invalidation.WINDOW_ROLLED)
+                        }
+                        if (audioIsComplete) retainedAudio?.let {
                             shadow { observer -> observer.onPcm(it, audioBytes / 2) }
                             nativePause?.retain(it)
                             if (nativePause?.encoderFrozen != true) retainedPcmObserver?.onPcm(it)
                         }
-                        log("speech_started source=asr_and_vad probability=${decision.probability} preRollMs=1200")
+                        // Offer the bounded model worker BEFORE optional caption decoding. It
+                        // shares this retained PCM, but never blocks capture or owns Gemma.
+                        fun endpointFrame(corroborated: Boolean = false) = CaptureShadowFrame(
+                            audioBytes / 2, audioAt * 1_000_000L, hasSpeech,
+                            decision.isSpeech || corroborated || frame.rawDecision.probability >= .15f ||
+                                frame.rawDecision.rawCoverage == null,
+                            (audioAt - lastSpeechAt).coerceAtLeast(0), maxOf(speechQueue.bufferedAudioMs, input.bufferedAudioMs))
+                        shadow { it.onFrame(endpointFrame()) }
+                        // ASR receives every frame from microphone startup. VAD controls
+                        // submission and endpointing, not whether initial words reach the recognizer.
+                        val decodeStartedAt = nowMs()
+                        if (!pendingEndpoint) transcriber?.observeSpeech(decision.isSpeech)
+                        val backlogMs = speechQueue.bufferedAudioMs
+                        maxRecognitionBacklogMs = maxOf(maxRecognitionBacklogMs, backlogMs)
+                        val allowPartial = recognitionBudget.allows(decodeStartedAt, backlogMs) &&
+                            !(hasSpeech && decision.probability < 0.15f)
+                        if (!pendingEndpoint && !allowPartial) deferredPartialChunks++
+                        val segmentsBefore = (transcriber as? SegmentedTranscriber)?.segments
+                        val partial = if (pendingEndpoint) null else transcriber?.accept(resumedAudio ?: chunk, allowPartial)?.let {
+                            // An unchanged cached hypothesis is not fresh evidence of speech
+                            // in a queued or silent frame. Finalization still consumes all PCM.
+                            val committed = (transcriber as? SegmentedTranscriber)?.segments != segmentsBefore
+                            if (!allowPartial && !committed) null else if (TranscriptContent.isSoundOnly(it)) "" else TranscriptContent.speech(it)
+                        }
+                        currentCoroutineContext().ensureActive()
+                        if (turnCompleted.isCompleted) return@collect
+                        val chunkDecodeMs = nowMs() - decodeStartedAt
+                        if (!pendingEndpoint) recognitionBudget.completed(decodeStartedAt, nowMs())
+                        decodeMs += chunkDecodeMs
+                        maxDecodeChunkMs = maxOf(maxDecodeChunkMs, chunkDecodeMs)
+                        // Stable words corroborate weak whisper VAD; blank/noisy audio cannot
+                        // qualify on amplitude alone. Strong VAD retains its existing fast path.
+                        val corroborated = quietEvidence.accept(if (allowPartial) partial else null, decision.probability, audioAt, hasSpeech)
+                        followupEvidence.observe(decision.speechSamples?.times(2) ?: chunk.size, decision.probability, partial?.takeIf { it.isNotBlank() } ?: initialConfirmedSpeech().takeIf { initialEvidenceAvailable && it.isNotBlank() }, corroborated, decision.isSpeech)
+                        if (corroborated) {
+                            quietEvidenceUsed = true
+                            nativePause?.invalidate(NativePauseInvalidation.RESUMED_OR_UNCERTAIN_AUDIO)
+                        }
+                        if (hasSpeech && corroborated) {
+                            if (audioAt - lastSpeechAt >= 180) onSpeechResumed()
+                            lastSpeechAt = audioAt
+                            lastSpeechAtMs = audioAt
+                            lastSpeechSample = audioBytes / 2
+                        }
+                        if (!hasSpeech && corroborated) {
+                            var acceptedPreRoll: ByteArray? = null
+                            synchronized(pcm) {
+                                firstSpeechAt = now
+                                    firstSpeechCaptureAtMs = audioAt
+                                val onsetPcm = preRoll.snapshot()
+                                pcm.append(onsetPcm)
+                                retainedPreRollSampleCount = (pcm.sizeBytes() / 2).toInt()
+                                if (retainedPcmObserver != null || nativePause != null || shadowObserver != null) acceptedPreRoll = pcm.snapshot()
+                                capturedPcmBytes = pcm.sizeBytes()
+                                preRoll.clear()
+                                hasSpeech = true
+                                lastSpeechAt = audioAt
+                                lastSpeechAtMs = audioAt
+                                lastSpeechSample = audioBytes / 2
+                            }
+                            acceptedPreRoll?.let {
+                                shadow { observer -> observer.onPcm(it, audioBytes / 2) }
+                                nativePause?.retain(it)
+                                if (nativePause?.encoderFrozen != true) retainedPcmObserver?.onPcm(it)
+                            }
+                            log("speech_started source=asr_and_vad probability=${decision.probability} preRollMs=1200")
+                        }
+                        val smartFrame = endpointFrame(corroborated)
+                        shadow { it.onFrame(smartFrame) }
+                        val cue = if (captionOnly && nativePause != null) transcriber?.completedEndpointCue else null
+                        if (hasSpeech && partial != null) publishPartial(partial)
+                        if (captionOnly && nativePause != null && completedCues.update(cue,
+                                lastSpeechSample - asrInputStartSample, now, completedCueEnd)) {
+                            log("native_endpoint_cue source=completed_asr coveredSamples=${cue?.coveredAudioSamples} " +
+                                "latestSpeechSample=${lastSpeechSample - asrInputStartSample} speechClockUnchanged=true")
+                        }
                     }
-                    shadow { it.onFrame(CaptureShadowFrame(audioBytes / 2, audioAt * 1_000_000L,
-                        hasSpeech, decision.isSpeech || corroborated || frame.rawDecision.probability >= .15f ||
-                            frame.rawDecision.rawCoverage == null,
-                        (audioAt - lastSpeechAt).coerceAtLeast(0), maxOf(speechQueue.bufferedAudioMs, input.bufferedAudioMs))) }
-                    val cue = if (captionOnly && nativePause != null) transcriber?.completedEndpointCue else null
-                    if (hasSpeech && partial != null) publishPartial(partial)
-                    if (captionOnly && nativePause != null && completedCues.update(cue,
-                            lastSpeechSample - asrInputStartSample, now, completedCueEnd)) {
-                        log("native_endpoint_cue source=completed_asr coveredSamples=${cue?.coveredAudioSamples} " +
-                            "latestSpeechSample=${lastSpeechSample - asrInputStartSample} speechClockUnchanged=true")
-                    }
+                    val currentSmartFrame = CaptureShadowFrame(audioBytes / 2, audioAt * 1_000_000L,
+                        hasSpeech, decision.isSpeech || frame.rawDecision.probability >= .15f ||
+                            frame.rawDecision.rawCoverage == null || lastSpeechAt == audioAt,
+                        (audioAt - lastSpeechAt).coerceAtLeast(0), maxOf(speechQueue.bufferedAudioMs, input.bufferedAudioMs))
+                    shadow { it.onFrame(currentSmartFrame) }
+                    val smartDecision = runCatching { endpointObserver?.endpointDecision(currentSmartFrame) }
+                        .getOrNull() ?: CaptureEndpointDecision(CaptureEndpointState.FALLBACK)
+                    val smartState = smartDecision.state
                     val rawCoverage = frame.rawDecision.rawCoverage
                     val exactCollectorCoverage = rawCoverage != null && rawCoverage.receivedPcmBytes == audioBytes &&
                         rawCoverage.classifiedThroughSample * 2 == audioBytes
@@ -323,8 +357,18 @@ class AudioTurnCapture(
                             completedCueEnd.decision(now).takeIf {
                                 (exactCollectorCoverage && nativeEligibility.allowed) || it.silenceMs >= legacyEndpoint.silenceMs
                             }) else legacyEndpoint
-                    val endpoint = if (trailingSilenceMs == null) NativePauseEndpointPolicy.decision(
+                    val acousticEndpoint = if (trailingSilenceMs == null) NativePauseEndpointPolicy.decision(
                         baseEndpoint, nativeEligibility, frame.rawDecision.rawCoverage, audioBytes, legacyEndpoint) else baseEndpoint
+                    // Smart Turn observes retained PCM, independently of ASR segment seams.
+                    // Caption retirement and native speculation keep their separate guards.
+                    val smartRouteAllowed = (!captionOnly || unsegmented) && audioIsComplete &&
+                        canUseSmartTurn(firstSpeechCaptureAtMs)
+                    val smartEligibility = NativePauseEndpointPolicy.eligibility(hasSpeech,
+                        nativeSpeechEvidence.snapshot().strongMs, quietEvidenceUsed, audioAt - lastSpeechAt,
+                        rawCoverage, awaitingConfirmation, speechQueue.bufferedAudioMs, audioIsComplete)
+                    val endpoint = SmartTurnEndpointPolicy.decision(acousticEndpoint, smartDecision,
+                        smartEligibility, smartRouteAllowed, rawCoverage, audioBytes, audioAt - lastSpeechAt)
+                    val smartComplete = endpoint.cue == "smart_turn_complete"
                     if (nativeEligibility.allowed) nativeEligibleFrames++
                     if (nativeEligibility.allowed && !exactCollectorCoverage) nativeUncoveredEndpointFrames++
                     val nativeReason = if (nativeEligibility.allowed && !exactCollectorCoverage)
@@ -335,7 +379,12 @@ class AudioTurnCapture(
                             "endpointCue=${endpoint.cue} rawCoveredSamples=${frame.rawDecision.rawCoverage?.classifiedThroughSample} " +
                             "collectedSamples=${audioBytes / 2}")
                     }
-                    if (nativePause?.canPropose == true && nativeEligibility.allowed && !pendingEndpoint && NativePauseEndpointPolicy.permitsProposal(baseEndpoint)) {
+                    if (nativePause?.canPropose == true && nativeEligibility.allowed && !pendingEndpoint &&
+                        SmartTurnEndpointPolicy.permitsSpeculation(smartState) &&
+                        // Its independent certificate still requires raw coverage. Do not spend
+                        // the encoder for a same-event model endpoint that cannot certify it.
+                        (smartState != CaptureEndpointState.COMPLETE || exactCollectorCoverage) &&
+                        (smartComplete || NativePauseEndpointPolicy.permitsProposal(baseEndpoint))) {
                         shadow { it.onPriority("gemma_speculation") }
                         val snapshot = synchronized(pcm) { pcm.snapshot() }
                         if (nativePause.propose(snapshot, audioBytes / 2, nowNs())) {
@@ -344,9 +393,11 @@ class AudioTurnCapture(
                         }
                     }
                     speechQueue.targetSilenceMs = endpoint.silenceMs
+                    val endpointSilenceMs = SmartTurnEndpointPolicy.silenceEvidenceMs(endpoint,
+                        rawCoverage, audioBytes, lastSpeechSample, audioAt - lastSpeechAt)
                     var reason = when {
                         endRequested -> "explicit_stop"
-                        hasSpeech && audioAt - lastSpeechAt >= endpoint.silenceMs &&
+                        hasSpeech && endpointSilenceMs >= endpoint.silenceMs &&
                             !awaitingConfirmation && speechQueue.bufferedAudioMs == 0L -> "trailing_silence"
                         rejectAtAudioLimit && hasSpeech && capturedPcmBytes >= maxAudioDurationMs.toLong() * 32 -> "audio_input_limit"
                         hasSpeech && capturedPcmBytes >= 120L * 32_000 -> "utterance_capacity"
@@ -377,7 +428,7 @@ class AudioTurnCapture(
                             if (nativePause?.encoderFrozen != true) retainedPcmObserver?.onCandidateDiscarded()
                             retainedPreRollSampleCount = null
                             followupEvidence.reset(); initialEvidenceAvailable = false; recoveryAudio.clear()
-                            pendingEndpoint = false; finalNativeEndpointGuard = null; retiredCaptionAtPendingEndpoint = false
+                            pendingEndpoint = false; finalNativeEndpointGuard = null; retiredCaptionAtPendingEndpoint = false; skippedSmartCaptionAtPendingEndpoint = false
                             pendingAudio.clear(); recognitionIssue = null
                             firstSpeechCaptureAtMs = null; firstSpeechAt = null; firstPartialAfterSpeechMs = null; lastPartial = ""
                             quietEvidence.reset(); quietEvidenceUsed = false; turnEnd.reset()
@@ -398,10 +449,11 @@ class AudioTurnCapture(
                         }
                         if (hasSpeech) {
                             val finishAt = nowMs()
-                            if (retiredCaptionAtPendingEndpoint && reason != "trailing_silence") {
+                            if ((retiredCaptionAtPendingEndpoint || skippedSmartCaptionAtPendingEndpoint) && reason != "trailing_silence") {
                                 // Explicit stop/capacity are guarded endpoints even if an earlier
                                 // silence proposal retired captions before hardware drain.
-                                (transcriber as? SegmentedTranscriber)?.resumeAfterEndpoint()
+                                if (!skippedSmartCaptionAtPendingEndpoint) (transcriber as? SegmentedTranscriber)?.resumeAfterEndpoint()
+                                skippedSmartCaptionAtPendingEndpoint = false
                                 retiredCaptionAtPendingEndpoint = false
                                 pendingEndpoint = false
                                 // Every pending frame was retained acoustically but skipped by
@@ -411,7 +463,11 @@ class AudioTurnCapture(
                                 pendingAudio.clear()
                                 if (guardedTail.isNotEmpty()) transcriber?.accept(guardedTail, allowPartial = false)
                             }
+                            // Whisper text is the authoritative request and must be finalized.
+                            // Segmented native captions also retain their finalization/recovery.
+                            val skipSmartCaption = captionOnly && unsegmented && smartComplete && reason == "trailing_silence"
                             captionFinalizationReason = when {
+                                skipSmartCaption -> "smart_turn_complete_native_audio"
                                 retiredCaptionAtPendingEndpoint -> "clean_native_idle_pending_drain"
                                 !captionOnly -> "authoritative_asr"
                                 reason != "trailing_silence" -> "endpoint_$reason"
@@ -427,14 +483,16 @@ class AudioTurnCapture(
                             retiredCaptionAtPendingEndpoint = idleCaptionRetired
                             // Provisional display words never become final request/echo/control
                             // evidence. Native PCM is already the request on this eligible path.
-                            val rawFinal = if (idleCaptionRetired) "" else transcriber?.finish().orEmpty().trim()
+                            val rawFinal = if (idleCaptionRetired || skipSmartCaption) "" else transcriber?.finish().orEmpty().trim()
+                            skippedSmartCaptionAtPendingEndpoint = skipSmartCaption
                             finalAsrStatus = when {
+                                skipSmartCaption -> "skipped_smart_turn_caption"
                                 idleCaptionRetired -> "skipped_idle_caption"
                                 transcriber == null -> "unavailable"
                                 else -> "finalized"
                             }
                             if (captionOnly) log("caption_finalization reason=$captionFinalizationReason " +
-                                "newFinalDecodeSkipped=$idleCaptionRetired finalAsrStatus=$finalAsrStatus " +
+                                "newFinalDecodeSkipped=${idleCaptionRetired || skipSmartCaption} finalAsrStatus=$finalAsrStatus " +
                                 "strongAudioMs=${followupEvidence.strongMs}")
                             finalDecodeMs += nowMs() - finishAt
                             currentCoroutineContext().ensureActive()
@@ -465,9 +523,11 @@ class AudioTurnCapture(
                             // or unclassified hardware audio before accepting an old endpoint.
                             // Already classified silence alone cannot invalidate it. Retain the
                             // final words as a segment and continue on the same hardware reader.
-                            if (reason == "trailing_silence" && speechQueue.bufferedAudioMs > 0 &&
-                                (if (nativePause != null) speechQueue.requiresNativeEndpointDrain(audioBytes) else speechQueue.requiresEndpointDrain(audioAt)) &&
-                                transcriber is SegmentedTranscriber) {
+                            fun needsFinalizationDrain(): Boolean = reason == "trailing_silence" &&
+                                (speechQueue.bufferedAudioMs > 0 || smartComplete || endpoint.cue == "smart_turn_continue") &&
+                                (if (nativePause != null || endpointObserver != null) speechQueue.requiresNativeEndpointDrain(audioBytes) else speechQueue.requiresEndpointDrain(audioAt)) &&
+                                (transcriber is SegmentedTranscriber || endpointObserver != null)
+                            if (needsFinalizationDrain()) {
                                 if (!pendingEndpoint) {
                                     pendingAudio.clear()
                                     log("turn_endpoint_deferred reason=audio_arrived_during_finalization")
@@ -476,10 +536,12 @@ class AudioTurnCapture(
                                 return@collect
                             }
                             var resolvedFinal = rawFinal
+                            var recoveryAttempted = false
                             if (audioIsComplete && recognitionIssue in setOf("unrecognized_segment", "segment_boundary_uncertain")) {
                                 val completePcm = synchronized(pcm) { pcm.snapshot() }
                                 log("asr_recovery_started reason=$recognitionIssue source=complete_turn audioMs=${completePcm.size / 32}")
                                 val recoveryStarted = nowMs()
+                                recoveryAttempted = true
                                 val recovered = transcriber?.recover(completePcm).orEmpty().trim()
                                 finalDecodeMs += nowMs() - recoveryStarted
                                 currentCoroutineContext().ensureActive()
@@ -498,11 +560,20 @@ class AudioTurnCapture(
                                 log("asr_recovery_started candidateAudioMs=${candidate.size / 32} reason=empty_stream source=full_capture_window nativeVad=bypassed")
                                 onRecognitionRecovery(true)
                                 try {
+                                    recoveryAttempted = true
                                     finalTranscript = TranscriptContent.speech(transcriber?.recover(candidate).orEmpty())
                                     log("asr_recovery_finished chars=${finalTranscript.length} elapsedMs=${nowMs() - recoveryAt}")
                                 } finally {
                                     onRecognitionRecovery(false)
                                 }
+                            }
+                            // Recovery is another native decode over an earlier snapshot.
+                            // Its completed words cannot seal speech that arrived meanwhile.
+                            if (recoveryAttempted && needsFinalizationDrain()) {
+                                if (!pendingEndpoint) pendingAudio.clear()
+                                pendingEndpoint = true
+                                log("turn_endpoint_deferred reason=audio_arrived_during_recovery")
+                                return@collect
                             }
                             val finalCandidateRejected = recognitionIssue == null && rejectFinalCandidate(finalTranscript, firstSpeechCaptureAtMs)
                             if (finalCandidateRejected || (!captionOnly && transcriber != null && finalTranscript.isBlank() && (!allowAudioOnlyTurns || nonverbal) && recognitionIssue == null)) {
@@ -535,6 +606,7 @@ class AudioTurnCapture(
                                 pendingEndpoint = false
                                 finalNativeEndpointGuard = null
                                 retiredCaptionAtPendingEndpoint = false
+                                skippedSmartCaptionAtPendingEndpoint = false
                                 turnEnd.reset()
                                 followupEvidence.reset()
                                 initialEvidenceAvailable = false
@@ -585,6 +657,11 @@ class AudioTurnCapture(
                         if (nativePause != null) log("native_pause_capture_summary eligibleFrames=$nativeEligibleFrames " +
                             "uncoveredEndpointFrames=$nativeUncoveredEndpointFrames proposals=$nativeProposalCount " +
                             "finalCue=${endpoint.cue} targetSilenceMs=${endpoint.silenceMs}")
+                        if (endpointObserver != null) log("smart_turn_endpoint state=$smartState cue=${endpoint.cue} " +
+                            "modelThroughSample=${smartDecision.modelThroughSample} retainedThroughSample=${audioBytes / 2} " +
+                            "modelWake=$isModelWake decisionAtNs=$proposedEndpointAtNs speechEndMs=$lastSpeechAt " +
+                            "silenceEvidenceMs=$endpointSilenceMs captureSilenceMs=${audioAt - lastSpeechAt} " +
+                            "eligibility=${smartEligibility.reason} routeAllowed=$smartRouteAllowed")
                         endpointDecisionAtNs = proposedEndpointAtNs.takeIf { hasSpeech }
                         acceptedTurn = hasSpeech
                         log("turn_endpoint reason=$reason elapsedMs=${now - startedAt} " +
@@ -598,6 +675,7 @@ class AudioTurnCapture(
                             "recognitionBacklogMs=${speechQueue.bufferedAudioMs}")
                     }
                 }
+                } finally { endpointObserver?.setEndpointReadyListener(null); wake.close() }
                 // flowOn's producer is cancelled and joined before the owner can
                 // borrow the next reader. Prefetched but unacknowledged PCM stays
                 // in the call session's history for that reader.
