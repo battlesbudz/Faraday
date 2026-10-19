@@ -79,7 +79,6 @@ fun JarvisApp(
         var memoryReturnToVoice by rememberSaveable { mutableStateOf(false) }
         var memoryReturnToChat by rememberSaveable { mutableStateOf(false) }
         var voiceCalls by remember { mutableStateOf(initialVoiceCalls) }
-        var bannerVisible by remember { mutableStateOf(false) }
         var selectedVoiceCall by remember { mutableStateOf<VoiceCallRecord?>(null) }
         var resumedVoiceCall by remember { mutableStateOf<VoiceCallRecord?>(null) }
 
@@ -109,7 +108,7 @@ fun JarvisApp(
                 }) {
                     if (setup.modelsReady && setup.smokeTestPassed) {
                         AssistantBannerPopupLayer(
-                            bannerVisible = showingMemory || bannerVisible,
+                            bannerVisible = showingMemory,
                             content = {
                                 when {
                                     selectedVoiceCall != null -> {
@@ -186,9 +185,7 @@ fun JarvisApp(
                                 }
                             },
                             banner = {
-                                AssistantStatusBanner(
-                                    onVisibilityChanged = { bannerVisible = it }
-                                )
+                                AssistantStatusBanner()
                             }
                         )
                         // Keep the conversation and voice controller composed beneath this review surface.
