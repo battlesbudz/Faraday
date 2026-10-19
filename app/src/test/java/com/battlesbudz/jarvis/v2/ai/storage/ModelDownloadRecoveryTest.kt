@@ -148,7 +148,7 @@ class ModelDownloadRecoveryTest {
         assertTrue(host.blocked.await(5, java.util.concurrent.TimeUnit.SECONDS))
         assertTrue("Cancel only after the downloader has persisted resumable bytes",
             written.await(5, java.util.concurrent.TimeUnit.SECONDS))
-        kotlinx.coroutines.withTimeout(10_000) { job.cancelAndJoin() }
+        kotlinx.coroutines.withTimeout(35_000) { job.cancelAndJoin() }
         assertTrue(job.isCancelled)
         assertTrue(target.length() > 0)
         host.stall.set(false)

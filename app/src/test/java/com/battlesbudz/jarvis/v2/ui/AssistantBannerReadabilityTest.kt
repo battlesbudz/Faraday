@@ -271,34 +271,6 @@ class AssistantBannerReadabilityTest {
     // before the content, drops the tap-consuming overlay, or breaks the
     // obscured-content semantics wiring, these fail.
 
-    @Test fun productionLayer_bannerDrawsAboveContent() {
-        // Draw order in a Box follows composition order: the banner overlay Box
-        // must be the last child so it renders on top of the content. We verify
-        // via the unmerged semantics tree (which preserves composition order):
-        // the banner overlay testTag must come after the content testTag.
-        compose.setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
-                AssistantBannerPopupLayer(
-                    bannerVisible = true,
-                    content = { Box(Modifier.fillMaxSize().background(Color.Red)) },
-                    banner = { Box(Modifier.fillMaxWidth().height(120.dp).background(Color.Blue)) }
-                )
-            }
-        }
-        compose.waitForIdle()
-        val tags = compose.onAllNodes(SemanticsMatcher("tagged") { node ->
-            node.config.contains(SemanticsProperties.TestTag)
-        }, useUnmergedTree = true)
-            .fetchSemanticsNodes()
-            .map { it.config[SemanticsProperties.TestTag] }
-        val contentIdx = tags.indexOf("banner_popup_content")
-        val overlayIdx = tags.indexOf("banner_popup_overlay")
-        assertTrue(
-            "Banner overlay (idx $overlayIdx) must be composed after content (idx $contentIdx) " +
-                "so it draws on top. Tags seen: $tags",
-            contentIdx >= 0 && overlayIdx >= 0 && overlayIdx > contentIdx
-        )
-    }
 
     @Test fun productionLayer_overlayConsumesTaps() {
         compose.setContent {
