@@ -290,7 +290,7 @@ class AssistantBannerReadabilityTest {
             node.config.contains(SemanticsProperties.TestTag)
         }, useUnmergedTree = true)
             .fetchSemanticsNodes()
-            .mapNotNull { it.config.getOrNull(SemanticsProperties.TestTag) }
+            .map { it.config[SemanticsProperties.TestTag] }
         val contentIdx = tags.indexOf("banner_popup_content")
         val overlayIdx = tags.indexOf("banner_popup_overlay")
         assertTrue(
