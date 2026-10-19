@@ -75,11 +75,21 @@ internal fun VisionServerSettingsSection(enabled: Boolean) {
             enabled = enabled && !testing,
             modifier = Modifier.testTag("vision_server_test"),
             onClick = {
+                // Persist the token field first: the health check needs no token,
+                // so a passing test was misleading when the token was typed but
+                // never saved — the next photo would then fail for a missing token.
+                VisionServerSettings.setToken(context, token)
+                if (token.isBlank()) {
+                    message = "Token saved (empty). Paste the X-Vision-Token from the Phone " +
+                        "Inference app — photos need it, the connection test does not."
+                    return@TextButton
+                }
                 testing = true
                 scope.launch {
                     try {
                         val health = PhoneVisionClient().health()
-                        message = "Server reachable: ${health.model} (version ${health.version})."
+                        message = "Server reachable: ${health.model} (version ${health.version}). " +
+                            "Token saved — photos will go to the server."
                     } catch (error: Throwable) {
                         message = error.message ?: "Server test failed."
                     } finally {
