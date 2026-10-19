@@ -21,6 +21,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.platform.testTag
 import com.battlesbudz.jarvis.v2.ai.ModelCatalog
 import com.battlesbudz.jarvis.v2.ai.ModelStore
 import com.battlesbudz.jarvis.v2.memory.AndroidMemoryOs
@@ -107,9 +109,16 @@ fun JarvisApp(
                         })
                 }) {
                     if (setup.modelsReady && setup.smokeTestPassed) {
-                        AssistantBannerPopupLayer(
-                            bannerVisible = showingMemory,
-                            content = {
+                        // The banner is a one-time informational card, not a modal: it sits in the
+                        // layout flow and pushes content down instead of overlaying (and blocking
+                        // taps on) the conversation header's Memory/Settings actions.
+                        Column(Modifier.fillMaxSize()) {
+                            AssistantStatusBanner()
+                            Box(
+                                Modifier.weight(1f).fillMaxWidth()
+                                    .then(if (showingMemory) Modifier.clearAndSetSemantics { } else Modifier)
+                                    .testTag("banner_popup_content")
+                            ) {
                                 when {
                                     selectedVoiceCall != null -> {
                                         val selected = requireNotNull(selectedVoiceCall)
@@ -183,11 +192,8 @@ fun JarvisApp(
                                         )
                                     }
                                 }
-                            },
-                            banner = {
-                                AssistantStatusBanner()
                             }
-                        )
+                        }
                         // Keep the conversation and voice controller composed beneath this review surface.
                         if (showingMemory) MemoryScreen(
                                 memoryOs = memoryOs,
