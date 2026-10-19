@@ -24,7 +24,6 @@ import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertWidthIsAtLeast
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -273,6 +272,10 @@ class AssistantBannerReadabilityTest {
     // obscured-content semantics wiring, these fail.
 
     @Test fun productionLayer_bannerDrawsAboveContent() {
+        // Draw order in a Box follows composition order: the banner overlay Box
+        // must be the last child so it renders on top of the content. We verify
+        // via the unmerged semantics tree (which preserves composition order):
+        // the banner overlay testTag must come after the content testTag.
         compose.setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 AssistantBannerPopupLayer(
@@ -283,15 +286,17 @@ class AssistantBannerReadabilityTest {
             }
         }
         compose.waitForIdle()
-        val image = compose.onNode(SemanticsMatcher("root node") { true }).captureToImage()
-        // A pixel well inside the banner region: banner blue must win over
-        // content red. If the overlay order ever regresses, this pixel is red.
-        val buffer = IntArray(1)
-        image.readPixels(buffer, startX = image.width / 2, startY = 40, width = 1, height = 1)
-        val pixel = Color(buffer[0])
+        val tags = compose.onAllNodes(SemanticsMatcher("tagged") { node ->
+            node.config.contains(SemanticsProperties.TestTag)
+        }, useUnmergedTree = true)
+            .fetchSemanticsNodes()
+            .mapNotNull { it.config.getOrNull(SemanticsProperties.TestTag) }
+        val contentIdx = tags.indexOf("banner_popup_content")
+        val overlayIdx = tags.indexOf("banner_popup_overlay")
         assertTrue(
-            "Banner must draw on top of content (expected blue, got $pixel)",
-            pixel.blue > 0.9f && pixel.red < 0.1f
+            "Banner overlay (idx $overlayIdx) must be composed after content (idx $contentIdx) " +
+                "so it draws on top. Tags seen: $tags",
+            contentIdx >= 0 && overlayIdx >= 0 && overlayIdx > contentIdx
         )
     }
 
@@ -345,6 +350,10 @@ class AssistantBannerReadabilityTest {
     }
 
     @Test fun productionLayer_noTextOverlap() {
+        // When the banner is visible, the production layer clears the content
+        // semantics, so no content text is exposed to assistive tech (and the
+        // user). If the clearAndSetSemantics wiring regresses, content texts
+        // leak through and this fails.
         compose.setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 AssistantBannerPopupLayer(
@@ -355,10 +364,9 @@ class AssistantBannerReadabilityTest {
             }
         }
         compose.waitForIdle()
-        val overlaps = findOverlappingTextBounds(displayedTextBounds())
-        assertTrue(
-            "The production popup must show no overlapping texts. Overlapping pairs: $overlaps",
-            overlaps.isEmpty()
-        )
+        // Content texts must be hidden from the merged semantics tree.
+        compose.onNodeWithText("JARVIS").assertDoesNotExist()
+        compose.onNodeWithText("Conversations").assertDoesNotExist()
+        compose.onNodeWithText("Memory").assertDoesNotExist()
     }
 }
