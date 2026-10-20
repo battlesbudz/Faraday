@@ -82,15 +82,18 @@ internal fun VisionServerSettingsSection(enabled: Boolean) {
                 // what photo turns read back.
                 VisionServerSettings.setToken(context, token)
                 val savedToken = VisionServerSettings.token(context)
-                if (savedToken.isBlank()) {
-                    message = "Token saved (empty). Paste the X-Vision-Token from the Phone " +
-                        "Inference app — photos need it, the connection test does not."
-                    return@TextButton
-                }
                 testing = true
                 scope.launch {
                     try {
+                        // Test reachability first: health needs no token. Only after
+                        // confirming the server is up do we require the token for /detect.
                         val health = PhoneVisionClient().health()
+                        if (savedToken.isBlank()) {
+                            message = "Server reachable: ${health.model} (version ${health.version}). " +
+                                "Token is empty — paste the X-Vision-Token from the Phone Inference app. " +
+                                "Photos need it; the reachability test does not."
+                            return@launch
+                        }
                         // Verify the full detect path with a 1x1 test image, not just /health.
                         // /health needs no token and does no inference; /detect is what photos use.
                         val testImage = android.util.Base64.decode(
