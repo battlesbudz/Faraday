@@ -59,12 +59,12 @@ internal fun VisionServerSettingsSection(enabled: Boolean) {
         OutlinedTextField(
             value = token,
             onValueChange = { token = it },
-            enabled = enabled,
+            enabled = enabled && !testing,
             label = { Text("X-Vision-Token") },
             modifier = Modifier.testTag("vision_server_token").fillMaxWidth()
         )
         TextButton(
-            enabled = enabled,
+            enabled = enabled && !testing,
             modifier = Modifier.testTag("vision_server_save_token"),
             onClick = {
                 VisionServerSettings.setToken(context, token)
