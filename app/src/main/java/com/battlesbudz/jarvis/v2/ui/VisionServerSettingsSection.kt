@@ -88,11 +88,20 @@ internal fun VisionServerSettingsSection(enabled: Boolean) {
                 scope.launch {
                     try {
                         val health = PhoneVisionClient().health()
-                        message = "Server reachable: ${health.model} (version ${health.version}). Token saved." +
+                        // Verify the full detect path with a 1x1 test image, not just /health.
+                        // /health needs no token and does no inference; /detect is what photos use.
+                        val testImage = android.util.Base64.decode(
+                            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+                            android.util.Base64.DEFAULT
+                        )
+                        val snapshot = PhoneVisionClient().detect(testImage, token)
+                        message = "Server reachable: ${health.model} (version ${health.version}). " +
+                            "Detect test passed (${snapshot.detections.size} detections, ${snapshot.totalMs.toLong()} ms). " +
+                            "Token saved." +
                             if (useServer) " Photos will go to the server."
                             else " Turn on \"Use Phone Inference server\" to send photos there."
                     } catch (error: Throwable) {
-                        message = error.message ?: "Server test failed."
+                        message = "Server test failed: ${error.message?.take(200) ?: "unknown error"}"
                     } finally {
                         testing = false
                     }
