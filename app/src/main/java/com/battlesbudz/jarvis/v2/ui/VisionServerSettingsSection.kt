@@ -78,8 +78,11 @@ internal fun VisionServerSettingsSection(enabled: Boolean) {
                 // Persist the token field first: the health check needs no token,
                 // so a passing test was misleading when the token was typed but
                 // never saved — the next photo would then fail for a missing token.
+                // Use the normalized (trimmed) saved value for the detect test, matching
+                // what photo turns read back.
                 VisionServerSettings.setToken(context, token)
-                if (token.isBlank()) {
+                val savedToken = VisionServerSettings.token(context)
+                if (savedToken.isBlank()) {
                     message = "Token saved (empty). Paste the X-Vision-Token from the Phone " +
                         "Inference app — photos need it, the connection test does not."
                     return@TextButton
@@ -94,7 +97,7 @@ internal fun VisionServerSettingsSection(enabled: Boolean) {
                             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
                             android.util.Base64.DEFAULT
                         )
-                        val snapshot = PhoneVisionClient().detect(testImage, token)
+                        val snapshot = PhoneVisionClient().detect(testImage, savedToken)
                         message = "Server reachable: ${health.model} (version ${health.version}). " +
                             "Detect test passed (${snapshot.detections.size} detections, ${snapshot.totalMs.toLong()} ms). " +
                             "Token saved." +
