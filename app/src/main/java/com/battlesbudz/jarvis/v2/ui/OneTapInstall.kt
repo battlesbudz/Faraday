@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 internal fun OneTapInstall(
     downloading: Boolean,
     testing: Boolean,
+    importing: Boolean,
     downloadBytes: Long,
     downloadTotalBytes: Long,
     status: String,
@@ -65,8 +66,11 @@ internal fun OneTapInstall(
                 Text(status, modifier = Modifier.padding(top = 20.dp), textAlign = TextAlign.Center)
             }
         } else {
+            // Same gating as the ModelSetup screen: never start a transfer while
+            // another model operation (download / test / import) is in progress.
             Button(
                 onClick = onInstall,
+                enabled = !downloading && !testing && !importing,
                 modifier = Modifier.fillMaxWidth().testTag("one_tap_install")
             ) {
                 Text("Install and start")
