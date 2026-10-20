@@ -1933,6 +1933,12 @@ class ReleaseJourneyTest {
             VoiceSessionUi.armed.value = true
             assertNotNull(find(By.res("voice_call_overlay")))
             assertNotNull(find(By.res("voice_call_status")))
+            // The assistant-status banner is a popup: it overlays until dismissed.
+            // Clear it like a user would before exercising the header behind it.
+            if (device.hasObject(By.text("Dismiss"))) {
+                find(By.text("Dismiss")).click()
+                device.waitForIdle()
+            }
             clickEnabled(By.res("memory_open"))
             assertNotNull("Wisp stays present while reviewing memory", find(By.res("jarvis_wisp")))
             assertNotNull(find(By.text("Memory")))
