@@ -59,12 +59,12 @@ internal fun VisionServerSettingsSection(enabled: Boolean) {
         OutlinedTextField(
             value = token,
             onValueChange = { token = it },
-            enabled = enabled,
+            enabled = enabled && !testing,
             label = { Text("X-Vision-Token") },
             modifier = Modifier.testTag("vision_server_token").fillMaxWidth()
         )
         TextButton(
-            enabled = enabled,
+            enabled = enabled && !testing,
             modifier = Modifier.testTag("vision_server_save_token"),
             onClick = {
                 VisionServerSettings.setToken(context, token)
@@ -75,13 +75,39 @@ internal fun VisionServerSettingsSection(enabled: Boolean) {
             enabled = enabled && !testing,
             modifier = Modifier.testTag("vision_server_test"),
             onClick = {
+                // Persist the token field first: the health check needs no token,
+                // so a passing test was misleading when the token was typed but
+                // never saved — the next photo would then fail for a missing token.
+                // Use the normalized (trimmed) saved value for the detect test, matching
+                // what photo turns read back.
+                VisionServerSettings.setToken(context, token)
+                val savedToken = VisionServerSettings.token(context)
                 testing = true
                 scope.launch {
                     try {
+                        // Test reachability first: health needs no token. Only after
+                        // confirming the server is up do we require the token for /detect.
                         val health = PhoneVisionClient().health()
-                        message = "Server reachable: ${health.model} (version ${health.version})."
+                        if (savedToken.isBlank()) {
+                            message = "Server reachable: ${health.model} (version ${health.version}). " +
+                                "Token is empty — paste the X-Vision-Token from the Phone Inference app. " +
+                                "Photos need it; the reachability test does not."
+                            return@launch
+                        }
+                        // Verify the full detect path with a 1x1 test image, not just /health.
+                        // /health needs no token and does no inference; /detect is what photos use.
+                        val testImage = android.util.Base64.decode(
+                            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+                            android.util.Base64.DEFAULT
+                        )
+                        val snapshot = PhoneVisionClient().detect(testImage, savedToken)
+                        message = "Server reachable: ${health.model} (version ${health.version}). " +
+                            "Detect test passed (${snapshot.detections.size} detections, ${snapshot.totalMs.toLong()} ms). " +
+                            "Token saved." +
+                            if (useServer) " Photos will go to the server."
+                            else " Turn on \"Use Phone Inference server\" to send photos there."
                     } catch (error: Throwable) {
-                        message = error.message ?: "Server test failed."
+                        message = "Server test failed: ${error.message?.take(200) ?: "unknown error"}"
                     } finally {
                         testing = false
                     }
