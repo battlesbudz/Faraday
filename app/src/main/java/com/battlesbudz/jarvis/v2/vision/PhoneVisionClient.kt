@@ -121,15 +121,20 @@ class PhoneVisionClient(
         var connection: HttpURLConnection? = null
         try {
             connection = openConnection(URL(url))
+            val bodyBytes = body.toByteArray(Charsets.UTF_8)
             connection.apply {
                 requestMethod = "POST"
                 connectTimeout = CONNECT_TIMEOUT_MS
                 readTimeout = READ_TIMEOUT_MS
                 doOutput = true
+                // Explicit Content-Length: NanoHTTPD 2.3.1 (the Phone Inference
+                // app's server) misparses chunked POSTs, reading the JSON body
+                // as the request line ("Syntax error. HTTP verb {...}").
+                setFixedLengthStreamingMode(bodyBytes.size)
                 setRequestProperty("Content-Type", "application/json")
                 setRequestProperty("X-Vision-Token", token)
             }
-            connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            connection.outputStream.use { it.write(bodyBytes) }
             val code = connection.responseCode
             val responseBody = readBody(connection, code)
             if (code == HttpURLConnection.HTTP_UNAUTHORIZED) {
