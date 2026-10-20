@@ -208,6 +208,31 @@ fun JarvisApp(
                             onOpenChat = { memoryReturnToVoice = false; memoryReturnToChat = true; showingMemory = false },
                             onOpenVoice = { memoryReturnToChat = false; memoryReturnToVoice = true; showingMemory = false },
                         )
+                    } else if (!setup.modelsReady) {
+                        // First run: no usable model on the device. One-tap install
+                        // of the stock model (Gemma-4-E2B-it), no model picking or
+                        // configuration. The automatic smoke test runs after the
+                        // download, then the main app takes over.
+                        OneTapInstall(
+                            downloading = setup.modelDownloadRunning,
+                            testing = setup.smokeTestRunning,
+                            importing = setup.modelImportRunning,
+                            downloadBytes = setup.downloadBytes,
+                            downloadTotalBytes = setup.downloadTotalBytes,
+                            status = setup.setupStatus,
+                            onInstall = {
+                                // Honor the selection result: when a model operation
+                                // (e.g. a local import) is already in progress,
+                                // select() returns the gate error — do not schedule
+                                // the download then; surface the error instead.
+                                val error = setup.select(ModelCatalog.gemma4E2b)
+                                if (error == null) {
+                                    setup.download(ModelCatalog.gemma4E2b)
+                                } else {
+                                    setup.setupStatus = error
+                                }
+                            }
+                        )
                     } else {
                         ModelSetup(
                             modelSelector = modelSelector,
