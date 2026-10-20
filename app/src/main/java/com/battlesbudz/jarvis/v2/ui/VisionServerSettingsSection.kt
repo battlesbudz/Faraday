@@ -88,8 +88,9 @@ internal fun VisionServerSettingsSection(enabled: Boolean) {
                 scope.launch {
                     try {
                         val health = PhoneVisionClient().health()
-                        message = "Server reachable: ${health.model} (version ${health.version}). " +
-                            "Token saved — photos will go to the server."
+                        message = "Server reachable: ${health.model} (version ${health.version}). Token saved." +
+                            if (useServer) " Photos will go to the server."
+                            else " Turn on \"Use Phone Inference server\" to send photos there."
                     } catch (error: Throwable) {
                         message = error.message ?: "Server test failed."
                     } finally {
