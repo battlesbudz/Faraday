@@ -51,7 +51,8 @@ class PhoneVisionClient(
         const val READ_TIMEOUT_MS = 30_000
         // Server detect cutoff. At 0.25 the server returned every weak
         // guess its model proposed (17 detections for one street photo,
-        // several of them boxes inside other boxes), and the counts built
+        // several of them duplicates contained inside stronger boxes),
+        // and the counts built
         // on that list were meaningless. 0.5 keeps the detections the
         // model is actually sure about; contained-duplicate cleanup in
         // parseDetections handles the rest.
