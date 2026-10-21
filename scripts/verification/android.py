@@ -564,11 +564,27 @@ def verify(args):
         report["smart_turn_native"] = smart_turn_result((out / "instrumentation.txt").read_text())
         device.shell("am", "force-stop", PACKAGE)
         device.shell("am", "start", "-W", "-n", ACTIVITY)
+        setup_link_tapped = False
         for _ in range(6):
             xml = device.snapshot("after-process-restart")
-            texts = [node.get("text") for node in ET.fromstring(xml).iter("node")]
+            nodes = list(ET.fromstring(xml).iter("node"))
+            texts = [node.get("text") for node in nodes]
             if scenarios["restart_model"] in texts:
                 break
+            # A fresh process lands on the one-tap install screen, which does
+            # not display the durable selection. Route through its setup link
+            # like a user: the full setup screen behind it is what displays
+            # the selection this check verifies.
+            if not setup_link_tapped:
+                link = next((node for node in nodes
+                             if node.get("resource-id") == "one_tap_choose_model"
+                             and node.get("clickable") == "true"), None)
+                bounds = (re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", link.get("bounds", ""))
+                          if link is not None else None)
+                if bounds:
+                    x1, y1, x2, y2 = (int(bounds.group(i)) for i in range(1, 5))
+                    device.shell("input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
+                    setup_link_tapped = True
             time.sleep(1)
         else:
             raise RuntimeError("Model selection did not survive a fresh app process")
