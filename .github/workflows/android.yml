@@ -391,9 +391,15 @@ jobs:
           PROVENANCE="$GITHUB_WORKSPACE/streaming-sdk-input/litertlm-android-0.16.0-sealed-audio-arm64.provenance.json"
           python3 scripts/streaming-sdk/validate_artifact.py --aar "$AAR" --provenance "$PROVENANCE" --source-receipt "$GITHUB_WORKSPACE/streaming-sdk-input/source-receipt.json" --expected-source-receipt-sha256 "$STREAMING_SOURCE_RECEIPT_SHA256" --expected-aar-sha256 "$STREAMING_AAR_SHA256" --expected-provenance-sha256 "$STREAMING_PROVENANCE_SHA256" --require-digests --check-workflow --producer-attempt "$STREAMING_PRODUCER_ATTEMPT" --app-ndk "$ANDROID_HOME/ndk/27.2.12479018"
           # Engineering SOP (Battles 2026-10-21): only test packages that
-          # change. mode=full reproduces the historical command untouched;
-          # selected/none append the selector's --tests filters (the changed
-          # packages plus the receipt-required regression classes).
+          # change. mode=full reproduces the historical command untouched.
+          # selected/none run the selector's --tests filters (the changed
+          # packages plus the receipt-required regression classes) in their
+          # own invocation scoped to :app:testReleaseUnitTest: Gradle rejects
+          # --tests on a command line that also names assemble tasks
+          # ("Unknown command-line option '--tests'" for
+          # :app:assembleReleaseAndroidTest, build 1549), and :phoneinference
+          # has no test sources to filter. The assemble invocation below is
+          # then identical to the historical one.
           echo "Unit-test selection mode: ${{ steps.unit-test-selection.outputs.mode }}"
           echo "Unit-test selection reason: ${{ steps.unit-test-selection.outputs.reason }}"
           GRADLE_PROPS=(-PlitertLmBridgeAar="$AAR" -PlitertLmBridgeProvenance="$PROVENANCE" -PlitertLmBridgeSha256="$STREAMING_AAR_SHA256" -PlitertLmBridgeProvenanceSha256="$STREAMING_PROVENANCE_SHA256" -PlitertLmBridgeProducerAttempt="$STREAMING_PRODUCER_ATTEMPT")
@@ -401,7 +407,8 @@ jobs:
             bash scripts/ci_gradle.sh release "${GRADLE_PROPS[@]}" testReleaseUnitTest assembleRelease assembleReleaseAndroidTest
           else
             read -ra TEST_ARGS <<< "${{ steps.unit-test-selection.outputs.gradle_test_args }}"
-            bash scripts/ci_gradle.sh release "${GRADLE_PROPS[@]}" testReleaseUnitTest assembleRelease assembleReleaseAndroidTest "${TEST_ARGS[@]}"
+            bash scripts/ci_gradle.sh release "${GRADLE_PROPS[@]}" :app:testReleaseUnitTest "${TEST_ARGS[@]}"
+            bash scripts/ci_gradle.sh release "${GRADLE_PROPS[@]}" assembleRelease assembleReleaseAndroidTest
           fi
 
       - name: Record per-package unit-test pass markers
