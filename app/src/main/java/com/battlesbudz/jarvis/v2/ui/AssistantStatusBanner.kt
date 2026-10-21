@@ -22,11 +22,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -34,13 +33,45 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.battlesbudz.jarvis.v2.assistant.JarvisInteractionService
 
 /**
- * One-time banner shown when Jarvis is not the system-selected assistant.
+ * Live-status decision for the assistant banner: it shows only while
+ * Faraday is not the selected assistant and the user has not dismissed it.
+ * The live selection status is re-read on every start and resume, so
+ * becoming the default assistant hides the banner even if it was never
+ * dismissed, and a stale dismissed flag can never keep it showing once
+ * Faraday is selected.
+ */
+internal fun assistantBannerShouldShow(isSelected: Boolean, dismissed: Boolean): Boolean =
+    !isSelected && !dismissed
+
+/**
+ * The dismissed flag to keep after a status re-check. Selection clears a
+ * persisted dismissal: if the phone later reverts the default assistant
+ * (for example back to Gemini, as Battles has seen), the banner must be
+ * able to nag again instead of staying suppressed forever by a flag that
+ * was set in a previous not-selected episode.
+ */
+internal fun assistantBannerDismissedAfterRecheck(isSelected: Boolean, dismissed: Boolean): Boolean =
+    if (isSelected) false else dismissed
+
+/**
+ * Banner shown when Jarvis is not the system-selected assistant.
  * Explains that background app launches need the assistant binding, with a
  * button to open system assistant settings. Dismissal is persisted so it
- * only nags once per install.
+ * only nags once per not-selected episode.
+ *
+ * Root cause of the build-1544 bug this fixes: the status was read only
+ * once, in a LaunchedEffect(Unit) at first composition. Tapping "Open
+ * assistant settings", setting Faraday as the default, and returning left
+ * the stale not-selected result on screen, so the popup still demanded a
+ * manual Dismiss even though its condition was already satisfied. The
+ * banner now re-checks the live status on start and on every ON_RESUME,
+ * so returning from the settings screen hides it automatically.
  *
  * The banner is a popup overlay: it must be composed AFTER the content it
  * covers so it draws on top, and its card background is fully opaque so no
@@ -55,15 +86,70 @@ fun AssistantStatusBanner(
     onVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
-    var show by remember { mutableStateOf(false) }
+    val prefs = remember(context) {
+        context.getSharedPreferences("jarvis_assistant_status", Context.MODE_PRIVATE)
+    }
+    AssistantStatusBanner(
+        onVisibilityChanged = onVisibilityChanged,
+        isSelected = { JarvisInteractionService.isSelected(context) },
+        loadDismissed = { prefs.getBoolean("banner_dismissed", false) },
+        saveDismissed = { dismissed ->
+            prefs.edit().putBoolean("banner_dismissed", dismissed).apply()
+        },
+        onOpenSettings = {
+            context.startActivity(
+                Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        },
+    )
+}
 
-    LaunchedEffect(Unit) {
-        val prefs = context.getSharedPreferences("jarvis_assistant_status", Context.MODE_PRIVATE)
-        val dismissed = prefs.getBoolean("banner_dismissed", false)
-        if (!dismissed && !JarvisInteractionService.isSelected(context)) {
-            show = true
+/**
+ * The assistant-status gating without the Android service / preferences
+ * plumbing, so tests can drive the selection status and the lifecycle
+ * directly. Production passes the real [JarvisInteractionService] check
+ * and the persisted dismissed flag.
+ */
+@Composable
+internal fun AssistantStatusBanner(
+    onVisibilityChanged: (Boolean) -> Unit,
+    isSelected: () -> Boolean,
+    loadDismissed: () -> Boolean,
+    saveDismissed: (Boolean) -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    // Explicit State holders (not delegated locals) so the lifecycle
+    // observer registered once below always reads the current values.
+    val dismissedState = remember { mutableStateOf(loadDismissed()) }
+    val selectedState = remember { mutableStateOf(isSelected()) }
+
+    fun recheck() {
+        val nowSelected = isSelected()
+        selectedState.value = nowSelected
+        val cleared = assistantBannerDismissedAfterRecheck(nowSelected, dismissedState.value)
+        if (cleared != dismissedState.value) {
+            dismissedState.value = cleared
+            saveDismissed(cleared)
         }
     }
+
+    // Start: read the live status when the banner first composes.
+    LaunchedEffect(Unit) { recheck() }
+
+    // Resume: the user may have just set (or unset) Faraday as the default
+    // assistant in the system settings this banner sent them to. Re-check
+    // on every return to the foreground, not only at first composition.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) recheck()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val show = assistantBannerShouldShow(selectedState.value, dismissedState.value)
 
     LaunchedEffect(show) {
         onVisibilityChanged(show)
@@ -72,16 +158,10 @@ fun AssistantStatusBanner(
     if (!show) return
 
     AssistantStatusBannerCard(
-        onOpenSettings = {
-            context.startActivity(
-                Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
-        },
+        onOpenSettings = onOpenSettings,
         onDismiss = {
-            context.getSharedPreferences("jarvis_assistant_status", Context.MODE_PRIVATE)
-                .edit().putBoolean("banner_dismissed", true).apply()
-            show = false
+            saveDismissed(true)
+            dismissedState.value = true
         }
     )
 }

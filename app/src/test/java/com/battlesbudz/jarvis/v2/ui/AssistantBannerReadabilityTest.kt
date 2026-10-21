@@ -29,7 +29,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -111,6 +113,124 @@ class AssistantBannerReadabilityTest {
         assertEquals(21.0, wcagContrastRatio(Color.White, Color.Black), 0.01)
         assertEquals(21.0, wcagContrastRatio(Color.Black, Color.White), 0.01)
         assertEquals(1.0, wcagContrastRatio(Color.Red, Color.Red), 0.001)
+    }
+
+    // ---- assistant-status live re-check decision (build 1544 bug) ----
+    //
+    // Regression context: the banner read the default-assistant status only
+    // once at first composition, so setting Faraday as the default in the
+    // system settings and returning left the popup on screen demanding a
+    // manual Dismiss. The live status must be re-checked on resume and win
+    // over the stale first-composition result and any persisted flag.
+
+    @Test fun assistantBannerDecision_notDefaultAndNotDismissed_shows() {
+        assertTrue(assistantBannerShouldShow(isSelected = false, dismissed = false))
+    }
+
+    @Test fun assistantBannerDecision_becomingDefault_hides() {
+        assertFalse(assistantBannerShouldShow(isSelected = true, dismissed = false))
+    }
+
+    @Test fun assistantBannerDecision_defaultWinsOverPersistedDismissal() {
+        // Selected hides the banner regardless of the persisted flag, and a
+        // re-check while selected clears that flag so a later loss of the
+        // default (the phone reverting to Gemini) can nag again.
+        assertFalse(assistantBannerShouldShow(isSelected = true, dismissed = true))
+        assertFalse(assistantBannerDismissedAfterRecheck(isSelected = true, dismissed = true))
+        val cleared = assistantBannerDismissedAfterRecheck(isSelected = true, dismissed = true)
+        assertTrue(assistantBannerShouldShow(isSelected = false, dismissed = cleared))
+    }
+
+    @Test fun assistantBannerDecision_dismissedWhileNotDefault_staysHidden() {
+        assertFalse(assistantBannerShouldShow(isSelected = false, dismissed = true))
+        assertTrue(assistantBannerDismissedAfterRecheck(isSelected = false, dismissed = true))
+    }
+
+    // ---- gated banner composition: start + resume re-check ----
+
+    @Test fun gatedBanner_showsOnStartWhenNotDefault() {
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                AssistantStatusBanner(
+                    onVisibilityChanged = {},
+                    isSelected = { false },
+                    loadDismissed = { false },
+                    saveDismissed = {},
+                    onOpenSettings = {},
+                )
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("Faraday is not your system assistant").assertIsDisplayed()
+    }
+
+    @Test fun gatedBanner_hiddenOnStartWhenAlreadyDefault() {
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                AssistantStatusBanner(
+                    onVisibilityChanged = {},
+                    isSelected = { true },
+                    loadDismissed = { false },
+                    saveDismissed = {},
+                    onOpenSettings = {},
+                )
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("Faraday is not your system assistant").assertDoesNotExist()
+    }
+
+    @Test fun gatedBanner_hidesOnResumeAfterBecomingDefault() {
+        var selected = false
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                AssistantStatusBanner(
+                    onVisibilityChanged = {},
+                    isSelected = { selected },
+                    loadDismissed = { false },
+                    saveDismissed = {},
+                    onOpenSettings = {},
+                )
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("Faraday is not your system assistant").assertIsDisplayed()
+
+        // Simulate leaving for the system assistant settings, setting
+        // Faraday as the default there, and returning to the app: the
+        // activity pauses/stops, then resumes, and the ON_RESUME re-check
+        // must hide the popup with no manual Dismiss.
+        selected = true
+        compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+        compose.waitForIdle()
+        compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        compose.waitForIdle()
+        compose.onNodeWithText("Faraday is not your system assistant").assertDoesNotExist()
+    }
+
+    @Test fun gatedBanner_staysOnResumeWhenStillNotDefault() {
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                AssistantStatusBanner(
+                    onVisibilityChanged = {},
+                    isSelected = { false },
+                    loadDismissed = { false },
+                    saveDismissed = {},
+                    onOpenSettings = {},
+                )
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("Faraday is not your system assistant").assertIsDisplayed()
+
+        // A resume that changes nothing must leave the popup exactly as it
+        // was: still showing, still offering settings and Dismiss.
+        compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+        compose.waitForIdle()
+        compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        compose.waitForIdle()
+        compose.onNodeWithText("Faraday is not your system assistant").assertIsDisplayed()
+        compose.onNodeWithText("Dismiss").assertIsDisplayed()
     }
 
     // ---- composition harnesses ----
