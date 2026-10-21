@@ -73,14 +73,43 @@ class VisionContextFormatterTest {
         assertTrue(note.contains("unknown error"))
     }
 
-    @Test fun serverDetectionsFormattedWithoutPeopleCount() {
+    @Test fun serverDetectionsIncludeCodeMadeCounts() {
         val text = VisionContextFormatter.formatServerDetections(
             listOf(detection("person"), detection("bus")), 83.5
         )
         assertTrue("expected 'Phone Inference server' in:\n$text", text.contains("Phone Inference server"))
         assertTrue("expected 'Objects detected: 2' in:\n$text", text.contains("Objects detected: 2"))
         assertTrue("expected person line in:\n$text", text.contains("person 0.85"))
-        assertFalse("must not print a people count for a detections-only snapshot:\n$text", text.contains("People count"))
+        // Counts are computed in code from the detections (the server has
+        // no pose results), so the model reads the numbers instead of
+        // counting boxes itself.
+        assertTrue("expected per-label counts in:\n$text", text.contains("Counts: bus 1, person 1."))
+        assertTrue("expected 'People count: 1' in:\n$text", text.contains("People count: 1"))
+    }
+
+    @Test fun serverCountsMatchCleanedDetectionList() {
+        // Fixture resembling the on-device street photo: several cars and
+        // people, plus one weaker person box fully inside a stronger
+        // person box. The formatted counts must describe the CLEANED
+        // list (8 objects), not the raw one (9).
+        fun det(label: String, confidence: Float, x1: Float, y1: Float, x2: Float, y2: Float) =
+            Detection(label = label, classId = -1, confidence = confidence, box = Box(x1, y1, x2, y2))
+        val raw = listOf(
+            det("bus", 0.93f, 1106f, 35f, 1535f, 968f),
+            det("car", 0.90f, 335f, 493f, 507f, 633f),
+            det("person", 0.88f, 539f, 462f, 713f, 930f),
+            det("car", 0.87f, 0f, 497f, 208f, 795f),
+            det("person", 0.86f, 684f, 488f, 797f, 836f),
+            det("car", 0.85f, 157f, 508f, 377f, 689f),
+            det("person", 0.84f, 775f, 503f, 951f, 978f),
+            det("person", 0.48f, 810f, 540f, 870f, 700f),
+            det("car", 0.52f, 738f, 461f, 797f, 508f),
+        )
+        val text = VisionContextFormatter.formatServerDetections(raw, 254.0)
+        assertTrue("expected cleaned total in:\n$text", text.contains("Objects detected: 8"))
+        assertTrue("expected cleaned counts in:\n$text", text.contains("Counts: car 4, person 3, bus 1."))
+        assertTrue("expected cleaned people count in:\n$text", text.contains("People count: 3"))
+        assertFalse("duplicate box must not be listed in:\n$text", text.contains("person 0.48"))
     }
 
     @Test fun serverDetectionsEmptyIsExplicit() {

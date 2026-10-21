@@ -24,9 +24,12 @@ import java.util.Base64
  * The server returns detections only — no segmentation, pose, or
  * classification — so [detect] returns a [NativeVisionSnapshot] with those
  * lists empty. [VisionContextFormatter.formatServerDetections] formats
- * that shape; do not feed it to [VisionContextFormatter.format], which
- * would print a misleading "People count: 0" for a server snapshot whose
- * poses were never computed.
+ * that shape; do not feed it to [VisionContextFormatter.format], whose
+ * people count comes from pose results the server never computes (the
+ * server formatter counts people from the detections themselves).
+ * Returned detections are cleaned in [parseDetections] via
+ * [ServerDetections.dropContainedDuplicates], so the snapshot every
+ * consumer sees is already free of contained same-label duplicates.
  *
  * Failures are honest, never silent: unreachable server, rejected token,
  * timeout, and malformed responses all throw [PhoneVisionException] with
@@ -46,7 +49,13 @@ class PhoneVisionClient(
         const val DEFAULT_HEALTH_URL = "http://127.0.0.1:8080/health"
         const val CONNECT_TIMEOUT_MS = 10_000
         const val READ_TIMEOUT_MS = 30_000
-        const val DEFAULT_CONFIDENCE = 0.25
+        // Server detect cutoff. At 0.25 the server returned every weak
+        // guess its model proposed (17 detections for one street photo,
+        // several of them boxes inside other boxes), and the counts built
+        // on that list were meaningless. 0.5 keeps the detections the
+        // model is actually sure about; contained-duplicate cleanup in
+        // parseDetections handles the rest.
+        const val DEFAULT_CONFIDENCE = 0.5
     }
 
     /** GET /health response. */
@@ -229,7 +238,10 @@ class PhoneVisionClient(
             )
         }
         return NativeVisionSnapshot(
-            detections = detections,
+            // Clean here, where server detections become the snapshot
+            // every consumer uses, so formatted output and counts all
+            // describe the same list.
+            detections = ServerDetections.dropContainedDuplicates(detections),
             detectionMs = inferenceMs,
             segments = emptyList(),
             segmentationMs = 0.0,

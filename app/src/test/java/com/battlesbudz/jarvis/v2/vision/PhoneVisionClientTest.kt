@@ -66,7 +66,39 @@ class PhoneVisionClientTest {
             java.util.Base64.getEncoder().encodeToString(image),
             sent.getString("image")
         )
-        assertEquals(0.25, sent.getDouble("confidence"), 0.001)
+        assertEquals(0.5, sent.getDouble("confidence"), 0.001)
+    }
+
+    @Test fun detectDropsContainedDuplicateDetections() {
+        // A weaker person box fully inside a stronger person box is a
+        // duplicate of the same person and must not reach consumers;
+        // an unrelated car is untouched.
+        val json = JSONObject()
+            .put("detections", org.json.JSONArray().put(
+                JSONObject()
+                    .put("label", "person")
+                    .put("confidence", 0.9)
+                    .put("box", JSONObject().put("x1", 100.0).put("y1", 100.0).put("x2", 300.0).put("y2", 500.0))
+            ).put(
+                JSONObject()
+                    .put("label", "person")
+                    .put("confidence", 0.6)
+                    .put("box", JSONObject().put("x1", 150.0).put("y1", 200.0).put("x2", 250.0).put("y2", 400.0))
+            ).put(
+                JSONObject()
+                    .put("label", "car")
+                    .put("confidence", 0.8)
+                    .put("box", JSONObject().put("x1", 0.0).put("y1", 0.0).put("x2", 50.0).put("y2", 50.0))
+            ))
+            .put("inference_ms", 9.0)
+            .toString()
+        val fake = FakeConnection(URL("http://127.0.0.1:8080/detect"), 200, json)
+        val snapshot = runBlocking { clientFor(fake).detect(byteArrayOf(1), "test-token") }
+        assertEquals(2, snapshot.detections.size)
+        val keptPerson = snapshot.detections.first { it.label == "person" }
+        assertEquals(0.9f, keptPerson.confidence)
+        assertEquals(Box(100f, 100f, 300f, 500f), keptPerson.box)
+        assertEquals(1, snapshot.detections.count { it.label == "car" })
     }
 
     @Test fun detectUnauthorizedMentionsToken() {

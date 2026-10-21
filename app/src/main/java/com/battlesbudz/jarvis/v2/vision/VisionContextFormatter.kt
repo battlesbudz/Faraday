@@ -42,23 +42,34 @@ object VisionContextFormatter {
     /**
      * Formats a detections-only snapshot from the Phone Inference server.
      * The server returns detections only — no segmentation, pose, or
-     * classification — so this deliberately omits the people-count and
-     * scene lines that [format] prints. Printing "People count: 0" for a
-     * server snapshot would contradict its own detections whenever people
-     * are among them.
+     * classification — so unlike [format] there are no outline or scene
+     * lines. The counts ARE here, computed in code from the cleaned
+     * detections (people are counted from the person detections, since
+     * the server computes no poses): the model is handed the numbers
+     * instead of being asked to count boxes itself, which on device led
+     * it to repeat a stale count from earlier in the conversation.
      */
     fun formatServerDetections(detections: List<Detection>, inferenceMs: Double): String {
+        // Clean here as well as in PhoneVisionClient, so the counts below
+        // describe the same list the model is shown whoever built the
+        // input. The cleanup is idempotent, so an already-clean list
+        // passes through unchanged.
+        val cleaned = ServerDetections.dropContainedDuplicates(detections)
         val parts = mutableListOf(
             "On-device vision analysis (Phone Inference server, ${inferenceMs.toLong()} ms). " +
                 "Treat the following as authoritative for what is visible in the attached image."
         )
-        if (detections.isEmpty()) {
+        if (cleaned.isEmpty()) {
             parts += "Objects detected: 0. Detected objects: none recognizable."
         } else {
-            parts += "Objects detected: ${detections.size}. Detected objects: " + detections.joinToString("; ") {
+            parts += "Objects detected: ${cleaned.size}. Detected objects: " + cleaned.joinToString("; ") {
                 "${it.label} ${"%.2f".format(it.confidence)} at " +
                     "[${it.box.x1.toInt()},${it.box.y1.toInt()},${it.box.x2.toInt()},${it.box.y2.toInt()}]"
             }
+            val counts = cleaned.groupingBy { it.label }.eachCount().entries
+                .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+            parts += "Counts: " + counts.joinToString(", ") { "${it.key} ${it.value}" } + "."
+            parts += "People count: ${cleaned.count { it.label == "person" }}."
         }
         return parts.joinToString("\n")
     }
