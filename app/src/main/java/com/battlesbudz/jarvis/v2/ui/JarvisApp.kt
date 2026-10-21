@@ -78,6 +78,7 @@ fun JarvisApp(
         var showingMemory by rememberSaveable { mutableStateOf(false) }
         var memoryReturnToVoice by rememberSaveable { mutableStateOf(false) }
         var memoryReturnToChat by rememberSaveable { mutableStateOf(false) }
+        var showingFullSetup by rememberSaveable { mutableStateOf(false) }
         var voiceCalls by remember { mutableStateOf(initialVoiceCalls) }
         var selectedVoiceCall by remember { mutableStateOf<VoiceCallRecord?>(null) }
         var resumedVoiceCall by remember { mutableStateOf<VoiceCallRecord?>(null) }
@@ -208,11 +209,13 @@ fun JarvisApp(
                             onOpenChat = { memoryReturnToVoice = false; memoryReturnToChat = true; showingMemory = false },
                             onOpenVoice = { memoryReturnToChat = false; memoryReturnToVoice = true; showingMemory = false },
                         )
-                    } else if (!setup.modelsReady) {
+                    } else if (!setup.modelsReady && !showingFullSetup) {
                         // First run: no usable model on the device. One-tap install
                         // of the stock model (Gemma-4-E2B-it), no model picking or
                         // configuration. The automatic smoke test runs after the
-                        // download, then the main app takes over.
+                        // download, then the main app takes over. The screen's
+                        // setup link flips showingFullSetup and lands on the full
+                        // ModelSetup below instead.
                         OneTapInstall(
                             downloading = setup.modelDownloadRunning,
                             testing = setup.smokeTestRunning,
@@ -231,7 +234,8 @@ fun JarvisApp(
                                 } else {
                                     setup.setupStatus = error
                                 }
-                            }
+                            },
+                            onChooseDifferentModel = { showingFullSetup = true }
                         )
                     } else {
                         ModelSetup(

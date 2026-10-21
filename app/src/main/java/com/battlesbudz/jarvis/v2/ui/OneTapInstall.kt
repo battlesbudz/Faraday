@@ -10,6 +10,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,7 +32,8 @@ internal fun OneTapInstall(
     downloadBytes: Long,
     downloadTotalBytes: Long,
     status: String,
-    onInstall: () -> Unit
+    onInstall: () -> Unit,
+    onChooseDifferentModel: () -> Unit
 ) {
     Column(
         Modifier
@@ -74,6 +76,16 @@ internal fun OneTapInstall(
                 modifier = Modifier.fillMaxWidth().testTag("one_tap_install")
             ) {
                 Text("Install and start")
+            }
+            // Escape hatch to the full setup screen (model browser / import)
+            // for anyone who does not want the default model. Idle state
+            // only: this branch is not composed while a transfer runs.
+            TextButton(
+                onClick = onChooseDifferentModel,
+                enabled = !downloading && !testing && !importing,
+                modifier = Modifier.fillMaxWidth().testTag("one_tap_choose_model")
+            ) {
+                Text("Choose or import a different model")
             }
             if (status.isNotBlank()) {
                 Text(status, modifier = Modifier.padding(top = 20.dp), textAlign = TextAlign.Center)

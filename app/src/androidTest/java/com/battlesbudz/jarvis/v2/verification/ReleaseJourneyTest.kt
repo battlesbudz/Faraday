@@ -99,7 +99,17 @@ class ReleaseJourneyTest {
 
     @Before fun launch() {
         activity = ActivityScenario.launch(Intent(context, MainActivity::class.java))
-        find(By.res("model_browse"))
+        // A fresh install lands on the one-tap screen; the full setup screen
+        // is the other valid landing state (a usable model still awaiting
+        // its smoke test). Either anchor proves the app launched to setup.
+        val deadline = SystemClock.uptimeMillis() + 15_000
+        while (SystemClock.uptimeMillis() < deadline &&
+            !device.hasObject(By.res("one_tap_install")) &&
+            !device.hasObject(By.res("model_browse"))) {
+            SystemClock.sleep(100)
+        }
+        assertTrue("Neither the one-tap screen nor the full setup screen appeared after launch",
+            device.hasObject(By.res("one_tap_install")) || device.hasObject(By.res("model_browse")))
     }
 
     @After fun close() {
@@ -397,7 +407,19 @@ class ReleaseJourneyTest {
         throw AssertionError("Control did not become stably disabled: $selector")
     }
 
-    private fun openBrowser() { find(By.res("model_browse")).click(); find(By.res("model_search")) }
+    /**
+     * Fresh installs land on the one-tap screen; journeys that exercise the
+     * full setup screen route through its setup link first. A no-op once the
+     * full setup screen (or the main app) is already showing.
+     */
+    private fun openFullSetup() {
+        if (device.hasObject(By.res("one_tap_choose_model"))) {
+            find(By.res("one_tap_choose_model")).click()
+            find(By.res("model_browse"))
+        }
+    }
+
+    private fun openBrowser() { openFullSetup(); find(By.res("model_browse")).click(); find(By.res("model_search")) }
 
     private fun clickEnabled(selector: BySelector) {
         enabled(selector).click()
@@ -830,6 +852,7 @@ class ReleaseJourneyTest {
     }
 
     @Test fun test01_setupRequiresAnInstalledModel() {
+        openFullSetup()
         assertNotNull(find(By.text("Jarvis setup")))
         assertFalse(scrollTo(By.res("model_check")).isEnabled)
     }
@@ -842,6 +865,7 @@ class ReleaseJourneyTest {
     }
 
     @Test fun test03_browsingDoesNotChangeTheSelectedModel() {
+        openFullSetup()
         assertNotNull(find(By.text("Gemma-4-E2B-it")))
         openBrowser()
         find(By.res("model_search")).text = "Gemma-4-E4B-it"
@@ -952,6 +976,7 @@ class ReleaseJourneyTest {
         val selectedBefore = ModelStore(context).selectedModel().id
         assertEquals("Gemma-4-E2B-it", selectedBefore)
         assertFalse(device.hasObject(By.textContains("bundle /")))
+        openFullSetup()
         find(By.res("selected_model_details")).click()
         assertNotNull(find(By.text("About this model")))
         find(By.text("Close details")).click()
@@ -1502,6 +1527,7 @@ class ReleaseJourneyTest {
         try {
             // Keep the app-level entry and return route in the release journey before mounting
             // the controlled, file-backed capture fixture below.
+            openFullSetup()
             clickEnabled(By.res("memory_open"))
             assertNotNull(find(By.text("Memory")))
             clickEnabled(By.res("memory_back"))
@@ -4988,7 +5014,7 @@ class ReleaseJourneyTest {
             }
             while (android.os.SystemClock.uptimeMillis() < cleanupDeadline &&
                 (keyguard?.isDeviceSecure == true || keyguard?.isDeviceLocked == true ||
-                    keyguard?.isKeyguardLocked == true || !device.hasObject(By.res("model_browse")))) {
+                    keyguard?.isKeyguardLocked == true || !device.hasObject(By.res("one_tap_install")))) {
                 Thread.sleep(100)
             }
             android.util.Log.i("JarvisVerification", "test64 dismissal=${keyguardDismissal.get()} " +
@@ -5003,7 +5029,7 @@ class ReleaseJourneyTest {
         assertFalse("Keyguard UI must be dismissed before later journeys (${keyguardDismissal.get()})",
             keyguard?.isKeyguardLocked == true)
         assertNotNull("The owned setup screen must be accessible after lock cleanup",
-            device.findObject(By.res("model_browse")))
+            device.findObject(By.res("one_tap_install")))
     }
 
     @Suppress("DEPRECATION")
