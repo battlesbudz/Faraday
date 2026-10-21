@@ -51,7 +51,7 @@ object VisionContextFormatter {
      */
     fun formatServerDetections(detections: List<Detection>, inferenceMs: Double): String {
         // Clean here as well as in PhoneVisionClient, so the counts below
-        // describe the same list the model is shown whoever built the
+        // describe the same list the model is shown, whoever built the
         // input. The cleanup is idempotent, so an already-clean list
         // passes through unchanged.
         val cleaned = ServerDetections.dropContainedDuplicates(detections)
