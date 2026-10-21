@@ -256,7 +256,34 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+        with:
+          # Full history: the per-package unit-test selector below diffs this
+          # push against its base commit (engineering SOP, Battles 2026-10-21:
+          # only test packages that change).
+          fetch-depth: 0
 
+      - name: Restore per-package unit-test pass markers
+        uses: actions/cache@v4
+        with:
+          # Marker JSONs written by scripts/select_unit_tests.py after green
+          # runs: one per package, keyed by that package's content hash.
+          # Provenance/logging only; a flagged package always re-tests (see
+          # the selector's header). Gradle's own build cache stays with
+          # gradle/actions/setup-gradle further down.
+          path: .ci-test-cache
+          key: unit-test-markers-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            unit-test-markers-v1-
+
+      - name: Select unit-test packages for this change
+        id: unit-test-selection
+        env:
+          PUSH_BEFORE: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then BASE="$PR_BASE_SHA"; else BASE="$PUSH_BEFORE"; fi
+          python3 scripts/select_unit_tests.py --base "$BASE" --head "$GITHUB_SHA" --repo "$GITHUB_WORKSPACE" --cache-dir .ci-test-cache
 
       - name: Select this run's successful SDK producer artifact
         id: sdk-input
@@ -363,7 +390,28 @@ jobs:
           AAR="$GITHUB_WORKSPACE/streaming-sdk-input/litertlm-android-0.16.0-sealed-audio-arm64.aar"
           PROVENANCE="$GITHUB_WORKSPACE/streaming-sdk-input/litertlm-android-0.16.0-sealed-audio-arm64.provenance.json"
           python3 scripts/streaming-sdk/validate_artifact.py --aar "$AAR" --provenance "$PROVENANCE" --source-receipt "$GITHUB_WORKSPACE/streaming-sdk-input/source-receipt.json" --expected-source-receipt-sha256 "$STREAMING_SOURCE_RECEIPT_SHA256" --expected-aar-sha256 "$STREAMING_AAR_SHA256" --expected-provenance-sha256 "$STREAMING_PROVENANCE_SHA256" --require-digests --check-workflow --producer-attempt "$STREAMING_PRODUCER_ATTEMPT" --app-ndk "$ANDROID_HOME/ndk/27.2.12479018"
-          bash scripts/ci_gradle.sh release -PlitertLmBridgeAar="$AAR" -PlitertLmBridgeProvenance="$PROVENANCE" -PlitertLmBridgeSha256="$STREAMING_AAR_SHA256" -PlitertLmBridgeProvenanceSha256="$STREAMING_PROVENANCE_SHA256" -PlitertLmBridgeProducerAttempt="$STREAMING_PRODUCER_ATTEMPT" testReleaseUnitTest assembleRelease assembleReleaseAndroidTest
+          # Engineering SOP (Battles 2026-10-21): only test packages that
+          # change. mode=full reproduces the historical command untouched;
+          # selected/none append the selector's --tests filters (the changed
+          # packages plus the receipt-required regression classes).
+          echo "Unit-test selection mode: ${{ steps.unit-test-selection.outputs.mode }}"
+          echo "Unit-test selection reason: ${{ steps.unit-test-selection.outputs.reason }}"
+          GRADLE_PROPS=(-PlitertLmBridgeAar="$AAR" -PlitertLmBridgeProvenance="$PROVENANCE" -PlitertLmBridgeSha256="$STREAMING_AAR_SHA256" -PlitertLmBridgeProvenanceSha256="$STREAMING_PROVENANCE_SHA256" -PlitertLmBridgeProducerAttempt="$STREAMING_PRODUCER_ATTEMPT")
+          if [ "${{ steps.unit-test-selection.outputs.mode }}" = "full" ]; then
+            bash scripts/ci_gradle.sh release "${GRADLE_PROPS[@]}" testReleaseUnitTest assembleRelease assembleReleaseAndroidTest
+          else
+            read -ra TEST_ARGS <<< "${{ steps.unit-test-selection.outputs.gradle_test_args }}"
+            bash scripts/ci_gradle.sh release "${GRADLE_PROPS[@]}" testReleaseUnitTest assembleRelease assembleReleaseAndroidTest "${TEST_ARGS[@]}"
+          fi
+
+      - name: Record per-package unit-test pass markers
+        if: success()
+        continue-on-error: true
+        run: |
+          python3 scripts/select_unit_tests.py --mark-passed \
+            --mode "${{ steps.unit-test-selection.outputs.mode }}" \
+            --packages "${{ steps.unit-test-selection.outputs.packages }}" \
+            --repo "$GITHUB_WORKSPACE" --cache-dir .ci-test-cache --head "$GITHUB_SHA"
 
       - name: Upload release instrumentation APK
         uses: actions/upload-artifact@v4

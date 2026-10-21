@@ -1,0 +1,109 @@
+name: Nightly full unit tests
+
+# Safety net for per-package test selection (engineering SOP, Battles
+# 2026-10-21: "only test packages that change"). Per-push CI in android.yml
+# runs the unit tests of changed packages only, with shared or unclassifiable
+# changes forcing the full suite. This workflow runs the ENTIRE JVM unit-test
+# suite unconditionally once a day, so a selection miss surfaces within a day
+# instead of at release time. It publishes nothing and builds no release APK;
+# testReleaseUnitTest still compiles all main and test sources.
+#
+# The app module cannot even be configured without the reviewed streaming SDK
+# (app/build.gradle.kts requires -PlitertLmBridge* and binds the AAR to this
+# run's identity), so this job first builds that SDK in-run with the exact
+# steps android.yml's build-streaming-sdk job uses, then runs the tests with
+# the exact property handoff android.yml's build-release job uses.
+
+on:
+  schedule:
+    - cron: '23 7 * * *' # 07:23 UTC daily, off the hour
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-unit-tests:
+    name: Full JVM unit test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Require existing Android SDK license and install side-by-side native compiler
+        run: |
+          set -euo pipefail
+          # Presence is a prerequisite; sdkmanager still validates the applicable
+          # accepted fingerprint. EOF refuses a new license acceptance prompt.
+          test -s "${ANDROID_HOME}/licenses/android-sdk-license"
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
+            "ndk;28.1.13356709" "platforms;android-35" < /dev/null
+          command -v clang
+          command -v clang++
+      - name: Verify packaging helper contracts
+        run: python3 -m unittest discover -s scripts/streaming-sdk -p 'test_*.py' -v
+      - name: Build and package the exact reviewed SDK
+        run: |
+          set -euo pipefail
+          export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/28.1.13356709"
+          PATCH_SHA="$(python3 -c 'import json; print(json.load(open("third_party/litert-lm-0.16.0/reviewed-source.json"))["patch_sha256"])')"
+          python3 scripts/streaming-sdk/build_android_sdk.py --run \
+            --patch third_party/litert-lm-0.16.0/PATCH.diff \
+            --patch-sha256 "$PATCH_SHA" \
+            --reviewed-source third_party/litert-lm-0.16.0/reviewed-source.json \
+            --page-auditor scripts/check_page_sizes.py \
+            --out "$RUNNER_TEMP/streaming-sdk" 2>&1 | tee streaming-sdk-build.log
+      - name: Bind exact SDK output digests
+        id: sdk-digests
+        run: |
+          python3 scripts/streaming-sdk/validate_artifact.py \
+            --aar "$RUNNER_TEMP/streaming-sdk/litertlm-android-0.16.0-sealed-audio-arm64.aar" \
+            --provenance "$RUNNER_TEMP/streaming-sdk/litertlm-android-0.16.0-sealed-audio-arm64.provenance.json" \
+            --source-receipt "$RUNNER_TEMP/streaming-sdk/source-receipt.json" \
+            --check-workflow --github-output "$GITHUB_OUTPUT"
+      - name: Install speech runtime NDK
+        run: |
+          test -s "${ANDROID_HOME}/licenses/android-sdk-license"
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" < /dev/null
+      - name: Cache shared speech runtime
+        uses: actions/cache@v4
+        with:
+          path: app/build/sherpa-native
+          # CMake embeds the checkout path, which changes on repository rename.
+          # Do not restore a cache from a differently named checkout.
+          key: sherpa-arm64-137-${{ runner.os }}-${{ github.repository }}-${{ hashFiles('scripts/build_sherpa.py', 'scripts/sherpa_jni_profile.py', 'app/src/main/cpp/smartturn/**', 'app/src/main/cpp/whisperqnn/**') }}
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+          cache-read-only: false
+      - name: Run the full JVM unit test suite (no package selection)
+        env:
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+          ANDROID_VERSION_NAME: 0.1.0-build.${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          AAR="$RUNNER_TEMP/streaming-sdk/litertlm-android-0.16.0-sealed-audio-arm64.aar"
+          PROVENANCE="$RUNNER_TEMP/streaming-sdk/litertlm-android-0.16.0-sealed-audio-arm64.provenance.json"
+          # Deliberately no select_unit_tests.py and no --tests filters here:
+          # this lane is the unconditional full-suite backstop.
+          bash scripts/ci_gradle.sh nightly \
+            -PlitertLmBridgeAar="$AAR" -PlitertLmBridgeProvenance="$PROVENANCE" \
+            -PlitertLmBridgeSha256="${{ steps.sdk-digests.outputs.sha256 }}" \
+            -PlitertLmBridgeProvenanceSha256="${{ steps.sdk-digests.outputs.provenance_sha256 }}" \
+            -PlitertLmBridgeProducerAttempt="$GITHUB_RUN_ATTEMPT" \
+            testReleaseUnitTest
+      - name: Retain JVM test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-nightly-unit-tests
+          path: |
+            app/build/test-results/testReleaseUnitTest/
+            app/build/reports/tests/testReleaseUnitTest/
+          if-no-files-found: warn
