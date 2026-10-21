@@ -39,7 +39,16 @@ class LifecycleJourneyTest {
 
     private fun launch(): ActivityScenario<MainActivity> = ActivityScenario.launch<MainActivity>(
         Intent(context, MainActivity::class.java)).also {
-        assertTrue("MainActivity must remain reachable", device.wait(Until.hasObject(By.res("model_browse")), 15_000))
+        // A fresh process lands on the one-tap screen; the full setup screen
+        // is the other reachable state. Either proves MainActivity is up.
+        val deadline = SystemClock.uptimeMillis() + 15_000
+        while (SystemClock.uptimeMillis() < deadline &&
+            !device.hasObject(By.res("one_tap_install")) &&
+            !device.hasObject(By.res("model_browse"))) {
+            SystemClock.sleep(100)
+        }
+        assertTrue("MainActivity must remain reachable",
+            device.hasObject(By.res("one_tap_install")) || device.hasObject(By.res("model_browse")))
     }
 
     @Suppress("DEPRECATION")
@@ -145,6 +154,11 @@ class LifecycleJourneyTest {
         assertEquals(PackageManager.PERMISSION_DENIED, context.checkSelfPermission(Manifest.permission.RECORD_AUDIO))
         launch().use {
             assertNull("Denied microphone must not silently start a call", callService())
+            // The full setup screen sits behind the one-tap screen's setup link.
+            if (device.hasObject(By.res("one_tap_choose_model"))) {
+                device.findObject(By.res("one_tap_choose_model"))?.click()
+                device.wait(Until.hasObject(By.res("model_browse")), 15_000)
+            }
             assertNotNull(device.findObject(By.res("model_browse")))
             ReleasePhaseEvidence.capture("testMicrophoneDeniedLeavesSetupAndTextReachable")
         }
