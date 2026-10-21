@@ -30,10 +30,15 @@ import com.battlesbudz.phoneinference.Detection
  * nothing.
  */
 object ServerDetections {
-    /** Fraction of a box that must sit inside a bigger same-label box for it to count as a duplicate. */
+    /**
+     * Fraction of a box that must sit inside a bigger same-label box for it to count as a duplicate.
+     * The compiled-in default; the live value is editable harness content
+     * (FormatterConfig.containmentThreshold) passed in by VisionContextFormatter.
+     */
     const val CONTAINMENT_THRESHOLD = 0.8f
 
-    fun dropContainedDuplicates(detections: List<Detection>): List<Detection> {
+    fun dropContainedDuplicates(detections: List<Detection>,
+                                threshold: Float = CONTAINMENT_THRESHOLD): List<Detection> {
         if (detections.size < 2) return detections
         return detections.filterIndexed { index, candidate ->
             val candidateArea = area(candidate.box)
@@ -49,7 +54,7 @@ object ServerDetections {
                             other.confidence > candidate.confidence &&
                             area(other.box) >= candidateArea &&
                             intersection(candidate.box, other.box) / candidateArea >=
-                            CONTAINMENT_THRESHOLD
+                            threshold
                     }
                 }
             }

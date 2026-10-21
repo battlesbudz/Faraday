@@ -74,11 +74,15 @@ class PhoneVisionClient(
         imageBytes: ByteArray,
         token: String,
         url: String = DEFAULT_DETECT_URL,
-        confidence: Double = DEFAULT_CONFIDENCE,
+        confidence: Double? = null,
     ): NativeVisionSnapshot = withContext(Dispatchers.IO) {
+        // The default cutoff is editable harness content
+        // (FormatterConfig.serverConfidence, Phase 1); [DEFAULT_CONFIDENCE]
+        // remains its compiled-in value. An explicit argument always wins.
+        val cutoff = confidence ?: VisionContextFormatter.currentConfig().serverConfidence.toDouble()
         val body = JSONObject()
             .put("image", Base64.getEncoder().encodeToString(imageBytes))
-            .put("confidence", confidence)
+            .put("confidence", cutoff)
             .toString()
         val response = post(url, token, body)
         parseDetections(response)
@@ -242,7 +246,8 @@ class PhoneVisionClient(
             // Clean here, where server detections become the snapshot
             // every consumer uses, so formatted output and counts all
             // describe the same list.
-            detections = ServerDetections.dropContainedDuplicates(detections),
+            detections = ServerDetections.dropContainedDuplicates(
+                detections, VisionContextFormatter.currentConfig().containmentThreshold),
             detectionMs = inferenceMs,
             segments = emptyList(),
             segmentationMs = 0.0,

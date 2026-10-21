@@ -49,8 +49,17 @@ object EvaluationThresholds {
  * Deterministic, rule-based evaluator. Used in tests and as the on-device fallback
  * when the local model is unavailable. Scoring is transparent: relevance accumulates
  * from content signals, confidence from source reliability and clarity.
+ *
+ * The save thresholds are editable harness content (self-improving harness
+ * project, Phase 1: the memory-eval guidance surface). The defaults are the
+ * measured [EvaluationThresholds] constants, so a bare evaluator behaves
+ * exactly as before; the runtime passes the harness values in. The scoring
+ * rules themselves and all of MemoryPolicy stay locked core.
  */
-class HeuristicMemoryEvaluator : MemoryEvaluator {
+class HeuristicMemoryEvaluator(
+    private val saveRelevanceThreshold: Int = EvaluationThresholds.SAVE_RELEVANCE,
+    private val saveConfidenceThreshold: Int = EvaluationThresholds.SAVE_CONFIDENCE
+) : MemoryEvaluator {
     override fun evaluate(candidate: MemoryCandidate, context: EvaluationContext): MemoryEvaluation {
         val content = candidate.content
         val lower = content.lowercase()
@@ -81,13 +90,13 @@ class HeuristicMemoryEvaluator : MemoryEvaluator {
         confidence = confidence.coerceIn(0, 100)
 
         val save = conflict == null &&
-            relevance >= EvaluationThresholds.SAVE_RELEVANCE &&
-            confidence >= EvaluationThresholds.SAVE_CONFIDENCE
+            relevance >= saveRelevanceThreshold &&
+            confidence >= saveConfidenceThreshold
 
         val reason = when {
             conflict != null -> "Conflicts with existing memory; not auto-saved."
-            !save && relevance < EvaluationThresholds.SAVE_RELEVANCE -> "Relevance $relevance below threshold ${EvaluationThresholds.SAVE_RELEVANCE}."
-            !save -> "Confidence $confidence below threshold ${EvaluationThresholds.SAVE_CONFIDENCE}."
+            !save && relevance < saveRelevanceThreshold -> "Relevance $relevance below threshold $saveRelevanceThreshold."
+            !save -> "Confidence $confidence below threshold $saveConfidenceThreshold."
             else -> "Relevance $relevance, confidence $confidence meet thresholds."
         }
         return MemoryEvaluation(

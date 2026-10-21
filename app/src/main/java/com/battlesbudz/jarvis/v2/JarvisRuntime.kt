@@ -132,7 +132,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     // describes whether the current native Conversation has received that
     // app-managed context capsule.
     internal var nativeConversationHasContext = false
-    internal val shortTermContext = ShortTermConversationContext()
+    internal val shortTermContext = ShortTermConversationContext(
+        policyProvider = { harnessStore.current().historyPolicy })
     private val agentActivityMonitor = AgentActivityMonitor()
     internal val agentActivity = agentActivityMonitor.state
     private fun showAgentFailure(conversationId: String) {
@@ -152,7 +153,29 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     )
     internal val factualityVerifier = com.battlesbudz.jarvis.v2.ai.FactualityVerifier()
     internal val turnOrchestrator = com.battlesbudz.jarvis.v2.ai.TurnOrchestrator(referenceGrounding)
-    internal val promptBuilder = com.battlesbudz.jarvis.v2.ai.ConversationPromptBuilder(shortTermContext)
+    internal val promptBuilder = com.battlesbudz.jarvis.v2.ai.ConversationPromptBuilder(
+        shortTermContext, harness = { harnessStore.current() })
+    /**
+     * Editable harness (self-improving harness project, Phase 1): the
+     * versioned harness files under filesDir/harness, with the shipped
+     * assets as the bundled v1 fallback. Until a CURRENT pointer exists,
+     * this resolves to content byte-identical to the old hardcoded values.
+     */
+    internal val harnessStore: com.battlesbudz.jarvis.v2.harness.HarnessStore by lazy {
+        com.battlesbudz.jarvis.v2.harness.HarnessStore(
+            java.io.File(applicationContext.filesDir, "harness"),
+            bundled = { name ->
+                runCatching {
+                    applicationContext.assets.open("harness/v1/$name")
+                        .bufferedReader().use { it.readText() }
+                }.getOrNull()
+            })
+    }
+    /** Replay task store (Phase 1): structured turn records, 100-turn rolling retention. */
+    internal val replayTaskStore: com.battlesbudz.jarvis.v2.harness.ReplayTaskStore by lazy {
+        com.battlesbudz.jarvis.v2.harness.ReplayTaskStore(
+            java.io.File(applicationContext.filesDir, "replay-tasks"))
+    }
     private val conversationMemory by lazy {
         ConversationMemory(AndroidMemoryOs.get(applicationContext), AndroidMemoryOs.sources(applicationContext))
     }
@@ -391,6 +414,13 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         // the browserRuntime lazy: LiteRT schema generation via
         // MobileToolCatalog.all() may run before first browser use.
         com.battlesbudz.jarvis.v2.actions.MobileToolCatalog.BrowserRuntimeGate.wired = true
+        // Self-improving harness (Phase 1): point the singleton harness
+        // surfaces at this runtime's store. The providers are lazy, so the
+        // store itself is only read when a surface is first consumed.
+        com.battlesbudz.jarvis.v2.voice.VoiceResponsePolicy.configProvider = { harnessStore.current() }
+        com.battlesbudz.jarvis.v2.vision.VisionContextFormatter.configProvider = { harnessStore.current() }
+        com.battlesbudz.jarvis.v2.actions.MobileToolCatalog.descriptionOverrides =
+            { harnessStore.current().toolDescriptions }
         modelStore = ModelStore(applicationContext)
         // M6: automatic memory is always on; start the background evaluation loop.
         startAutoMemoryEvaluation()
@@ -732,6 +762,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             }, diagnostics,
                 appAssets = applicationContext.assets,
                 visionServerConfig = { VisionServerSettings.snapshot(applicationContext) },
+                replayCapture = { record -> replayTaskStore.record(record) },
+                harnessVersion = { harnessStore.current().version },
                 // M1d: model-proposed screen mutations never auto-dispatch
                 // (D23); M4: model-proposed browse_submit never auto-dispatches
                 // (D11). Park them for the user's explicit approval.
@@ -901,7 +933,9 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     private fun runAutoMemoryEvaluationPass() {
         try {
             AndroidMemoryOs.automaticMemory(this).evaluatePending(
-                HeuristicMemoryEvaluator(),
+                HeuristicMemoryEvaluator(
+                    harnessStore.current().memoryEval.saveRelevance,
+                    harnessStore.current().memoryEval.saveConfidence),
                 isIdle = { !modelStore.isModelOperationActive() && ConversationWork.activeJobs.get() == 0 },
                 cancel = NoCancel,
             )
