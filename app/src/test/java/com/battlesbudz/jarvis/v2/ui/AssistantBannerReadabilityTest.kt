@@ -29,7 +29,11 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -180,17 +184,42 @@ class AssistantBannerReadabilityTest {
         compose.onNodeWithText("Faraday is not your system assistant").assertDoesNotExist()
     }
 
+    /** Test-owned lifecycle owner so a test can drive ON_RESUME directly. */
+    private class ResumeTestOwner : LifecycleOwner {
+        val registry = LifecycleRegistry(this)
+        override val lifecycle: Lifecycle get() = registry
+    }
+
+    private fun newResumeTestOwner(): ResumeTestOwner {
+        lateinit var owner: ResumeTestOwner
+        compose.runOnUiThread {
+            owner = ResumeTestOwner()
+            owner.registry.currentState = Lifecycle.State.CREATED
+        }
+        return owner
+    }
+
+    private fun resume(owner: ResumeTestOwner) {
+        compose.runOnUiThread {
+            owner.registry.currentState = Lifecycle.State.RESUMED
+        }
+        compose.waitForIdle()
+    }
+
     @Test fun gatedBanner_hidesOnResumeAfterBecomingDefault() {
+        val owner = newResumeTestOwner()
         var selected = false
         compose.setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
-                AssistantStatusBanner(
-                    onVisibilityChanged = {},
-                    isSelected = { selected },
-                    loadDismissed = { false },
-                    saveDismissed = {},
-                    onOpenSettings = {},
-                )
+            CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+                MaterialTheme(colorScheme = darkColorScheme()) {
+                    AssistantStatusBanner(
+                        onVisibilityChanged = {},
+                        isSelected = { selected },
+                        loadDismissed = { false },
+                        saveDismissed = {},
+                        onOpenSettings = {},
+                    )
+                }
             }
         }
         compose.waitForIdle()
@@ -198,26 +227,26 @@ class AssistantBannerReadabilityTest {
 
         // Simulate leaving for the system assistant settings, setting
         // Faraday as the default there, and returning to the app: the
-        // activity pauses/stops, then resumes, and the ON_RESUME re-check
-        // must hide the popup with no manual Dismiss.
+        // lifecycle resumes, and the ON_RESUME re-check must hide the popup
+        // with no manual Dismiss.
         selected = true
-        compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
-        compose.waitForIdle()
-        compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
-        compose.waitForIdle()
+        resume(owner)
         compose.onNodeWithText("Faraday is not your system assistant").assertDoesNotExist()
     }
 
     @Test fun gatedBanner_staysOnResumeWhenStillNotDefault() {
+        val owner = newResumeTestOwner()
         compose.setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
-                AssistantStatusBanner(
-                    onVisibilityChanged = {},
-                    isSelected = { false },
-                    loadDismissed = { false },
-                    saveDismissed = {},
-                    onOpenSettings = {},
-                )
+            CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+                MaterialTheme(colorScheme = darkColorScheme()) {
+                    AssistantStatusBanner(
+                        onVisibilityChanged = {},
+                        isSelected = { false },
+                        loadDismissed = { false },
+                        saveDismissed = {},
+                        onOpenSettings = {},
+                    )
+                }
             }
         }
         compose.waitForIdle()
@@ -225,10 +254,7 @@ class AssistantBannerReadabilityTest {
 
         // A resume that changes nothing must leave the popup exactly as it
         // was: still showing, still offering settings and Dismiss.
-        compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
-        compose.waitForIdle()
-        compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
-        compose.waitForIdle()
+        resume(owner)
         compose.onNodeWithText("Faraday is not your system assistant").assertIsDisplayed()
         compose.onNodeWithText("Dismiss").assertIsDisplayed()
     }
