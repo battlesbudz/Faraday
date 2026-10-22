@@ -193,7 +193,7 @@ class SmartTurnAudioEndpointTest {
             val r = Rig(this, fixed = 650)
             try {
                 r.startPause(); r.result(.1f, 765)
-                if (kind == "blocked") r.blocker = "thermal_severe"
+                if (kind == "blocked") r.blocker = "admission_blocked"
                 while (r.samples / 16 < 1200) r.emit(.01f)
                 assertNull(r.capture.endpointDecisionAtNs)
                 if (kind != "blocked") {
@@ -229,11 +229,11 @@ class SmartTurnAudioEndpointTest {
         }
     }
 
-    @Test fun deadlineAndThermalBusyOrMissingModelUseUnextendedOrdinaryEndpoint() = runBlocking<Unit> {
+    @Test fun deadlineAndBlockedBusyOrMissingModelUseUnextendedOrdinaryEndpoint() = runBlocking<Unit> {
         for (kind in listOf("deadline", "blocked", "missing")) {
             val r = Rig(this, fixed = 650, available = kind != "missing")
             try {
-                if (kind == "blocked") r.blocker = "thermal_severe"
+                if (kind == "blocked") r.blocker = "admission_blocked"
                 r.capture.start(); repeat(3) { r.emit(.99f) }; repeat(4) { r.emit(.01f) }
                 if (kind == "deadline") {
                     eventually { r.backend.calls.get() == 1 }
@@ -356,7 +356,7 @@ class SmartTurnAudioEndpointTest {
             val r = Rig(this, captions = true, native = false, fixed = 1200, available = kind != "missing")
             try {
                 r.caption = "What is the weather today?"
-                if (kind == "blocked") r.blocker = "thermal_severe"
+                if (kind == "blocked") r.blocker = "admission_blocked"
                 r.capture.start(); repeat(3) { r.emit(.99f) }; repeat(4) { r.emit(.01f) }
                 if (kind == "deadline") {
                     eventually { r.backend.calls.get() == 1 }; r.result(.9f, 951)
@@ -574,7 +574,7 @@ class SmartTurnAudioEndpointTest {
         val r = Rig(this, fixed = 650)
         try {
             r.startPause(); r.result(.1f, 765)
-            r.blocker = "thermal_severe" // Keep the first CONTINUE while refresh is unavailable.
+            r.blocker = "admission_blocked" // Keep the first CONTINUE while refresh is unavailable.
             r.captureTimeGapMs = 5000
             r.emit(.01f)
             assertNull(r.capture.endpointDecisionAtNs) // 5,500ms elapsed, only 500ms quiet captured.
@@ -591,7 +591,7 @@ class SmartTurnAudioEndpointTest {
     @Test fun continueCapCannotSealAnAdmittedUnclassifiedSpeechSuffix() = runBlocking<Unit> {
         val r = Rig(this, fixed = 650)
         try {
-            r.startPause(); r.result(.1f, 765); r.blocker = "thermal_severe"
+            r.startPause(); r.result(.1f, 765); r.blocker = "admission_blocked"
             while (r.samples < 60800) r.emit(.01f)
             assertNull(r.capture.endpointDecisionAtNs)
             // 128 quiet samples finish the prior raw frame; the last 72 loud samples
@@ -619,7 +619,7 @@ class SmartTurnAudioEndpointTest {
             try {
                 r.capture.start(); repeat(speechReads) { r.emit(.99f) }; repeat(4) { r.emit(.01f) }
                 eventually { r.backend.calls.get() == 1 }; r.result(.1f, r.wall.get() + 65)
-                r.blocker = "thermal_severe"
+                r.blocker = "admission_blocked"
                 var reads = 0
                 while (r.capture.endpointDecisionAtNs == null && reads++ < 45) r.emit(.01f)
                 r.completeWav()
@@ -639,7 +639,7 @@ class SmartTurnAudioEndpointTest {
         for (captions in listOf(false, true)) {
             val r = Rig(this, captions = captions, fixed = 650)
             try {
-                r.startPause(); r.result(.1f, 765); r.blocker = "thermal_severe"
+                r.startPause(); r.result(.1f, 765); r.blocker = "admission_blocked"
                 // Hardware reports a queued frame after this endpoint's finalization phase.
                 r.finalizeLogHook = { r.hardwareBacklog = 100; r.finalizeLogHook = null }
                 while (r.samples < 64000) r.emit(.01f)

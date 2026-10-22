@@ -333,7 +333,6 @@ internal class VoiceTurnPreparation(
             admissionBlocker = {
                 when {
                     lifetime.nativeSpeculation?.consumedEncoder == true -> "gemma_speculation"
-                    (context.getSystemService(android.os.PowerManager::class.java)?.currentThermalStatus ?: 0) >= 3 -> "thermal_severe"
                     else -> null
                 }
             }) } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }

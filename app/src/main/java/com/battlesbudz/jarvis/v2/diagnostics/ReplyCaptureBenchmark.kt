@@ -83,7 +83,6 @@ internal class ReplyCaptureBenchmark(
                 when {
                     !previousReplyCompleted() -> "previous_reply_native_cleanup"
                     !nativeResourcesSafe() -> "native_resources_unavailable"
-                    (applicationContext.getSystemService(android.os.PowerManager::class.java)?.currentThermalStatus ?: 0) >= 3 -> "thermal_severe"
                     else -> null
                 }
             }) } catch (cancelled: CancellationException) { throw cancelled }

@@ -123,9 +123,9 @@ class SmartTurnCaptureObserverTest {
             assertEquals(1, backend.calls.get())
         } finally { backend.release.countDown(); observer.close(); shadow.close(); shadow.awaitClosed(1000) }
     }
-    @Test fun backlogThermalAndMissingBoundarySkipBeforeAnyWorker() {
+    @Test fun backlogBlockerAndMissingBoundarySkipBeforeAnyWorker() {
         val now = AtomicLong(1_000_000_000); val backend = Backend(); val telemetry = Telemetry()
-        var blocker: String? = "thermal_severe"
+        var blocker: String? = "admission_blocked"
         val shadow = SmartTurnShadow({ backend }, true, TimeUnit.SECONDS.toNanos(2), now::get)
         val observer = SmartTurnCaptureObserver(shadow, "turn", 1, telemetry, { true }, { blocker }, now::get)
         try {
