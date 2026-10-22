@@ -363,12 +363,22 @@ class AudioTurnCapture(
                     // Caption retirement and native speculation keep their separate guards.
                     val smartRouteAllowed = (!captionOnly || unsegmented) && audioIsComplete &&
                         canUseSmartTurn(firstSpeechCaptureAtMs)
-                    val smartEligibility = NativePauseEndpointPolicy.eligibility(hasSpeech,
+                    // On the Whisper/ASR route the verdict is the endpoint authority and
+                    // only input sanity gates it. The native-audio route keeps the full
+                    // native eligibility conjunction for its Smart Turn decisions.
+                    val smartEligibility = if (captionOnly) NativePauseEndpointPolicy.eligibility(hasSpeech,
                         nativeSpeechEvidence.snapshot().strongMs, quietEvidenceUsed, audioAt - lastSpeechAt,
                         rawCoverage, awaitingConfirmation, speechQueue.bufferedAudioMs, audioIsComplete)
+                    else NativePauseEndpointPolicy.smartTurnSanity(hasSpeech,
+                        smartDecision.modelThroughSample, lastSpeechSample)
                     val endpoint = SmartTurnEndpointPolicy.decision(acousticEndpoint, smartDecision,
-                        smartEligibility, smartRouteAllowed, rawCoverage, audioBytes, audioAt - lastSpeechAt)
+                        smartEligibility, smartRouteAllowed, rawCoverage, audioBytes, audioAt - lastSpeechAt,
+                        lastSpeechSample, bindVerdict = !captionOnly)
                     val smartComplete = endpoint.cue == "smart_turn_complete"
+                    // A Smart-Turn-decided endpoint on the Whisper route is final: the
+                    // queue-drain fire condition, the final-transcript guard and the
+                    // finalization-drain deferral do not re-open it below.
+                    val smartVerdictBinding = smartComplete && !captionOnly
                     if (nativeEligibility.allowed) nativeEligibleFrames++
                     if (nativeEligibility.allowed && !exactCollectorCoverage) nativeUncoveredEndpointFrames++
                     val nativeReason = if (nativeEligibility.allowed && !exactCollectorCoverage)
@@ -398,7 +408,7 @@ class AudioTurnCapture(
                     var reason = when {
                         endRequested -> "explicit_stop"
                         hasSpeech && endpointSilenceMs >= endpoint.silenceMs &&
-                            !awaitingConfirmation && speechQueue.bufferedAudioMs == 0L -> "trailing_silence"
+                            !awaitingConfirmation && (speechQueue.bufferedAudioMs == 0L || smartVerdictBinding) -> "trailing_silence"
                         rejectAtAudioLimit && hasSpeech && capturedPcmBytes >= maxAudioDurationMs.toLong() * 32 -> "audio_input_limit"
                         hasSpeech && capturedPcmBytes >= 120L * 32_000 -> "utterance_capacity"
                         !hasSpeech && initialSilenceTimeoutMs != null && now - lastSpeechAt >= initialSilenceTimeoutMs -> "initial_silence"
@@ -497,7 +507,7 @@ class AudioTurnCapture(
                             finalDecodeMs += nowMs() - finishAt
                             currentCoroutineContext().ensureActive()
                             if (turnCompleted.isCompleted) return@collect
-                            if (reason == "trailing_silence" && endpoint.silenceMs < legacyEndpoint.silenceMs &&
+                            if (reason == "trailing_silence" && !smartVerdictBinding && endpoint.silenceMs < legacyEndpoint.silenceMs &&
                                 rawFinal.isNotBlank() && !TranscriptContent.isSoundOnly(rawFinal)) {
                                 val finalCue = AdaptiveTurnEnd().also { it.update(TranscriptContent.speech(rawFinal), nowMs()) }.decision(nowMs())
                                 if (finalCue.cue in setOf("unfinished", "uncertain", "explicit_hesitation") &&
@@ -523,7 +533,7 @@ class AudioTurnCapture(
                             // or unclassified hardware audio before accepting an old endpoint.
                             // Already classified silence alone cannot invalidate it. Retain the
                             // final words as a segment and continue on the same hardware reader.
-                            fun needsFinalizationDrain(): Boolean = reason == "trailing_silence" &&
+                            fun needsFinalizationDrain(): Boolean = !smartVerdictBinding && reason == "trailing_silence" &&
                                 (speechQueue.bufferedAudioMs > 0 || smartComplete || endpoint.cue == "smart_turn_continue") &&
                                 (if (nativePause != null || endpointObserver != null) speechQueue.requiresNativeEndpointDrain(audioBytes) else speechQueue.requiresEndpointDrain(audioAt)) &&
                                 (transcriber is SegmentedTranscriber || endpointObserver != null)
@@ -641,13 +651,19 @@ class AudioTurnCapture(
                             log("asr_final chars=${finalTranscript.length} segments=${(transcriber as? SegmentedTranscriber)?.segments} " +
                                 "audioComplete=$audioIsComplete issue=$recognitionIssue")
                         }
+                        val endpointAuthority = when {
+                            endpoint.cue == "smart_turn_complete" || endpoint.cue == "smart_turn_continue" -> "smart_turn"
+                            finalNativeEndpointGuard != null -> "guard"
+                            else -> "fallback"
+                        }
                         onMetrics(AsrCaptureMetrics(modelLoadMs, captureReadyMs, audioBytes / 32,
                             decodeMs, maxDecodeChunkMs, firstPartialAfterSpeechMs, partialUpdates,
                             nowMs() - finalizeStartedAt, reason, emptyCandidates,
                             lastSpeechAtMs?.let { (finalizeStartedAt - it).coerceAtLeast(0) },
                             endpoint.silenceMs, endpoint.cue, acousticMetrics.snapshot(),
                             maxRecognitionBacklogMs, recognitionBudget.largestWorkMs, finalDecodeMs,
-                            recognitionWork.withActive(transcriber?.recognitionWorkMetrics, transcriber != null)), finalTranscript)
+                            recognitionWork.withActive(transcriber?.recognitionWorkMetrics, transcriber != null),
+                            endpointAuthority = endpointAuthority), finalTranscript)
                         log("capture_endpoint_timing reason=$reason " +
                             "speechEndToFinalMs=${lastSpeechAtMs?.let { (nowMs() - it).coerceAtLeast(0) }} " +
                             "silenceDetectedToFinalMs=${speechQueue.latestSilenceDetectedAtMs?.takeIf { it >= lastSpeechAt }?.let { (nowMs() - it).coerceAtLeast(0) }} " +

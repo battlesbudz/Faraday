@@ -93,7 +93,7 @@ internal object SmartTurnNativeJourneyProbe {
                     hasSpeech, 1000L, false, 1000L, raw, false, 0L, true)
                 fun decide(probability: Float, hasSpeech: Boolean) = SmartTurnEndpointPolicy.decision(
                     fallback, CaptureEndpointDecision(SmartTurnEndpointPolicy.modelState(probability), 128_000L),
-                    eligibility(hasSpeech), true, raw, 256_000L, 1000L)
+                    eligibility(hasSpeech), true, raw, 256_000L, 1000L, 128_000L, bindVerdict = false)
                 check(decide(complete.probability, true).silenceMs == 350L)
                 check(decide(continuing.probability, true).silenceMs == 3500L)
                 // Silence's high score is not speech evidence and cannot authorize capture end.
