@@ -13,24 +13,40 @@ internal object SmartTurnEndpointPolicy {
         return if (probability > 0.5f) CaptureEndpointState.COMPLETE else CaptureEndpointState.CONTINUE
     }
 
+    /**
+     * [bindVerdict] is the Whisper/ASR-authoritative route: a COMPLETE verdict is the
+     * endpoint authority there, and [eligible] is the input-sanity eligibility from
+     * [NativePauseEndpointPolicy.smartTurnSanity] (speech existed; the model snapshot
+     * covers the speech span). The native-audio route passes bindVerdict = false and
+     * keeps the full native eligibility conjunction plus the byte-exact raw-coverage
+     * clauses below: its snapshot must cover every collected byte, because no
+     * recognizer finalization stands behind that route's endpoint.
+     */
     fun decision(fallback: AdaptiveTurnEnd.Decision, decision: CaptureEndpointDecision,
                  eligible: NativePauseEndpointPolicy.Eligibility, routeAllowed: Boolean,
-                 raw: RawVadCoverage?, collectedBytes: Long, silenceMs: Long): AdaptiveTurnEnd.Decision {
+                 raw: RawVadCoverage?, collectedBytes: Long, silenceMs: Long,
+                 lastSpeechSample: Long, bindVerdict: Boolean): AdaptiveTurnEnd.Decision {
         if (!routeAllowed) return fallback
         val state = decision.state
         if (state == CaptureEndpointState.CONTINUE) {
             return AdaptiveTurnEnd.Decision(maxOf(fallback.silenceMs, CONTINUE_SILENCE_MS), "smart_turn_continue")
         }
         if (state != CaptureEndpointState.COMPLETE || !eligible.allowed) return fallback
-        // The model snapshot may precede this boundary by classified quiet audio only.
-        // Never infer silence for an unclassified suffix, cached probability, or time gap.
         val modelThrough = decision.modelThroughSample ?: return fallback
         if (modelThrough * 2 > collectedBytes) return fallback
-        val modelCoversAll = modelThrough * 2 == collectedBytes
-        // COMPLETE covers every byte of its own snapshot, including a partial Silero frame.
-        // Any later retained bytes need actual complete raw quiet classification, never padding.
-        if (!modelCoversAll && (raw == null || raw.receivedPcmBytes != collectedBytes ||
-                raw.classifiedThroughSample * 2 != collectedBytes || raw.quietFromSample > modelThrough)) return fallback
+        if (bindVerdict) {
+            // Sanity already established the snapshot covers the speech span; later
+            // retained bytes are the pause itself and need no byte-exact coverage.
+            if (modelThrough < lastSpeechSample) return fallback
+        } else {
+            // The model snapshot may precede this boundary by classified quiet audio only.
+            // Never infer silence for an unclassified suffix, cached probability, or time gap.
+            val modelCoversAll = modelThrough * 2 == collectedBytes
+            // COMPLETE covers every byte of its own snapshot, including a partial Silero frame.
+            // Any later retained bytes need actual complete raw quiet classification, never padding.
+            if (!modelCoversAll && (raw == null || raw.receivedPcmBytes != collectedBytes ||
+                    raw.classifiedThroughSample * 2 != collectedBytes || raw.quietFromSample > modelThrough)) return fallback
+        }
         if (silenceMs < COMPLETE_SILENCE_MS) return fallback
         return AdaptiveTurnEnd.Decision(minOf(fallback.silenceMs, COMPLETE_SILENCE_MS), "smart_turn_complete")
     }

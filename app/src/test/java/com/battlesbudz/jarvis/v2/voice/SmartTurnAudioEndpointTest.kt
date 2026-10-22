@@ -332,13 +332,12 @@ class SmartTurnAudioEndpointTest {
                 r.result(.9f, 965)
                 if (!seamMatches) {
                     // The conflicting seam still exposes only the committed unfinished
-                    // request. Preserve its ordinary uncertainty margin before recovery.
-                    assertNull(r.capture.endpointDecisionAtNs)
-                    assertTrue(r.logs.any { it.contains("native_endpoint_deferred reason=final_caption_uncertain") })
-                    while (r.samples / 16 < 2000) r.emit(.01f)
+                    // request, but the final-transcript guard no longer re-opens a
+                    // Smart-Turn-decided endpoint; recovery supplies its text below.
+                    assertFalse(r.logs.any { it.contains("native_endpoint_deferred") })
                 }
                 r.completeWav()
-                assertEquals(if (seamMatches) 965_000_000L else 2_000_000_000L, r.capture.endpointDecisionAtNs)
+                assertEquals(965_000_000L, r.capture.endpointDecisionAtNs)
                 assertEquals(2, r.finalCalls)
                 assertEquals("Please tell me the weather tomorrow.", r.capture.finalTranscript)
                 assertNull(r.capture.recognitionIssue)
@@ -372,7 +371,7 @@ class SmartTurnAudioEndpointTest {
         }
     }
 
-    @Test fun whisperSpeechArrivingDuringSeamRecoveryRemainsInTheSameRequest() = runBlocking<Unit> {
+    @Test fun whisperSmartCompleteSealsAfterAudioArrivingDuringSeamRecoveryDrains() = runBlocking<Unit> {
         val r = Rig(this, captions = true, native = false, fixed = 1800, segmentHardMs = 500)
         try {
             r.caption = "Please tell me the weather"
@@ -381,16 +380,15 @@ class SmartTurnAudioEndpointTest {
             r.recoveryText = "Please tell me the weather."
             r.recoverHook = { r.hardwareBacklog = 100; r.recoverHook = null }
             repeat(4) { r.emit(.01f) }; eventually { r.backend.calls.get() == 1 }; r.result(.9f, 965)
-            while (r.samples / 16 < 2000) r.emit(.01f)
             eventually { r.recoveredPcm != null }
+            // Seam recovery still runs and its text stays authoritative. Audio that
+            // arrived during it is queued and unclassified, so the seal waits until
+            // that frontier resolves; the verdict itself is not re-judged meanwhile.
+            eventually { r.logs.any { it.contains("turn_endpoint_deferred reason=audio_arrived_during_recovery") } }
             assertNull(r.capture.endpointDecisionAtNs)
-            assertTrue(r.logs.any { it.contains("turn_endpoint_deferred reason=audio_arrived_during_recovery") })
-            r.hardwareBacklog = 0
-            r.caption = "And tomorrow as well."
-            r.recoveryText = "Please tell me the weather. And tomorrow as well."
-            repeat(3) { r.emit(.99f) }; repeat(4) { r.emit(.01f) }
-            eventually { r.backend.calls.get() == 2 }; r.result(.9f, r.wall.get() + 65)
-            while (r.capture.endpointDecisionAtNs == null && r.samples / 16 < 4100) r.emit(.01f)
+            r.hardwareBacklog = 0; r.emit(.01f)
+            eventually { r.capture.endpointDecisionAtNs != null }
+            assertEquals(1_000_000_000L, r.capture.endpointDecisionAtNs)
             r.completeWav()
             assertEquals(r.recoveryText, r.capture.finalTranscript)
             assertArrayEquals(r.original.toByteArray(), r.recoveredPcm)
@@ -413,7 +411,7 @@ class SmartTurnAudioEndpointTest {
         }
     }
 
-    @Test fun whisperSpeechArrivingDuringBlankFinalRetryRemainsInTheSameRequest() = runBlocking<Unit> {
+    @Test fun whisperSmartCompleteSealsAfterAudioArrivingDuringBlankFinalRetryDrains() = runBlocking<Unit> {
         val r = Rig(this, captions = true, native = false, fixed = 1800)
         try {
             r.caption = "What is the weather today?"
@@ -421,14 +419,15 @@ class SmartTurnAudioEndpointTest {
             r.recoveryText = r.caption
             r.recoverHook = { r.hardwareBacklog = 100; r.recoverHook = null }
             r.startPause(); r.result(.9f, 765)
+            // The blank-final recovery still supplies the request text. Audio that
+            // arrived during it is queued and unclassified, so the seal waits until
+            // that frontier resolves; the verdict itself is not re-judged meanwhile.
+            eventually { r.logs.any { it.contains("turn_endpoint_deferred reason=audio_arrived_during_recovery") } }
             assertNull(r.capture.endpointDecisionAtNs)
             assertTrue(r.logs.any { it.contains("reason=empty_stream") })
-            assertTrue(r.logs.any { it.contains("turn_endpoint_deferred reason=audio_arrived_during_recovery") })
-            r.hardwareBacklog = 0; r.finalCaption = null
-            r.caption = "What about tomorrow as well?"
-            r.recoveryText = "What is the weather today and tomorrow?"
-            repeat(3) { r.emit(.99f) }; repeat(4) { r.emit(.01f) }
-            eventually { r.backend.calls.get() == 2 }; r.result(.9f, r.wall.get() + 65)
+            r.hardwareBacklog = 0; r.emit(.01f)
+            eventually { r.capture.endpointDecisionAtNs != null }
+            assertEquals(800_000_000L, r.capture.endpointDecisionAtNs)
             r.completeWav()
             assertEquals(r.recoveryText, r.capture.finalTranscript)
             assertArrayEquals(r.original.toByteArray(), r.recoveredPcm)
@@ -436,50 +435,78 @@ class SmartTurnAudioEndpointTest {
         } finally { r.close() }
     }
 
-    @Test fun whisperSpeechDuringFinalizationResumesSegmentsAndRetainsExactPcm() = runBlocking<Unit> {
+    @Test fun whisperSmartCompleteSealsAfterAudioArrivingDuringFinalizationDrains() = runBlocking<Unit> {
         val r = Rig(this, captions = true, native = false, fixed = 1800)
         try {
             r.caption = "Please tell me the weather."
             r.finishHook = { r.hardwareBacklog = 100; r.finishHook = null }
             r.startPause(); r.result(.9f, 765)
-            assertEquals(1, r.finalCalls); assertNull(r.capture.endpointDecisionAtNs)
-            assertTrue(r.logs.any { it.contains("turn_endpoint_deferred reason=audio_arrived_during_finalization") })
-            r.hardwareBacklog = 0; r.caption = "And tomorrow as well."
-            repeat(3) { r.emit(.99f) }; repeat(4) { r.emit(.01f) }
-            eventually { r.backend.calls.get() == 2 }; r.result(.9f, r.wall.get() + 65)
-            r.completeWav()
-            assertEquals(2, r.finalCalls)
-            assertEquals("Please tell me the weather. And tomorrow as well.", r.capture.finalTranscript)
+            // Audio that arrives during finalization is queued and unclassified: it
+            // may hold a continuation of this turn that finish() has not seen, so the
+            // seal waits until the frontier resolves instead of dropping those words
+            // or splitting them into a separate turn. The verdict is not re-judged.
+            eventually { r.logs.any { it.contains("turn_endpoint_deferred reason=audio_arrived_during_finalization") } }
+            assertNull(r.capture.endpointDecisionAtNs)
+            r.hardwareBacklog = 0; r.emit(.01f)
+            eventually { r.capture.endpointDecisionAtNs != null }
+            assertEquals(800_000_000L, r.capture.endpointDecisionAtNs)
+            assertEquals(1, r.finalCalls)
+            assertEquals("Please tell me the weather.", r.capture.finalTranscript)
             assertEquals("finalized", r.capture.finalAsrStatus)
-            assertTrue(r.logs.any { it.contains("turn_endpoint_invalidated reason=resumed_speech") })
+            r.completeWav()
         } finally { r.close() }
     }
 
-    @Test fun whisperFinalUnfinishedTextStillDefersAnEarlyModelComplete() = runBlocking<Unit> {
+    @Test fun whisperFinalUnfinishedTextNoLongerDefersASmartTurnComplete() = runBlocking<Unit> {
         val r = Rig(this, captions = true, native = false, fixed = 1800)
         try {
             r.startPause(); r.result(.9f, 765)
-            assertNull(r.capture.endpointDecisionAtNs); assertEquals(1, r.finalCalls)
-            assertTrue(r.logs.any { it.contains("native_endpoint_deferred reason=final_caption_unfinished") })
-            r.caption = "weather tomorrow?"
-            repeat(3) { r.emit(.99f) }; repeat(4) { r.emit(.01f) }
-            eventually { r.backend.calls.get() == 2 }; r.result(.9f, r.wall.get() + 65)
+            // The verdict is the endpoint authority on this route: a final transcript
+            // that reads as unfinished no longer re-opens the turn it already ended.
+            eventually { r.capture.endpointDecisionAtNs != null }
+            assertEquals(765_000_000L, r.capture.endpointDecisionAtNs); assertEquals(1, r.finalCalls)
+            assertEquals("what is the", r.capture.finalTranscript)
+            assertFalse(r.logs.any { it.contains("native_endpoint_deferred") })
             r.completeWav()
-            assertEquals("what is the weather tomorrow?", r.capture.finalTranscript)
-            assertEquals(2, r.finalCalls)
         } finally { r.close() }
     }
 
-    @Test fun whisperShortSpeechCannotUseModelCompleteToBypassAcousticMinimum() = runBlocking<Unit> {
+    @Test fun whisperCompleteBindsOnceTheRecognitionQueueDrains() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = false, fixed = 1800)
+        try {
+            r.caption = "What is the weather today?"
+            r.startPause()
+            r.hardwareBacklog = 100 // The recognition queue is not drained when the verdict lands.
+            r.result(.9f, 765)
+            // The backlog no longer vetoes the verdict at the fire condition or at
+            // eligibility, and the final transcript cannot re-open the turn. The
+            // seal itself waits until the queued audio is resolved, so words still
+            // in the pipeline cannot be dropped or split into a separate turn.
+            eventually { r.logs.any { it.contains("turn_endpoint_deferred reason=audio_arrived_during_finalization") } }
+            assertNull(r.capture.endpointDecisionAtNs)
+            assertFalse(r.logs.any { it.contains("native_endpoint_deferred") })
+            r.hardwareBacklog = 0; r.emit(.01f)
+            eventually { r.capture.endpointDecisionAtNs != null }
+            assertEquals(800_000_000L, r.capture.endpointDecisionAtNs)
+            r.completeWav()
+            assertEquals("What is the weather today?", r.capture.finalTranscript)
+            assertEquals(1, r.finalCalls)
+        } finally { r.close() }
+    }
+
+    @Test fun whisperShortSpeechCompleteBindsAtTheVerdictTarget() = runBlocking<Unit> {
         val r = Rig(this, captions = true, native = false, fixed = 1200)
         try {
             r.caption = "Yes."
             r.capture.start(); repeat(2) { r.emit(.99f) }; repeat(4) { r.emit(.01f) }
             eventually { r.backend.calls.get() == 1 }; r.result(.9f, 665)
-            assertNull(r.capture.endpointDecisionAtNs); assertEquals(0, r.finalCalls)
-            while (r.samples / 16 < 1400) r.emit(.01f)
+            // Input sanity is the only gate on this route: 200ms of real speech and a
+            // snapshot covering it are enough for the verdict to bind; the old
+            // strong-speech floor no longer vetoes it.
+            eventually { r.capture.endpointDecisionAtNs != null }
+            assertEquals(665_000_000L, r.capture.endpointDecisionAtNs)
             r.completeWav(); assertEquals("Yes.", r.capture.finalTranscript)
-            assertEquals(1_400_000_000L, r.capture.endpointDecisionAtNs)
+            assertEquals(1, r.finalCalls)
         } finally { r.close() }
     }
 
@@ -494,15 +521,24 @@ class SmartTurnAudioEndpointTest {
         } finally { r.close() }
     }
 
-    @Test fun quietSpeechCannotUseCompleteToBypassCorroborationAndStrongSpeechGate() = runBlocking<Unit> {
+    @Test fun quietSpeechCompleteBindsOnWhisperRouteButNativeRouteKeepsItsGate() = runBlocking<Unit> {
         for (native in listOf(false, true)) {
             val r = Rig(this, captions = true, native = native, fixed = 1800)
             try {
                 r.capture.start(); repeat(5) { r.emit(.25f) }; repeat(4) { r.emit(.01f) }
                 eventually { r.backend.calls.get() == 1 }; r.result(.9f, 965)
-                assertNull(r.capture.endpointDecisionAtNs)
-                while (r.samples / 16 < 2300) r.emit(.01f)
-                r.completeWav(); assertTrue(r.finalCalls > 0)
+                if (native) {
+                    // The native route keeps its corroboration and strong-speech gate.
+                    assertNull(r.capture.endpointDecisionAtNs)
+                    while (r.samples / 16 < 2300) r.emit(.01f)
+                    r.completeWav(); assertTrue(r.finalCalls > 0)
+                } else {
+                    // ASR-corroborated weak speech earlier in the turn latched the old
+                    // veto; on the Whisper route the verdict binds despite the latch.
+                    eventually { r.capture.endpointDecisionAtNs != null }
+                    assertEquals(965_000_000L, r.capture.endpointDecisionAtNs)
+                    r.completeWav(); assertTrue(r.finalCalls > 0)
+                }
             } finally { r.close() }
         }
     }
@@ -562,12 +598,39 @@ class SmartTurnAudioEndpointTest {
         } finally { r.close() }
     }
 
-    @Test fun elapsedTimeWithoutEnoughClassifiedQuietCannotAuthorizeComplete() {
+    @Test fun nativeRouteStillRequiresClassifiedQuietCoverageForComplete() {
         val raw = RawVadCoverage(16000, 7680, 7168, 1) // 32ms of actual quiet, despite a wall-time gap.
         val eligibility = NativePauseEndpointPolicy.eligibility(true, 300, false, 5000, raw, false, 0, true)
         val fallback = AdaptiveTurnEnd.Decision(3000, "no_transcript")
         assertEquals(fallback, SmartTurnEndpointPolicy.decision(fallback,
-            CaptureEndpointDecision(CaptureEndpointState.COMPLETE, 8000), eligibility, true, raw, 16000, 5000))
+            CaptureEndpointDecision(CaptureEndpointState.COMPLETE, 8000), eligibility, true, raw, 16000, 5000,
+            lastSpeechSample = 7168, bindVerdict = false))
+    }
+
+    @Test fun whisperRouteBindsCompleteOnInputSanityAlone() {
+        val fallback = AdaptiveTurnEnd.Decision(3000, "no_transcript")
+        val sane = NativePauseEndpointPolicy.smartTurnSanity(true, 8000, 7168)
+        assertTrue(sane.allowed)
+        // The trailing pause needs no byte-exact classification on this route: the
+        // verdict judged the speech span, and the snapshot covers all of it.
+        assertEquals(AdaptiveTurnEnd.Decision(350, "smart_turn_complete"), SmartTurnEndpointPolicy.decision(fallback,
+            CaptureEndpointDecision(CaptureEndpointState.COMPLETE, 8000), sane, true, null, 16000, 5000,
+            lastSpeechSample = 7168, bindVerdict = true))
+    }
+
+    @Test fun whisperRouteCompleteStillNeedsSpeechAndASnapshotCoveringTheSpeech() {
+        val fallback = AdaptiveTurnEnd.Decision(3000, "no_transcript")
+        val complete = CaptureEndpointDecision(CaptureEndpointState.COMPLETE, 8000)
+        assertEquals(fallback, SmartTurnEndpointPolicy.decision(fallback, complete,
+            NativePauseEndpointPolicy.smartTurnSanity(false, 8000, 7168), true, null, 16000, 5000,
+            lastSpeechSample = 7168, bindVerdict = true))
+        assertEquals(fallback, SmartTurnEndpointPolicy.decision(fallback, complete,
+            NativePauseEndpointPolicy.smartTurnSanity(true, 8000, 9000), true, null, 16000, 5000,
+            lastSpeechSample = 9000, bindVerdict = true))
+        assertEquals(fallback, SmartTurnEndpointPolicy.decision(fallback,
+            CaptureEndpointDecision(CaptureEndpointState.COMPLETE, null),
+            NativePauseEndpointPolicy.smartTurnSanity(true, null, 7168), true, null, 16000, 5000,
+            lastSpeechSample = 7168, bindVerdict = true))
     }
 
     @Test fun timestampGapCannotExhaustContinueUntilEnoughQuietPcmIsClassified() = runBlocking<Unit> {

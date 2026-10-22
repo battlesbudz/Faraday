@@ -34,6 +34,25 @@ internal object NativePauseEndpointPolicy {
     }
 
     /**
+     * Input-sanity eligibility for a Smart Turn verdict on the Whisper/ASR route, where
+     * the verdict itself is the endpoint authority: real speech existed in the turn and
+     * the model snapshot covers the whole speech span it judged. Unlike [eligibility],
+     * this is not a conjunction of independent vetoes: ASR-corroborated weak speech,
+     * recognition-queue backlog and byte-exact coverage of the trailing pause do not
+     * veto the verdict. Resumed speech still invalidates a verdict upstream, in the
+     * capture observer, before this is consulted.
+     */
+    fun smartTurnSanity(hasSpeech: Boolean, modelThroughSample: Long?, lastSpeechSample: Long): Eligibility {
+        val reason = when {
+            !hasSpeech -> "no_speech"
+            modelThroughSample == null -> "no_model_snapshot"
+            modelThroughSample < lastSpeechSample -> "snapshot_ends_before_speech"
+            else -> "verdict_sane"
+        }
+        return Eligibility(reason == "verdict_sane", reason)
+    }
+
+    /**
      * Never lengthen the existing 350 ms complete-and-stable endpoint. Known unfinished,
      * uncertain and explicit-hesitation cues retain their 1800/1500/3500 ms safety margins.
      * A strong clean native request with no completed caption can use the existing native

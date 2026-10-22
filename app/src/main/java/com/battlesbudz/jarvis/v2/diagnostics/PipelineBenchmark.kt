@@ -153,20 +153,23 @@ data class PipelineBenchmarkAsr(
     val decodeWorkMs: Long? = null, val finalizationMs: Long? = null, val firstPartialMs: Long? = null,
     val endpointDelayMs: Long? = null, val maxDecodeChunkMs: Long? = null, val maxBacklogMs: Long? = null,
     val partialUpdates: Int? = null, val transcriptCharacters: Int? = null, val endpointReason: String? = null,
-    val transcriptionFallback: Boolean = false
+    val transcriptionFallback: Boolean = false,
+    val targetSilenceMs: Long? = null, val endpointCue: String? = null, val endpointAuthority: String? = null
 ) {
     val realtimeFactor: Double? get() = benchmarkRatio(decodeWorkMs, inputAudioMs)
     fun json() = benchmarkJson("engine" to engine, "warmState" to warmState.name, "loadMs" to loadMs,
         "captureReadyMs" to captureReadyMs, "inputAudioMs" to inputAudioMs, "decodeWorkMs" to decodeWorkMs,
         "finalizationMs" to finalizationMs, "firstPartialMs" to firstPartialMs, "endpointDelayMs" to endpointDelayMs,
         "maxDecodeChunkMs" to maxDecodeChunkMs, "maxBacklogMs" to maxBacklogMs, "partialUpdates" to partialUpdates,
-        "transcriptCharacters" to transcriptCharacters, "endpointReason" to endpointReason, "transcriptionFallback" to transcriptionFallback)
+        "transcriptCharacters" to transcriptCharacters, "endpointReason" to endpointReason, "transcriptionFallback" to transcriptionFallback,
+        "targetSilenceMs" to targetSilenceMs, "endpointCue" to endpointCue, "endpointAuthority" to endpointAuthority)
     companion object { fun read(j: JSONObject) = PipelineBenchmarkAsr(j.getString("engine"),
         PipelineBenchmarkWarmState.valueOf(j.optString("warmState", "UNKNOWN")), j.benchmarkLong("loadMs"),
         j.benchmarkLong("captureReadyMs"), j.benchmarkLong("inputAudioMs"), j.benchmarkLong("decodeWorkMs"),
         j.benchmarkLong("finalizationMs"), j.benchmarkLong("firstPartialMs"), j.benchmarkLong("endpointDelayMs"),
         j.benchmarkLong("maxDecodeChunkMs"), j.benchmarkLong("maxBacklogMs"), j.benchmarkLong("partialUpdates")?.toInt(),
-        j.benchmarkLong("transcriptCharacters")?.toInt(), j.benchmarkString("endpointReason"), j.optBoolean("transcriptionFallback")) }
+        j.benchmarkLong("transcriptCharacters")?.toInt(), j.benchmarkString("endpointReason"), j.optBoolean("transcriptionFallback"),
+        j.benchmarkLong("targetSilenceMs"), j.benchmarkString("endpointCue"), j.benchmarkString("endpointAuthority")) }
 }
 
 data class PipelineBenchmarkTts(

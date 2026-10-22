@@ -514,7 +514,7 @@
 -keep,includedescriptorclasses class com.battlesbudz.jarvis.v2.voice.SmartTurnEndpointPolicy {
     public static final com.battlesbudz.jarvis.v2.voice.SmartTurnEndpointPolicy INSTANCE;
     public com.battlesbudz.jarvis.v2.voice.CaptureEndpointState modelState(float);
-    public com.battlesbudz.jarvis.v2.voice.AdaptiveTurnEnd$Decision decision(com.battlesbudz.jarvis.v2.voice.AdaptiveTurnEnd$Decision,com.battlesbudz.jarvis.v2.voice.CaptureEndpointDecision,com.battlesbudz.jarvis.v2.voice.NativePauseEndpointPolicy$Eligibility,boolean,com.battlesbudz.jarvis.v2.voice.RawVadCoverage,long,long);
+    public com.battlesbudz.jarvis.v2.voice.AdaptiveTurnEnd$Decision decision(com.battlesbudz.jarvis.v2.voice.AdaptiveTurnEnd$Decision,com.battlesbudz.jarvis.v2.voice.CaptureEndpointDecision,com.battlesbudz.jarvis.v2.voice.NativePauseEndpointPolicy$Eligibility,boolean,com.battlesbudz.jarvis.v2.voice.RawVadCoverage,long,long,long,boolean);
 }
 -keep enum com.battlesbudz.jarvis.v2.voice.CaptureEndpointState {
     public static final com.battlesbudz.jarvis.v2.voice.CaptureEndpointState FALLBACK;

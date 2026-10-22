@@ -81,7 +81,9 @@ internal class VoiceTurnTelemetry(
             finalizationMs = metrics.finalizationMs, firstPartialMs = metrics.firstPartialAfterSpeechMs,
             endpointDelayMs = metrics.endpointDetectionMs?.let { it + metrics.finalizationMs }, maxDecodeChunkMs = metrics.maxDecodeChunkMs,
             partialUpdates = metrics.partialUpdates, transcriptCharacters = text.length,
-            endpointReason = metrics.endpointReason, maxBacklogMs = metrics.maxRecognitionBacklogMs))
+            endpointReason = metrics.endpointReason, maxBacklogMs = metrics.maxRecognitionBacklogMs,
+            targetSilenceMs = metrics.targetSilenceMs, endpointCue = metrics.endpointCue,
+            endpointAuthority = metrics.endpointAuthority))
         benchmark.metric("asr_max_recognition_work_ms", metrics.maxRecognitionWorkMs)
         benchmark.metric("asr_final_decode_ms", metrics.finalDecodeMs)
         benchmark.metric("asr_capture_audio_ms", metrics.audioMs)

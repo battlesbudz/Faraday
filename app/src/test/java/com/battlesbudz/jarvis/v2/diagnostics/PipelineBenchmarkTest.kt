@@ -89,6 +89,16 @@ class PipelineBenchmarkTest {
         assertEquals(1, json.getJSONObject("completedTurns").getInt("turnCount"))
     }
 
+    @Test fun asrEndpointAuthorityFieldsRoundTripThroughJson() {
+        val asr = PipelineBenchmarkAsr("whisper", targetSilenceMs = 350, endpointCue = "smart_turn_complete",
+            endpointAuthority = "smart_turn")
+        val read = PipelineBenchmarkTurn.read(turn().copy(asr = asr).json()).asr!!
+        assertEquals(350L, read.targetSilenceMs); assertEquals("smart_turn_complete", read.endpointCue)
+        assertEquals("smart_turn", read.endpointAuthority)
+        val unset = PipelineBenchmarkTurn.read(turn().copy(asr = PipelineBenchmarkAsr("whisper")).json()).asr!!
+        assertNull(unset.targetSilenceMs); assertNull(unset.endpointCue); assertNull(unset.endpointAuthority)
+    }
+
     @Test fun realtimeFactorUsesBusyWorkAndPositiveAudioDenominator() {
         val asr = PipelineBenchmarkAsr("moonshine", inputAudioMs = 4000, decodeWorkMs = 800, loadMs = 7000)
         val tts = PipelineBenchmarkTts("piper", synthesisMs = 300, generatedAudioMs = 3000, loadMs = 9000)
