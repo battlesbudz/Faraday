@@ -13,6 +13,7 @@ import com.battlesbudz.jarvis.v2.ai.ModelCatalog
 import com.battlesbudz.jarvis.v2.ai.ModelStore
 import com.battlesbudz.jarvis.v2.ai.storage.DownloadSpeedTracker
 import com.battlesbudz.jarvis.v2.ai.storage.downloadProgressLabel
+import com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnSettings
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -124,6 +125,14 @@ class JarvisModelSetupWorker(
         } catch (error: Exception) {
             if (error is kotlinx.coroutines.CancellationException) throw error
             return Result.failure(workDataOf("error" to (error.message ?: "Speech recognition setup failed.")))
+        }
+        try {
+            SmartTurnSettings.store(applicationContext).ensureReady { status ->
+                synchronized(progressLock) { stage = status; publishProgress() }
+            }
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            return Result.failure(workDataOf("error" to (error.message ?: "Smart Turn model setup failed.")))
         }
         return Result.success()
     }

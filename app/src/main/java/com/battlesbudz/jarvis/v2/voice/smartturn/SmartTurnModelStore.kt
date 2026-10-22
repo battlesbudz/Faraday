@@ -10,7 +10,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
 
-/** Explicit setup only. Capture calls availableFile; it never triggers a download or file hash. */
+/** Prepared by first-run model setup and the Settings action. Capture calls availableFile; it never triggers a download or file hash. */
 internal class SmartTurnModelStore(
     private val directory: File,
     private val download: suspend (File, (Long, Long) -> Unit, (String) -> Unit) -> Unit = { temporary, progress, status ->
