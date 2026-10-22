@@ -18,6 +18,10 @@ internal fun VoiceInputSettings(enabled: Boolean, onBusy: (Boolean) -> Unit) {
     var captionEngine by remember { mutableStateOf(VoiceInputMode.captionEngine(context)) }
     var captionMenuOpen by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf(AsrEngine.selected(context)) }
+    // Reading the capture profile performs its legacy-preference migration
+    // as a side effect; that behavior is part of the fixed processing and
+    // stays even though the profile itself no longer renders in Settings.
+    remember { SpeechCaptureProfile.selected(context) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     LaunchedEffect(busy) { onBusy(busy) }
