@@ -38,8 +38,6 @@ internal object SmartTurnNativeJourneyProbe {
         val closed = AtomicBoolean(false)
         val failed = AtomicBoolean(false)
         val observations = AtomicReference<Map<String, Any>>(emptyMap())
-        val diagStage = AtomicReference("start")
-        val diagKind = AtomicReference("none")
         val caller = Thread.currentThread()
         val thread = Thread({
             var owner: NativeSmartTurnBackend? = null
@@ -49,7 +47,6 @@ internal object SmartTurnNativeJourneyProbe {
             try {
                 check(directory.mkdir()) { "Could not allocate private Smart Turn input" }
                 ownsDirectory = true
-                diagStage.set("copy")
                 // Shell FD bypasses scoped-storage reads without granting storage permission.
                 // Validated path is the controller's input tree, never the evidence tree.
                 ParcelFileDescriptor.AutoCloseInputStream(
@@ -68,20 +65,16 @@ internal object SmartTurnNativeJourneyProbe {
                     check(count == MODEL_BYTES) { "Incomplete Smart Turn input" }
                 } }
                 check(!cancelled.get())
-                diagStage.set("backend")
                 owner = NativeSmartTurnBackend(input)
                 verified.set(true) // Production constructor verified immutable model size/hash.
-                diagStage.set("fixtures")
                 val silence = fixture(instrumentation, "silence_8s", 128_000,
                     "24a046dc04fefdb652e4077b41162490b344a4dd45f918505477f84c592f3070")
                 val tone = fixture(instrumentation, "tone_440hz_1s", 16_000,
                     "97baea0a56c5b48504ea4b65b41148c6d55dc494d22652b3db7cedb295876efe")
-                diagStage.set("infer_silence")
                 val complete = owner.infer(silence, 1, cancelled)
                 check(complete.probability.isFinite() && complete.probability > 0.5f && complete.probability <= 1f)
                 check(complete.frontendNanos >= 0 && complete.inferenceNanos >= 0)
                 check(SmartTurnEndpointPolicy.modelState(complete.probability) == CaptureEndpointState.COMPLETE)
-                diagStage.set("cancel")
 
                 // Exercise prepare/cancel/infer and then reuse that same native session.
                 var cancellationRejected = false
@@ -89,33 +82,23 @@ internal object SmartTurnNativeJourneyProbe {
                 catch (_: IllegalStateException) { cancellationRejected = true }
                 check(cancellationRejected) { "Pre-cancelled inference published a result" }
                 check(!cancelled.get())
-                diagStage.set("infer_tone")
                 val continuing = owner.infer(tone, 3, cancelled)
                 check(continuing.probability.isFinite() && continuing.probability in 0f..0.5f)
                 check(continuing.frontendNanos >= 0 && continuing.inferenceNanos >= 0)
                 check(SmartTurnEndpointPolicy.modelState(continuing.probability) == CaptureEndpointState.CONTINUE)
-                diagStage.set("decide")
 
                 val fallback = AdaptiveTurnEnd.Decision(1500L, "uncertain")
-                diagStage.set("d_fallback")
                 val raw = RawVadCoverage(256_000L, 128_000L, 112_000L, 250)
-                diagStage.set("d_raw")
                 fun eligibility(hasSpeech: Boolean) = NativePauseEndpointPolicy.eligibility(
                     hasSpeech, 1000L, false, 1000L, raw, false, 0L, true)
                 fun decide(probability: Float, hasSpeech: Boolean) = SmartTurnEndpointPolicy.decision(
                     fallback, CaptureEndpointDecision(SmartTurnEndpointPolicy.modelState(probability), 128_000L),
                     eligibility(hasSpeech), true, raw, 256_000L, 1000L, 128_000L, bindVerdict = false)
-                val eligProbe = eligibility(true)
-                diagStage.set("d_elig")
-                val decProbe = decide(complete.probability, true)
-                diagStage.set("d_dec1")
-                check(decProbe.silenceMs == 350L)
+                check(decide(complete.probability, true).silenceMs == 350L)
                 check(decide(continuing.probability, true).silenceMs == 3500L)
-                diagStage.set("d_dec2")
                 // Silence's high score is not speech evidence and cannot authorize capture end.
                 val noSpeech = decide(complete.probability, false)
                 check(noSpeech.silenceMs == fallback.silenceMs && noSpeech.cue == fallback.cue)
-                diagStage.set("done")
                 observations.set(linkedMapOf(
                     "silence_probability" to complete.probability,
                     "tone_probability" to continuing.probability,
@@ -130,15 +113,14 @@ internal object SmartTurnNativeJourneyProbe {
                     "control_input_compatible" to true,
                     "no_speech_complete_ignored" to true,
                 ))
-            } catch (t: Throwable) {
-                diagKind.set(t.javaClass.simpleName)
+            } catch (_: Throwable) {
                 // Fixed scalar failure only: never publish model, PCM, tensors or exception text.
                 failed.set(true)
             } finally {
                 try {
                     owner?.close() // Only the owning worker closes after native work returns.
                     closed.set(owner != null)
-                } catch (t: Throwable) { diagKind.set("close:" + t.javaClass.simpleName); failed.set(true) }
+                } catch (_: Throwable) { failed.set(true) }
                 if (ownsDirectory) {
                     privateDeleted.set((!input.exists() || input.delete()) && directory.delete())
                 }
@@ -178,8 +160,6 @@ internal object SmartTurnNativeJourneyProbe {
             "unexpected_failure" to failed.get(),
             "worker_timeout_ms" to WORKER_TIMEOUT_MS,
             "cleanup_timeout_ms" to CLEANUP_TIMEOUT_MS,
-            "diag_stage" to diagStage.get(),
-            "diag_kind" to diagKind.get(),
             "coverage" to "Real Android JNI, production hash-bound wrapper, synthetic control input compatibility",
             "not_covered" to "Natural-language endpoint accuracy; physical microphone/audio; Fold latency",
         ).apply { putAll(observations.get()) })
