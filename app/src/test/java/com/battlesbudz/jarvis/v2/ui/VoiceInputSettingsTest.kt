@@ -132,7 +132,10 @@ class VoiceInputSettingsTest {
         assertEquals("communication_noise_filtered", preferences.getString("capture_profile", null))
         assertNull(VoiceInputMode.captionEngine(context))
         repeat(2) {
-            compose.onNodeWithText("Microphone: Call noise reduction").assertExists()
+            // Noise reduction is fixed processing with no Settings presence
+            // at all since the 2026-10-22 simplification: no status line,
+            // no selector.
+            compose.onNodeWithText("Microphone: Call noise reduction").assertDoesNotExist()
             compose.onNodeWithText("Use Speech clarity").assertDoesNotExist()
             compose.onNodeWithText("Use Call noise reduction").assertDoesNotExist()
             reopenSettings()
@@ -142,46 +145,51 @@ class VoiceInputSettingsTest {
 
     @Test fun freshSettingsShowFixedMicrophoneProcessingWithoutASelector() {
         mount()
-        compose.onNodeWithText("Microphone: Call noise reduction").assertExists()
+        compose.onNodeWithText("Microphone: Call noise reduction").assertDoesNotExist()
         compose.onNodeWithText("Use Speech clarity").assertDoesNotExist()
         compose.onNodeWithText("Use Call noise reduction").assertDoesNotExist()
         assertEquals("communication_noise_filtered", preferences.getString("capture_profile", null))
         assertEquals(AsrEngine.WHISPER, VoiceInputMode.captionEngine(context))
     }
-    @Test fun smartTurnEndpointDefaultsOnAndControlsCannotChangeDuringCall() {
+    @Test fun smartTurnEndpointDefaultsOnAndSettingsExposeNoSmartTurnControls() {
         // Retired observation-only preferences must not opt out of actual endpoint control.
         preferences.edit().putBoolean("smart_turn_shadow_enabled", false).commit()
         mount()
-        compose.onNodeWithTag("smart_turn_endpoint_toggle").performScrollTo().assertTextContains("Disable Smart Turn")
+        // The 2026-10-22 Settings simplification removed every Smart Turn
+        // control from Settings: no endpoint toggle and no model download.
+        // Endpointing itself stays on by default, and merely opening
+        // Settings must not write the endpoint preference.
+        compose.onNodeWithTag("smart_turn_endpoint_toggle").assertDoesNotExist()
+        compose.onNodeWithTag("smart_turn_model_download").assertDoesNotExist()
+        compose.onNodeWithText("Disable Smart Turn").assertDoesNotExist()
+        compose.onNodeWithText("Download Smart Turn (8.7 MB)").assertDoesNotExist()
         assertTrue(SmartTurnSettings.enabled(context))
         assertFalse("Reading the enabled default must not write a preference", preferences.contains("smart_turn_endpoint_enabled"))
-        compose.onNodeWithTag("smart_turn_model_download").performScrollTo().assertTextContains("Download Smart Turn (8.7 MB)")
         compose.runOnIdle { enabled.value = false }
-        compose.onNodeWithTag("smart_turn_endpoint_toggle").assertIsNotEnabled()
-        compose.onNodeWithTag("smart_turn_model_download").assertIsNotEnabled()
+        compose.onNodeWithTag("smart_turn_endpoint_toggle").assertDoesNotExist()
+        compose.onNodeWithTag("smart_turn_model_download").assertDoesNotExist()
         assertTrue(SmartTurnSettings.enabled(context))
         assertFalse(preferences.getBoolean("smart_turn_shadow_enabled", true))
         assertEquals(VoiceInputMode.GEMMA_AUDIO, VoiceInputMode.selected(context))
         assertEquals(AsrEngine.WHISPER, VoiceInputMode.captionEngine(context))
         assertNoSmartTurnDownload()
     }
-    @Test fun disablingSmartTurnPersistsWithoutAnyModelDownload() {
+    @Test fun openingSettingsNeverChangesTheSmartTurnPreference() {
+        // With the Settings toggle gone, the stored endpoint preference
+        // belongs to SmartTurnSettings alone; opening Settings must leave
+        // it exactly as it was in both states, and never start a download.
         SmartTurnSettings.setEnabled(context, true)
         mount()
-        compose.onNodeWithTag("smart_turn_endpoint_toggle").performScrollTo().assertTextContains("Disable Smart Turn").performClick()
-        compose.waitForIdle()
+        compose.onNodeWithTag("smart_turn_endpoint_toggle").assertDoesNotExist()
+        assertTrue(preferences.getBoolean("smart_turn_endpoint_enabled", false))
+        assertTrue(SmartTurnSettings.enabled(context))
+        reopenSettings()
+        assertTrue(preferences.getBoolean("smart_turn_endpoint_enabled", false))
+        SmartTurnSettings.setEnabled(context, false)
+        reopenSettings()
+        compose.onNodeWithTag("smart_turn_endpoint_toggle").assertDoesNotExist()
         assertFalse(preferences.getBoolean("smart_turn_endpoint_enabled", true))
         assertFalse(SmartTurnSettings.enabled(context))
-        reopenSettings()
-        compose.onNodeWithTag("smart_turn_endpoint_toggle").performScrollTo().assertTextContains("Enable Smart Turn")
-        assertNoSmartTurnDownload()
-        // Re-enabling is also a preference change; the separate download button owns setup.
-        compose.onNodeWithTag("smart_turn_endpoint_toggle").performClick()
-        compose.waitForIdle()
-        assertTrue(preferences.getBoolean("smart_turn_endpoint_enabled", false))
-        reopenSettings()
-        compose.onNodeWithTag("smart_turn_endpoint_toggle").performScrollTo().assertTextContains("Disable Smart Turn")
-        compose.onNodeWithTag("smart_turn_model_download").performScrollTo().assertTextContains("Download Smart Turn (8.7 MB)")
         assertNoSmartTurnDownload()
         assertEquals(VoiceInputMode.GEMMA_AUDIO, VoiceInputMode.selected(context))
         assertEquals(AsrEngine.WHISPER, VoiceInputMode.captionEngine(context))
