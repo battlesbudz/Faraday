@@ -1,10 +1,15 @@
 """The declared emulator matrix and its required evidence cannot drift independently."""
+import contextlib
 import copy
+from datetime import datetime, timedelta, timezone
+import io
 import json
 from pathlib import Path
 import tempfile
 import unittest
-from verification.profiles import artifact_name, artifact_requirements, load_profiles, PROFILES
+from verification.artifacts import ArtifactError
+from verification.profiles import (artifact_name, artifact_requirements, load_profiles, PROFILES,
+                                   select_artifacts)
 
 
 class ProfileContractTest(unittest.TestCase):
@@ -152,6 +157,93 @@ class ProfileContractTest(unittest.TestCase):
             self.path.write_text(json.dumps(contract))
             with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'device profile'):
                 load_profiles(self.path)
+
+
+class FakeClock:
+    def __init__(self):
+        self.now = 0.0
+        self.sleeps = []
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+class ProfileSelectionWaitTest(unittest.TestCase):
+    RUN_ID = 35755200903
+    SHA = 'a' * 40
+
+    @staticmethod
+    def iso(seconds):
+        return (datetime(2026, 9, 22, 16, 0, tzinfo=timezone.utc) +
+                timedelta(seconds=seconds)).isoformat().replace('+00:00', 'Z')
+
+    def manifest(self, *, status='completed', conclusion='success'):
+        profile = load_profiles()[0]
+        requirement = artifact_requirements([profile])[0]
+        name, producer = requirement
+        completed = status == 'completed'
+        data = {
+            'schema': 1, 'repository': 'owner/repo',
+            'run': {'id': self.RUN_ID, 'head_sha': self.SHA, 'attempt': 1},
+            'jobs': [{'name': producer, 'attempt': 1, 'run_id': self.RUN_ID,
+                      'head_sha': self.SHA, 'status': status,
+                      'conclusion': conclusion if completed else None,
+                      'started_at': self.iso(0),
+                      'completed_at': self.iso(100) if completed else None}],
+            'artifacts': [{'id': 1, 'name': name,
+                           'workflow_run': {'id': self.RUN_ID, 'head_sha': self.SHA},
+                           'created_at': self.iso(90), 'expired': False,
+                           'archive_download_url':
+                               'https://api.github.com/repos/owner/repo/actions/artifacts/1/zip'}],
+        }
+        return data, requirement
+
+    def settle(self, data, requirement, clock, **kwargs):
+        with contextlib.redirect_stderr(io.StringIO()):
+            return select_artifacts(data, run_id=self.RUN_ID, head_sha=self.SHA,
+                                    requirements=[requirement], sleep=clock.sleep,
+                                    monotonic=clock.monotonic, **kwargs)
+
+    def test_not_complete_then_complete_succeeds(self):
+        clock = FakeClock()
+        data, requirement = self.manifest(status='in_progress')
+        complete, _ = self.manifest()
+        refetches = []
+
+        def refetch(current):
+            refetches.append(current)
+            return complete
+
+        selected = self.settle(data, requirement, clock, refetch=refetch)
+        self.assertEqual([1], [item['id'] for item in selected])
+        self.assertEqual(1, len(refetches))
+        self.assertEqual([10], clock.sleeps)
+
+    def test_completed_failure_fails_fast_without_waiting(self):
+        clock = FakeClock()
+        data, requirement = self.manifest(conclusion='failure')
+
+        def refetch(current):
+            raise AssertionError('must not refetch a completed producer')
+
+        with self.assertRaisesRegex(ArtifactError, 'Latest producer did not succeed'):
+            self.settle(data, requirement, clock, refetch=refetch, require_success=True)
+        self.assertEqual([], clock.sleeps)
+
+    def test_still_incomplete_after_window_raises_the_same_error(self):
+        clock = FakeClock()
+        data, requirement = self.manifest(status='in_progress')
+        incomplete, _ = self.manifest(status='in_progress')
+
+        with self.assertRaisesRegex(
+                ArtifactError, f'Incomplete producer job: {requirement[1]}'):
+            self.settle(data, requirement, clock, refetch=lambda current: incomplete,
+                        wait_seconds=35)
+        self.assertEqual([10, 15, 10], clock.sleeps)
 
 
 if __name__ == '__main__':

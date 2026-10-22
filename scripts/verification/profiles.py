@@ -2,14 +2,15 @@
 """One release emulator contract for workflow provisioning, artifact selection and receipts."""
 import argparse
 import json
+import os
 from pathlib import Path
 import re
 import sys
 
 try:
-    from .artifacts import ArtifactError, parse_requirement, select
+    from .artifacts import ArtifactError, fetch_manifest, parse_requirement, select_settled
 except ImportError:
-    from artifacts import ArtifactError, parse_requirement, select
+    from artifacts import ArtifactError, fetch_manifest, parse_requirement, select_settled
 
 PROFILES = Path(__file__).with_name('profiles.json')
 FIELDS = {'id', 'api', 'apk', 'device_profile', 'screen_profile', 'page_size', 'target',
@@ -85,6 +86,24 @@ def artifact_requirements(profiles=None):
             for profile in profiles]
 
 
+def manifest_refetch(manifest_path, run_id):
+    def refetch(current):
+        token = os.getenv('GITHUB_TOKEN')
+        if not token:
+            return None
+        refreshed = fetch_manifest(repository=current.get('repository'), run_id=run_id, token=token)
+        Path(manifest_path).write_text(json.dumps(refreshed, sort_keys=True) + '\n')
+        return refreshed
+
+    return refetch
+
+
+def select_artifacts(manifest, *, run_id, head_sha, requirements, require_success=False,
+                     refetch=None, **wait_options):
+    return select_settled(manifest, run_id=run_id, head_sha=head_sha, requirements=requirements,
+                          require_success=require_success, refetch=refetch, **wait_options)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--profiles', type=Path, default=PROFILES)
@@ -117,8 +136,10 @@ def main():
         names = [name for name, _ in requirements]
         if len(names) != len(set(names)):
             raise ValueError('Duplicate required artifact')
-        selected = select(json.loads(args.manifest.read_text()), run_id=args.run_id, head_sha=args.head_sha,
-                          requirements=requirements, require_success=args.require_success)
+        selected = select_artifacts(json.loads(args.manifest.read_text()), run_id=args.run_id,
+                                    head_sha=args.head_sha, requirements=requirements,
+                                    require_success=args.require_success,
+                                    refetch=manifest_refetch(args.manifest, args.run_id))
         ids = ','.join(str(artifact['id']) for artifact in selected)
         print(ids)
         if args.github_output:
