@@ -1,7 +1,6 @@
 package com.battlesbudz.jarvis.v2.ui
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
@@ -16,7 +15,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -25,16 +23,16 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 
 /**
- * M2 settings surface (D36): saved workflows with enable/disable and the
- * connected tools list. Chat remains the operating surface — creation and
- * revision happen in conversation; this section only flips the explicit
- * enablement that drafts require before they can run.
+ * Settings surface for the guided MCP setup (D07): a custom server URL is
+ * accepted here; only free tools turn on by default and an unknown price is
+ * never called free.
  *
- * M3 adds the connected-providers section (D36, T16, T17): every known
- * ecosystem provider with an honest availability state and a plain-language
- * explanation. Unavailable providers explain why instead of implying they
- * work. The guided MCP setup (D07) accepts a custom server URL here; only
- * free tools turn on by default and an unknown price is never called free.
+ * The saved-workflows list, the connected-tools list, and the provider
+ * availability lists that used to render here were removed in the
+ * 2026-10-22 Settings simplification — they only reported state and did
+ * nothing in Settings. Chat remains the operating surface for routines.
+ * The [projection] and [onSetEnabled] parameters are retained so existing
+ * call sites keep compiling unchanged; the section no longer reads them.
  */
 @Composable
 internal fun WorkflowSettingsSection(
@@ -46,56 +44,7 @@ internal fun WorkflowSettingsSection(
 ) {
     Column(modifier.fillMaxWidth()) {
         HorizontalDivider(Modifier.padding(vertical = 16.dp))
-        Text("Tools & workflows", style = MaterialTheme.typography.titleMedium)
-        Text("Routines you saved. A routine never runs until you enable it here or in chat.",
-            style = MaterialTheme.typography.bodySmall)
-        if (projection == null) {
-            Text("Workflow settings are unavailable right now.",
-                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
-            return@Column
-        }
-        if (projection.workflows.isEmpty()) {
-            Text("No saved routines yet. Describe one in chat — for example, “remind me to charge my phone at 9 PM every day” — and I will draft it for your approval.",
-                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
-        }
-        for (row in projection.workflows) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(row.name, style = MaterialTheme.typography.bodyMedium)
-                    Text(row.summary, style = MaterialTheme.typography.bodySmall)
-                    Text("${row.triggersSummary} · ${row.nextRunSummary ?: ""}",
-                        style = MaterialTheme.typography.bodySmall)
-                }
-                TextButton(
-                    onClick = { onSetEnabled(row.id, !row.enabled) },
-                    modifier = Modifier.testTag("workflow_toggle_${row.id.take(8)}")
-                ) { Text(if (row.enabled) "Disable" else "Enable") }
-            }
-        }
-        HorizontalDivider(Modifier.padding(vertical = 12.dp))
-        Text("Connected tools", style = MaterialTheme.typography.titleSmall)
-        for (tool in projection.tools) {
-            Text("${tool.description}: ${tool.state}",
-                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-        }
-        HorizontalDivider(Modifier.padding(vertical = 12.dp))
         Text("Connected providers", style = MaterialTheme.typography.titleSmall)
-        Text("App integrations. Provider tools stay off the assistant's surface until a later milestone; the states below are honest availability, not promises.",
-            style = MaterialTheme.typography.bodySmall)
-        if (projection.providers.isEmpty()) {
-            Text("No providers known yet.",
-                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-        }
-        for (provider in projection.providers) {
-            Column(Modifier.padding(top = 8.dp)) {
-                Text("${provider.displayName} (${provider.kind}): ${provider.state}",
-                    style = MaterialTheme.typography.bodyMedium)
-                Text(provider.explanation, style = MaterialTheme.typography.bodySmall)
-            }
-        }
         var showMcpDialog by remember { mutableStateOf(false) }
         TextButton(
             onClick = { showMcpDialog = true },
