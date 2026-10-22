@@ -18,7 +18,6 @@ internal fun VoiceInputSettings(enabled: Boolean, onBusy: (Boolean) -> Unit) {
     var captionEngine by remember { mutableStateOf(VoiceInputMode.captionEngine(context)) }
     var captionMenuOpen by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf(AsrEngine.selected(context)) }
-    val captureProfile = remember { SpeechCaptureProfile.selected(context) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     LaunchedEffect(busy) { onBusy(busy) }
@@ -26,8 +25,6 @@ internal fun VoiceInputSettings(enabled: Boolean, onBusy: (Boolean) -> Unit) {
         if (!enabled || busy || inputMode != VoiceInputMode.GEMMA_AUDIO) captionMenuOpen = false
     }
     DisposableEffect(Unit) { onDispose { onBusy(false) } }
-    var smartTurnEnabled by remember { mutableStateOf(com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnSettings.enabled(context)) }
-    var smartTurnReady by remember { mutableStateOf(com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnSettings.store(context).availableFile() != null) }
     var task by remember { mutableStateOf<Job?>(null) }
     Column {
         Text("Voice input: ${inputMode.label}")
@@ -68,7 +65,7 @@ internal fun VoiceInputSettings(enabled: Boolean, onBusy: (Boolean) -> Unit) {
                     }
                 }
             }
-            Text("Turn captions off to skip all Whisper loading and recognition. Interrupt using Hey Jarvis or stop; natural speech interruption is disabled in this benchmark mode. Gemma's final transcription updates your message after answer generation.", style = MaterialTheme.typography.bodySmall)
+            Text("Turn captions off to skip all Whisper loading and recognition.", style = MaterialTheme.typography.bodySmall)
         }
         Text("Speech recognition: ${selected.label}")
         AsrEngine.entries.forEach { engine ->
@@ -86,35 +83,10 @@ internal fun VoiceInputSettings(enabled: Boolean, onBusy: (Boolean) -> Unit) {
                 }
             }) { Text("Use ${engine.label}") }
         }
-        Text("Whisper transcribes your voice on this phone, updates provisional captions and confirms them when you finish. The Snapdragon NPU option falls back to CPU when acceleration is unavailable.", style = MaterialTheme.typography.bodySmall)
-        Text("Snapdragon NPU is experimental and targets 8 Gen 3 (SM8650). English transcription has a separate CPU fallback; speed and accuracy require device measurement.", style = MaterialTheme.typography.bodySmall)
-        Text("Smart Turn turn ending: ${if (smartTurnEnabled) "On" else "Off"}")
-        Text(if (smartTurnReady) "Model installed. Smart Turn listens for whether you have finished or are continuing in Whisper and Gemma audio calls."
-            else "Model not installed. Download 8.7 MB to use Smart Turn; ordinary pause detection is available offline.", style = MaterialTheme.typography.bodySmall)
-        Text("On by default once installed. Runs locally without a transcript. If it is busy or unavailable, ordinary pause detection takes over. Whisper still finalizes the full transcript before sending your request.", style = MaterialTheme.typography.bodySmall)
-        TextButton(enabled = enabled && !busy, modifier = Modifier.testTag("smart_turn_endpoint_toggle"), onClick = {
-            smartTurnEnabled = !smartTurnEnabled
-            com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnSettings.setEnabled(context, smartTurnEnabled)
-            message = "Smart Turn turn ending is ${if (smartTurnEnabled) "on" else "off"} for the next captured turn."
-        }) { Text(if (smartTurnEnabled) "Disable Smart Turn" else "Enable Smart Turn") }
-        if (!smartTurnReady) TextButton(enabled = enabled && !busy,
-            modifier = Modifier.testTag("smart_turn_model_download"), onClick = {
-                busy = true
-                task = scope.launch {
-                    try {
-                        com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnSettings.store(context).ensureReady { value ->
-                            scope.launch { message = value }
-                        }
-                        smartTurnReady = true
-                        message = if (smartTurnEnabled) "Smart Turn is ready to control Whisper and Gemma audio turn endings on the next call."
-                            else "Smart Turn is installed. Enable it to control Whisper and Gemma audio turn endings."
-                    } catch (cancelled: CancellationException) { throw cancelled }
-                    catch (_: Exception) { message = "Smart Turn setup failed. Ordinary pause detection remains available; try again when connected." }
-                    finally { busy = false }
-                }
-            }) { Text("Download Smart Turn (8.7 MB)") }
-        Text("Microphone: ${captureProfile.label}")
-        Text("Requests communication processing and noise suppression where available.", style = MaterialTheme.typography.bodySmall)
+        Text("Whisper transcribes your voice on this phone; the Snapdragon NPU option falls back to CPU when acceleration is unavailable.", style = MaterialTheme.typography.bodySmall)
+        // Smart Turn endpointing and microphone noise reduction run
+        // automatically and intentionally have no Settings presence
+        // (2026-10-22 simplification: no status lines, toggles, or downloads).
         if (busy) TextButton(onClick = { task?.cancel(); message = "Stopped." }) { Text("Cancel") }
         if (message.isNotBlank()) Text(message, style = MaterialTheme.typography.bodySmall)
     }
