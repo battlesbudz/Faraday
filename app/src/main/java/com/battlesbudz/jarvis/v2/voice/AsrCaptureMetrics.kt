@@ -20,5 +20,7 @@ data class AsrCaptureMetrics(
     val maxRecognitionBacklogMs: Long? = null,
     val maxRecognitionWorkMs: Long? = null,
     val finalDecodeMs: Long? = null,
-    val recognitionWork: AsrRecognitionWorkMetrics? = null
+    val recognitionWork: AsrRecognitionWorkMetrics? = null,
+    /** Which authority produced the accepted endpoint: "smart_turn", "guard" or "fallback". */
+    val endpointAuthority: String? = null
 )
