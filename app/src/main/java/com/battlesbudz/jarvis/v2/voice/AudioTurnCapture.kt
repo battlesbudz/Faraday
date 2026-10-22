@@ -376,8 +376,10 @@ class AudioTurnCapture(
                         lastSpeechSample, bindVerdict = !captionOnly)
                     val smartComplete = endpoint.cue == "smart_turn_complete"
                     // A Smart-Turn-decided endpoint on the Whisper route is final: the
-                    // queue-drain fire condition, the final-transcript guard and the
-                    // finalization-drain deferral do not re-open it below.
+                    // queue-drain fire condition and the final-transcript guard do not
+                    // re-open it below. The finalization drain may only hold the seal
+                    // until queued or unclassified audio is resolved; it never re-judges
+                    // the endpoint or the transcript.
                     val smartVerdictBinding = smartComplete && !captionOnly
                     if (nativeEligibility.allowed) nativeEligibleFrames++
                     if (nativeEligibility.allowed && !exactCollectorCoverage) nativeUncoveredEndpointFrames++
@@ -533,10 +535,20 @@ class AudioTurnCapture(
                             // or unclassified hardware audio before accepting an old endpoint.
                             // Already classified silence alone cannot invalidate it. Retain the
                             // final words as a segment and continue on the same hardware reader.
-                            fun needsFinalizationDrain(): Boolean = !smartVerdictBinding && reason == "trailing_silence" &&
-                                (speechQueue.bufferedAudioMs > 0 || smartComplete || endpoint.cue == "smart_turn_continue") &&
+                            fun frontierDrainPending(): Boolean =
                                 (if (nativePause != null || endpointObserver != null) speechQueue.requiresNativeEndpointDrain(audioBytes) else speechQueue.requiresEndpointDrain(audioAt)) &&
                                 (transcriber is SegmentedTranscriber || endpointObserver != null)
+                            fun needsFinalizationDrain(): Boolean = reason == "trailing_silence" &&
+                                (if (smartVerdictBinding)
+                                    // The verdict keeps endpoint authority, but the seal still
+                                    // waits out the pipeline frontier: queued or unclassified
+                                    // audio can hold a continuation of this turn that finish()
+                                    // has not seen, and sealing over it would drop those words
+                                    // from the request or split them into a separate turn. Only
+                                    // classified silence may be left behind.
+                                    frontierDrainPending()
+                                else (speechQueue.bufferedAudioMs > 0 || smartComplete || endpoint.cue == "smart_turn_continue") &&
+                                    frontierDrainPending())
                             if (needsFinalizationDrain()) {
                                 if (!pendingEndpoint) {
                                     pendingAudio.clear()
