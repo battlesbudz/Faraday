@@ -22,7 +22,7 @@ enum class AsrEngine(val id: String, val label: String, val modelVersion: String
         fun selected(context: Context): AsrEngine {
             val preferences = context.getSharedPreferences("voice_input", Context.MODE_PRIVATE)
             val stored = preferences.getString("engine", null)
-            val engine = entries.firstOrNull { it.id == stored } ?: WHISPER
+            val engine = entries.firstOrNull { it.id == stored } ?: WHISPER_NPU
             if (stored == "moonshine_small") preferences.edit().putString("engine", engine.id).apply()
             return engine
         }

@@ -21,15 +21,15 @@ class RetiredAsrPreferencesTest {
     @Before fun reset() { preferences.edit().clear().commit() }
     @After fun cleanup() { preferences.edit().clear().commit() }
 
-    @Test fun retiredSelectionsMigrateToCpuWhisperAndStayStableWhenReopened() {
+    @Test fun retiredEngineMigratesToNpuDefaultWhileCaptionStaysCpuAndStaysStableWhenReopened() {
         preferences.edit().putString("engine", "moonshine_small")
             .putString("caption_engine", "moonshine_small")
             .putBoolean("gemma_whisper_captions", true).commit()
         repeat(3) {
             val reopened = ContextWrapper(context)
-            assertEquals(AsrEngine.WHISPER, AsrEngine.selected(reopened))
+            assertEquals(AsrEngine.WHISPER_NPU, AsrEngine.selected(reopened))
             assertEquals(AsrEngine.WHISPER, VoiceInputMode.captionEngine(reopened))
-            assertEquals(AsrEngine.WHISPER.id, preferences.getString("engine", null))
+            assertEquals(AsrEngine.WHISPER_NPU.id, preferences.getString("engine", null))
             assertEquals(AsrEngine.WHISPER.id, preferences.getString("caption_engine", null))
         }
     }
@@ -71,15 +71,15 @@ class RetiredAsrPreferencesTest {
             oldWeights.writeBytes(bytes)
             AsrEngine.selected(context)
             VoiceInputMode.captionEngine(context)
-            assertEquals(before + mapOf("engine" to AsrEngine.WHISPER.id,
+            assertEquals(before + mapOf("engine" to AsrEngine.WHISPER_NPU.id,
                 "caption_engine" to AsrEngine.WHISPER.id), preferences.all)
             assertEquals(VoiceInputMode.GEMMA_AUDIO, VoiceInputMode.selected(context))
             assertArrayEquals(bytes, oldWeights.readBytes())
         } finally { oldWeights.delete() }
     }
 
-    @Test fun freshDefaultsRemainCpuWithoutCreatingSelectionPreferences() {
-        assertEquals(AsrEngine.WHISPER, AsrEngine.selected(context))
+    @Test fun freshDefaultsUseNpuEngineAndCpuCaptionsWithoutCreatingSelectionPreferences() {
+        assertEquals(AsrEngine.WHISPER_NPU, AsrEngine.selected(context))
         assertEquals(AsrEngine.WHISPER, VoiceInputMode.captionEngine(context))
         assertFalse(preferences.contains("engine"))
         assertFalse(preferences.contains("caption_engine"))
