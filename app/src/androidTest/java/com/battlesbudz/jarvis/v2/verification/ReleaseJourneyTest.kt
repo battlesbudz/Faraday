@@ -35,7 +35,6 @@ import androidx.test.uiautomator.Configurator
 import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
-import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.Until
 import com.battlesbudz.jarvis.v2.MainActivity
@@ -6048,39 +6047,28 @@ class ReleaseJourneyTest {
         try {
             preferences.edit().remove(key).putBoolean(oldKey, false).commit()
             render(false)
-            scrollTo(By.res("smart_turn_endpoint_toggle"))
-            assertTrue("Live-call settings must not change endpoint/model setup",
-                device.wait(Until.hasObject(By.res("smart_turn_endpoint_toggle").enabled(false)), 15_000))
+            // Settings no longer expose Smart Turn controls (2026-10-22
+            // simplification): no endpoint toggle and no model download in
+            // either the live-call (disabled) or idle (enabled) state, and
+            // merely rendering Settings must not write the endpoint
+            // preference. Endpointing itself stays on by default, including
+            // against the retired shadow preference.
+            scrollTo(By.text("Use Whisper base · Snapdragon NPU"))
+            assertNull("Smart Turn endpoint toggle must not exist in Settings",
+                device.findObject(By.res("smart_turn_endpoint_toggle")))
+            assertNull("Smart Turn download must not exist in Settings",
+                device.findObject(By.text("Download Smart Turn (8.7 MB)")))
             assertTrue(com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnSettings.enabled(context))
-            assertNotNull(scrollTo(By.text("Download Smart Turn (8.7 MB)")))
-            // Default-on endpoint control remains independently disableable without loading weights.
-            preferences.edit().putBoolean(key, true).commit()
+            assertFalse("Rendering Settings must not write the endpoint preference", preferences.contains(key))
             render(true)
-            scrollTo(By.res("smart_turn_endpoint_toggle"))
-            // UiObject resolves this complete selector inside click(), not a UiObject2
-            // cached from either composition. Tap the exact label within its enabled,
-            // clickable tagged parent. Only lookup polls; the action is dispatched once.
-            val disable = UiSelector().resourceId("smart_turn_endpoint_toggle")
-                .enabled(true).clickable(true).childSelector(UiSelector().text("Disable Smart Turn"))
-            assertTrue("Disable Smart Turn must be inside the enabled, clickable control",
-                device.findObject(disable).waitForExists(15_000))
-            val configuration = Configurator.getInstance()
-            val selectorTimeout = configuration.waitForSelectorTimeout
-            try {
-                // Re-resolve at dispatch; disappearance fails without a second wait.
-                configuration.waitForSelectorTimeout = 0
-                device.findObject(disable).click()
-            } finally {
-                configuration.waitForSelectorTimeout = selectorTimeout
-            }
-            // Input injection can return before the UI handler. Its Enable label is
-            // published only after the synchronous preference update; find is bounded.
-            find(By.text("Enable Smart Turn"))
-            assertFalse(preferences.getBoolean(key, true))
-            activity.recreate()
-            render(true)
-            assertNotNull(scrollTo(By.text("Enable Smart Turn")))
-            assertFalse(preferences.getBoolean(key, true))
+            scrollTo(By.text("Use Whisper base · Snapdragon NPU"))
+            assertNull("Smart Turn endpoint toggle must not exist in Settings",
+                device.findObject(By.res("smart_turn_endpoint_toggle")))
+            assertNull("Smart Turn toggle label must not exist in Settings",
+                device.findObject(By.text("Disable Smart Turn")))
+            assertNull("Smart Turn toggle label must not exist in Settings",
+                device.findObject(By.text("Enable Smart Turn")))
+            assertFalse("Rendering Settings must not write the endpoint preference", preferences.contains(key))
             assertEquals(mode, VoiceInputMode.selected(context))
             assertEquals(captions, VoiceInputMode.captionEngine(context))
             captureEvidence("smart_turn_endpoint_default_settings")
