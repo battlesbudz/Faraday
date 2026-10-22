@@ -10,7 +10,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.collectAsState
@@ -298,12 +297,10 @@ internal fun VoiceCallScreen(
         text = { Column(Modifier.verticalScroll(rememberScrollState())) {
             Text("One model for chat and voice", style = MaterialTheme.typography.bodySmall)
             modelSelector(!chatSending && !runtimeArmed && !turnInFlight && !inputTesting)
-            // M1d explicit silent work (D21/T05): tasks continue while
-            // ordinary speech is ignored until "hey jarvis" wakes back up.
-            OutlinedButton(onClick = { onSilentWork(!silentWorkActive) },
-                modifier = Modifier.fillMaxWidth().testTag("silent_work_toggle")) {
-                Text(if (silentWorkActive) "Wake up — resume listening" else "Work silently")
-            }
+            // M1d silent work (D21/T05): while the mode is active, tasks
+            // continue and ordinary speech is ignored until "hey jarvis"
+            // wakes back up. Settings only reports the live state; the
+            // toggle itself was removed in the 2026-10-22 simplification.
             if (silentWorkActive) {
                 Text("Working silently · say \"hey jarvis\" to wake",
                     style = MaterialTheme.typography.bodySmall,
@@ -369,7 +366,7 @@ internal fun VoiceCallScreen(
             Text(assistantSettingsMessage, style = MaterialTheme.typography.bodySmall)
         }
         Text("Automatic microphone handoff", style = MaterialTheme.typography.bodyMedium)
-        Text("Jarvis releases its microphone for other recordings and automatically resumes your call or wake listening afterward.",
+        Text("Jarvis releases its microphone for other recordings, then resumes.",
             style = MaterialTheme.typography.bodySmall)
         val helperConnected by com.battlesbudz.jarvis.v2.voice.MicrophoneHandoff.keyboardHelperConnected.collectAsState()
         Text(if (helperConnected) "Keyboard microphone-button handoff is enabled."
