@@ -8,6 +8,7 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import sys
+import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
@@ -21,10 +22,20 @@ MAX_ATTEMPTS = 20
 MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024
 MAX_ARCHIVE_FILES = 10000
 MAX_EXTRACTED_BYTES = 1024 * 1024 * 1024
+# The jobs API can lag minutes behind a producer job that has actually finished, and a
+# consumer that selects against that stale snapshot fails against a complete producer.
+# Selection therefore re-reads the manifest for a bounded window before giving up.
+PRODUCER_WAIT_SECONDS = 240
+PRODUCER_POLL_SECONDS = 10
+PRODUCER_POLL_MAX_SECONDS = 30
 REPOSITORY = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,38}/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}')
 
 class ArtifactError(ValueError):
     """The evidence manifest is incomplete, stale, or ambiguous."""
+
+
+class IncompleteProducerError(ArtifactError):
+    """The latest producer attempt has not completed in the manifest snapshot yet."""
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -73,7 +84,7 @@ def latest_producer(jobs, producer):
         raise ArtifactError(f'Ambiguous producer job attempt: {producer}')
     job = latest[0]
     if job.get('status') != 'completed':
-        raise ArtifactError(f'Incomplete producer job: {producer}')
+        raise IncompleteProducerError(f'Incomplete producer job: {producer}')
     started = timestamp(job.get('started_at'), 'producer started_at')
     completed = timestamp(job.get('completed_at'), 'producer completed_at')
     if completed < started:
@@ -137,6 +148,48 @@ def select(manifest, *, run_id, head_sha, requirements, require_success=False):
             raise ArtifactError(f'Ambiguous current producer artifact: {name} (attempt {attempt})')
         selections.append(winners[0][2])
     return selections
+
+
+def select_settled(manifest, *, run_id, head_sha, requirements, require_success=False, refetch=None,
+                   wait_seconds=PRODUCER_WAIT_SECONDS, sleep=time.sleep, monotonic=time.monotonic):
+    """Select, waiting out jobs-API lag that leaves a finished producer looking incomplete.
+
+    Only the not-yet-completed path waits: while the latest producer attempt reports a
+    status other than completed, the manifest is re-read through refetch and selection is
+    retried with backoff until wait_seconds has elapsed. refetch returns a fresh manifest,
+    returns None when refreshing is impossible (which re-raises the original error at
+    once), or raises ArtifactError for a transient read failure (which keeps polling
+    inside the window). A producer that has completed is judged by the unchanged rules
+    immediately, so a failed conclusion still fails fast, and once the window expires the
+    original Incomplete producer job error is raised unchanged.
+    """
+    deadline = monotonic() + wait_seconds
+    delay = PRODUCER_POLL_SECONDS
+    current = manifest
+    announced = False
+    while True:
+        try:
+            return select(current, run_id=run_id, head_sha=head_sha,
+                          requirements=requirements, require_success=require_success)
+        except IncompleteProducerError as error:
+            remaining = deadline - monotonic()
+            if refetch is None or remaining <= 0:
+                raise
+            if not announced:
+                print(f'{error}; waiting up to {wait_seconds} seconds for Actions metadata to settle',
+                      file=sys.stderr)
+                announced = True
+            sleep(min(delay, remaining))
+            delay = min(delay * 1.5, PRODUCER_POLL_MAX_SECONDS)
+            try:
+                refreshed = refetch(current)
+            except ArtifactError:
+                refreshed = None
+            else:
+                if refreshed is None:
+                    raise error
+            if refreshed is not None:
+                current = refreshed
 
 
 def request_json(url, token):
@@ -380,8 +433,17 @@ def main():
                 raise ArtifactError('Missing GitHub Actions token')
             download(json.loads(args.manifest.read_text()), args.artifact_ids, args.out, args.layout, token)
             return 0
-        selections = select(json.loads(args.manifest.read_text()), run_id=args.run_id, head_sha=args.head_sha,
-                            requirements=args.require, require_success=args.require_success)
+        def refetch(current):
+            token = os.getenv('GITHUB_TOKEN')
+            if not token:
+                return None
+            refreshed = fetch_manifest(repository=current.get('repository'), run_id=args.run_id, token=token)
+            args.manifest.write_text(json.dumps(refreshed, sort_keys=True) + '\n')
+            return refreshed
+
+        selections = select_settled(json.loads(args.manifest.read_text()), run_id=args.run_id,
+                                    head_sha=args.head_sha, requirements=args.require,
+                                    require_success=args.require_success, refetch=refetch)
         ids = ','.join(str(artifact['id']) for artifact in selections)
         print(ids)
         if args.github_output:
