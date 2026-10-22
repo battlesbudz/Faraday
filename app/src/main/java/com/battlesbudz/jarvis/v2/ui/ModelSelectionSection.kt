@@ -24,13 +24,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-/** Model browsing/storage UI reused by first-run setup and conversation settings. */
+/**
+ * Model browsing/storage UI reused by first-run setup and conversation settings.
+ * [simplified] is the Settings-dialog variant (2026-10-22 simplification): it
+ * omits the Memory shortcut and the tool reliability check, which stay on the
+ * first-run setup surface only.
+ */
 @Composable
 internal fun ModelSelectionSection(
     state: ModelSetupState,
     enabled: Boolean,
     benchmarkStore: com.battlesbudz.jarvis.v2.diagnostics.AndroidPipelineBenchmarkStore,
-    onOpenMemory: () -> Unit
+    onOpenMemory: () -> Unit,
+    simplified: Boolean = false
 ) {
     val phoneContext = LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -94,7 +100,7 @@ internal fun ModelSelectionSection(
             androidx.compose.material3.TextButton(onClick = state::cancelDownload,
                 modifier = Modifier.testTag("model_cancel_download")) { Text("Cancel download") }
         } else if (state.downloadNotice.isNotBlank()) Text(state.downloadNotice, style = MaterialTheme.typography.bodySmall)
-        OutlinedButton(
+        if (!simplified) OutlinedButton(
             enabled = !state.modelImportRunning,
             onClick = onOpenMemory,
             modifier = Modifier.fillMaxWidth().testTag("memory_open")
@@ -158,6 +164,7 @@ internal fun ModelSelectionSection(
         // exclusive admission, the idle chat engine closed before the
         // benchmark allocates its own native engine, model-file integrity
         // verified, gate released afterwards.
+        if (!simplified) {
         OutlinedButton(
             enabled = canManage && !state.modelDownloadRunning && !reliabilityRunning && toolCapableInstalled.isNotEmpty(),
             onClick = {
@@ -206,6 +213,7 @@ internal fun ModelSelectionSection(
                 "Takes several minutes; keep the app open.",
             style = MaterialTheme.typography.bodySmall
         )
+        }
         state.selectionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
 }

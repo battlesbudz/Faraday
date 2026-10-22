@@ -90,6 +90,11 @@ fun JarvisApp(
         val modelSelector: @Composable (Boolean) -> Unit = { enabled ->
             ModelSelectionSection(setup, enabled, benchmarkStore, onOpenMemory = { showingMemory = true })
         }
+        // Settings-dialog variant (2026-10-22 simplification): no Memory
+        // shortcut or reliability check in Settings; setup keeps both.
+        val settingsModelSelector: @Composable (Boolean) -> Unit = { enabled ->
+            ModelSelectionSection(setup, enabled, benchmarkStore, onOpenMemory = { showingMemory = true }, simplified = true)
+        }
         val gemmaPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             setup.importModel(uri, ModelCatalog.resolve(pickerModelId))
         }
@@ -168,7 +173,7 @@ fun JarvisApp(
                                         VoiceCallScreen(
                                             visible = visible, settingsOpen = settingsOpen, memoryOpen = showingMemory,
                                             onDismissSettings = dismissSettings, startRequest = startRequest,
-                                            chatBusy = chatBusy, modelSelector = modelSelector,
+                                            chatBusy = chatBusy, modelSelector = settingsModelSelector,
                                             resumedCall = resumedVoiceCall,
                                             onResumeConsumed = { resumedVoiceCall = null },
                                             voicePlayback = voicePlayback,
