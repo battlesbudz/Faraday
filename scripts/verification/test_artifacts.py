@@ -1,3 +1,4 @@
+import contextlib
 import copy
 from datetime import datetime, timedelta, timezone
 import json
@@ -10,7 +11,7 @@ import io
 import zipfile
 from urllib.error import HTTPError
 
-from artifacts import ArtifactError, download, fetch_manifest, paged, select
+from artifacts import ArtifactError, download, fetch_manifest, paged, select, select_settled
 
 
 SHA = 'a' * 40
@@ -139,6 +140,98 @@ class ArtifactSelectionTest(unittest.TestCase):
                 {'total_count': 1, 'jobs': [job]}]):
             with self.assertRaisesRegex(ArtifactError, 'Artifact belongs'):
                 fetch_manifest(repository='owner/repo', run_id=RUN_ID, token='token')
+
+
+class FakeClock:
+    def __init__(self):
+        self.now = 0.0
+        self.sleeps = []
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+class ProducerWaitTest(unittest.TestCase):
+    REQUIREMENT = ('jarvis-os-v2-release-apk', BUILD)
+
+    def incomplete(self):
+        data = manifest()
+        for job in data['jobs']:
+            if job['name'] == BUILD and job['attempt'] == 2:
+                job['status'] = 'in_progress'
+                job['conclusion'] = None
+                job['completed_at'] = None
+        data['artifacts'] = [artifact(1, 'jarvis-os-v2-release-apk', 90)]
+        return data
+
+    def complete(self, conclusion='success'):
+        data = manifest()
+        for job in data['jobs']:
+            if job['name'] == BUILD and job['attempt'] == 2:
+                job['conclusion'] = conclusion
+        data['artifacts'] = [artifact(1, 'jarvis-os-v2-release-apk', 90)]
+        return data
+
+    def settle(self, data, clock, **kwargs):
+        with contextlib.redirect_stderr(io.StringIO()):
+            return select_settled(data, run_id=RUN_ID, head_sha=SHA, requirements=[self.REQUIREMENT],
+                                  sleep=clock.sleep, monotonic=clock.monotonic, **kwargs)
+
+    def test_incomplete_producer_raises_the_same_artifact_error(self):
+        with self.assertRaisesRegex(ArtifactError, 'Incomplete producer job: Build signed release APK'):
+            select(self.incomplete(), run_id=RUN_ID, head_sha=SHA, requirements=[self.REQUIREMENT])
+
+    def test_not_complete_then_complete_succeeds(self):
+        clock = FakeClock()
+        refetches = []
+
+        def refetch(current):
+            refetches.append(current)
+            return self.complete()
+
+        selected = self.settle(self.incomplete(), clock, refetch=refetch)
+        self.assertEqual([1], [item['id'] for item in selected])
+        self.assertEqual(1, len(refetches))
+        self.assertEqual([10], clock.sleeps)
+
+    def test_completed_failure_fails_fast_without_waiting(self):
+        clock = FakeClock()
+
+        def refetch(current):
+            raise AssertionError('must not refetch a completed producer')
+
+        with self.assertRaisesRegex(ArtifactError, 'Latest producer did not succeed'):
+            self.settle(self.complete('failure'), clock, refetch=refetch, require_success=True)
+        self.assertEqual([], clock.sleeps)
+
+    def test_failure_seen_on_refresh_fails_without_further_waiting(self):
+        clock = FakeClock()
+        refetches = []
+
+        def refetch(current):
+            refetches.append(current)
+            return self.complete('failure')
+
+        with self.assertRaisesRegex(ArtifactError, 'Latest producer did not succeed'):
+            self.settle(self.incomplete(), clock, refetch=refetch, require_success=True)
+        self.assertEqual(1, len(refetches))
+        self.assertEqual([10], clock.sleeps)
+
+    def test_still_incomplete_after_window_raises_the_same_error(self):
+        clock = FakeClock()
+        with self.assertRaisesRegex(ArtifactError, 'Incomplete producer job: Build signed release APK'):
+            self.settle(self.incomplete(), clock, refetch=lambda current: self.incomplete(), wait_seconds=35)
+        self.assertEqual([10, 15, 10], clock.sleeps)
+
+    def test_unrefreshable_manifest_fails_without_burning_the_window(self):
+        clock = FakeClock()
+        with self.assertRaisesRegex(ArtifactError, 'Incomplete producer job'):
+            self.settle(self.incomplete(), clock, refetch=lambda current: None)
+        self.assertEqual([10], clock.sleeps)
 
 
 class Response:
