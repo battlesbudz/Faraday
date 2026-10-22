@@ -769,7 +769,7 @@ jobs:
       - name: Publish GitHub Release APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event_name == 'pull_request' && format('audio-pr2-pr{0}-build.{1}', github.event.pull_request.number, github.run_number) || github.ref == 'refs/heads/main' && format('v0.1.0-build.{0}', github.run_number) || format('faraday-{0}-build.{1}', github.ref_name, github.run_number) }}
+          tag_name: ${{ github.event_name == 'pull_request' && format('{0}-pr{1}-build.{2}', github.head_ref, github.event.pull_request.number, github.run_number) || github.ref == 'refs/heads/main' && format('v0.1.0-build.{0}', github.run_number) || format('faraday-{0}-build.{1}', github.ref_name, github.run_number) }}
           target_commitish: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           name: Faraday ${{ github.head_ref || github.ref_name }} build ${{ github.run_number }}
           prerelease: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
