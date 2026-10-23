@@ -84,6 +84,15 @@ internal class VoiceTurnTelemetry(
             endpointReason = metrics.endpointReason, maxBacklogMs = metrics.maxRecognitionBacklogMs,
             targetSilenceMs = metrics.targetSilenceMs, endpointCue = metrics.endpointCue,
             endpointAuthority = metrics.endpointAuthority))
+        else benchmark.asr(PipelineBenchmarkAsr(
+            // No recognizer ran on this route, so every recognizer field stays
+            // unmeasured. The capture still decided the endpoint and measured
+            // it; record that evidence so direct-audio turns are analyzable.
+            "none", finalizationMs = metrics.finalizationMs,
+            endpointDelayMs = metrics.endpointDetectionMs?.let { it + metrics.finalizationMs },
+            endpointReason = metrics.endpointReason,
+            targetSilenceMs = metrics.targetSilenceMs, endpointCue = metrics.endpointCue,
+            endpointAuthority = metrics.endpointAuthority))
         benchmark.metric("asr_max_recognition_work_ms", metrics.maxRecognitionWorkMs)
         benchmark.metric("asr_final_decode_ms", metrics.finalDecodeMs)
         benchmark.metric("asr_capture_audio_ms", metrics.audioMs)
