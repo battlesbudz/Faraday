@@ -309,4 +309,57 @@ class NaturalBargeInAudioInputTest {
         assertFalse(logs.any { "reply_probe_limit" in it })
     }
 
+    // Weak speech confirms through a second agreeing probe. With a slow first
+    // decode the agreement lands past CANDIDATE_INPUT_MS (3400 ms): the candidate
+    // must be retained while confirmation is in progress, and the handed-off
+    // audio must still start at the first speech chunk, not at a restarted
+    // candidate seeded from the 400 ms onset buffer.
+    @Test fun slowSecondProbePastInputWindowStillConfirmsWholeUtterance() = runBlocking {
+        var firstAccept = true
+        val delivered = gate(text = "Actually open settings", probability = .6f, minimumProbeMs = 250, chunks = 60,
+            acceptAction = { if (firstAccept) { firstAccept = false; clock += 2900 } }).chunks().toList()
+        assertEquals(1, confirmed); assertEquals(2, models); assertEquals(models, closedModels)
+        assertEquals(60 * 3200, delivered.sumOf { it.size })
+        assertEquals(1, delivered.first()[0].toInt())
+        assertTrue(logs.any { "barge_candidate_retained reason=confirmation_in_progress" in it })
+        assertFalse(logs.any { "reason=window_limit" in it })
+    }
+
+    // A candidate longer than the recognizer's 4000 ms probe clip must still be
+    // probed (through its newest window) and confirmed. Here the first probe is
+    // also started too late (queued_audio_too_old), so confirmation only lands
+    // on a re-probe submitted when the candidate is already ~5200 ms long.
+    @Test fun longCandidateIsProbedThroughNewestWindowAndConfirmsWholeUtterance() = runBlocking {
+        val pending = java.util.ArrayDeque<Runnable>()
+        val dispatcher = object : CoroutineDispatcher() {
+            override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) { pending.add(block) }
+        }
+        val delivered = gate(chunks = 70, dispatcher = dispatcher, minimumProbeMs = 250, beforeFrame = { index ->
+            if (index == 45 || index == 52) while (pending.isNotEmpty()) pending.removeFirst().run()
+        }).chunks().toList()
+        assertEquals(1, confirmed)
+        assertEquals(1, models); assertEquals(models, closedModels)
+        assertEquals(70 * 3200, delivered.sumOf { it.size })
+        assertEquals(1, delivered.first()[0].toInt())
+        assertTrue(logs.any { it.contains("queued_audio_too_old") })
+        assertTrue(logs.any { "barge_candidate_retained reason=confirmation_in_progress" in it })
+    }
+
+    // A capture backlog suspension mid-candidate is a machinery fault, not a
+    // rejection of the speech: after recovery the restarted candidate must seed
+    // from the episode, so the audio handed off still begins at the first word
+    // spoken before the suspension.
+    @Test fun backlogSuspensionKeepsEpisodeSoRestartedCandidateHearsFirstWord() = runBlocking {
+        var backlog = 0L
+        val delivered = gate(text = "Actually open settings", probability = .6f, minimumProbeMs = 250, chunks = 60,
+            backlogNow = { backlog },
+            loadAction = { if (models <= 2) clock += 1000 },
+            beforeFrame = { index -> if (index == 8) backlog = 700L; if (index == 18) backlog = 0L }).chunks().toList()
+        assertEquals(1, confirmed)
+        assertEquals(60 * 3200, delivered.sumOf { it.size })
+        assertEquals(1, delivered.first()[0].toInt())
+        assertTrue(logs.any { it.contains("barge_natural_suspended") })
+        assertTrue(logs.any { it.contains("barge_natural_recovered") })
+    }
+
 }
