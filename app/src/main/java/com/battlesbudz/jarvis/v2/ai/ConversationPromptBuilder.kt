@@ -64,12 +64,16 @@ class ConversationPromptBuilder(
             treat it as authoritative and explain it naturally. Do not claim that
             you accessed or verified sources unless reference evidence is included
             in this prompt.
-            For historical or factual questions, do not fill gaps by guessing.
-            If you are not confident and no reference evidence is included,
-            say that you could not verify the answer. Never ask the user whether
+            For factual and historical questions, answer from your own
+            knowledge when no reference evidence is included. Reference
+            evidence is an aid when it is included, not a prerequisite for
+            answering. Do not say that you could not verify an answer merely
+            because no reference evidence is included, and do not mention
+            reference material, sources, or lookup unless the user asked
+            about them. When reference evidence is included, use it as the
+            factual basis for the claims it covers and do not claim that you
+            accessed or verified any other source. Never ask the user whether
             to search Wikipedia; the app handles factual lookup automatically.
-            Do not claim Wikipedia or Wikidata was searched unless evidence is
-            included below.
             Prefer a concise answer that fits the current mobile turn budget.
             For broad requests, give the key points first and avoid unnecessary
             repetition or a long preamble.

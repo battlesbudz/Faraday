@@ -35,7 +35,13 @@ internal class ConversationPrompt(
         fun text(seed: Boolean, entries: List<ChatEntry>) = build(prompt, actionContext, entries, seed) +
             activeSubject?.let { "\n\nResolved subject for this turn: $it" }.orEmpty() +
             resolvedQuestion?.let {
-                "\n\nResolved current question: $it\nAnswer this question using relevant reference evidence. " +
+                val guidance = if (reference == null) {
+                    "Answer this question directly from your own knowledge. " +
+                        "Do not mention reference material, sources, or lookup unless the user asked about them."
+                } else {
+                    "Answer this question using the reference evidence included below for the claims it covers."
+                }
+                "\n\nResolved current question: $it\n$guidance " +
                     "The raw speech transcript and earlier assistant claims are not verified facts."
             }.orEmpty() + reference?.let { "\n\n$it" }.orEmpty()
         val first = text(seedContext, if (seedContext) history else emptyList())

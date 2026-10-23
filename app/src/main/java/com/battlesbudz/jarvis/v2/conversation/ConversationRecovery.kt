@@ -173,7 +173,48 @@ internal class ConversationRecovery(
         }
         if (requiresReference && references.isInsufficientAnswer(draft.cleanedResponse) &&
             (voiceRepetitionGuard?.acceptedSentences ?: 0) == 0) {
-            draft.cleanedResponse = "I couldn't produce a verified answer from the available reference evidence. Please try again."
+            // The lookup came back empty (or the retry did). That is not a
+            // dead end: regenerate once from the model's own knowledge, with
+            // shaping that forbids turning the empty lookup into the answer.
+            diagnostics.record(
+                "Reference evidence unavailable; regenerating from local knowledge\\n" +
+                    "user=${prompt.take(1_000)}"
+            )
+            resetNative()
+            voiceRepetitionGuard?.discardPending()
+            val knowledgePrompt = turnPrompt.build(
+                prompt,
+                null,
+                promptHistory,
+                seedContext = true
+            ) + "\n\n" +
+                "The previous draft was not acceptable because it declined to answer. " +
+                "Answer the current question directly from your own knowledge now. " +
+                "Do not mention reference material, sources, lookup, searching, or being unable to verify an answer. " +
+                "Do not ask whether to search and do not call tools."
+            engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
+            draft.generated = if (imageBytes != null) {
+                engine.generate(
+                    prompt = knowledgePrompt,
+                    imageBytes = imageBytes,
+                    onToken = streamFilter::accept
+                )
+            } else {
+                engine.generate(
+                    prompt = knowledgePrompt,
+                    onToken = streamFilter::accept
+                )
+            }
+            draft.containsCurrentTurn = true
+            recordInference("knowledge fallback", draft.generated)
+            draft.cleanedResponse = AssistantText.forDisplay(draft.generated.text)
+            // A regenerated draft that still only talks about the missing
+            // evidence has not answered. Fall back to a plain knowledge
+            // limit, never to a reference-material dead end.
+            if (references.isInsufficientAnswer(draft.cleanedResponse) &&
+                Regex("(?i)reference|sources?|lookup|search|verif|knowledge base").containsMatchIn(draft.cleanedResponse)) {
+                draft.cleanedResponse = "I don't know the answer to that yet."
+            }
         }
     }
 
