@@ -309,4 +309,63 @@ class NaturalBargeInAudioInputTest {
         assertFalse(logs.any { "reply_probe_limit" in it })
     }
 
+    // Weak speech confirms through a second agreeing probe. Both probes run
+    // slowly but inside their budgets (load +800 of 1200 ms, first decode
+    // slice +1600 of 1600 ms), so the agreement lands well past
+    // CANDIDATE_INPUT_MS (3400 ms): the candidate must be retained while
+    // confirmation is in progress, and the handed-off audio must still start
+    // at the first speech chunk, not at a restarted candidate seeded from
+    // the 400 ms onset buffer.
+    @Test fun slowSecondProbePastInputWindowStillConfirmsWholeUtterance() = runBlocking {
+        val jumpedModels = mutableSetOf<Int>()
+        val delivered = gate(text = "Actually open settings", probability = .6f, minimumProbeMs = 250, chunks = 60,
+            loadAction = { if (models <= 2) clock += 800 },
+            acceptAction = { if (models <= 2 && jumpedModels.add(models)) clock += 1600 }).chunks().toList()
+        assertEquals(1, confirmed); assertEquals(2, models); assertEquals(models, closedModels)
+        assertEquals(60 * 3200, delivered.sumOf { it.size })
+        assertEquals(1, delivered.first()[0].toInt())
+        assertTrue(logs.any { "barge_candidate_retained reason=confirmation_in_progress" in it })
+        assertFalse(logs.any { "reason=window_limit" in it })
+    }
+
+    // A candidate longer than the recognizer's 4000 ms probe clip must still be
+    // probed (through its newest window) and confirmed. minimumProbeMs=2100
+    // spaces the two probes 2100 ms of audio apart, so the confirming probe is
+    // submitted when the candidate already holds 4200 ms (134400 B) — beyond
+    // the 4000 ms (128000 B) single-probe limit the recognizer enforces. Weak
+    // acoustics (.6) mean the first probe alone cannot confirm: it only arms
+    // the agreement, and its fresh request words keep the candidate alive
+    // across the 3400 ms input window until the second probe agrees.
+    // (An earlier version drove a manual queue dispatcher: a retry landing one
+    // chunk after the window check reset the candidate, and the restarted
+    // candidate's probe was submitted after the last manual drain, leaving a
+    // job queued forever — the worker's close() cancelAndJoin() then blocked
+    // the whole test class. This version needs no queued jobs at all.)
+    @Test fun longCandidateIsProbedThroughNewestWindowAndConfirmsWholeUtterance() = runBlocking {
+        val delivered = gate(text = "Actually open settings", probability = .6f, minimumProbeMs = 2100, chunks = 60).chunks().toList()
+        assertEquals(1, confirmed)
+        assertEquals(2, models); assertEquals(models, closedModels)
+        assertEquals(60 * 3200, delivered.sumOf { it.size })
+        assertEquals(1, delivered.first()[0].toInt())
+        assertTrue(logs.any { "barge_candidate_retained reason=confirmation_in_progress" in it })
+        assertFalse(logs.any { "reason=window_limit" in it })
+    }
+
+    // A capture backlog suspension mid-candidate is a machinery fault, not a
+    // rejection of the speech: after recovery the restarted candidate must seed
+    // from the episode, so the audio handed off still begins at the first word
+    // spoken before the suspension.
+    @Test fun backlogSuspensionKeepsEpisodeSoRestartedCandidateHearsFirstWord() = runBlocking {
+        var backlog = 0L
+        val delivered = gate(text = "Actually open settings", probability = .6f, minimumProbeMs = 250, chunks = 60,
+            backlogNow = { backlog },
+            loadAction = { if (models <= 2) clock += 1000 },
+            beforeFrame = { index -> if (index == 8) backlog = 700L; if (index == 18) backlog = 0L }).chunks().toList()
+        assertEquals(1, confirmed)
+        assertEquals(60 * 3200, delivered.sumOf { it.size })
+        assertEquals(1, delivered.first()[0].toInt())
+        assertTrue(logs.any { it.contains("barge_natural_suspended") })
+        assertTrue(logs.any { it.contains("barge_natural_recovered") })
+    }
+
 }

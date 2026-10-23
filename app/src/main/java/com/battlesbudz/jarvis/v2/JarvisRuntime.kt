@@ -790,10 +790,12 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
                     (comparison == null && typed == null && inputMode == com.battlesbudz.jarvis.v2.voice.VoiceInputMode.GEMMA_AUDIO)
                 val recognizer = com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy.usesRecognizer(
                     direct, captionEngine != null, comparison?.request?.path?.usesAudio == true)
+                val replyProbe = com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy.replyProbeEnabled(
+                    comparison?.request?.path?.usesAudio == true)
                 val asr = comparison?.request?.path?.captureEngine ?: if (direct) captionEngine ?: com.battlesbudz.jarvis.v2.voice.AsrEngine.WHISPER
                     else com.battlesbudz.jarvis.v2.voice.AsrEngine.selected(applicationContext)
                 VoiceTurnRequest(typed, comparison, direct, recognizer, asr, ttsComparisonStore.selectedEngine(),
-                    comparison?.id ?: java.util.UUID.randomUUID().toString())
+                    comparison?.id ?: java.util.UUID.randomUUID().toString(), replyProbe)
             }, createObservation = { request ->
                 VoiceTurnObservation(applicationContext, request, conversationHistory.current.value.id,
                     pipelineBenchmarkStore, pipelineBenchmarks, diagnosticRecorder, asrComparisonStore, ttsComparisonStore, voiceCallStore)

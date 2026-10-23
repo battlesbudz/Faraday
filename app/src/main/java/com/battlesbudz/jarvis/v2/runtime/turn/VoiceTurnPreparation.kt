@@ -72,9 +72,15 @@ internal class VoiceTurnPreparation(
         call.state.playback.value = com.battlesbudz.jarvis.v2.voice.VoicePlaybackFrame()
         call.status(if (request.captionAsrEnabled) "Preparing speech recognition…" else "Preparing audio understanding…")
         val replyAsrEnabled = request.captionAsrEnabled
-        val asrDirectory = if (replyAsrEnabled) request.asrEngine.prepare(context, call::status) else null
-        observation.benchmark.configuration("asr_work_scope", if (replyAsrEnabled) "caption_and_verified_interruption" else "disabled_entire_call_turn_keyword_vad_only")
-        observation.benchmark.configuration("natural_interruption_asr", replyAsrEnabled.toString())
+        // The interruption probe needs the same recognizer files even when captions
+        // are off; it confirms barge-in only and never feeds the conversation.
+        val asrDirectory = if (replyAsrEnabled || request.replyProbeEnabled) request.asrEngine.prepare(context, call::status) else null
+        observation.benchmark.configuration("asr_work_scope", when {
+            replyAsrEnabled -> "caption_and_verified_interruption"
+            request.replyProbeEnabled -> "verified_interruption_probe_only"
+            else -> "disabled_entire_call_turn_keyword_vad_only"
+        })
+        observation.benchmark.configuration("natural_interruption_asr", request.replyProbeEnabled.toString())
         diagnosticRecorder.record("Voice ASR selected engine=${request.asrEngine.id} model=${request.asrEngine.modelVersion} turn=${request.asrTurnId}")
         check(modelStore.verifyIntegrity(modelStore.selectedModel())) { "The selected model failed integrity verification." }
         val selectedSpec = modelStore.selectedModel()
@@ -418,6 +424,6 @@ internal class VoiceTurnPreparation(
                 log = { diagnosticRecorder.recordImportant(it) })
             diagnosticRecorder.recordImportant("Wake acknowledged; command microphone ready.")
         }
-        return PreparedVoiceTurn(engine, selectedSpec, asrDirectory, ttsDirectory, input, expectedCallId, models, voiceHistory, output, incremental, activeCapture, correction, directAudioTurn, replyAsrEnabled)
+        return PreparedVoiceTurn(engine, selectedSpec, asrDirectory, ttsDirectory, input, expectedCallId, models, voiceHistory, output, incremental, activeCapture, correction, directAudioTurn, replyAsrEnabled, request.replyProbeEnabled)
     }
 }

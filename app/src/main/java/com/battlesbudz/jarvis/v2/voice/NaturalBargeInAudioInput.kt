@@ -52,6 +52,12 @@ class NaturalBargeInAudioInput(
             var stopProbes = 0
             var stopHits = 0L
             val onset = RollingAudioBuffer(maxDurationMs = 400)
+            // One speech episode's audio, retained across machinery resets that
+            // are not rejections of the speech itself (candidate window limit,
+            // capture backlog), so a restarted candidate still begins at the
+            // episode's first word. Rolling at the candidate retention bound.
+            val episode = RollingAudioBuffer(maxDurationMs = InterruptionTiming.CANDIDATE_RETAIN_MS)
+            var episodeLive = false
             val candidate = RollingAudioBuffer(maxDurationMs = InterruptionTiming.CANDIDATE_RETAIN_MS)
             var active = false
             var submitted = false
@@ -75,6 +81,7 @@ class NaturalBargeInAudioInput(
             var recoveredAt: Long? = null
             var backlogRecoveries = 0
             var rejectedWindows = 0
+            var windowRetentionLogged = false
             var staleResults = 0
             var pressureFrames = 0
             var finalReason = "no_confirmed_request"
@@ -87,11 +94,13 @@ class NaturalBargeInAudioInput(
             var hypothesisSupported = false
             var evaluatedAudioAt: Long? = null
             var lastAcousticLogAt = Long.MIN_VALUE / 2
-            fun reset() {
+            fun reset(keepEpisode: Boolean = false) {
                 onCandidateCleared()
                 active = false; submitted = false; submittedBytes = 0; candidateProbes = 0; hypothesis = null
                 candidate.clear(); gate = BargeInGate(); retryAt = 0; lastGateDecision = ""; revision++
                 acousticEvidence.reset(); confirmation.reset(); hypothesisSupported = false; evaluatedAudioAt = null
+                windowRetentionLogged = false
+                if (!keepEpisode) { episode.clear(); episodeLive = false }
             }
             fun disable(reason: String) {
                 if (!disabled) {
@@ -189,7 +198,10 @@ class NaturalBargeInAudioInput(
                     if (disabled) return@collect
                     if (input.bufferedAudioMs > 600 || now - at > 800) {
                         if (!backlogSuspended) {
-                            backlogSuspended = true; reset(); onset.clear()
+                            // A capture backlog is a machinery fault, not a rejection
+                            // of the speech: keep the episode so the candidate that
+                            // restarts after recovery still begins at its first word.
+                            backlogSuspended = true; reset(keepEpisode = episodeLive); onset.clear()
                             log("barge_natural_suspended reason=capture_backlog retryable=true fallback=keyword")
                         }
                         recoveredAt = null
@@ -202,7 +214,13 @@ class NaturalBargeInAudioInput(
                                 log("barge_natural_recovered reason=capture_caught_up fresh_candidate_required=true")
                             }
                         } else recoveredAt = null
-                        if (backlogSuspended) return@collect
+                        if (backlogSuspended) {
+                            // The chunk is real sequential audio arriving late, not
+                            // silence: retain it in the episode even though the
+                            // candidate machinery is paused.
+                            if (episodeLive) episode.append(pcm)
+                            return@collect
+                        }
                     }
                     if (submitted && !worker.busy && worker.retryableFailure) {
                         submitted = false; hypothesis = null; retryAt = now + 500; workerDeferrals++
@@ -220,10 +238,21 @@ class NaturalBargeInAudioInput(
                             "rawVad=${raw.probability} rawSpeech=${raw.isSpeech} admitted=$speech floorRms=${acousticGate.noiseFloorRms.toInt()}")
                     }
                     if (disabled) return@collect
+                    // Episode lifecycle: an episode opens at the first admitted
+                    // speech (seeded with the onset pre-roll so it reaches the
+                    // first detected word), mirrors every following chunk while
+                    // live, and closes after EPISODE_GAP_MS without admitted
+                    // speech while no candidate is active.
+                    if (speech && !episodeLive) { episode.append(onset.snapshot()); episodeLive = true }
                     onset.append(pcm)
+                    if (episodeLive) episode.append(pcm)
                     if (speech) lastSpeechAt = at
+                    if (episodeLive && !active && at - lastSpeechAt > InterruptionTiming.EPISODE_GAP_MS) {
+                        episode.clear(); episodeLive = false
+                    }
                     if (!active && speech && now >= cooldownUntil && !worker.busy) {
-                        active = true; candidateAt = at; candidate.append(onset.snapshot())
+                        active = true; candidateAt = at
+                        candidate.append(if (episodeLive && episode.sizeBytes() > 0) episode.snapshot() else onset.snapshot())
                         onCandidateRetained(input.lastChunkSequence, candidate.sizeBytes().toInt())
                     } else if (active) candidate.append(pcm)
                     if (!active) return@collect
@@ -268,32 +297,68 @@ class NaturalBargeInAudioInput(
                             "speechOnsetToStopRequestMs=${now - candidateAt} minimumProbeAudioMs=$minimumProbeAudioMs " +
                             "speakerIdentity=disabled wordStabilityMs=300 recognizedWords=\"${gate.requestText.take(120)}\" acousticOnly=false")
                         emit(candidate.snapshot())
-                        candidate.clear(); onset.clear()
+                        candidate.clear(); onset.clear(); episode.clear(); episodeLive = false
                     } else if ((heard != null && now - heard.audioAtMs > InterruptionTiming.CONFIRM_AGE_MS) ||
                         (heard == null && !worker.busy && at - lastSpeechAt > 800)) {
-                        reset(); cooldownUntil = now + 500
+                        // A stale hypothesis over speech that is still arriving keeps
+                        // its episode: the words were real, only the confirmation
+                        // machinery ran out, and a restarted candidate must still
+                        // begin at the first word. A candidate that died silent (no
+                        // hypothesis, speech ended) ends the episode with it.
+                        reset(keepEpisode = heard != null && episodeLive &&
+                            now - lastSpeechAt <= InterruptionTiming.EPISODE_GAP_MS)
+                        cooldownUntil = now + 500
                     }
                     if (delivered || !active) return@collect
                     if (at - candidateAt >= InterruptionTiming.CANDIDATE_INPUT_MS) {
-                        // Stop submitting new audio, but retain the onset/tail for a pending result
-                        // and its stability check. Never reset before evaluating a fresh result.
-                        if (!worker.busy && !(fresh && hypothesisSupported && gate.reason == "words_settling")) {
+                        // The input window is shorter than the confirmation protocol's
+                        // own worst case: one probe may take LOAD_MS + DECODE_MS, word
+                        // stability adds 300 ms, and weak speech needs a second
+                        // agreeing probe over fresher audio before it may confirm, so
+                        // a legitimate confirmation can need ~6400 ms end to end
+                        // against this 3400 ms window (the retention bound
+                        // CANDIDATE_RETAIN_MS is sized for that full envelope).
+                        // Destroying the candidate here discards the head of the
+                        // utterance: the restarted candidate only reaches back the
+                        // 400 ms onset pre-roll after a 1000 ms cooldown. So past the
+                        // window the candidate is rejected only when confirmation can
+                        // no longer progress; while a probe is in flight, a retry is
+                        // pending, or a fresh hypothesis with live request words is
+                        // still being judged, the candidate and its audio are
+                        // retained and probes may continue below.
+                        val confirmationInProgress = worker.busy || retryAt > now ||
+                            (fresh && (hypothesisSupported || gate.selectedRequest.isNotBlank()))
+                        if (!confirmationInProgress) {
                             log("barge_candidate_rejected reason=window_limit lastDecision=${gate.reason} probes=$candidateProbes playback_uninterrupted=true")
-                            reset(); cooldownUntil = now + 1000; rejectedWindows++
+                            reset(keepEpisode = episodeLive && now - lastSpeechAt <= InterruptionTiming.EPISODE_GAP_MS)
+                            cooldownUntil = now + 1000; rejectedWindows++
+                            return@collect
                         }
-                        return@collect
+                        if (!windowRetentionLogged) {
+                            windowRetentionLogged = true
+                            log("barge_candidate_retained reason=confirmation_in_progress audioMs=${candidate.sizeBytes() / 32} probes=$candidateProbes")
+                        }
                     }
                     if (!hasPlaybackBudget()) pressureFrames++
                     if (candidateProbes < 3 && now >= retryAt &&
                         (!submitted || (hypothesis != null && (!hypothesisSupported || gate.reason != "words_settling") && candidate.sizeBytes() >= submittedBytes + minimumProbeAudioMs * 32)) &&
-                        at - candidateAt >= 200 && candidate.sizeBytes() in (minimumProbeAudioMs * 32)..128_000 && hasPlaybackBudget()) {
+                        at - candidateAt >= 200 && candidate.sizeBytes() >= minimumProbeAudioMs * 32 && hasPlaybackBudget()) {
                         if (!workBudget.available(now)) {
                             budgetDeferrals++
                             if (budgetDeferrals == 1 || budgetDeferrals % 50 == 0)
                                 log("barge_probe_deferred reason=rolling_work_budget retryable=true")
                             return@collect
                         }
-                        val probeAudio = candidate.snapshot()
+                        // The recognizer accepts at most PROBE_WINDOW_MS per probe, so
+                        // a candidate longer than the window is probed through its
+                        // newest audio; every earlier part was covered by the probes
+                        // submitted while the candidate grew. The candidate itself
+                        // keeps the whole episode for the handoff on confirmation.
+                        val candidateAudio = candidate.snapshot()
+                        val probeWindowBytes = (InterruptionTiming.PROBE_WINDOW_MS * 32).toInt()
+                        val probeAudio = if (candidateAudio.size > probeWindowBytes)
+                            candidateAudio.copyOfRange(candidateAudio.size - probeWindowBytes, candidateAudio.size)
+                        else candidateAudio
                         val probeStream = LiveCallAudioEvidence.newStream("probe")
                         if (worker.submit(revision, probeAudio, at)) {
                             LiveCallAudioEvidence.record(probeStream, probeAudio, sampleRateHz, at)
@@ -312,7 +377,7 @@ class NaturalBargeInAudioInput(
                 onCandidateCleared()
                 worker.close()
                 try { vad?.close() } finally {
-                    keyword.close(); onset.clear(); candidate.clear(); stopAudio.clear()
+                    keyword.close(); onset.clear(); candidate.clear(); episode.clear(); stopAudio.clear()
                     log("barge_keyword_summary ready=$keywordReady inputMs=${keywordBytes / 32} " +
                         "loadMs=$keywordLoadMs maxWorkMs=$maxKeywordWorkMs maxBacklogMs=$maxBacklogMs ${keyword.diagnosticSummary}")
                     log("barge_natural_summary probes=$probes budgetDeferrals=$budgetDeferrals stopProbes=$stopProbes stopHits=$stopHits reason=$finalReason backlogRecoveries=$backlogRecoveries " +

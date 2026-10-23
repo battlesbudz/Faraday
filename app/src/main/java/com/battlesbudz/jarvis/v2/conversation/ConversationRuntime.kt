@@ -14,6 +14,21 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
+ * User-facing text for a failed turn. The classes stay distinct: a native
+ * tool-call parse failure means the model loaded and generated but emitted
+ * a call the SDK could not parse, so it is reported as an action that could
+ * not be completed — never as a model-load failure, and never with the
+ * SDK's internal status text attached.
+ */
+internal fun conversationFailureMessage(isNativeQuarantined: Boolean, error: Throwable): String = when {
+    isNativeQuarantined ->
+        "The local model did not stop safely. Restart Jarvis before starting another request."
+    com.battlesbudz.jarvis.v2.ai.ToolCallParseFailure.isFailure(error) ->
+        "I couldn't complete that action. Please try again."
+    else -> "I could not load the local model: ${error.message ?: "unknown error"}"
+}
+
+/**
  * Turn admission and ordered stage orchestration. Its returned job owns native callbacks until
  * cleanup completes; the voice caller retains its existing model lease and joins this job.
  * Android entry points compose the narrow owners here, without exposing their runtime object.
@@ -164,9 +179,7 @@ internal class ConversationCoordinator(
                 }
                 diagnostics.record("Turn failed\nuser=${input.prompt.take(1_000)}\nimageAttached=${input.imageUri != null}\n" +
                     "error=${error.stackTraceToString().take(4_000)}")
-                reply.postFinish(if (modelSession.isNativeQuarantined)
-                    "The local model did not stop safely. Restart Jarvis before starting another request."
-                else "I could not load the local model: ${error.message ?: "unknown error"}")
+                reply.postFinish(conversationFailureMessage(modelSession.isNativeQuarantined, error))
             } finally {
                 try {
                     if (input.nativeSpeculation?.closeAndDrain() == false)
