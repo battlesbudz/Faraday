@@ -9,6 +9,7 @@ import com.battlesbudz.jarvis.v2.voice.AudioTurnCapture
 import com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy
 import com.battlesbudz.jarvis.v2.voice.QuietSpeechAudioInput
 import com.battlesbudz.jarvis.v2.voice.SileroSpeechDetector
+import com.battlesbudz.jarvis.v2.voice.TurnStopPolicy
 import com.battlesbudz.jarvis.v2.voice.VoiceModelSession
 import com.battlesbudz.jarvis.v2.voice.comparison.LiveComparison
 import java.io.File
@@ -49,6 +50,10 @@ internal class VoiceTurnCaptureFactory(
             maxAudioDurationMs = if (plan.directAudioTurn) GemmaAudioInputPolicy.MAX_CAPTURE_MS else 25_000,
             rejectAtAudioLimit = plan.directAudioTurn,
             captionOnly = plan.directAudioTurn,
+            // This factory builds only the conversation captures (primary and
+            // follow-up). They follow the reference turn-stop pattern: the Smart
+            // Turn analyzer decides every stop, backed only by the 5s timeout.
+            turnStopPolicy = TurnStopPolicy.REFERENCE,
             trailingSilenceMs = if (plan.directAudioTurn && !plan.captionAsrEnabled) 650L else null,
             createDetector = { SileroSpeechDetector.create(context.assets) },
             log = {

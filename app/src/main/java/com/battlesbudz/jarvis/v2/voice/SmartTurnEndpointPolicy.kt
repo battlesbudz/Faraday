@@ -7,6 +7,16 @@ internal object SmartTurnEndpointPolicy {
     const val COMPLETE_SILENCE_MS = 350L
     const val CONTINUE_SILENCE_MS = 3500L
 
+    // Reference (Pipecat) turn-stop constants. The analyzer is the stop strategy;
+    // the only ending behind it is the user_turn_stop_timeout backstop, which
+    // Pipecat documents as "a backstop, not part of normal timing". With no
+    // analyzer available, Pipecat's plain stop strategy is a fixed silence
+    // window after the VAD stop (SpeechTimeoutUserTurnStopStrategy, 0.6s default).
+    const val TURN_STOP_TIMEOUT_MS = 5_000L
+    const val SPEECH_TIMEOUT_MS = 600L
+    const val CUE_TURN_STOP_TIMEOUT = "turn_stop_timeout"
+    const val CUE_SPEECH_TIMEOUT = "speech_timeout"
+
     /** Pinned Pipecat v3.2 semantics; this threshold is not Jarvis calibration. */
     fun modelState(probability: Float): CaptureEndpointState {
         require(probability.isFinite() && probability in 0f..1f)
@@ -49,6 +59,29 @@ internal object SmartTurnEndpointPolicy {
         }
         if (silenceMs < COMPLETE_SILENCE_MS) return fallback
         return AdaptiveTurnEnd.Decision(minOf(fallback.silenceMs, COMPLETE_SILENCE_MS), "smart_turn_complete")
+    }
+
+    /**
+     * Reference turn-stop arbitration: a COMPLETE verdict under input sanity is
+     * the ONLY verdict-based endpoint. [eligible] is
+     * [NativePauseEndpointPolicy.smartTurnSanity] on every route — real speech
+     * existed and the model snapshot covers the speech span it judged. Later
+     * retained bytes are the pause itself and need no byte-exact coverage: the
+     * capture owner's finalization drain, not this policy, protects unclassified
+     * audio behind the seal. Any other state (CONTINUE, PENDING, FALLBACK, or a
+     * sanity-blocked COMPLETE) returns null: the turn stays open and only the
+     * caller's dead-man backstop may end it.
+     */
+    fun referenceDecision(decision: CaptureEndpointDecision,
+                          eligible: NativePauseEndpointPolicy.Eligibility,
+                          collectedBytes: Long, silenceMs: Long,
+                          lastSpeechSample: Long): AdaptiveTurnEnd.Decision? {
+        if (decision.state != CaptureEndpointState.COMPLETE || !eligible.allowed) return null
+        val modelThrough = decision.modelThroughSample ?: return null
+        if (modelThrough * 2 > collectedBytes) return null
+        if (modelThrough < lastSpeechSample) return null
+        if (silenceMs < COMPLETE_SILENCE_MS) return null
+        return AdaptiveTurnEnd.Decision(COMPLETE_SILENCE_MS, "smart_turn_complete")
     }
 
     /** A timestamp gap or unclassified suffix cannot spend CONTINUE's protection.
