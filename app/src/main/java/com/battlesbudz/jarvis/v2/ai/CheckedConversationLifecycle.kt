@@ -46,6 +46,13 @@ internal class CheckedConversationLifecycle<C : Any>(
 
     val safeToRelease: Boolean get() = synchronized(lock) { !busy && quarantine == null }
     val isQuarantined: Boolean get() = synchronized(lock) { quarantine != null }
+    /**
+     * True once a close has been requested, whether it completed or is
+     * retained by a failed drain. A successfully closed engine also reports
+     * [safeToRelease], so owners that must not touch a closing/closed engine
+     * (for example an optional post-answer reset) need this separate signal.
+     */
+    val isClosed: Boolean get() = synchronized(lock) { closed || closeRequested }
     val requiresConfirmedHistoryRebuild: Boolean get() = synchronized(lock) { needsHistoryRebuild }
 
     fun initialize(initializeEngine: () -> Unit) {

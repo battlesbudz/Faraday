@@ -36,6 +36,27 @@ class CheckedConversationLifecycleTest {
         throw AssertionError("Expected failure")
     }
 
+    @Test fun closedStateIsReportedOnlyOnceCloseIsRequested() {
+        val native = Native()
+        assertFalse(native.owner.isClosed)
+        val turn = native.owner.beginTurn()
+        native.owner.finishTurn(turn, { true })
+        assertFalse("A finished turn does not close the engine", native.owner.isClosed)
+        native.owner.close()
+        assertTrue(native.owner.isClosed)
+        // A closed engine still reports safeToRelease; isClosed is the
+        // separate signal the post-answer caption guard relies on.
+        assertTrue(native.owner.safeToRelease)
+    }
+
+    @Test fun failedCloseStillReportsClosedSoOptionalWorkSkips() {
+        val native = Native()
+        native.disposeEngine = { error("engine close failed") }
+        failure { native.owner.close() }
+        assertTrue("Close was requested even though the drain failed", native.owner.isClosed)
+        assertTrue(native.owner.isQuarantined)
+    }
+
     @Test fun earlyPreparedChildIsIdleAndUsedExactlyOnce() {
         val native = Native()
         assertTrue(native.owner.prepareConversation { true })
