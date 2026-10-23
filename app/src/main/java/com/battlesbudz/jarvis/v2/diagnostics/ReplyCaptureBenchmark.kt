@@ -165,6 +165,7 @@ internal class ReplyCaptureBenchmark(
         modelSession: VoiceModelSession? = null,
         asrOnly: Boolean = false,
         recognitionEnabled: Boolean = true,
+        probeEnabled: Boolean = recognitionEnabled,
         outputProvider: () -> PiperVoiceOutput = { output },
         onCandidateRetained: (Long?, Int) -> Unit = { _, _ -> },
         onCandidateCleared: () -> Unit = {},
@@ -193,7 +194,11 @@ internal class ReplyCaptureBenchmark(
                 else if (profile.communicationInput) "VOICE_COMMUNICATION" else "VOICE_RECOGNITION")
             benchmark?.configuration("noise_suppression_requested", if (inputFactory != null) "caller_managed" else profile.noiseSuppression.toString())
             benchmark?.configuration("capture_source_provenance", if (inputFactory != null) "actual_retained_source_not_observed_by_wrapper" else "selected_profile_requested")
-            benchmark?.configuration("asr_work_scope", if (recognitionEnabled) "verified_interruption_and_final_capture" else "disabled_keyword_vad_only")
+            benchmark?.configuration("asr_work_scope", when {
+                recognitionEnabled -> "verified_interruption_and_final_capture"
+                probeEnabled -> "verified_interruption_probe_only"
+                else -> "disabled_keyword_vad_only"
+            })
             benchmark?.configuration("asr_snapshot_scope", "last_finalized_capture_attempt")
             benchmark?.configuration("preconfirmation_probe_work", "outside_capture_asr_metrics_not_measured_here")
         }
@@ -215,7 +220,7 @@ internal class ReplyCaptureBenchmark(
             }, asrEngine = asrEngine, onPartialTranscript = { text ->
                 if (text.isNotBlank()) benchmark?.mark("listener_first_asr_partial")
                 onPartialTranscript(text)
-            }, trace = trace, inputFactory = inputFactory, modelSession = modelSession, asrOnly = asrOnly, recognitionEnabled = recognitionEnabled,
+            }, trace = trace, inputFactory = inputFactory, modelSession = modelSession, asrOnly = asrOnly, recognitionEnabled = recognitionEnabled, probeEnabled = probeEnabled,
                 outputProvider = outputProvider,
                 onCandidateRetained = onCandidateRetained,
                 onCandidateCleared = onCandidateCleared,

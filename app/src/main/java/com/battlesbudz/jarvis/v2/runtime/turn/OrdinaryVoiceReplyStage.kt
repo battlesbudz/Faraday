@@ -336,6 +336,7 @@ internal class OrdinaryVoiceReplyStage(
             listen = { confirmed ->
                 replyCapture.listenBenchmarkedReply(prepared.output, prepared.asrDirectory, confirmed, asrEngine = request.asrEngine, trace = observation.turnTrace,
                     recognitionEnabled = prepared.replyAsrEnabled,
+                    probeEnabled = prepared.replyProbeEnabled,
                     onCandidateRetained = { sequence, bytes ->
                         rawInput?.retainCandidate(sequence, bytes)
                         if (rawInput != null) captionPublication.replyCandidate(true)
