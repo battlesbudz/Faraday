@@ -329,23 +329,26 @@ class NaturalBargeInAudioInputTest {
     }
 
     // A candidate longer than the recognizer's 4000 ms probe clip must still be
-    // probed (through its newest window) and confirmed. Here the first probe is
-    // also started too late (queued_audio_too_old), so confirmation only lands
-    // on a re-probe submitted when the candidate is already ~5200 ms long.
+    // probed (through its newest window) and confirmed. minimumProbeMs=2100
+    // spaces the two probes 2100 ms of audio apart, so the confirming probe is
+    // submitted when the candidate already holds 4200 ms (134400 B) — beyond
+    // the 4000 ms (128000 B) single-probe limit the recognizer enforces. Weak
+    // acoustics (.6) mean the first probe alone cannot confirm: it only arms
+    // the agreement, and its fresh request words keep the candidate alive
+    // across the 3400 ms input window until the second probe agrees.
+    // (An earlier version drove a manual queue dispatcher: a retry landing one
+    // chunk after the window check reset the candidate, and the restarted
+    // candidate's probe was submitted after the last manual drain, leaving a
+    // job queued forever — the worker's close() cancelAndJoin() then blocked
+    // the whole test class. This version needs no queued jobs at all.)
     @Test fun longCandidateIsProbedThroughNewestWindowAndConfirmsWholeUtterance() = runBlocking {
-        val pending = java.util.ArrayDeque<Runnable>()
-        val dispatcher = object : CoroutineDispatcher() {
-            override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) { pending.add(block) }
-        }
-        val delivered = gate(chunks = 70, dispatcher = dispatcher, minimumProbeMs = 250, beforeFrame = { index ->
-            if (index == 45 || index == 52) while (pending.isNotEmpty()) pending.removeFirst().run()
-        }).chunks().toList()
+        val delivered = gate(text = "Actually open settings", probability = .6f, minimumProbeMs = 2100, chunks = 60).chunks().toList()
         assertEquals(1, confirmed)
-        assertEquals(1, models); assertEquals(models, closedModels)
-        assertEquals(70 * 3200, delivered.sumOf { it.size })
+        assertEquals(2, models); assertEquals(models, closedModels)
+        assertEquals(60 * 3200, delivered.sumOf { it.size })
         assertEquals(1, delivered.first()[0].toInt())
-        assertTrue(logs.any { it.contains("queued_audio_too_old") })
         assertTrue(logs.any { "barge_candidate_retained reason=confirmation_in_progress" in it })
+        assertFalse(logs.any { "reason=window_limit" in it })
     }
 
     // A capture backlog suspension mid-candidate is a machinery fault, not a
