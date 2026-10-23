@@ -309,15 +309,18 @@ class NaturalBargeInAudioInputTest {
         assertFalse(logs.any { "reply_probe_limit" in it })
     }
 
-    // Weak speech confirms through a second agreeing probe. With a slow first
-    // decode the agreement lands past CANDIDATE_INPUT_MS (3400 ms): the candidate
-    // must be retained while confirmation is in progress, and the handed-off
-    // audio must still start at the first speech chunk, not at a restarted
-    // candidate seeded from the 400 ms onset buffer.
+    // Weak speech confirms through a second agreeing probe. Both probes run
+    // slowly but inside their budgets (load +800 of 1200 ms, first decode
+    // slice +1600 of 1600 ms), so the agreement lands well past
+    // CANDIDATE_INPUT_MS (3400 ms): the candidate must be retained while
+    // confirmation is in progress, and the handed-off audio must still start
+    // at the first speech chunk, not at a restarted candidate seeded from
+    // the 400 ms onset buffer.
     @Test fun slowSecondProbePastInputWindowStillConfirmsWholeUtterance() = runBlocking {
-        var firstAccept = true
+        val jumpedModels = mutableSetOf<Int>()
         val delivered = gate(text = "Actually open settings", probability = .6f, minimumProbeMs = 250, chunks = 60,
-            acceptAction = { if (firstAccept) { firstAccept = false; clock += 2900 } }).chunks().toList()
+            loadAction = { if (models <= 2) clock += 800 },
+            acceptAction = { if (models <= 2 && jumpedModels.add(models)) clock += 1600 }).chunks().toList()
         assertEquals(1, confirmed); assertEquals(2, models); assertEquals(models, closedModels)
         assertEquals(60 * 3200, delivered.sumOf { it.size })
         assertEquals(1, delivered.first()[0].toInt())
