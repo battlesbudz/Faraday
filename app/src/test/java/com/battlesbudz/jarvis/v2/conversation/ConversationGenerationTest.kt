@@ -63,6 +63,33 @@ class ConversationGenerationTest {
         override suspend fun sendToolResults(results: List<Pair<ToolCall, String>>, onToken: (String) -> Unit): GenerationResult = error("Unrequested tools must not execute")
     }
 
+    private class ParseFailingBackend(private val firstError: Throwable) : ConversationBackend {
+        val requests = mutableListOf<String>()
+        val tools = mutableListOf<Boolean>()
+        override val modelId = "fake"
+        override var onPromptSubmitted: (String, Int) -> Unit = { _, _ -> }
+        override var onInferenceProgress: (InferenceProgress) -> Unit = {}
+        override var onBenchmarkSubmission: (PipelineBenchmarkSubmission) -> Unit = {}
+        override var benchmarkPurpose = PipelineBenchmarkPurpose.UNKNOWN
+        override fun inputContextDescription() = "fake"
+        override var toolsEnabled = false
+        override suspend fun setToolsEnabled(enabled: Boolean): Boolean {
+            tools.add(enabled)
+            val changed = toolsEnabled != enabled
+            toolsEnabled = enabled
+            return changed
+        }
+        private fun result(prompt: String, emit: (String) -> Unit): GenerationResult {
+            requests.add(prompt)
+            if (requests.size == 1) throw firstError
+            return GenerationResult("A fresh answer.", 1, null).also { emit(it.text) }
+        }
+        override suspend fun generate(prompt: String, onToken: (String) -> Unit) = result(prompt, onToken)
+        override suspend fun generateAudio(prompt: String, audioBytes: ByteArray, onToken: (String) -> Unit) = result(prompt, onToken)
+        override suspend fun generate(prompt: String, imageBytes: ByteArray, onToken: (String) -> Unit): GenerationResult = error("Unexpected image input")
+        override suspend fun sendToolResults(results: List<Pair<ToolCall, String>>, onToken: (String) -> Unit): GenerationResult = error("Unrequested tools must not execute")
+    }
+
     private suspend fun generate(audio: ByteArray? = null,
                              nativeSpeculation: NativeVoiceSpeculation? = null,
                              backend: Backend = Backend(),
@@ -97,6 +124,82 @@ class ConversationGenerationTest {
             ConversationPrompt(builder, audio != null, { null }, { null }), backend, reply, actions,
             ConversationInferenceTelemetry(input, callbacks, reply, diagnostics))
         return draft to backend
+    }
+
+    private suspend fun generateWithBackend(backend: ConversationBackend, audio: ByteArray?,
+                                              phoneActions: ConversationActions? = null): ConversationDraft {
+        val diagnostics = ConversationDiagnostics({}, {}, {}, {})
+        val memory = MemoryDeliveryFence()
+        val input = ConversationInvocation("Hello", emptyList(), voiceAudio = audio, directVoiceAudio = audio != null)
+        val callbacks = ConversationCallbacks({}, {})
+        val reply = ConversationReply("generation", PipelineBenchmarkCapture("generation", "text", 0,
+            PipelineBenchmarkProvenance("test", 1)), true, memory, { it() }, {}, {}, {}, {}, { _, _, _ -> })
+        val shortTerm = ShortTermConversationContext()
+        val builder = ConversationPromptBuilder(shortTerm)
+        val state = object : ConversationSessionState {
+            override var engine: LiteRtLmEngine? = null
+            override var hasContext = false
+            override var characters = 0
+        }
+        val model = LocalModelSpec("test", "test.litertlm", recommendedGpu = false, supportsTools = true)
+        val session = ConversationModelSession(state, { model }, { true }, { }, { true }, { "unused" },
+            "unused", shortTerm, {})
+        val references = object : ConversationReferences {
+            override suspend fun fetch(query: String): String? = error("Generation must not fetch")
+            override fun isInsufficientAnswer(answer: String) = false
+        }
+        val actions = phoneActions ?: ConversationActions({ error("No Android executor") },
+            { _, _ -> error("No action admission") }, { _, _, _, _ -> error("No action dispatch") },
+            {}, "conversation", { _, _, _ -> })
+        val generation = ConversationGeneration(session, references, builder, { error("No attachment") }, diagnostics)
+        return generation.generate(input, 10_000,
+            RoutedConversation(emptyList(), TurnPlan(TurnKind.NORMAL_CHAT), ActionTurnPlan.NotAction, null),
+            PreparedConversation(emptyList(), null, null, null, false, false, null), emptyList(),
+            ConversationPrompt(builder, audio != null, { null }, { null }), backend, reply, actions,
+            ConversationInferenceTelemetry(input, callbacks, reply, diagnostics))
+    }
+
+    /** The exact SDK rejection from Battles's build-1563 diagnostics dump. */
+    private fun dumpParseError() = RuntimeException(
+        "Failed to parse tool calls from code block: call:open_app{app:<|\"|>Facebook<|\"|>Facebook<|\"|>}")
+
+    @Test fun dumpParseFailureSalvagesTheValidatedCallAndCompletesTheTurn() = runBlocking {
+        val backend = ParseFailingBackend(dumpParseError())
+        val actions = ConversationActions(
+            executor = { com.battlesbudz.jarvis.v2.actions.MobileActionExecutor { error("No Android executor") } },
+            admit = { _, _ -> "group-1" },
+            execute = { _, _, _, _ -> com.battlesbudz.jarvis.v2.actions.ExecutionResult(true, "Opened Facebook.") },
+            cancelUnfinished = {}, conversationId = "conversation", onActionResult = { _, _, _ -> },
+            mainDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+            executionDispatcher = kotlinx.coroutines.Dispatchers.Unconfined)
+        val draft = generateWithBackend(backend, byteArrayOf(1, 2, 3), actions)
+        // No regeneration was needed and no second generation ran: the
+        // salvaged call went through the normal action path exactly once.
+        assertEquals(1, backend.requests.size)
+        assertEquals(listOf(true), backend.tools)
+        assertEquals("open_app", draft.actionName)
+        assertEquals("Opened Facebook.", draft.actionResultMessage)
+    }
+
+    @Test fun unsalvageableParseFailureRegeneratesWithoutToolsAndCompletesTheTurn() = runBlocking {
+        val backend = ParseFailingBackend(RuntimeException(
+            "Failed to parse tool calls from code block: call:open_app{app:<|\"|>Facebook<|\"|>Twitter<|\"|>}"))
+        val draft = generateWithBackend(backend, byteArrayOf(1, 2, 3))
+        assertEquals(2, backend.requests.size)
+        assertTrue(backend.requests.last().contains("could not be read"))
+        assertEquals(listOf(true, false), backend.tools)
+        assertEquals("A fresh answer.", draft.generated.text)
+        assertNull(draft.actionResultMessage)
+    }
+
+    @Test fun nonParseGenerationFailureStillPropagates() = runBlocking {
+        val backend = ParseFailingBackend(RuntimeException("native engine exploded"))
+        try {
+            generateWithBackend(backend, byteArrayOf(1, 2, 3))
+            fail("A non-parse failure must not be swallowed by the parse recovery")
+        } catch (error: RuntimeException) {
+            assertEquals("native engine exploded", error.message)
+        }
     }
 
     @Test fun invalidToolDraftRetriesAsReadOnlyTextWithOriginalPromptBoundary() = runBlocking {
