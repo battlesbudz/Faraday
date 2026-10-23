@@ -18,6 +18,14 @@ class ReplyVoiceCapture(private val context: Context, private val log: (String) 
                         * recognition, so direct-audio turns can confirm natural speech
                         * over playback without transcribing the follow-up request. */
                        probeEnabled: Boolean = recognitionEnabled,
+                       /** Smart Turn endpoint observer for this listen, begun by the
+                        * caller from the call's SmartTurnCallOwner. The speech this
+                        * capture retains is a user turn, so its stop is judged under
+                        * the reference turn-stop policy like every conversation
+                        * capture. Null is the caller's explicit no-analyzer state
+                        * (setting off, model unavailable, comparison trial): the
+                        * reference speech-timeout window then decides the stop. */
+                       endpointObserver: CaptureShadowObserver? = null,
                        /** The action pump can swap its report ledger/output without restarting ASR. */
                        outputProvider: () -> PiperVoiceOutput = { output },
                        onReady: () -> Unit = {},
@@ -86,6 +94,15 @@ class ReplyVoiceCapture(private val context: Context, private val log: (String) 
                 maxAudioDurationMs = if (recognitionEnabled) 25000 else GemmaAudioInputPolicy.MAX_CAPTURE_MS,
                 rejectAtAudioLimit = !recognitionEnabled,
                 captionOnly = !recognitionEnabled,
+                shadowObserver = endpointObserver,
+                // The gated input above decides only WHETHER an interruption
+                // happened (keyword/probe confirmation, playback stop). The stop
+                // of the speech retained here is a user turn's stop, judged under
+                // the reference turn-stop policy like every conversation capture:
+                // the analyzer's COMPLETE binds, an undecided turn stays open
+                // behind the 5s backstop, and with no analyzer the speech-timeout
+                // window (this capture's 650ms ASR-free window, else 600ms) ends it.
+                turnStopPolicy = TurnStopPolicy.REFERENCE,
                 allowAudioOnlyTurns = true,
                 guardFollowupSpeech = true,
                 initialConfirmedSpeech = { confirmedNaturalText },

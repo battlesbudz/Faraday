@@ -334,9 +334,29 @@ internal class OrdinaryVoiceReplyStage(
                 response
             },
             listen = { confirmed ->
+                // The reply capture's speech becomes this call's next user turn;
+                // its stop is judged by Smart Turn from the same call owner as
+                // the conversation captures (compare the follow-up capture's
+                // telemetry below, prefix followup_).
+                val replyShadowTelemetry = com.battlesbudz.jarvis.v2.diagnostics.SmartTurnBenchmarkTelemetry(
+                    observation.benchmark, prefix = "reply_") { category, evidence ->
+                    diagnosticRecorder.recordTurnEvidence(request.asrTurnId, category, evidence)
+                }
                 replyCapture.listenBenchmarkedReply(prepared.output, prepared.asrDirectory, confirmed, asrEngine = request.asrEngine, trace = observation.turnTrace,
                     recognitionEnabled = prepared.replyAsrEnabled,
                     probeEnabled = prepared.replyProbeEnabled,
+                    shadowOwner = resources.smartTurn,
+                    shadowTelemetry = replyShadowTelemetry,
+                    expectedCallId = prepared.expectedCallId,
+                    shadowOwnerIsCurrent = { exactTurnJob?.isActive == true && call.state.turnJob === exactTurnJob &&
+                        call.state.armed && call.controller.currentCallId() == prepared.expectedCallId },
+                    smartTurnEndpointEnabled = request.comparison == null,
+                    smartTurnAdmissionBlocker = {
+                        when {
+                            lifetime.nativeSpeculation?.consumedEncoder == true -> "gemma_speculation"
+                            else -> null
+                        }
+                    },
                     onCandidateRetained = { sequence, bytes ->
                         rawInput?.retainCandidate(sequence, bytes)
                         if (rawInput != null) captionPublication.replyCandidate(true)

@@ -166,6 +166,16 @@ internal class ReplyCaptureBenchmark(
         asrOnly: Boolean = false,
         recognitionEnabled: Boolean = true,
         probeEnabled: Boolean = recognitionEnabled,
+        /** The reply capture's speech is a user turn, so its stop is judged by
+         * Smart Turn under the reference policy, from the same call owner the
+         * conversation captures use. Null owner/telemetry/call id leaves the
+         * capture analyzer-free (the reference speech-timeout stop decides). */
+        shadowOwner: com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnCallOwner? = null,
+        shadowTelemetry: com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnTelemetry? = null,
+        expectedCallId: String? = null,
+        shadowOwnerIsCurrent: () -> Boolean = { true },
+        smartTurnEndpointEnabled: Boolean = false,
+        smartTurnAdmissionBlocker: () -> String? = { null },
         outputProvider: () -> PiperVoiceOutput = { output },
         onCandidateRetained: (Long?, Int) -> Unit = { _, _ -> },
         onCandidateCleared: () -> Unit = {},
@@ -202,6 +212,31 @@ internal class ReplyCaptureBenchmark(
             benchmark?.configuration("asr_snapshot_scope", "last_finalized_capture_attempt")
             benchmark?.configuration("preconfirmation_probe_work", "outside_capture_asr_metrics_not_measured_here")
         }
+        // Begin this listen's endpoint observer before the capture exists, the
+        // same lifecycle captureFirstFollowup uses: the call owner closes any
+        // previous capture's observer (that capture has already sealed), the
+        // observer is closed again when this listen returns, and a failed or
+        // unavailable setup degrades to the analyzer-free reference stop, never
+        // to a failed listen.
+        val shadowCallId = expectedCallId ?: callId
+        val endpointObserver = if (shadowOwner != null && shadowTelemetry != null && shadowCallId != null) {
+            val exactListenJob = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
+            try { shadowOwner.beginCapture(
+                shadowCallId, id, captureGeneration = 0,
+                enabled = smartTurnEndpointEnabled &&
+                    com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnSettings.enabled(applicationContext),
+                endpointEnabled = smartTurnEndpointEnabled,
+                model = com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnSettings.store(applicationContext).availableFile(),
+                telemetry = shadowTelemetry,
+                ownerIsCurrent = { exactListenJob?.isActive == true && shadowOwnerIsCurrent() },
+                admissionBlocker = smartTurnAdmissionBlocker) } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                shadowOwner.closeCall(shadowCallId)
+                runCatching { shadowTelemetry.configuration("smart_turn_mode", "unavailable_optional_setup") }
+                null
+            }
+        } else null
+        if (endpointObserver != null) benchmark?.configuration("reply_smart_turn_utterance_id", id)
         try {
             val result = ReplyVoiceCapture(applicationContext) { line ->
                 when {
@@ -221,6 +256,7 @@ internal class ReplyCaptureBenchmark(
                 if (text.isNotBlank()) benchmark?.mark("listener_first_asr_partial")
                 onPartialTranscript(text)
             }, trace = trace, inputFactory = inputFactory, modelSession = modelSession, asrOnly = asrOnly, recognitionEnabled = recognitionEnabled, probeEnabled = probeEnabled,
+                endpointObserver = endpointObserver,
                 outputProvider = outputProvider,
                 onCandidateRetained = onCandidateRetained,
                 onCandidateCleared = onCandidateCleared,
@@ -250,6 +286,11 @@ internal class ReplyCaptureBenchmark(
             failureCode = "listener_error_${error.javaClass.simpleName.take(80)}"
             throw error
         } finally {
+            // The listen has joined its capture cleanup before this boundary, so
+            // this capture's endpoint observer is done. (The next beginCapture
+            // on the call owner would close it regardless; closing here keeps
+            // the reply observer from outliving the capture it judged.)
+            endpointObserver?.close()
             // ReplyVoiceCapture has joined its capture cleanup before this boundary, including cancellation.
             runCatching {
                 lastReadyAt.get().takeIf { it != 0L }?.let { benchmark?.markAt("microphone_ready", it) }
