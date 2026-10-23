@@ -28,6 +28,23 @@ class ConversationPromptTest {
         assertFalse(result.text.contains("old background"))
     }
 
+    @Test fun resolvedQuestionWithoutEvidenceDirectsAKnowledgeAnswer() {
+        val result = prompt().assemble("What is the capital of France?", null, emptyList(), false,
+            "France", "What is the capital of France?", null, 10_000)
+        assertTrue(result.text.contains("Answer this question directly from your own knowledge"))
+        assertTrue(result.text.contains("Do not mention reference material, sources, or lookup unless the user asked about them"))
+        assertFalse(result.text.contains("using the reference evidence included below"))
+    }
+
+    @Test fun resolvedQuestionWithEvidenceUsesTheIncludedEvidence() {
+        val evidence = "Verified reference evidence for this question."
+        val result = prompt().assemble("What is the capital of France?", null, emptyList(), false,
+            "France", "What is the capital of France?", evidence, 10_000)
+        assertTrue(result.text.contains("Answer this question using the reference evidence included below"))
+        assertFalse(result.text.contains("directly from your own knowledge"))
+        assertTrue(result.text.endsWith(evidence))
+    }
+
     @Test fun sufficientBudgetKeepsTheCurrentNativeSessionSeed() {
         val result = prompt().assemble("Keep going", null,
             listOf(ChatEntry("You", "The newest context is a garden")), true,

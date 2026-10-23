@@ -54,8 +54,9 @@ class ConversationContextPreparationTest {
         val context = ShortTermConversationContext()
         val models = ConversationModelSession(state, { model }, { true }, { }, { true }, { "unused" },
             "unused", context, {})
+        var evidence: String? = "reference evidence"
         val references = object : ConversationReferences {
-            override suspend fun fetch(query: String): String? { queries.add(query); return "reference evidence" }
+            override suspend fun fetch(query: String): String? { queries.add(query); return evidence }
             override fun isInsufficientAnswer(answer: String) = answer.isBlank()
         }
         val reply = ConversationReply("context", PipelineBenchmarkCapture("context", "text", 0,
@@ -124,6 +125,28 @@ class ConversationContextPreparationTest {
         assertTrue(prepared.personalMemoryRecall)
         assertNull(prepared.referenceContext)
         assertTrue(f.queries.isEmpty())
+        assertTrue(f.terminal.isEmpty())
+    }
+
+    @Test fun automaticFactualTurnIsLocalFirstAndNeverPrefetchesOrDeadEnds() = runBlocking {
+        val f = Fixture()
+        f.evidence = null
+        val prepared = f.prepare("Who was Harry J. Anslinger?",
+            TurnPlan(TurnKind.FACTUAL_LOCAL_FIRST, "automatic query"))!!
+        // Local-first: preparation must not fetch before a draft exists, and
+        // an empty result must never become a terminal dead-end message.
+        assertTrue(f.queries.isEmpty())
+        assertNull(prepared.referenceContext)
+        assertTrue(f.terminal.isEmpty())
+    }
+
+    @Test fun explicitLookupWithNoEvidenceProceedsToLocalGeneration() = runBlocking {
+        val f = Fixture()
+        f.evidence = null
+        val prepared = f.prepare("Use Wikipedia to find who Harry J. Anslinger was",
+            TurnPlan(TurnKind.EXPLICIT_LOOKUP, "explicit query"))!!
+        assertEquals(listOf("explicit query"), f.queries)
+        assertNull(prepared.referenceContext)
         assertTrue(f.terminal.isEmpty())
     }
 

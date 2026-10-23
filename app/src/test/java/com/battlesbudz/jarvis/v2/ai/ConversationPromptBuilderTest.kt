@@ -87,6 +87,15 @@ class ConversationPromptBuilderTest {
         }
     }
 
+    @Test fun factualPromptAnswersFromKnowledgeWhenNoEvidenceIsIncluded() {
+        val builder = ConversationPromptBuilder(ShortTermConversationContext())
+        val prompt = builder.buildGemmaPrompt("When was the first Taco Bell opened?", null, emptyList(), true)
+        assertTrue(prompt.contains("answer from your own"))
+        assertTrue(prompt.contains("not a prerequisite for"))
+        assertTrue(prompt.contains("reference material, sources, or lookup unless the user asked"))
+        assertFalse(prompt.contains("say that you could not verify the answer"))
+    }
+
     @Test fun toolResultContextRendersUnknownCompletionDistinctlyFromFailure() {
         val builder = ConversationPromptBuilder(ShortTermConversationContext())
         val unknown = builder.buildToolResultContext(
