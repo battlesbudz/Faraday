@@ -134,7 +134,6 @@ class VideoCallService : LifecycleService() {
                     .apply()
             }
         }
-        serverVisionHolder.changeListener?.invoke()
         hub.register(serverVision)
         CallVisionRegistry.serverVision = serverVisionHolder
 
