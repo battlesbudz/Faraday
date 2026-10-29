@@ -297,7 +297,10 @@ internal class ConversationGeneration(
      *    argument value duplicated inside the call) that still validates
      *    against the strict tool schema and the direct-audio tool guard
      *    stands as this turn's tool calls, so [executeNativeActions] runs it
-     *    through the normal approval/execution path.
+     *    through the normal approval/execution path. The failed generation
+     *    disposed the native conversation, so the session is reset first —
+     *    otherwise the tool-results submission after execution would be
+     *    rejected for an unrebuilt history.
      * 2. Otherwise the malformed call is discarded and the turn regenerates
      *    once with tools disabled, mirroring [retryInvalidToolDraft], so it
      *    completes as a normal text answer.
@@ -310,8 +313,18 @@ internal class ConversationGeneration(
         val salvaged = com.battlesbudz.jarvis.v2.ai.MalformedToolCallSalvage.salvage(error)
         val request = salvaged?.let { NativeActionDecoder.decodeStrict(it) }
         if (salvaged != null && request != null && AudioToolGuard.allows(request)) {
+            // The failed generation's turn was not accepted: the lifecycle
+            // disposed its conversation and marked the history for rebuild,
+            // so no native submission (including the tool-results call that
+            // follows action execution) can run until the conversation is
+            // rebuilt from confirmed history. Reset first, exactly as the
+            // discard branch below does before regenerating; the salvaged
+            // call then enters the normal action path on a live
+            // conversation, and its tool response carries the turn's
+            // context (see buildToolResultContext).
+            modelSession.reset()
             diagnostics.summary("Tool call parse failure salvaged call=${salvaged.name} " +
-                "policy=strict_schema_and_audio_guard_validated")
+                "policy=strict_schema_and_audio_guard_validated nativeConversation=rebuilt")
             return GenerationResult("", -1L, null, toolCalls = listOf(salvaged))
         }
         diagnostics.summary("Tool call parse failure discarded call=${salvaged?.name ?: "unparseable"} " +

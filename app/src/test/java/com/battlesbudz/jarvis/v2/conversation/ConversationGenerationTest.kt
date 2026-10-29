@@ -1,5 +1,6 @@
 package com.battlesbudz.jarvis.v2.conversation
 
+import com.battlesbudz.jarvis.v2.actions.ActionRequest
 import com.battlesbudz.jarvis.v2.actions.ActionTurnPlan
 import com.battlesbudz.jarvis.v2.ai.ConversationPromptBuilder
 import com.battlesbudz.jarvis.v2.ai.GenerationResult
@@ -127,7 +128,9 @@ class ConversationGenerationTest {
     }
 
     private suspend fun generateWithBackend(backend: ConversationBackend, audio: ByteArray?,
-                                              phoneActions: ConversationActions? = null): ConversationDraft {
+                                              phoneActions: ConversationActions? = null,
+                                              plan: ActionTurnPlan = ActionTurnPlan.NotAction,
+                                              sessionProbe: (ConversationModelSession) -> Unit = {}): ConversationDraft {
         val diagnostics = ConversationDiagnostics({}, {}, {}, {})
         val memory = MemoryDeliveryFence()
         val input = ConversationInvocation("Hello", emptyList(), voiceAudio = audio, directVoiceAudio = audio != null)
@@ -144,6 +147,7 @@ class ConversationGenerationTest {
         val model = LocalModelSpec("test", "test.litertlm", recommendedGpu = false, supportsTools = true)
         val session = ConversationModelSession(state, { model }, { true }, { }, { true }, { "unused" },
             "unused", shortTerm, {})
+        sessionProbe(session)
         val references = object : ConversationReferences {
             override suspend fun fetch(query: String): String? = error("Generation must not fetch")
             override fun isInsufficientAnswer(answer: String) = false
@@ -153,10 +157,49 @@ class ConversationGenerationTest {
             {}, "conversation", { _, _, _ -> })
         val generation = ConversationGeneration(session, references, builder, { error("No attachment") }, diagnostics)
         return generation.generate(input, 10_000,
-            RoutedConversation(emptyList(), TurnPlan(TurnKind.NORMAL_CHAT), ActionTurnPlan.NotAction, null),
+            RoutedConversation(emptyList(), TurnPlan(TurnKind.NORMAL_CHAT), plan, null),
             PreparedConversation(emptyList(), null, null, null, false, false, null), emptyList(),
             ConversationPrompt(builder, audio != null, { null }, { null }), backend, reply, actions,
             ConversationInferenceTelemetry(input, callbacks, reply, diagnostics))
+    }
+
+    /**
+     * Models the real lifecycle contract after a failed generation: the
+     * native conversation was disposed and its history marked for rebuild,
+     * so a tool-results submission is rejected until the session is reset.
+     * The test installs its reset probe on the model session (on a session
+     * with no resident engine, a reset is what invokes beforeNativeMutation)
+     * and shares the event log, letting [sendToolResults] enforce the same
+     * gate CheckedConversationLifecycle.beginTurn enforces natively.
+     */
+    private class SalvageToolResultsBackend(private val events: MutableList<String>,
+                                            private val firstError: Throwable) : ConversationBackend {
+        var toolResultsCalls = 0
+            private set
+        override val modelId = "fake"
+        override var onPromptSubmitted: (String, Int) -> Unit = { _, _ -> }
+        override var onInferenceProgress: (InferenceProgress) -> Unit = {}
+        override var onBenchmarkSubmission: (PipelineBenchmarkSubmission) -> Unit = {}
+        override var benchmarkPurpose = PipelineBenchmarkPurpose.UNKNOWN
+        override fun inputContextDescription() = "fake"
+        override var toolsEnabled = false
+        override suspend fun setToolsEnabled(enabled: Boolean): Boolean {
+            val changed = toolsEnabled != enabled
+            toolsEnabled = enabled
+            return changed
+        }
+        override suspend fun generate(prompt: String, onToken: (String) -> Unit): GenerationResult =
+            throw firstError
+        override suspend fun generateAudio(prompt: String, audioBytes: ByteArray, onToken: (String) -> Unit): GenerationResult =
+            error("Text path only")
+        override suspend fun generate(prompt: String, imageBytes: ByteArray, onToken: (String) -> Unit): GenerationResult =
+            error("Unexpected image input")
+        override suspend fun sendToolResults(results: List<Pair<ToolCall, String>>, onToken: (String) -> Unit): GenerationResult {
+            toolResultsCalls++
+            events.add("toolResults")
+            check("reset" in events) { "Failed native history must be rebuilt from confirmed history" }
+            return GenerationResult("", 1, null, toolCalls = listOf(ToolCall("read_battery", "{}")))
+        }
     }
 
     /** The exact SDK rejection from Battles's build-1563 diagnostics dump. */
@@ -179,6 +222,38 @@ class ConversationGenerationTest {
         assertEquals(listOf(true), backend.tools)
         assertEquals("open_app", draft.actionName)
         assertEquals("Opened Facebook.", draft.actionResultMessage)
+    }
+
+    @Test fun salvagedParseFailureRebuildsTheConversationBeforeToolResultsFollowExecution() = runBlocking {
+        val events = mutableListOf<String>()
+        val backend = SalvageToolResultsBackend(events, dumpParseError())
+        val plan = ActionTurnPlan.Ready(listOf(
+            ActionTurnPlan.Step(ActionRequest("open_app", mapOf("app" to "Facebook")), "Open Facebook"),
+            ActionTurnPlan.Step(ActionRequest("read_battery"), "Read the battery")))
+        val actions = ConversationActions(
+            executor = { com.battlesbudz.jarvis.v2.actions.MobileActionExecutor { error("No Android executor") } },
+            admit = { _, _ -> "group-1" },
+            execute = { request, _, _, _ ->
+                events.add("execute:${request.name}")
+                com.battlesbudz.jarvis.v2.actions.ExecutionResult(true,
+                    if (request.name == "open_app") "Opened Facebook." else "Battery is at 80%.")
+            },
+            cancelUnfinished = {}, conversationId = "conversation", onActionResult = { _, _, _ -> },
+            mainDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+            executionDispatcher = kotlinx.coroutines.Dispatchers.Unconfined)
+        val draft = generateWithBackend(backend, null, actions, plan) { session ->
+            session.beforeNativeMutation = { events.add("reset") }
+        }
+        // The two-step plan is what reaches the tool-results call: the
+        // salvaged first call executes, the results go back on the rebuilt
+        // conversation, and the follow-up call completes the plan. Without
+        // the rebuild the submission is rejected after the first action's
+        // side effect and the whole turn fails.
+        assertEquals(1, backend.toolResultsCalls)
+        assertEquals("open_app,read_battery", draft.actionName)
+        assertEquals("Opened Facebook. Battery is at 80%.", draft.actionResultMessage)
+        assertTrue(events.indexOf("reset") in 0 until events.indexOf("toolResults"))
+        assertTrue(events.indexOf("execute:open_app") < events.indexOf("toolResults"))
     }
 
     @Test fun unsalvageableParseFailureRegeneratesWithoutToolsAndCompletesTheTurn() = runBlocking {
