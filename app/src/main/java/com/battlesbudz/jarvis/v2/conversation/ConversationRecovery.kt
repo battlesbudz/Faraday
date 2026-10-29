@@ -125,6 +125,8 @@ internal class ConversationRecovery(
         val personalMemoryRecall = answer.prepared.personalMemoryRecall
         val turnPlan = answer.routed.plan
         val voiceRepetitionGuard = answer.repetitionGuard
+        val directAudio = answer.directAudio
+        val voiceAudio = answer.invocation.voiceAudio
         draft.cleanedResponse = AssistantText.forDisplay(draft.generated.text)
         val requiresReference = (!personalMemoryRecall && turnPlan.kind == TurnKind.FACTUAL_LOCAL_FIRST) ||
             turnPlan.kind == TurnKind.EXPLICIT_LOOKUP ||
@@ -193,7 +195,17 @@ internal class ConversationRecovery(
                 "Do not mention reference material, sources, lookup, searching, or being unable to verify an answer. " +
                 "Do not ask whether to search and do not call tools."
             engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
-            draft.generated = if (imageBytes != null) {
+            draft.generated = if (directAudio) {
+                // The question can be about the retained audio itself.
+                // Resubmit it, as the original generation's retry does,
+                // instead of asking for an answer about audio the model
+                // can no longer hear.
+                engine.generateAudio(
+                    knowledgePrompt,
+                    requireNotNull(voiceAudio),
+                    streamFilter::accept
+                )
+            } else if (imageBytes != null) {
                 engine.generate(
                     prompt = knowledgePrompt,
                     imageBytes = imageBytes,

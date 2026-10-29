@@ -156,6 +156,23 @@ class ConversationRecoveryTest {
         assertEquals(listOf("knowledge fallback"), f.reply.inferencePasses.map { it.stage })
     }
 
+    @Test fun knowledgeFallbackResubmitsDirectAudioWhenEvidenceIsUnavailable() = runBlocking {
+        val audio = byteArrayOf(4, 5, 6)
+        val f = Fixture(TurnKind.FACTUAL_LOCAL_FIRST, directAudio = true, voiceAudio = audio)
+        f.backend.outputs += result("A direct answer about the clip.")
+        val draft = f.draft("I don't know.")
+        f.recovery.recover(draft)
+        assertEquals(listOf("automatic question", "resolved subject"), f.references.queries)
+        // The fallback regeneration must carry the retained audio into the
+        // engine, not regenerate from text alone.
+        assertEquals(1, f.backend.requests.size)
+        assertEquals("audio", f.backend.requests.single().mode)
+        assertArrayEquals(audio, f.backend.requests.single().bytes)
+        assertEquals(PipelineBenchmarkPurpose.RETRY, f.backend.requests.single().purpose)
+        assertEquals("A direct answer about the clip.", draft.cleanedResponse)
+        assertEquals(listOf("knowledge fallback"), f.reply.inferencePasses.map { it.stage })
+    }
+
     @Test fun lookupVerdictWithEmptyEvidenceKeepsTheLocalDraft() = runBlocking {
         val f = Fixture(TurnKind.FACTUAL_LOCAL_FIRST)
         f.backend.outputs += result("LOOKUP")
