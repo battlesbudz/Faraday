@@ -879,6 +879,28 @@ class SmartTurnAudioEndpointTest {
         } finally { r.close() }
     }
 
+    @Test fun referenceEchoWindowCompleteStillFinalizesTheCaptionOnTheNativeRoute() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = true, reference = true)
+        try {
+            r.routeAllowed = false // Onset inside the playback echo window: the
+            // factory closes the Smart Turn route gate exactly when the final
+            // transcript is required for playback-echo rejection.
+            r.startPause(); r.result(.9f, 765) // COMPLETE
+            // The verdict still binds (under REFERENCE the gate is not a
+            // stop-decision veto); what the closed gate removes is the caption
+            // omission, the one place a binding COMPLETE used to discard the
+            // transcript acceptance-side echo rejection depends on.
+            eventually { r.capture.endpointDecisionAtNs != null }
+            assertTrue(r.capture.endpointDecisionAtNs!! < 5_300_000_000L)
+            assertTrue(r.logs.any { it.contains("endpointCue=smart_turn_complete") })
+            r.completeWav()
+            assertEquals(1, r.finalCalls)
+            assertEquals("finalized", r.capture.finalAsrStatus)
+            assertNotEquals("smart_turn_complete_native_audio", r.capture.captionFinalizationReason)
+            assertEquals("what is the", r.capture.finalTranscript)
+        } finally { r.close() }
+    }
+
     @Test fun referenceDecisionBindsCompleteOnSanityAlone() {
         val sane = NativePauseEndpointPolicy.smartTurnSanity(true, 8000, 7168)
         assertEquals(AdaptiveTurnEnd.Decision(350, "smart_turn_complete"),

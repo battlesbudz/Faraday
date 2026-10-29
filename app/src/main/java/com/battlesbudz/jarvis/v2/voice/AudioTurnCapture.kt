@@ -402,7 +402,10 @@ class AudioTurnCapture(
                     // timeout backstop, and with no analyzer attached the plain
                     // speech-timeout window decides. The route/echo gate and the
                     // Adaptive stack no longer end conversation turns here; echo is
-                    // still rejected at final-candidate acceptance downstream.
+                    // still rejected at final-candidate acceptance downstream. That
+                    // rejection needs the final transcript, so the native caption
+                    // omission at finalization keeps honoring the route gate even
+                    // though the bind does not.
                     val endpoint = if (turnStopPolicy != TurnStopPolicy.REFERENCE) legacyArbitratedEndpoint
                         else if (endpointObserver == null) AdaptiveTurnEnd.Decision(
                             trailingSilenceMs ?: SmartTurnEndpointPolicy.SPEECH_TIMEOUT_MS,
@@ -519,7 +522,17 @@ class AudioTurnCapture(
                             }
                             // Whisper text is the authoritative request and must be finalized.
                             // Segmented native captions also retain their finalization/recovery.
-                            val skipSmartCaption = captionOnly && unsegmented && smartComplete && reason == "trailing_silence"
+                            // The caption omission is the one consumer of a binding
+                            // COMPLETE that still honors the Smart Turn route gate.
+                            // The gate is closed exactly when the final transcript is
+                            // required evidence (the factory closes it when a follow-up
+                            // transcript is needed for playback-echo rejection), and a
+                            // skipped caption would leave acceptance with no transcript
+                            // to reject the echo against, submitting the echo audio as
+                            // the request. The verdict itself still binds under
+                            // REFERENCE; only the omission is gated.
+                            val skipSmartCaption = captionOnly && unsegmented && smartComplete && smartRouteAllowed &&
+                                reason == "trailing_silence"
                             captionFinalizationReason = when {
                                 skipSmartCaption -> "smart_turn_complete_native_audio"
                                 retiredCaptionAtPendingEndpoint -> "clean_native_idle_pending_drain"
