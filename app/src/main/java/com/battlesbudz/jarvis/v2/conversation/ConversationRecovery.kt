@@ -34,6 +34,8 @@ internal class ConversationRecovery(
         val promptHistory = answer.promptHistory
         val streamFilter = answer.streamFilter
         val imageBytes = answer.imageBytes
+        val directAudio = answer.directAudio
+        val voiceAudio = answer.invocation.voiceAudio
         fun recordInference(label: String, result: GenerationResult) =
             answer.telemetry.record(label, result, answer.submittedPrompt.length)
         val referenceContext = answer.prepared.referenceContext
@@ -83,7 +85,17 @@ internal class ConversationRecovery(
                     seedContext = true
                 ) + "\n\n" + fallbackContext
                 engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
-                draft.generated = if (imageBytes != null) {
+                draft.generated = if (directAudio) {
+                    // The question can be about the retained audio itself.
+                    // Resubmit it, as the original generation's retry does,
+                    // instead of asking for an answer about audio the model
+                    // can no longer hear.
+                    engine.generateAudio(
+                        fallbackPrompt,
+                        requireNotNull(voiceAudio),
+                        streamFilter::accept
+                    )
+                } else if (imageBytes != null) {
                     engine.generate(
                         prompt = fallbackPrompt,
                         imageBytes = imageBytes,
@@ -156,7 +168,17 @@ internal class ConversationRecovery(
                 ) + "\n\n" + retryContext + "\n\n" +
                     "The previous draft was not acceptable. Answer from the reference evidence above. Do not mention your knowledge base or ask whether to search."
                 engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
-                draft.generated = if (imageBytes != null) {
+                draft.generated = if (directAudio) {
+                    // The question can be about the retained audio itself.
+                    // Resubmit it, as the original generation's retry does,
+                    // instead of asking for an answer about audio the model
+                    // can no longer hear.
+                    engine.generateAudio(
+                        retryPrompt,
+                        requireNotNull(voiceAudio),
+                        streamFilter::accept
+                    )
+                } else if (imageBytes != null) {
                     engine.generate(
                         prompt = retryPrompt,
                         imageBytes = imageBytes,
