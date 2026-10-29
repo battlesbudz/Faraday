@@ -10,6 +10,7 @@ import android.content.pm.ServiceInfo
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
 import com.battlesbudz.jarvis.v2.MainActivity
+import com.battlesbudz.jarvis.v2.vision.VisionServerSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,6 +35,12 @@ import kotlinx.coroutines.launch
 class VideoCallService : LifecycleService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private lateinit var controller: CallVisionController
+    // Video-call step 2 (frames to the Phone Inference server): the holder
+    // is created with the service so the registry and the diagnostics
+    // persistence can reach it before the observer exists.
+    private val serverVisionHolder = LatestServerVisionResult()
+    private var serverVisionObserver: CallServerVisionObserver? = null
+    private var visionHub: VisionFrameHub? = null
     private var status = "Video idle — starts with your next call"
     private val foregroundNotification = VideoForegroundNotification(
         cameraType = ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA,
@@ -106,6 +113,31 @@ class VideoCallService : LifecycleService() {
         CallVisionRegistry.hub = hub
         CallVisionRegistry.controller = controller
 
+        // Video-call step 2: loop the frames this pipeline already captures
+        // to the Phone Inference server (CallServerVisionObserver). The
+        // observer is registered for the service's whole lifetime — frames
+        // only flow while a call's capture is live, and its gating mirrors
+        // the chat-photo path — and it is unregistered and closed in
+        // closeVideo(). Every holder change persists the proof counters so
+        // Copy diagnostics can read them after the service has stopped.
+        visionHub = hub
+        val serverVision = CallServerVisionObserver(
+            holder = serverVisionHolder,
+            settings = { VisionServerSettings.snapshot(applicationContext) },
+        )
+        serverVisionObserver = serverVision
+        serverVisionHolder.changeListener = {
+            runCatching {
+                getSharedPreferences(ServerVisionDiagnostics.PREFS_NAME, MODE_PRIVATE)
+                    .edit()
+                    .putString(ServerVisionDiagnostics.KEY_LATEST_TEXT, serverVisionHolder.diagnosticsText())
+                    .apply()
+            }
+        }
+        serverVisionHolder.changeListener?.invoke()
+        hub.register(serverVision)
+        CallVisionRegistry.serverVision = serverVisionHolder
+
         // Fail-safe: a dead voice call must never leave the camera running.
         scope.launch {
             VoiceCallService.stopRequested.collect { stop ->
@@ -175,6 +207,14 @@ class VideoCallService : LifecycleService() {
             if (derived != null) {
                 notifyChanged(derived)
             }
+            // The farewell path ends the capture through the registry
+            // controller (inside resolveFarewellRefresh), bypassing
+            // STOP_CAPTURE: clear step 2's result here too when it did.
+            if (derived != null && ::controller.isInitialized &&
+                controller.state != CallVisionController.State.ACTIVE
+            ) {
+                serverVisionObserver?.onCaptureEnded()
+            }
         }
     }
 
@@ -198,6 +238,12 @@ class VideoCallService : LifecycleService() {
                     // A later permission grant cannot silently promote specialUse.
                     val granted = foregroundNotification.canCapture(CameraPermission.isGranted(this))
                     controller.start(granted, callId)
+                    // A live capture starts step 2 from a clean slate: the
+                    // previous call's result and proof counters never bleed
+                    // into this call's diagnostics.
+                    if (controller.state == CallVisionController.State.ACTIVE) {
+                        serverVisionObserver?.onCaptureStarted()
+                    }
                     // The status is derived from the controller state, so a
                     // refused bind (cleanup pending) can never read "Video on".
                     notifyChanged(videoStatusText(controller.state))
@@ -212,6 +258,9 @@ class VideoCallService : LifecycleService() {
                     // derived from the controller state, so an unresolved
                     // cleanup stays visible instead of reading idle.
                     controller.stopForCall(callId)
+                    if (controller.state != CallVisionController.State.ACTIVE) {
+                        serverVisionObserver?.onCaptureEnded()
+                    }
                     notifyChanged(videoStatusText(controller.state))
                 }
             }
@@ -244,6 +293,20 @@ class VideoCallService : LifecycleService() {
     }
 
     private fun closeVideo() {
+        // Step-2 teardown first, in its own guard: unregistering and closing
+        // the server-vision observer must never be skipped because camera
+        // teardown failed, and its own failure must never break that
+        // teardown. Idempotent — stopVideo() and onDestroy() both land here.
+        try {
+            serverVisionObserver?.let { observer ->
+                visionHub?.unregister(observer)
+                observer.close()
+            }
+            serverVisionObserver = null
+            serverVisionHolder.clear()
+        } catch (_: Exception) {
+            // A wedged observer must not take the call's teardown with it.
+        }
         try {
             notificationLifecycle.close {
                 scope.cancel()
@@ -378,9 +441,19 @@ object CallVisionRegistry {
     var controller: CallVisionController? = null
         internal set
 
+    /**
+     * The live call's latest Phone Inference server result (video-call
+     * step 2), published by VideoCallService alongside the hub. Step 4
+     * reads the current scene from here; null when no video service runs.
+     */
+    @Volatile
+    var serverVision: LatestServerVisionResult? = null
+        internal set
+
     internal fun clear() {
         hub = null
         controller = null
+        serverVision = null
     }
 }
 
