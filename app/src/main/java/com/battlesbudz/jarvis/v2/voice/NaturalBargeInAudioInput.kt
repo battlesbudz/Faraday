@@ -217,8 +217,26 @@ class NaturalBargeInAudioInput(
                         if (backlogSuspended) {
                             // The chunk is real sequential audio arriving late, not
                             // silence: retain it in the episode even though the
-                            // candidate machinery is paused.
+                            // candidate machinery is paused. Admission bookkeeping
+                            // still follows the audio, though: lastSpeechAt and the
+                            // episode expiry are defined over admitted speech, and
+                            // freezing them for the whole suspension would keep an
+                            // episode whose speech ended long ago alive into the
+                            // next candidate. No candidate can be active here (the
+                            // suspension reset it), so the live path's !active
+                            // expiry guard is already satisfied.
+                            val suspendedSignal = Pcm16Signal.measure(pcm)
+                            val suspendedRaw = try { vad?.accept(pcm) ?: SpeechDecision(false, 0f) } catch (error: Exception) {
+                                disable("vad_${error.javaClass.simpleName}"); SpeechDecision(false, 0f)
+                            }
+                            val suspendedSpeech = acousticGate.accept(suspendedRaw, suspendedSignal.rms, at).isSpeech
+                            if (episodeLive && at - lastSpeechAt > InterruptionTiming.EPISODE_GAP_MS) {
+                                episode.clear(); episodeLive = false
+                            }
+                            if (suspendedSpeech && !episodeLive) { episode.append(onset.snapshot()); episodeLive = true }
+                            onset.append(pcm)
                             if (episodeLive) episode.append(pcm)
+                            if (suspendedSpeech) lastSpeechAt = at
                             return@collect
                         }
                     }
@@ -242,14 +260,19 @@ class NaturalBargeInAudioInput(
                     // speech (seeded with the onset pre-roll so it reaches the
                     // first detected word), mirrors every following chunk while
                     // live, and closes after EPISODE_GAP_MS without admitted
-                    // speech while no candidate is active.
+                    // speech while no candidate is active. Expiry is judged
+                    // against the PRIOR admitted-speech timestamp, before this
+                    // chunk refreshes it: a chunk that is itself the first
+                    // admitted speech after a longer gap must open a fresh
+                    // episode, not resurrect the stale one into the candidate
+                    // that starts below.
+                    if (episodeLive && !active && at - lastSpeechAt > InterruptionTiming.EPISODE_GAP_MS) {
+                        episode.clear(); episodeLive = false
+                    }
                     if (speech && !episodeLive) { episode.append(onset.snapshot()); episodeLive = true }
                     onset.append(pcm)
                     if (episodeLive) episode.append(pcm)
                     if (speech) lastSpeechAt = at
-                    if (episodeLive && !active && at - lastSpeechAt > InterruptionTiming.EPISODE_GAP_MS) {
-                        episode.clear(); episodeLive = false
-                    }
                     if (!active && speech && now >= cooldownUntil && !worker.busy) {
                         active = true; candidateAt = at
                         candidate.append(if (episodeLive && episode.sizeBytes() > 0) episode.snapshot() else onset.snapshot())

@@ -368,4 +368,52 @@ class NaturalBargeInAudioInputTest {
         assertTrue(logs.any { it.contains("barge_natural_recovered") })
     }
 
+    // The mirror image of the suspension test above: utterance A ends early
+    // in a capture backlog, the rest of the backlog is silence, and the total
+    // span without admitted speech outlasts EPISODE_GAP_MS before recovery
+    // resumes directly on utterance B. The stale episode must expire instead
+    // of seeding B's candidate, so none of A's audio is handed off as if it
+    // were part of B. (On the unfixed code the candidate seeds from the
+    // retained episode and the delivery starts at frame 0's chunk.)
+    @Test fun backlogOutlivingEpisodeGapExpiresStaleEpisodeBeforeRecoverySpeech() = runBlocking {
+        var frame = -1
+        var backlog = 0L
+        val delivered = gate(text = "Actually open settings", chunks = 70,
+            speechNow = { frame <= 10 || frame >= 35 },
+            backlogNow = { backlog },
+            beforeFrame = { index ->
+                frame = index
+                backlog = if (index in 8..29) 700L else 0L
+            }).chunks().toList()
+        assertEquals(1, confirmed)
+        // The candidate seeds from the fresh episode B opens at recovery
+        // (frame 35); the only earlier audio it may carry is the 400 ms
+        // onset pre-roll of suspended silence (frames 31-34). Delivered
+        // audio is therefore frames 31-69, starting at frame 31's chunk.
+        assertEquals(39 * 3200, delivered.sumOf { it.size })
+        assertEquals(32, delivered.first()[0].toInt())
+        assertTrue(logs.any { it.contains("barge_natural_suspended") })
+        assertTrue(logs.any { it.contains("barge_natural_recovered") })
+    }
+
+    // A silence shorter than EPISODE_GAP_MS inside a backlog suspension is
+    // a pause in one utterance, not its end: the episode survives the
+    // suspension and the restarted candidate still hears the first word.
+    @Test fun withinGapSilenceDuringBacklogKeepsEpisodeForRestartedCandidate() = runBlocking {
+        var frame = -1
+        var backlog = 0L
+        val delivered = gate(text = "Actually open settings", chunks = 60,
+            speechNow = { frame <= 10 || frame >= 16 },
+            backlogNow = { backlog },
+            beforeFrame = { index ->
+                frame = index
+                backlog = if (index in 6..24) 700L else 0L
+            }).chunks().toList()
+        assertEquals(1, confirmed)
+        assertEquals(60 * 3200, delivered.sumOf { it.size })
+        assertEquals(1, delivered.first()[0].toInt())
+        assertTrue(logs.any { it.contains("barge_natural_suspended") })
+        assertTrue(logs.any { it.contains("barge_natural_recovered") })
+    }
+
 }
