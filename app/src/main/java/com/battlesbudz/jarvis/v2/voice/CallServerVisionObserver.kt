@@ -39,8 +39,14 @@ import java.util.concurrent.atomic.AtomicBoolean
  * network or SharedPreferences; production defaults read the real
  * settings and call the real client, constructed per detect exactly as
  * the chat-photo path constructs it per turn.
+ *
+ * Internal, not public: the injected settings type is
+ * [VisionServerSettings.Config], whose declaring object is internal, so a
+ * public constructor could not expose it (compileReleaseKotlin error on
+ * the first step-2 CI run). Same-module consumers (the service, tests)
+ * are unaffected.
  */
-class CallServerVisionObserver(
+internal class CallServerVisionObserver(
     private val holder: LatestServerVisionResult,
     private val settings: () -> VisionServerSettings.Config,
     private val detect: suspend (imageBytes: ByteArray, token: String) -> NativeVisionSnapshot =
