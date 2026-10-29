@@ -40,6 +40,7 @@ class SmartTurnAudioEndpointTest {
                       maxDurationMs: Int = 25_000) {
         val wall = AtomicLong(); var samples = 0L; var acoustic = .99f; var captureTimeGapMs = 0L
         var riskyTailSamples = 0; var current = true; var routeAllowed = true; var blocker: String? = null
+        var needsTranscript = false
         var caption = "what is the"; var finalCalls = 0; var captionClosed = false; var finalizeLogHook: (() -> Unit)? = null
         var finalCaption: String? = null; var finishHook: (() -> Unit)? = null
         var recoveryText = ""; var recoveredPcm: ByteArray? = null; var recoverHook: (() -> Unit)? = null
@@ -75,7 +76,8 @@ class SmartTurnAudioEndpointTest {
                 override fun recover(pcm: ByteArray): String { recoveredPcm = pcm.copyOf(); recoverHook?.invoke(); return recoveryText }
                 override fun close() { captionClosed = true }
             } } },
-            canUseSmartTurn = { routeAllowed }, shadowObserver = observer.takeIf { available },
+            canUseSmartTurn = { routeAllowed }, needsFinalTranscript = { needsTranscript },
+            shadowObserver = observer.takeIf { available },
             nativePauseObserver = if (!speculate) null else object : NativePauseObserver {
                 override fun onProposal(proposal: NativePauseProposal): Boolean { proposals += proposal; return true }
                 override fun onInvalidated(reason: NativePauseInvalidation) {}
@@ -898,6 +900,35 @@ class SmartTurnAudioEndpointTest {
             assertEquals("finalized", r.capture.finalAsrStatus)
             assertNotEquals("smart_turn_complete_native_audio", r.capture.captionFinalizationReason)
             assertEquals("what is the", r.capture.finalTranscript)
+        } finally { r.close() }
+    }
+
+    @Test fun referenceNoCaptionEchoWindowCompleteIsRejectedAtAcceptance() = runBlocking<Unit> {
+        val r = Rig(this, captions = false, native = true, fixed = 650, reference = true)
+        try {
+            // Direct audio with captions off: the capture has no transcriber,
+            // so no final transcript can ever exist for it. This onset is
+            // inside the playback echo window — the route gate is closed and
+            // echo rejection would require exactly that transcript.
+            r.routeAllowed = false; r.needsTranscript = true
+            r.startPause(); r.result(.9f, 765) // COMPLETE
+            repeat(2) { r.emit(.01f) }
+            // The verdict still binds the stop (REFERENCE never vetoes it);
+            // the candidate dies at acceptance instead: unverifiable as
+            // non-echo, it is rejected through the final-candidate path and
+            // the retained playback audio is never submitted as a request.
+            eventually { r.logs.any { it.contains("final_candidate_rejected policy=existing_playback_echo") } }
+            assertNull(r.capture.endpointDecisionAtNs)
+            assertEquals("", r.capture.finalTranscript)
+            assertEquals("pending", r.capture.finalAsrStatus)
+            // The microphone stays open. Speech after the echo window is a
+            // fresh candidate and is accepted and submitted normally.
+            r.routeAllowed = true; r.needsTranscript = false
+            repeat(3) { r.emit(.99f) }; repeat(4) { r.emit(.01f) }
+            eventually { r.backend.calls.get() == 2 }
+            r.result(.9f, r.wall.get() + 65)
+            assertTrue(withTimeout(1000) { r.capture.awaitTurnCompletion() })
+            assertTrue(r.capture.stop().size > 44)
         } finally { r.close() }
     }
 

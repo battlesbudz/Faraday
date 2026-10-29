@@ -86,6 +86,11 @@ internal class VoiceTurnCaptureFactory(
             canUseSmartTurn = { onset ->
                 comparison == null && !needsFollowupTranscript(onset)
             },
+            // The same eligibility that closes the route gate: with captions
+            // off this capture can never produce the transcript that onset's
+            // echo rejection requires, so the capture rejects the candidate
+            // at finalization instead of submitting it unverified.
+            needsFinalTranscript = needsFollowupTranscript,
             canUseNativePause = { onset ->
                 plan.directAudioTurn && comparison == null && retainedPcmObserver != null && !needsFollowupTranscript(onset)
             },

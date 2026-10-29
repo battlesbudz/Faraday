@@ -72,7 +72,12 @@ class AudioTurnCapture(
     private val nativePauseGeneration: Long = 0,
     private val canUseNativePause: (Long?) -> Boolean = { false },
     private val canUseSmartTurn: (Long?) -> Boolean = { false },
-    private val turnStopPolicy: TurnStopPolicy = TurnStopPolicy.LEGACY
+    private val turnStopPolicy: TurnStopPolicy = TurnStopPolicy.LEGACY,
+    /** Conversation captures only: whether final-candidate echo rejection requires
+     * the final transcript for this onset (the playback-tail eligibility that also
+     * closes the Smart Turn route gate). Captures whose acceptance never judges a
+     * transcript leave it unset. */
+    private val needsFinalTranscript: (Long?) -> Boolean = { false }
 ) {
     // Observer failures cannot escape into the PCM owner; endpoint advice is separately fenced.
     private inline fun shadow(action: (CaptureShadowObserver) -> Unit) {
@@ -656,7 +661,21 @@ class AudioTurnCapture(
                                 log("turn_endpoint_deferred reason=audio_arrived_during_recovery")
                                 return@collect
                             }
-                            val finalCandidateRejected = recognitionIssue == null && rejectFinalCandidate(finalTranscript, firstSpeechCaptureAtMs)
+                            // Playback-echo rejection judges the final transcript: the
+                            // caller's verdict here and the recognition stage downstream
+                            // both require it, which is why the caption omission above
+                            // honors the route gate. A direct-audio capture with captions
+                            // off has no transcriber, so no transcript can ever exist for
+                            // it; when this onset is inside the window where echo
+                            // rejection requires the transcript, the candidate is
+                            // unverifiable as non-echo and is rejected through this same
+                            // path instead of submitting retained playback audio as the
+                            // request. The verdict still bound the stop above; only
+                            // acceptance changes, as with every echo rejection here.
+                            val unverifiableEchoCandidate = captionOnly && transcriber == null &&
+                                needsFinalTranscript(firstSpeechCaptureAtMs)
+                            val finalCandidateRejected = recognitionIssue == null &&
+                                (rejectFinalCandidate(finalTranscript, firstSpeechCaptureAtMs) || unverifiableEchoCandidate)
                             if (finalCandidateRejected || (!captionOnly && transcriber != null && finalTranscript.isBlank() && (!allowAudioOnlyTurns || nonverbal) && recognitionIssue == null)) {
                                 emptyCandidates++
                                 hasSpeech = false
