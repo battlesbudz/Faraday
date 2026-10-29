@@ -29,7 +29,10 @@ import kotlinx.coroutines.withContext
  * built by VoiceTurnCaptureFactory): the analyzer's COMPLETE is the only
  * verdict-based endpoint, an undecided turn stays open until speech resumes or
  * the 5s turn-stop timeout backstop fires, and with no analyzer the plain
- * speech-timeout window decides. Reply/barge-in captures keep LEGACY.
+ * speech-timeout window decides. Reply/barge-in captures use REFERENCE too:
+ * the speech retained after an interruption is a user turn, and its stop is
+ * judged the same way. LEGACY remains only for captures that never opt in,
+ * the non-conversation diagnostic and dictation endpoints.
  */
 enum class TurnStopPolicy { LEGACY, REFERENCE }
 
