@@ -54,7 +54,10 @@ fun JarvisApp(
     onDeleteVoiceCall: (String) -> Unit,
     onRefreshVoiceCalls: () -> List<VoiceCallRecord>,
     onDownloadGemma: (com.battlesbudz.jarvis.v2.ai.LocalModelSpec, (Long, Long) -> Unit, (String) -> Unit, (String) -> Unit) -> Unit,
+    // Legacy name: this stops the transfer but keeps its saved progress —
+    // the pause action. onDiscardModelDownload is the destructive cancel.
     onCancelModelDownload: () -> Unit,
+    onDiscardModelDownload: (com.battlesbudz.jarvis.v2.ai.LocalModelSpec, (String) -> Unit) -> Unit = { _, _ -> },
     onImportModel: (Uri, com.battlesbudz.jarvis.v2.ai.LocalModelSpec, (String) -> Unit) -> Unit,
     onCopyDiagnostics: (List<ChatEntry>) -> Unit,
     agentActivity: kotlinx.coroutines.flow.StateFlow<com.battlesbudz.jarvis.v2.presentation.AgentActivitySnapshot?>? = null,
@@ -70,7 +73,8 @@ fun JarvisApp(
     WithPipelineDiagnostics { benchmarkStore, callEvidence ->
         val setup = rememberModelSetupState(store, ModelSetupActions(
             select = onSelectModel, delete = onDeleteModel, test = onRunModelSmokeTest,
-            download = onDownloadGemma, cancelDownload = onCancelModelDownload, importModel = onImportModel,
+            download = onDownloadGemma, pauseDownload = onCancelModelDownload,
+            discardDownload = onDiscardModelDownload, importModel = onImportModel,
             runReliabilityCheck = onRunReliabilityCheck,
         ))
         var pickerModelId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -221,6 +225,21 @@ fun JarvisApp(
                         // download, then the main app takes over. The screen's
                         // setup link flips showingFullSetup and lands on the full
                         // ModelSetup below instead.
+                        // Honor the selection result: when a model operation
+                        // (e.g. a local import) is already in progress,
+                        // select() returns the gate error — do not schedule
+                        // the download then; surface the error instead.
+                        // Resume is the same action: download() re-enters the
+                        // durable work and the transfer resumes from its
+                        // saved checkpoints.
+                        val startStockInstall: () -> Unit = {
+                            val error = setup.select(ModelCatalog.gemma4E2b)
+                            if (error == null) {
+                                setup.download(ModelCatalog.gemma4E2b)
+                            } else {
+                                setup.setupStatus = error
+                            }
+                        }
                         OneTapInstall(
                             downloading = setup.modelDownloadRunning,
                             testing = setup.smokeTestRunning,
@@ -228,19 +247,13 @@ fun JarvisApp(
                             downloadBytes = setup.downloadBytes,
                             downloadTotalBytes = setup.downloadTotalBytes,
                             status = setup.setupStatus,
-                            onInstall = {
-                                // Honor the selection result: when a model operation
-                                // (e.g. a local import) is already in progress,
-                                // select() returns the gate error — do not schedule
-                                // the download then; surface the error instead.
-                                val error = setup.select(ModelCatalog.gemma4E2b)
-                                if (error == null) {
-                                    setup.download(ModelCatalog.gemma4E2b)
-                                } else {
-                                    setup.setupStatus = error
-                                }
-                            },
-                            onChooseDifferentModel = { showingFullSetup = true }
+                            paused = setup.selectedDownloadPaused,
+                            partialBytes = setup.partialDownloadBytes,
+                            onInstall = startStockInstall,
+                            onChooseDifferentModel = { showingFullSetup = true },
+                            onPause = setup::pauseDownload,
+                            onResume = startStockInstall,
+                            onDiscard = { setup.discardDownload(ModelCatalog.gemma4E2b) }
                         )
                     } else {
                         ModelSetup(
@@ -255,9 +268,13 @@ fun JarvisApp(
                             downloadTotalBytes = setup.downloadTotalBytes,
                             status = setup.setupStatus,
                             elapsedSeconds = setup.setupElapsedSeconds,
+                            paused = setup.selectedDownloadPaused,
+                            partialBytes = setup.partialDownloadBytes,
                             onDownload = { setup.download(setup.selectedModel) },
                             onPickGemma = { pickerModelId = setup.selectedModel.id; gemmaPicker.launch(arrayOf("*/*")) },
-                            onTest = setup::test
+                            onTest = setup::test,
+                            onPauseDownload = setup::pauseDownload,
+                            onDiscardDownload = { setup.discardDownload(setup.selectedModel) }
                         )
                     }
                 }

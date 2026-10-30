@@ -1,6 +1,7 @@
 package com.battlesbudz.jarvis.v2.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -19,6 +20,7 @@ import com.battlesbudz.jarvis.v2.ai.LocalModelSpec
 import com.battlesbudz.jarvis.v2.ai.ModelCatalog
 import com.battlesbudz.jarvis.v2.ai.PhoneCheck
 import com.battlesbudz.jarvis.v2.ai.storage.downloadProgressLabel
+import com.battlesbudz.jarvis.v2.ai.storage.formatBytes
 import com.battlesbudz.jarvis.v2.eval.AndroidReliabilityReportStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -45,6 +47,7 @@ internal fun ModelSelectionSection(
         Text("AI model", style = MaterialTheme.typography.titleMedium)
         var expanded by remember { mutableStateOf(false) }
         var confirmingDelete by remember { mutableStateOf(false) }
+        var discardTarget by remember { mutableStateOf<LocalModelSpec?>(null) }
         var detailsOpen by remember(state.selectedModel.id) { mutableStateOf(false) }
         var storageRevision by remember { mutableStateOf(0) }
         val reliabilityStore = remember(phoneContext) { AndroidReliabilityReportStore(phoneContext) }
@@ -60,7 +63,7 @@ internal fun ModelSelectionSection(
         }
         LaunchedEffect(canBrowse, canManage) {
             if (!canBrowse) expanded = false
-            if (!canManage) confirmingDelete = false
+            if (!canManage) { confirmingDelete = false; discardTarget = null }
         }
         OutlinedButton(
             enabled = canBrowse,
@@ -97,9 +100,44 @@ internal fun ModelSelectionSection(
             if (state.downloadTotalBytes > 0L) androidx.compose.material3.LinearProgressIndicator(
                 progress = { (state.downloadBytes.toFloat() / state.downloadTotalBytes).coerceIn(0f, 1f) },
                 modifier = Modifier.fillMaxWidth())
-            androidx.compose.material3.TextButton(onClick = state::cancelDownload,
-                modifier = Modifier.testTag("model_cancel_download")) { Text("Cancel download") }
-        } else if (state.downloadNotice.isNotBlank()) Text(state.downloadNotice, style = MaterialTheme.typography.bodySmall)
+            Row {
+                androidx.compose.material3.TextButton(onClick = state::pauseDownload,
+                    modifier = Modifier.testTag("model_pause_download")) { Text("Pause") }
+                androidx.compose.material3.TextButton(onClick = {
+                    discardTarget = ModelCatalog.resolve(state.downloadingModelId)
+                }, modifier = Modifier.testTag("model_cancel_download")) { Text("Cancel download") }
+            }
+            Text("Pause keeps the progress saved on this phone. Cancel removes it.",
+                style = MaterialTheme.typography.bodySmall)
+        } else {
+            if (state.downloadNotice.isNotBlank()) Text(state.downloadNotice, style = MaterialTheme.typography.bodySmall)
+            if (state.selectedDownloadPaused) {
+                Text("Download paused · ${formatBytes(state.partialDownloadBytes)} saved on this phone",
+                    style = MaterialTheme.typography.bodySmall)
+                Row {
+                    androidx.compose.material3.TextButton(onClick = { state.download(state.selectedModel) },
+                        modifier = Modifier.testTag("model_resume_download")) { Text("Resume download") }
+                    androidx.compose.material3.TextButton(onClick = { discardTarget = state.selectedModel },
+                        modifier = Modifier.testTag("model_discard_download")) { Text("Cancel download") }
+                }
+            }
+        }
+        discardTarget?.let { target ->
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { discardTarget = null },
+                title = { Text("Cancel the download of ${target.id}?") },
+                text = { Text("This stops the download and removes the progress already saved on this phone. The model can be downloaded again later, starting over. Pausing instead keeps the saved progress.") },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = {
+                        discardTarget = null
+                        state.discardDownload(target)
+                    }) { Text("Cancel download") }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { discardTarget = null }) { Text("Keep it") }
+                }
+            )
+        }
         if (!simplified) OutlinedButton(
             enabled = !state.modelImportRunning,
             onClick = onOpenMemory,
