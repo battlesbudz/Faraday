@@ -331,6 +331,21 @@ int cng_run(const char *rootfs, const char *libprefix, const char *workdir,
      * both go through. */
     cng_g_fs = &g_fs;
 
+    /* FARADAY PATCH (security review M-3, 2026-10-30): the process registry
+     * must be backed before any guest runs. Upstream initializes it lazily
+     * on first procfs use; with CNG_PROCREG_B_NONE the /proc view degrades
+     * to host passthrough and the kill family stops being mediated, so
+     * Faraday requires the registry up front and treats its absence as
+     * sandbox-unavailable rather than a degraded session. The init is
+     * one-shot and keyed exactly as procfs.c keys it, so the later lazy
+     * call is a no-op. */
+    cng_procreg_init(cng_g_shared_proc && cng_g_fs ? cng_g_fs->rootfs : 0);
+    if (cng_g_procreg_backing == CNG_PROCREG_B_NONE) {
+        cng_dprintf(2, "chroot-ng: process registry unavailable; "
+                       "refusing to run with degraded mediation\n");
+        return 2;
+    }
+
     /* Initial guest cwd. With a real rootfs, default to "/" (never leak the host
      * launch dir) and chdir the real process into the rootfs so untranslated
      * relative access stays contained. With an identity rootfs, the host cwd is

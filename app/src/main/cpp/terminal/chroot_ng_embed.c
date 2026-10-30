@@ -13,8 +13,23 @@
  *
  * Bionic is safe here: the shim runs before any guest code exists, on the
  * child's own TLS. Only past cng_main() does the no-libc rule apply.
+ *
+ * FARADAY ADDITIONS (security review of the mediation layer, 2026-10-30):
+ * M-4 — the session child is forked from Faraday's app process, which holds
+ * live MCP/download sockets and model files. cng_fds_sanitize deliberately
+ * admits inherited file/socket descriptors, so a guest that guessed an
+ * inherited connected socket's number would hold a network channel no
+ * mediation sees. This shim therefore closes every inherited descriptor
+ * except the PTY stdio set before cng_main runs.
+ * M-5 — the engine sets no resource limits; the embed sets them here:
+ * RLIMIT_NPROC (fork bombs), RLIMIT_FSIZE (single-file disk fill; the
+ * storage accounting lives in SandboxStore), RLIMIT_CPU (backstop to the
+ * run layer's wall-clock timeout), and a sane RLIMIT_NOFILE.
  */
+#include <dirent.h>
 #include <fcntl.h>
+#include <stdlib.h>
+#include <sys/resource.h>
 #include <unistd.h>
 
 /* chroot-ng's real main (native/chroot-ng/src/main.c). */
@@ -26,7 +41,63 @@ extern unsigned long cng_page_size;
 
 extern char **environ;
 
+/* FARADAY M-4: close every inherited fd above stderr. stdio (0/1/2) is the
+ * PTY slave by the time this runs; everything else the app process held —
+ * sockets, model files, pipes — is not the guest's. Enumerating
+ * /proc/self/fd keeps this exact (a blind close loop to RLIMIT_NOFILE
+ * would be thousands of syscalls); the bounded blind loop is the fallback
+ * if /proc is somehow unavailable. */
+static void faraday_close_inherited_fds(void) {
+    DIR *d = opendir("/proc/self/fd");
+    if (d != NULL) {
+        int dir_fd = dirfd(d);
+        struct dirent *e;
+        while ((e = readdir(d)) != NULL) {
+            if (e->d_name[0] == '.') continue;
+            long fd = strtol(e->d_name, NULL, 10);
+            if (fd > STDERR_FILENO && fd != dir_fd) close((int)fd);
+        }
+        closedir(d);
+        return;
+    }
+    long maxfd = sysconf(_SC_OPEN_MAX);
+    if (maxfd < 0 || maxfd > 65536) maxfd = 65536;
+    for (long fd = STDERR_FILENO + 1; fd < maxfd; fd++) close((int)fd);
+}
+
+/* FARADAY M-5: resource limits, set pre-entry because the engine sets
+ * none. Values are embed-layer policy: generous enough that no legitimate
+ * Phase 1 workload (package installs, pipelines) comes close, tight
+ * enough that a runaway guest cannot take the app down with it. */
+static void faraday_apply_rlimits(void) {
+    struct rlimit rl;
+    /* Fork bombs: the count is per real UID (the whole app), so the cap
+     * sits far above the app's own thread/process baseline. */
+    rl.rlim_cur = 1024;
+    rl.rlim_max = 1024;
+    setrlimit(RLIMIT_NPROC, &rl);
+    /* Single-file size: a filled rootfs fills Faraday's own storage; the
+     * aggregate is bounded by SandboxStore's accounting, this bounds any
+     * one file. */
+    rl.rlim_cur = 512UL * 1024 * 1024;
+    rl.rlim_max = 512UL * 1024 * 1024;
+    setrlimit(RLIMIT_FSIZE, &rl);
+    /* CPU backstop: the run layer's wall-clock ceiling is 600 s; a guest
+     * burning every core for that long stays under this, a pathological
+     * spinner does not. SIGXCPU at the soft limit, SIGKILL at the hard. */
+    rl.rlim_cur = 7140;
+    rl.rlim_max = 7200;
+    setrlimit(RLIMIT_CPU, &rl);
+    /* Open files: only ever tightened, never raised. */
+    if (getrlimit(RLIMIT_NOFILE, &rl) == 0 && rl.rlim_cur > 4096) {
+        rl.rlim_cur = 4096;
+        setrlimit(RLIMIT_NOFILE, &rl);
+    }
+}
+
 int chroot_ng_main(int argc, char **argv) {
+    faraday_close_inherited_fds();
+    faraday_apply_rlimits();
     /* Static is fine: the fork()ed child is single-threaded and enters this
      * once. 64 pairs is far above any kernel's auxv (~20 pairs); a larger
      * one is silently truncated, which only costs optional entries. */
