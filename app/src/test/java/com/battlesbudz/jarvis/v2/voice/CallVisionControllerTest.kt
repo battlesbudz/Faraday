@@ -344,7 +344,7 @@ class CallVisionControllerTest {
         assertNotEquals("Video on", pending)
         assertTrue("the pending status must name the cleanup, got: $pending",
             pending.contains("cleanup", ignoreCase = true))
-        assertEquals("Video off — turn it on from the call screen",
+        assertEquals("Video idle — turn it on from the call screen",
             videoStatusText(CallVisionController.State.IDLE))
     }
 }
