@@ -1,5 +1,6 @@
 package com.battlesbudz.jarvis.v2.conversation
 
+import com.battlesbudz.jarvis.v2.actions.ActionRequest
 import com.battlesbudz.jarvis.v2.actions.ActionTurnPlan
 import com.battlesbudz.jarvis.v2.ai.ConversationPromptBuilder
 import com.battlesbudz.jarvis.v2.ai.GenerationResult
@@ -63,6 +64,33 @@ class ConversationGenerationTest {
         override suspend fun sendToolResults(results: List<Pair<ToolCall, String>>, onToken: (String) -> Unit): GenerationResult = error("Unrequested tools must not execute")
     }
 
+    private class ParseFailingBackend(private val firstError: Throwable) : ConversationBackend {
+        val requests = mutableListOf<String>()
+        val tools = mutableListOf<Boolean>()
+        override val modelId = "fake"
+        override var onPromptSubmitted: (String, Int) -> Unit = { _, _ -> }
+        override var onInferenceProgress: (InferenceProgress) -> Unit = {}
+        override var onBenchmarkSubmission: (PipelineBenchmarkSubmission) -> Unit = {}
+        override var benchmarkPurpose = PipelineBenchmarkPurpose.UNKNOWN
+        override fun inputContextDescription() = "fake"
+        override var toolsEnabled = false
+        override suspend fun setToolsEnabled(enabled: Boolean): Boolean {
+            tools.add(enabled)
+            val changed = toolsEnabled != enabled
+            toolsEnabled = enabled
+            return changed
+        }
+        private fun result(prompt: String, emit: (String) -> Unit): GenerationResult {
+            requests.add(prompt)
+            if (requests.size == 1) throw firstError
+            return GenerationResult("A fresh answer.", 1, null).also { emit(it.text) }
+        }
+        override suspend fun generate(prompt: String, onToken: (String) -> Unit) = result(prompt, onToken)
+        override suspend fun generateAudio(prompt: String, audioBytes: ByteArray, onToken: (String) -> Unit) = result(prompt, onToken)
+        override suspend fun generate(prompt: String, imageBytes: ByteArray, onToken: (String) -> Unit): GenerationResult = error("Unexpected image input")
+        override suspend fun sendToolResults(results: List<Pair<ToolCall, String>>, onToken: (String) -> Unit): GenerationResult = error("Unrequested tools must not execute")
+    }
+
     private suspend fun generate(audio: ByteArray? = null,
                              nativeSpeculation: NativeVoiceSpeculation? = null,
                              backend: Backend = Backend(),
@@ -97,6 +125,192 @@ class ConversationGenerationTest {
             ConversationPrompt(builder, audio != null, { null }, { null }), backend, reply, actions,
             ConversationInferenceTelemetry(input, callbacks, reply, diagnostics))
         return draft to backend
+    }
+
+    private suspend fun generateWithBackend(backend: ConversationBackend, audio: ByteArray?,
+                                              phoneActions: ConversationActions? = null,
+                                              plan: ActionTurnPlan = ActionTurnPlan.NotAction,
+                                              sessionProbe: (ConversationModelSession) -> Unit = {}): ConversationDraft {
+        val diagnostics = ConversationDiagnostics({}, {}, {}, {})
+        val memory = MemoryDeliveryFence()
+        val input = ConversationInvocation("Hello", emptyList(), voiceAudio = audio, directVoiceAudio = audio != null)
+        val callbacks = ConversationCallbacks({}, {})
+        val reply = ConversationReply("generation", PipelineBenchmarkCapture("generation", "text", 0,
+            PipelineBenchmarkProvenance("test", 1)), true, memory, { it() }, {}, {}, {}, {}, { _, _, _ -> })
+        val shortTerm = ShortTermConversationContext()
+        val builder = ConversationPromptBuilder(shortTerm)
+        val state = object : ConversationSessionState {
+            override var engine: LiteRtLmEngine? = null
+            override var hasContext = false
+            override var characters = 0
+        }
+        val model = LocalModelSpec("test", "test.litertlm", recommendedGpu = false, supportsTools = true)
+        val session = ConversationModelSession(state, { model }, { true }, { }, { true }, { "unused" },
+            "unused", shortTerm, {})
+        sessionProbe(session)
+        val references = object : ConversationReferences {
+            override suspend fun fetch(query: String): String? = error("Generation must not fetch")
+            override fun isInsufficientAnswer(answer: String) = false
+        }
+        val actions = phoneActions ?: ConversationActions({ error("No Android executor") },
+            { _, _ -> error("No action admission") }, { _, _, _, _ -> error("No action dispatch") },
+            {}, "conversation", { _, _, _ -> })
+        val generation = ConversationGeneration(session, references, builder, { error("No attachment") }, diagnostics)
+        return generation.generate(input, 10_000,
+            RoutedConversation(emptyList(), TurnPlan(TurnKind.NORMAL_CHAT), plan, null),
+            PreparedConversation(emptyList(), null, null, null, false, false, null), emptyList(),
+            ConversationPrompt(builder, audio != null, { null }, { null }), backend, reply, actions,
+            ConversationInferenceTelemetry(input, callbacks, reply, diagnostics))
+    }
+
+    /**
+     * Models the real lifecycle contract after a failed generation: the
+     * native conversation was disposed and its history marked for rebuild,
+     * so a tool-results submission is rejected until the session is reset.
+     * The test installs its reset probe on the model session (on a session
+     * with no resident engine, a reset is what invokes beforeNativeMutation)
+     * and shares the event log, letting [sendToolResults] enforce the same
+     * gate CheckedConversationLifecycle.beginTurn enforces natively. The
+     * first generation throws the parse failure; a later generation — the
+     * tool-less regeneration — answers as plain text.
+     */
+    private class SalvagePlanBackend(private val events: MutableList<String>,
+                                     private val firstError: Throwable) : ConversationBackend {
+        val requests = mutableListOf<String>()
+        val tools = mutableListOf<Boolean>()
+        var toolResultsCalls = 0
+            private set
+        override val modelId = "fake"
+        override var onPromptSubmitted: (String, Int) -> Unit = { _, _ -> }
+        override var onInferenceProgress: (InferenceProgress) -> Unit = {}
+        override var onBenchmarkSubmission: (PipelineBenchmarkSubmission) -> Unit = {}
+        override var benchmarkPurpose = PipelineBenchmarkPurpose.UNKNOWN
+        override fun inputContextDescription() = "fake"
+        override var toolsEnabled = false
+        override suspend fun setToolsEnabled(enabled: Boolean): Boolean {
+            tools.add(enabled)
+            val changed = toolsEnabled != enabled
+            toolsEnabled = enabled
+            return changed
+        }
+        override suspend fun generate(prompt: String, onToken: (String) -> Unit): GenerationResult {
+            requests.add(prompt)
+            if (requests.size == 1) throw firstError
+            return GenerationResult("A fresh answer.", 1, null).also { onToken(it.text) }
+        }
+        override suspend fun generateAudio(prompt: String, audioBytes: ByteArray, onToken: (String) -> Unit): GenerationResult =
+            error("Text path only")
+        override suspend fun generate(prompt: String, imageBytes: ByteArray, onToken: (String) -> Unit): GenerationResult =
+            error("Unexpected image input")
+        override suspend fun sendToolResults(results: List<Pair<ToolCall, String>>, onToken: (String) -> Unit): GenerationResult {
+            toolResultsCalls++
+            events.add("toolResults")
+            check("reset" in events) { "Failed native history must be rebuilt from confirmed history" }
+            return GenerationResult("", 1, null, toolCalls = listOf(ToolCall("read_battery", "{}")))
+        }
+    }
+
+    /** The exact SDK rejection from Battles's build-1563 diagnostics dump. */
+    private fun dumpParseError() = RuntimeException(
+        "Failed to parse tool calls from code block: call:open_app{app:<|\"|>Facebook<|\"|>Facebook<|\"|>}")
+
+    @Test fun dumpParseFailureSalvagesTheValidatedCallAndCompletesTheTurn() = runBlocking {
+        val backend = ParseFailingBackend(dumpParseError())
+        val actions = ConversationActions(
+            executor = { com.battlesbudz.jarvis.v2.actions.MobileActionExecutor { error("No Android executor") } },
+            admit = { _, _ -> "group-1" },
+            execute = { _, _, _, _ -> com.battlesbudz.jarvis.v2.actions.ExecutionResult(true, "Opened Facebook.") },
+            cancelUnfinished = {}, conversationId = "conversation", onActionResult = { _, _, _ -> },
+            mainDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+            executionDispatcher = kotlinx.coroutines.Dispatchers.Unconfined)
+        val draft = generateWithBackend(backend, byteArrayOf(1, 2, 3), actions)
+        // No regeneration was needed and no second generation ran: the
+        // salvaged call went through the normal action path exactly once.
+        assertEquals(1, backend.requests.size)
+        assertEquals(listOf(true), backend.tools)
+        assertEquals("open_app", draft.actionName)
+        assertEquals("Opened Facebook.", draft.actionResultMessage)
+    }
+
+    @Test fun salvagedParseFailureOnAMultiStepPlanRegeneratesWithoutExecuting() = runBlocking {
+        val events = mutableListOf<String>()
+        val backend = SalvagePlanBackend(events, dumpParseError())
+        val plan = ActionTurnPlan.Ready(listOf(
+            ActionTurnPlan.Step(ActionRequest("open_app", mapOf("app" to "Facebook")), "Open Facebook"),
+            ActionTurnPlan.Step(ActionRequest("read_battery"), "Read the battery")))
+        val actions = ConversationActions(
+            executor = { com.battlesbudz.jarvis.v2.actions.MobileActionExecutor { error("No Android executor") } },
+            admit = { _, _ -> "group-1" },
+            execute = { request, _, _, _ ->
+                events.add("execute:${request.name}")
+                com.battlesbudz.jarvis.v2.actions.ExecutionResult(true,
+                    if (request.name == "open_app") "Opened Facebook." else "Battery is at 80%.")
+            },
+            cancelUnfinished = {}, conversationId = "conversation", onActionResult = { _, _, _ -> },
+            mainDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+            executionDispatcher = kotlinx.coroutines.Dispatchers.Unconfined)
+        val draft = generateWithBackend(backend, null, actions, plan) { session ->
+            session.beforeNativeMutation = { events.add("reset") }
+        }
+        // The salvaged first call validates, but standing it up would execute
+        // open_app and then submit its result into the rebuilt conversation,
+        // which holds neither the user turn nor the assistant tool-call
+        // message the result answers — a bare reset replays neither. The
+        // turn therefore regenerates without tools instead: nothing
+        // executes, no tool results are submitted, and the draft reports
+        // that the requested actions did not run. On the pre-fix code the
+        // salvaged call executes and its results are submitted, so every
+        // assertion below fails there.
+        assertEquals(0, backend.toolResultsCalls)
+        assertTrue(events.none { it.startsWith("execute:") })
+        assertEquals(2, backend.requests.size)
+        assertTrue(backend.requests.last().contains("could not be read"))
+        assertEquals(listOf(true, false), backend.tools)
+        assertEquals("A fresh answer.", draft.generated.text)
+        assertEquals("I couldn't verify the requested phone actions.", draft.actionResultMessage)
+        assertNull(draft.actionName)
+    }
+
+    @Test fun salvagedParseFailureCompletingASingleStepPlanStillExecutesTheCall() = runBlocking {
+        val backend = ParseFailingBackend(dumpParseError())
+        val plan = ActionTurnPlan.Ready(listOf(
+            ActionTurnPlan.Step(ActionRequest("open_app", mapOf("app" to "Facebook")), "Open Facebook")))
+        val actions = ConversationActions(
+            executor = { com.battlesbudz.jarvis.v2.actions.MobileActionExecutor { error("No Android executor") } },
+            admit = { _, _ -> "group-1" },
+            execute = { _, _, _, _ -> com.battlesbudz.jarvis.v2.actions.ExecutionResult(true, "Opened Facebook.") },
+            cancelUnfinished = {}, conversationId = "conversation", onActionResult = { _, _, _ -> },
+            mainDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+            executionDispatcher = kotlinx.coroutines.Dispatchers.Unconfined)
+        val draft = generateWithBackend(backend, null, actions, plan)
+        // The salvaged call is the whole plan: executing it completes the
+        // turn, no tool-results submission follows it, and no regeneration
+        // runs — the multi-step decline does not apply.
+        assertEquals(1, backend.requests.size)
+        assertEquals(listOf(true), backend.tools)
+        assertEquals("open_app", draft.actionName)
+        assertEquals("Opened Facebook.", draft.actionResultMessage)
+    }
+
+    @Test fun unsalvageableParseFailureRegeneratesWithoutToolsAndCompletesTheTurn() = runBlocking {
+        val backend = ParseFailingBackend(RuntimeException(
+            "Failed to parse tool calls from code block: call:open_app{app:<|\"|>Facebook<|\"|>Twitter<|\"|>}"))
+        val draft = generateWithBackend(backend, byteArrayOf(1, 2, 3))
+        assertEquals(2, backend.requests.size)
+        assertTrue(backend.requests.last().contains("could not be read"))
+        assertEquals(listOf(true, false), backend.tools)
+        assertEquals("A fresh answer.", draft.generated.text)
+        assertNull(draft.actionResultMessage)
+    }
+
+    @Test fun nonParseGenerationFailureStillPropagates() = runBlocking {
+        val backend = ParseFailingBackend(RuntimeException("native engine exploded"))
+        try {
+            generateWithBackend(backend, byteArrayOf(1, 2, 3))
+            fail("A non-parse failure must not be swallowed by the parse recovery")
+        } catch (error: RuntimeException) {
+            assertEquals("native engine exploded", error.message)
+        }
     }
 
     @Test fun invalidToolDraftRetriesAsReadOnlyTextWithOriginalPromptBoundary() = runBlocking {

@@ -134,14 +134,22 @@ internal class ConversationContextPreparation(
                 turnPlan.kind == TurnKind.LOOKUP_CONFIRMATION,
             phoneAction = requestedActionPlan is ActionTurnPlan.Ready
         )
+        // FACTUAL_LOCAL_FIRST means what it says: the local model drafts
+        // first, and the model-driven factuality pass decides afterwards
+        // whether a lookup is warranted. Do not prefetch (or dead-end on an
+        // empty prefetch) before that draft exists. A supplied source URL is
+        // different: its contents are an input to the turn, so fetch it now.
+        val suppliedSourceLookup = turnPlan.lookupQuery?.contains("https://") == true
+        val automaticLocalFirst = turnPlan.kind == TurnKind.FACTUAL_LOCAL_FIRST && !suppliedSourceLookup
+        val lookupAttempted = turnPlan.lookupQuery != null && !personalMemoryRecall && !automaticLocalFirst
         val lookupStarted = System.nanoTime()
-        if (turnPlan.lookupQuery != null) benchmark.mark("reference_lookup_started")
-        val referenceContext = turnPlan.lookupQuery?.takeUnless { personalMemoryRecall }?.let {
-            references.fetch(it)
-        }
-        // Private mode: the lookup was skipped (no network call). Say so honestly
-        // instead of the generic "couldn't reach Wikipedia" failure below.
-        if (turnPlan.lookupQuery != null && !personalMemoryRecall && references.isPrivateLookupBlocked()) {
+        if (lookupAttempted) benchmark.mark("reference_lookup_started")
+        val referenceContext = if (lookupAttempted) {
+            references.fetch(turnPlan.lookupQuery!!)
+        } else null
+        // Private mode: an attempted lookup was skipped (no network call).
+        // Say so honestly instead of inventing a retrieval failure.
+        if (lookupAttempted && references.isPrivateLookupBlocked()) {
             diagnostics.record(
                 "Private reference lookup blocked\\n" +
                     "user=${prompt.take(1_000)}\\n" +
@@ -150,47 +158,64 @@ internal class ConversationContextPreparation(
             postFinish("Web search, Wikipedia, and Wikidata lookups are turned off in private chats to keep this conversation fully offline.")
             return null
         }
-        if (turnPlan.lookupQuery != null) diagnostics.summary(
+        if (lookupAttempted) diagnostics.summary(
             "Voice lookup durationMs=${(System.nanoTime() - lookupStarted) / 1_000_000} success=${!referenceContext.isNullOrBlank()}")
 
-        if (turnPlan.lookupQuery != null) {
+        if (lookupAttempted) {
             benchmark.mark("reference_lookup_finished")
             benchmark.metric("reference_lookup_ms", (System.nanoTime() - lookupStarted) / 1_000_000)
             benchmark.metric("reference_lookup_evidence_found", if (referenceContext.isNullOrBlank()) 0 else 1)
         }
-        reply.lookupMs += if (turnPlan.lookupQuery != null) (System.nanoTime() - lookupStarted) / 1_000_000 else 0L
+        reply.lookupMs += if (lookupAttempted) (System.nanoTime() - lookupStarted) / 1_000_000 else 0L
 
-        // Automatic factual routing owns the lookup decision. If the
-        // reference service is unavailable, do not let the local model
-        // bounce the same question back to the user as an offer to
-        // search; report the failed automatic attempt directly.
-        if (!personalMemoryRecall && turnPlan.kind == TurnKind.FACTUAL_LOCAL_FIRST &&
-            referenceContext.isNullOrBlank()
-        ) {
+        // An attempted lookup that returns no usable evidence splits by
+        // turn kind: a supplied source or an explicitly requested lookup
+        // is a retrieval failure (below), while a question that never
+        // asked for a lookup still answers from local knowledge.
+        if (lookupAttempted && referenceContext.isNullOrBlank()) {
+            if (suppliedSourceLookup) {
+                // A supplied source is the turn's input, not a fact the
+                // model can recall instead: with nothing retrieved there
+                // is no document to summarize or answer from, and falling
+                // through would let generation invent its contents. End
+                // the turn with an honest retrieval failure, the same
+                // shape as the private-mode lookup block above.
+                diagnostics.record(
+                    "Supplied source lookup returned no evidence; retrieval failed\\n" +
+                        "user=${prompt.take(1_000)}\\n" +
+                        "lookupQuery=${turnPlan.lookupQuery?.take(1_000)}"
+                )
+                postFinish("I couldn't retrieve the page at that link, so I don't have its contents to work from. Please check the link and try again.")
+                return null
+            }
+            if (turnPlan.kind == TurnKind.EXPLICIT_LOOKUP ||
+                turnPlan.kind == TurnKind.LOOKUP_CONFIRMATION) {
+                // The user explicitly asked for a lookup (or confirmed
+                // one): with nothing retrieved there is no evidence to
+                // answer from, and falling through would present the
+                // model's own knowledge as if the lookup had happened.
+                // End the turn with an honest retrieval failure, the
+                // same shape as the supplied-source block above; this
+                // restores the retrieval-failure response this path
+                // returned before the local-knowledge fallback.
+                diagnostics.record(
+                    "Explicit lookup returned no evidence; retrieval failed\n" +
+                        "user=${prompt.take(1_000)}\n" +
+                        "lookupQuery=${turnPlan.lookupQuery?.take(1_000)}"
+                )
+                postFinish("I couldn't find relevant reference evidence for that lookup, so I can't verify the answer yet.")
+                return null
+            }
+            // An attempted lookup that returns no usable evidence is not a
+            // dead end for an ordinary question. Generation proceeds and
+            // answers from the model's own knowledge; the assembled prompt
+            // handles how (and whether) the empty lookup may be mentioned
+            // for this kind of turn.
             diagnostics.record(
-                "Automatic factual lookup failed\\n" +
+                "Reference lookup returned no evidence; answering locally\\n" +
                     "user=${prompt.take(1_000)}\\n" +
                     "lookupQuery=${turnPlan.lookupQuery?.take(1_000)}"
             )
-            postFinish(if (TurnContinuity.isCorrection(prompt))
-                    "I can't verify my earlier claim from relevant evidence, so it should not be treated as fact."
-                else "I couldn't find relevant reference evidence for that question. I can't verify the answer yet.")
-            return null
-        }
-
-        if (turnPlan.kind == TurnKind.EXPLICIT_LOOKUP &&
-            referenceContext.isNullOrBlank()
-        ) {
-            diagnostics.record(
-                "Turn lookup failed\\n" +
-                    "user=${prompt.take(1_000)}\\n" +
-                    "lookupQuery=${turnPlan.lookupQuery?.take(1_000)}\\n" +
-                    "reason=reference source returned no evidence"
-            )
-            postFinish(
-                    "I couldn't reach Wikipedia right now. Please check your connection and try again."
-            )
-            return null
         }
 
         val memoryHistoryInvalidated = requestedActionPlan !is ActionTurnPlan.Ready &&

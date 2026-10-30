@@ -157,9 +157,19 @@ internal class ConversationGeneration(
             if (promoted == null && !directAudio) invocation.nativeSpeculation?.beforeNativeMutation()
             if (engine.setToolsEnabled(allowTools)) modelSession.clearContextAccounting()
             diagnostics.record("Generation tool policy allowed=$allowTools source=current_action_intent")
-            promoted ?: input.generateFallback(engine, submission.text, onToken) { error ->
-                diagnostics.summary("Voice incremental fallback: reason=${error.javaClass.simpleName} " +
-                    "message=${error.message?.take(300)} policy=final_text_once audioBytes=0")
+            promoted ?: try {
+                input.generateFallback(engine, submission.text, onToken) { error ->
+                    diagnostics.summary("Voice incremental fallback: reason=${error.javaClass.simpleName} " +
+                        "message=${error.message?.take(300)} policy=final_text_once audioBytes=0")
+                }
+            } catch (error: Throwable) {
+                // A malformed native tool call aborts the SDK generation
+                // before any app parsing runs. It must never kill the turn:
+                // recover here, where the tool policy and the input routes
+                // are owned, instead of surfacing a generation failure.
+                if (!com.battlesbudz.jarvis.v2.ai.ToolCallParseFailure.isFailure(error)) throw error
+                recoverFromToolCallParseFailure(engine, input, submission.text, onToken, error,
+                    routedPlanSteps = (routed.actionPlan as? ActionTurnPlan.Ready)?.steps?.size ?: 0)
             }
         } catch (loop: VoiceRepetitionGuard.RunawayLoop) {
             // Native cancellation/join completes before this boundary; retain only accepted opening.
@@ -280,6 +290,62 @@ internal class ConversationGeneration(
         draft.actionResultMessage = outcome.message
         diagnostics.important("Action turn\nuser=${invocation.prompt.take(500)}\nsteps=${plan.steps.map { it.request }}\n" +
             "receipts=${outcome.receipts}\ncompleted=${outcome.completed} result=${outcome.message}")
+    }
+
+    /**
+     * Salvage ladder for a native tool-call parse failure, in order:
+     * 1. A tolerant salvage of the specific observed malformation (a string
+     *    argument value duplicated inside the call) that still validates
+     *    against the strict tool schema and the direct-audio tool guard
+     *    stands as this turn's tool calls, so [executeNativeActions] runs it
+     *    through the normal approval/execution path — but only when the
+     *    salvaged call completes the turn's plan by itself. The failed
+     *    generation disposed the native conversation, so the session is
+     *    reset first; a plan with further steps would then continue by
+     *    submitting tool results into that rebuilt conversation, where
+     *    neither the user turn nor the assistant tool-call message exists
+     *    for the result to answer (the manual tool-calling flow sends a
+     *    tool result only after a message that produced the call), so a
+     *    validated salvage on a multi-step plan falls through to step 2
+     *    instead of executing.
+     * 2. Otherwise the malformed call is discarded and the turn regenerates
+     *    once with tools disabled, mirroring [retryInvalidToolDraft], so it
+     *    completes as a normal text answer.
+     * A failure of the regeneration itself propagates: tools are disabled
+     * there, so it cannot be another parse failure of the same call.
+     */
+    private suspend fun recoverFromToolCallParseFailure(engine: ConversationBackend, input: ConversationInput,
+                                                        prompt: String, onToken: (String) -> Unit,
+                                                        error: Throwable, routedPlanSteps: Int): GenerationResult {
+        val salvaged = com.battlesbudz.jarvis.v2.ai.MalformedToolCallSalvage.salvage(error)
+        val request = salvaged?.let { NativeActionDecoder.decodeStrict(it) }
+        if (salvaged != null && request != null && AudioToolGuard.allows(request)) {
+            if (routedPlanSteps >= 2) {
+                diagnostics.summary("Tool call parse failure salvaged call=${salvaged.name} " +
+                    "policy=regenerate_without_tools reason=multi_step_plan_tool_results_need_call_context")
+            } else {
+                // The failed generation's turn was not accepted: the lifecycle
+                // disposed its conversation and marked the history for rebuild,
+                // so no native submission can run until the conversation is
+                // rebuilt from confirmed history. Reset first, exactly as the
+                // discard branch below does before regenerating. The salvaged
+                // call completes the plan alone, so no tool-results submission
+                // follows its execution and the rebuilt conversation needs no
+                // turn context replayed into it.
+                modelSession.reset()
+                diagnostics.summary("Tool call parse failure salvaged call=${salvaged.name} " +
+                    "policy=strict_schema_and_audio_guard_validated nativeConversation=rebuilt")
+                return GenerationResult("", -1L, null, toolCalls = listOf(salvaged))
+            }
+        }
+        diagnostics.summary("Tool call parse failure discarded call=${salvaged?.name ?: "unparseable"} " +
+            "policy=regenerate_without_tools")
+        modelSession.reset()
+        engine.setToolsEnabled(false)
+        engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
+        val retryPrompt = prompt + "\nThe previous output contained a tool call that could not be read. " +
+            "Answer the user's current message directly as normal text. Do not call a tool."
+        return input.retry(engine, retryPrompt, onToken)
     }
 
     private suspend fun retryInvalidToolDraft(draft: ConversationDraft, input: ConversationInput) {

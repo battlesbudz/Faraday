@@ -109,7 +109,12 @@ ordinary native-Gemma capture can atomically retire an already-idle Whisper
 caption stream without a new final decode; short, quiet, playback-tail-risk,
 segmented and busy cases keep final ASR. The same serialized close returns its
 one recognizer lease before authoritative reply-interruption probes. No detached
-caption owner or endpoint-threshold change is introduced. See the
+caption owner is introduced, and this caption-retirement path does not itself
+change endpointing. Endpoint authority for the conversation captures and for
+the reply/barge-in capture is the REFERENCE turn-stop policy (`TurnStopPolicy`
+in `AudioTurnCapture.kt`): the Smart Turn analyzer's COMPLETE is the only
+verdict-based endpoint, an undecided turn stays open until the 5s turn-stop
+backstop, and with no analyzer the plain speech-timeout window decides. See the
 [idle-caption contract](../verification/idle-native-caption-finalization-2026-10-09.md).
 
 A turn prepares bounded history, memory and references, chooses a validated action
