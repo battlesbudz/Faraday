@@ -117,6 +117,73 @@ class LatestServerVisionResultTest {
         assertTrue(text.contains("latestFrameTimestampMs=42"))
     }
 
+    private fun snapshotOfDetections(vararg detections: Detection): NativeVisionSnapshot =
+        NativeVisionSnapshot(
+            detections = detections.toList(),
+            detectionMs = 300.0,
+            segments = emptyList(),
+            segmentationMs = 0.0,
+            poses = emptyList(),
+            poseMs = 0.0,
+            classifications = emptyList(),
+            classificationMs = 0.0,
+        )
+
+    @Test fun successesFeedTheTrackerAcrossFrames() {
+        val holder = LatestServerVisionResult()
+        holder.recordSuccess(
+            snapshotOfDetections(Detection("person", -1, 0.9f, Box(0f, 0f, 100f, 100f))),
+            frameTimestampMs = 1_000L, latencyMs = 250L, receivedAtMs = 1_300L,
+        )
+        holder.recordSuccess(
+            snapshotOfDetections(Detection("person", -1, 0.9f, Box(10f, 0f, 110f, 100f))),
+            frameTimestampMs = 2_700L, latencyMs = 260L, receivedAtMs = 3_000L,
+        )
+        val tracked = holder.trackedSnapshot()
+        assertEquals(1, tracked.objects.size)
+        val person = tracked.objects.single()
+        assertEquals(1, person.id)
+        assertEquals(1_000L, person.firstSeenMs)
+        assertEquals(2_700L, person.lastSeenMs)
+        assertTrue(person.presentNow)
+        val text = holder.diagnosticsText()
+        assertTrue(text.contains("TRACKED OBJECTS"))
+        assertTrue(text.contains("track#1 person present"))
+        assertTrue(text.contains("presentCounts: person 1."))
+    }
+
+    @Test fun clearRetainsTheFinalTrackedSnapshotForDiagnostics() {
+        val holder = LatestServerVisionResult()
+        holder.recordSuccess(
+            snapshotOfDetections(Detection("cup", -1, 0.9f, Box(0f, 0f, 50f, 50f))),
+            frameTimestampMs = 1_000L, latencyMs = 250L, receivedAtMs = 1_300L,
+        )
+        holder.clear()
+        assertNull(holder.latest())
+        val tracked = holder.trackedSnapshot()
+        assertEquals(1, tracked.objects.size)
+        assertEquals("cup", tracked.objects.single().label)
+        assertTrue(holder.diagnosticsText().contains("track#1 cup present"))
+    }
+
+    @Test fun resetClearsTracksAndRestartsTheirIds() {
+        val holder = LatestServerVisionResult()
+        holder.recordSuccess(
+            snapshotOfDetections(Detection("cup", -1, 0.9f, Box(0f, 0f, 50f, 50f))),
+            frameTimestampMs = 1_000L, latencyMs = 250L, receivedAtMs = 1_300L,
+        )
+        holder.reset()
+        assertTrue(holder.trackedSnapshot().objects.isEmpty())
+        assertTrue(holder.diagnosticsText().contains("trackedObjects=none"))
+        holder.recordSuccess(
+            snapshotOfDetections(Detection("car", -1, 0.9f, Box(0f, 0f, 50f, 50f))),
+            frameTimestampMs = 2_000L, latencyMs = 250L, receivedAtMs = 2_300L,
+        )
+        val tracked = holder.trackedSnapshot()
+        assertEquals(1, tracked.objects.size)
+        assertEquals(1, tracked.objects.single().id)
+    }
+
     @Test fun changeListenerFiresOnMutation() {
         val holder = LatestServerVisionResult()
         var calls = 0

@@ -11,7 +11,10 @@ import com.battlesbudz.jarvis.v2.vision.NativeVisionSnapshot
  * sent / dropped counters, its own worker for success / failure), read by
  * the diagnostics export and, later, by step 4's prompt wiring. A new
  * result REPLACES the previous one wholesale — detections from two frames
- * are never merged, because each frame's scene stands alone.
+ * are never merged into the latest entry, because each frame's scene
+ * stands alone. Alongside the entry, every success also feeds the step-3
+ * [ServerVisionTracker]: the entry stays the single-frame truth, the
+ * tracker is the cross-frame memory that gives objects a steady identity.
  *
  * [clear] removes the current result when a call's capture ends, so a
  * stale scene can never be read as current after the call. The counters
@@ -44,6 +47,7 @@ class LatestServerVisionResult {
     )
 
     private val lock = Any()
+    private val tracker = ServerVisionTracker()
     private var entry: Entry? = null
     private var lastError: String? = null
     private var framesReceived = 0L
@@ -81,6 +85,9 @@ class LatestServerVisionResult {
             lastLatencyMs = latencyMs
             lastDetectionCount = snapshot.detections.size
             lastError = null
+            // Step 3: the same answer feeds the cross-frame tracker,
+            // keyed on the frame's own timestamp (the scene's time).
+            tracker.onDetections(snapshot.detections, frameTimestampMs)
         }
         notifyChanged()
     }
@@ -121,6 +128,11 @@ class LatestServerVisionResult {
     /**
      * The current result is gone (capture ended): no snapshot and no error
      * can be read as current. Counters survive for the diagnostics export.
+     * Step 3's tracks survive too, for the same reason: they are the
+     * finished call's proof, and the diagnostics persisted at this moment
+     * must carry the final tracked-objects snapshot. After a call ends,
+     * readers must gate on the (now absent) live entry — never read the
+     * retained tracks as a current scene.
      */
     fun clear() {
         synchronized(lock) {
@@ -142,19 +154,35 @@ class LatestServerVisionResult {
             detectsFailed = 0L
             lastLatencyMs = null
             lastDetectionCount = null
+            tracker.reset()
         }
         notifyChanged()
     }
 
     /**
+     * Step 3: the objects tracked across this call's server answers,
+     * presence evaluated at [nowMs]. Retained after [clear] as the
+     * finished call's final snapshot (see [clear]); a live scene is the
+     * non-null [latest] entry, not these tracks.
+     */
+    fun trackedSnapshot(nowMs: Long): ServerVisionTracker.Snapshot = tracker.snapshot(nowMs)
+
+    /** Step 3: the tracked objects, presence evaluated at the latest result's timestamp. */
+    fun trackedSnapshot(): ServerVisionTracker.Snapshot = tracker.snapshot()
+
+    /**
      * The proof block for the call diagnostics export: counters, the last
-     * error, and what the latest result was (never the detections
-     * themselves beyond a count — this is a proof surface, not a prompt).
+     * error, what the latest result was (never the detections themselves
+     * beyond a count — this is a proof surface, not a prompt), and the
+     * step-3 tracked-objects section: every track with its ID, presence,
+     * and first/last seen, plus the code-made present counts, so a
+     * post-call paste can prove identity persisted across frames.
      */
     fun diagnosticsText(): String {
         val counters = counters()
         val current = latest()
         val error = lastError()
+        val tracked = trackedSnapshot()
         return buildString {
             append("SERVER VISION (video-call step 2: call frames sent to the Phone Inference server)\n")
             append("framesReceived=${counters.framesReceived} framesSent=${counters.framesSent} ")
@@ -172,6 +200,29 @@ class LatestServerVisionResult {
             } else {
                 append("latestResult=none")
             }
+            append("\nTRACKED OBJECTS (video-call step 3: identity across frames)\n")
+            if (tracked.objects.isEmpty()) {
+                append("trackedObjects=none\n")
+            } else {
+                for (trackedObject in tracked.objects) {
+                    if (trackedObject.presentNow) {
+                        append(
+                            "track#${trackedObject.id} ${trackedObject.label} present " +
+                                "firstSeenMs=${trackedObject.firstSeenMs} lastSeenMs=${trackedObject.lastSeenMs}\n"
+                        )
+                    } else {
+                        append(
+                            "track#${trackedObject.id} ${trackedObject.label} " +
+                                "lastSeenAgeMs=${trackedObject.lastSeenAgeMs} " +
+                                "firstSeenMs=${trackedObject.firstSeenMs} lastSeenMs=${trackedObject.lastSeenMs}\n"
+                        )
+                    }
+                }
+            }
+            append(
+                "presentCounts: " +
+                    if (tracked.presentObjects.isEmpty()) "none." else tracked.presentCountsText() + "."
+            )
         }
     }
 

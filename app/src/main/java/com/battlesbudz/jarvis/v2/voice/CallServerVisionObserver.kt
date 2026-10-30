@@ -19,8 +19,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  * [VisionFrameHub]). This observer plugs into that hub and sends each
  * frame to the Phone Inference server through the existing
  * [PhoneVisionClient] — the chat-photo path, on repeat. Each answer lands
- * in [holder]; nothing here tracks across frames (step 3), feeds a prompt
- * (step 4), or draws anything (step 5).
+ * in [holder], which feeds it to the step-3 tracker; nothing here feeds a
+ * prompt (step 4) or draws anything (step 5).
  *
  * Contract with the hub: [onFrame] runs on the camera analysis thread and
  * returns immediately. The detect runs on this observer's own single
