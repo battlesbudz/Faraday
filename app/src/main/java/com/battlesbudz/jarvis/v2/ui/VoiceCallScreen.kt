@@ -117,7 +117,7 @@ internal object VoiceCallOverlay {
                                     .testTag("voice_call_video").semantics {
                                         contentDescription = if (videoEnabled) "Turn video off" else "Turn video on"
                                     }) {
-                                Icon(painter = painterResource(R.drawable.ic_call_video),
+                                Icon(painter = painterResource(com.battlesbudz.jarvis.v2.R.drawable.ic_call_video),
                                     contentDescription = null,
                                     tint = if (videoEnabled) MaterialTheme.colorScheme.primary
                                         else MaterialTheme.colorScheme.onSurfaceVariant)
