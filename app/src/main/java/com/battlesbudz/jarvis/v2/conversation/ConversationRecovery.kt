@@ -23,6 +23,7 @@ internal class ConversationRecovery(
         discardControlContext(draft)
         recoverReferenceGap(draft)
         recoverRepetition(draft)
+        discardAudioAccessRefusal(draft)
     }
 
     private suspend fun recoverLocalFactuality(draft: ConversationDraft) {
@@ -320,6 +321,47 @@ internal class ConversationRecovery(
                 diagnostics.important("Voice repetition guard: suppressed=${voiceRepetitionGuard.suppressedSentences} " +
                     "acceptedChars=${draft.cleanedResponse.length} repairMs=${(System.nanoTime() - repairStarted) / 1_000_000}")
             }
+        }
+    }
+
+    /**
+     * Publication backstop for direct-audio turns, mirroring the generation
+     * stage's guard in [ConversationGeneration]: a cleaned response that
+     * claims the audio is inaccessible is always false — every regeneration
+     * in this class resubmits the retained audio — so regenerate once with
+     * the correction before the finalizer can publish the claim. Runs last,
+     * so it also catches a refusal produced by one of the recovery
+     * regenerations above. Like the reference stages, it never replaces a
+     * reply whose sentences were already accepted for publication.
+     */
+    private suspend fun discardAudioAccessRefusal(draft: ConversationDraft) {
+        val answer = draft.answer
+        val voiceAudio = answer.invocation.voiceAudio
+        if (!answer.directAudio || voiceAudio == null || draft.actionResultMessage != null) return
+        if (!AudioAccessRefusal.isRefusal(draft.cleanedResponse)) return
+        if ((answer.repetitionGuard?.acceptedSentences ?: 0) > 0) return
+        val engine = answer.engine
+        resetNative()
+        answer.repetitionGuard?.discardPending()
+        val prompt = answer.turnPrompt.build(answer.invocation.prompt, null, answer.promptHistory,
+            seedContext = true) + AudioAccessRefusal.CORRECTION
+        engine.setToolsEnabled(false)
+        engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
+        // Resubmit the retained audio itself, as the original generation's
+        // retry does, instead of asking for an answer about audio the model
+        // supposedly cannot hear.
+        val regenerated = engine.generateAudio(prompt, voiceAudio, answer.streamFilter::accept)
+        answer.telemetry.record("audio refusal guard", regenerated, answer.submittedPrompt.length)
+        draft.generated = regenerated
+        draft.containsCurrentTurn = true
+        val cleaned = AssistantText.forDisplay(regenerated.text)
+        draft.cleanedResponse = if (AudioAccessRefusal.isRefusal(cleaned)) {
+            diagnostics.record("Audio access refusal guard outcome=fallback stage=recovery " +
+                "reason=regeneration_refused_again")
+            AudioAccessRefusal.FALLBACK
+        } else {
+            diagnostics.record("Audio access refusal guard outcome=regenerated stage=recovery")
+            cleaned
         }
     }
 }
