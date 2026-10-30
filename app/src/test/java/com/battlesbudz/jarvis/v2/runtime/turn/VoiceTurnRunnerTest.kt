@@ -138,7 +138,7 @@ class VoiceTurnRunnerTest {
             VoiceSessionUi.sessionAlive.value = true
             val runner = VoiceTurnRunner(scope, call, actions, orchestrator, { emptyList() },
                 selectRequest = { VoiceTurnRequest(null, null, true, false, AsrEngine.WHISPER,
-                    TtsEngine.PIPER_NORTHERN, UUID.randomUUID().toString()) },
+                    TtsEngine.PIPER_NORTHERN, UUID.randomUUID().toString(), replyProbeEnabled = true) },
                 createObservation = { request -> VoiceTurnObservation(context, request, history.current.value.id,
                     benchmarkStore, benchmarks, recorder, asr, tts, store).also { observation = it } },
                 createModelLease = createLease,

@@ -140,14 +140,68 @@ class ConversationRecoveryTest {
         assertEquals(listOf("factuality check", "reference fallback"), f.reply.inferencePasses.map { it.stage })
     }
 
-    @Test fun unavailableEvidenceUsesDistinctFallbackAndRetryQueriesThenHonestFailure() = runBlocking {
+    @Test fun unavailableEvidenceUsesDistinctFallbackAndRetryQueriesThenAnswersFromLocalKnowledge() = runBlocking {
         val f = Fixture(TurnKind.FACTUAL_LOCAL_FIRST)
+        f.backend.outputs += result("A direct answer from local knowledge.")
         val draft = f.draft("I don't know.")
         f.recovery.recover(draft)
         assertEquals(listOf("automatic question", "resolved subject"), f.references.queries)
-        assertTrue(f.backend.requests.isEmpty())
-        assertEquals("I couldn't produce a verified answer from the available reference evidence. Please try again.",
-            draft.cleanedResponse)
+        // The empty lookups must not dead-end the turn: one regeneration from
+        // the model's own knowledge, shaped to never mention the lookup.
+        assertEquals(1, f.backend.requests.size)
+        assertEquals(PipelineBenchmarkPurpose.RETRY, f.backend.requests.single().purpose)
+        assertTrue(f.backend.requests.single().prompt.contains("from your own knowledge"))
+        assertTrue(f.backend.requests.single().prompt.contains("Do not mention reference material"))
+        assertEquals("A direct answer from local knowledge.", draft.cleanedResponse)
+        assertEquals(listOf("knowledge fallback"), f.reply.inferencePasses.map { it.stage })
+    }
+
+    @Test fun knowledgeFallbackResubmitsDirectAudioWhenEvidenceIsUnavailable() = runBlocking {
+        val audio = byteArrayOf(4, 5, 6)
+        val f = Fixture(TurnKind.FACTUAL_LOCAL_FIRST, directAudio = true, voiceAudio = audio)
+        f.backend.outputs += result("A direct answer about the clip.")
+        val draft = f.draft("I don't know.")
+        f.recovery.recover(draft)
+        assertEquals(listOf("automatic question", "resolved subject"), f.references.queries)
+        // The fallback regeneration must carry the retained audio into the
+        // engine, not regenerate from text alone.
+        assertEquals(1, f.backend.requests.size)
+        assertEquals("audio", f.backend.requests.single().mode)
+        assertArrayEquals(audio, f.backend.requests.single().bytes)
+        assertEquals(PipelineBenchmarkPurpose.RETRY, f.backend.requests.single().purpose)
+        assertEquals("A direct answer about the clip.", draft.cleanedResponse)
+        assertEquals(listOf("knowledge fallback"), f.reply.inferencePasses.map { it.stage })
+    }
+
+    @Test fun automaticReferenceFallbackResubmitsDirectAudioWhenLocalAnswerIsInsufficient() = runBlocking {
+        val audio = byteArrayOf(7, 8, 9)
+        val f = Fixture(TurnKind.FACTUAL_LOCAL_FIRST, directAudio = true, voiceAudio = audio)
+        f.backend.outputs += result("A verified fact about the clip.")
+        f.references.evidence["automatic question"] = "Reference evidence: moon rotation"
+        val draft = f.draft("I don't know.")
+        f.recovery.recover(draft)
+        assertEquals(listOf("automatic question"), f.references.queries)
+        // The fallback regeneration must carry the retained audio into the
+        // engine, not regenerate from text alone.
+        assertEquals(1, f.backend.requests.size)
+        assertEquals("audio", f.backend.requests.single().mode)
+        assertArrayEquals(audio, f.backend.requests.single().bytes)
+        assertEquals(PipelineBenchmarkPurpose.RETRY, f.backend.requests.single().purpose)
+        assertTrue(f.backend.requests.single().prompt.contains("Reference evidence: moon rotation"))
+        assertEquals(1, f.resets)
+        assertTrue(draft.containsCurrentTurn)
+        assertEquals("A verified fact about the clip.", draft.cleanedResponse)
+        assertEquals(listOf("reference fallback"), f.reply.inferencePasses.map { it.stage })
+    }
+
+    @Test fun lookupVerdictWithEmptyEvidenceKeepsTheLocalDraft() = runBlocking {
+        val f = Fixture(TurnKind.FACTUAL_LOCAL_FIRST)
+        f.backend.outputs += result("LOOKUP")
+        val draft = f.draft("The moon rotates on its axis.")
+        f.recovery.recover(draft)
+        assertEquals(listOf("automatic question"), f.references.queries)
+        assertEquals("The moon rotates on its axis.", draft.cleanedResponse)
+        assertEquals(listOf(PipelineBenchmarkPurpose.DRAFT), f.backend.requests.map { it.purpose })
     }
 
     @Test fun explicitLookupRetriesFromEvidenceWithoutLocalFactualityPass() = runBlocking {
@@ -162,6 +216,27 @@ class ConversationRecoveryTest {
         assertTrue(f.backend.requests.single().prompt.contains("fresh evidence"))
         assertEquals(listOf("reference retry"), f.reply.inferencePasses.map { it.stage })
         assertEquals("A fresh fact.", draft.cleanedResponse)
+    }
+
+    @Test fun referenceRetryResubmitsDirectAudioWhenEvidenceIsAvailable() = runBlocking {
+        val audio = byteArrayOf(10, 11, 12)
+        val f = Fixture(TurnKind.EXPLICIT_LOOKUP, referenceContext = "old evidence",
+            directAudio = true, voiceAudio = audio)
+        f.references.evidence["resolved subject"] = "fresh evidence"
+        f.backend.outputs += result("A fresh fact about the clip.")
+        val draft = f.draft("I don't know.")
+        f.recovery.recover(draft)
+        assertEquals(listOf("resolved subject"), f.references.queries)
+        // The retry regeneration must carry the retained audio into the
+        // engine, not regenerate from text alone.
+        assertEquals(1, f.backend.requests.size)
+        assertEquals("audio", f.backend.requests.single().mode)
+        assertArrayEquals(audio, f.backend.requests.single().bytes)
+        assertEquals(PipelineBenchmarkPurpose.RETRY, f.backend.requests.single().purpose)
+        assertTrue(f.backend.requests.single().prompt.contains("fresh evidence"))
+        assertEquals(1, f.resets)
+        assertEquals(listOf("reference retry"), f.reply.inferencePasses.map { it.stage })
+        assertEquals("A fresh fact about the clip.", draft.cleanedResponse)
     }
 
     @Test fun personalRecallDoesNotRunExternalFactualityOrReferenceRecovery() = runBlocking {

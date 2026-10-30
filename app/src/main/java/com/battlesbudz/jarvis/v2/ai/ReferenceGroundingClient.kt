@@ -179,9 +179,12 @@ class ReferenceGroundingClient(
                 This question and the voice transcript identify the request; they do not establish dates, names, locations or other facts.
                 Answer the question from source evidence. A disputed transcript or earlier assistant claim is not supporting evidence.
                 Sources support only claims actually present, not current opening hours or promotions unless explicitly documented.
-                Use this evidence as the factual basis for your answer. Distinguish
-                verified information from disputed claims. Do not invent details not
-                supported by the evidence. If the evidence is insufficient, say so.
+                Use this evidence as the factual basis for the claims it covers.
+                If it does not cover part of the question, answer that part from
+                your own knowledge rather than refusing or announcing missing
+                evidence, unless the user specifically asked about the sources.
+                Do not present a knowledge-based detail as if it came from the
+                evidence, and do not invent source-backed details.
                 
                 $evidence
             """.trimIndent(),

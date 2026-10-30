@@ -34,9 +34,13 @@ class SmartTurnAudioEndpointTest {
     }
     private class Rig(scope: CoroutineScope, captions: Boolean = false, val native: Boolean = true,
                       available: Boolean = true, val fixed: Long? = null, speculate: Boolean = false,
-                      segmentSoftMs: Long = 15_000, segmentHardMs: Long = 22_000) {
+                      segmentSoftMs: Long = 15_000, segmentHardMs: Long = 22_000,
+                      reference: Boolean = false,
+                      guardFollowup: Boolean = false, rejectAtLimit: Boolean = false,
+                      maxDurationMs: Int = 25_000) {
         val wall = AtomicLong(); var samples = 0L; var acoustic = .99f; var captureTimeGapMs = 0L
         var riskyTailSamples = 0; var current = true; var routeAllowed = true; var blocker: String? = null
+        var needsTranscript = false
         var caption = "what is the"; var finalCalls = 0; var captionClosed = false; var finalizeLogHook: (() -> Unit)? = null
         var finalCaption: String? = null; var finishHook: (() -> Unit)? = null
         var recoveryText = ""; var recoveredPcm: ByteArray? = null; var recoverHook: (() -> Unit)? = null
@@ -61,6 +65,9 @@ class SmartTurnAudioEndpointTest {
         }, scope, createDetector = { FrameSpeechDetector({ acoustic }) },
             nowMs = wall::get, nowNs = { wall.get() * 1_000_000 }, captureDispatcher = Dispatchers.Unconfined,
             captionOnly = native, allowAudioOnlyTurns = native, trailingSilenceMs = fixed,
+            guardFollowupSpeech = guardFollowup, rejectAtAudioLimit = rejectAtLimit,
+            maxAudioDurationMs = maxDurationMs,
+            turnStopPolicy = if (reference) TurnStopPolicy.REFERENCE else TurnStopPolicy.LEGACY,
             createTranscriber = if (!captions) null else { { object : StreamingTranscriber {
                 override val segmentSoftLimitMs = segmentSoftMs
                 override val segmentHardLimitMs = segmentHardMs
@@ -69,7 +76,8 @@ class SmartTurnAudioEndpointTest {
                 override fun recover(pcm: ByteArray): String { recoveredPcm = pcm.copyOf(); recoverHook?.invoke(); return recoveryText }
                 override fun close() { captionClosed = true }
             } } },
-            canUseSmartTurn = { routeAllowed }, shadowObserver = observer.takeIf { available },
+            canUseSmartTurn = { routeAllowed }, needsFinalTranscript = { needsTranscript },
+            shadowObserver = observer.takeIf { available },
             nativePauseObserver = if (!speculate) null else object : NativePauseObserver {
                 override fun onProposal(proposal: NativePauseProposal): Boolean { proposals += proposal; return true }
                 override fun onInvalidated(reason: NativePauseInvalidation) {}
@@ -776,5 +784,260 @@ class SmartTurnAudioEndpointTest {
                 r.backend.releases.release(); eventually { r.backend.closed.get() }
             } finally { r.close() }
         }
+    }
+
+    // REFERENCE turn-stop (the Pipecat pattern the conversation captures use):
+    // the analyzer is the stop strategy, the 5s turn-stop timeout is only a
+    // backstop, and with no analyzer the plain speech-timeout window decides.
+
+    @Test fun referenceTimeoutBackstopIsTheOnlyEndingWhenTheModelNeverDecides() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = false, reference = true)
+        try {
+            r.caption = "What is the weather today?"
+            r.startPause() // Speech ends at 300ms; the ask stays in flight, never released.
+            // AdaptiveTurnEnd would end this turn at a transcript target (350ms
+            // complete-and-stable, 1100ms settling). REFERENCE has no second
+            // decider: nothing ends the turn before the backstop.
+            while (r.samples / 16 < 5200) r.emit(.01f)
+            assertNull(r.capture.endpointDecisionAtNs)
+            r.emit(.01f)
+            eventually { r.capture.endpointDecisionAtNs != null }
+            assertEquals(5_300_000_000L, r.capture.endpointDecisionAtNs)
+            assertTrue(r.logs.any { it.contains("endpointCue=turn_stop_timeout") && it.contains("targetSilenceMs=5000") })
+            r.completeWav()
+            // The transcript is still an ingredient of the seal: finalization ran.
+            assertEquals(1, r.finalCalls); assertEquals("What is the weather today?", r.capture.finalTranscript)
+        } finally { r.close() }
+    }
+
+    @Test fun referenceContinueKeepsTheTurnOpenAndOnlyTheBackstopEndsIt() = runBlocking<Unit> {
+        val r = Rig(this, fixed = 650, reference = true)
+        try {
+            r.startPause(); r.result(.1f, 765) // CONTINUE
+            // One bounded refresh re-judges the same pause after 0.5s of new PCM.
+            while (r.samples / 16 < 1200) r.emit(.01f)
+            eventually { r.backend.calls.get() == 2 }; r.result(.1f, 1265) // CONTINUE again
+            // LEGACY ended this turn at speech end + 3500ms (decision at 4000ms).
+            // A CONTINUE is the analyzer saying "not done", not an endpoint.
+            while (r.samples / 16 < 4000) r.emit(.01f)
+            assertNull(r.capture.endpointDecisionAtNs)
+            while (r.samples / 16 < 5200) r.emit(.01f)
+            assertNull(r.capture.endpointDecisionAtNs)
+            r.emit(.01f)
+            eventually { r.capture.endpointDecisionAtNs != null }
+            assertEquals(5_300_000_000L, r.capture.endpointDecisionAtNs)
+            assertEquals(2, r.backend.calls.get())
+            assertTrue(r.logs.any { it.contains("endpointCue=turn_stop_timeout") })
+            r.completeWav()
+        } finally { r.close() }
+    }
+
+    @Test fun referenceNoModelUsesSpeechTimeoutInsteadOfAdaptiveTranscriptTargets() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = false, available = false, reference = true)
+        try {
+            // The partial ("what is the") reads as unfinished, so AdaptiveTurnEnd
+            // would wait 1800ms. With no analyzer attached, REFERENCE uses the
+            // plain speech-timeout strategy: a fixed 600ms window after the stop.
+            r.capture.start(); repeat(3) { r.emit(.99f) }; repeat(5) { r.emit(.01f) }
+            assertNull(r.capture.endpointDecisionAtNs) // 800ms wall: only 500ms of silence.
+            r.emit(.01f)
+            eventually { r.capture.endpointDecisionAtNs != null }
+            assertEquals(900_000_000L, r.capture.endpointDecisionAtNs)
+            assertTrue(r.logs.any { it.contains("endpointCue=speech_timeout") && it.contains("targetSilenceMs=600") })
+            r.completeWav()
+            assertEquals(1, r.finalCalls); assertEquals("what is the", r.capture.finalTranscript)
+        } finally { r.close() }
+    }
+
+    @Test fun referenceRouteGateNoLongerVetoesACompleteVerdict() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = false, fixed = 1200, reference = true)
+        try {
+            r.routeAllowed = false // Onset inside the playback echo window.
+            r.startPause(); r.result(.9f, 765)
+            // LEGACY kept the ordinary endpoint here (see
+            // playbackRiskKeepsOrdinaryEndpointAndRequiredFinalRecognitionOnBothPaths).
+            // REFERENCE judges every conversation stop: echo stays an
+            // acceptance-side rejection, never a stop-decision veto.
+            eventually { r.capture.endpointDecisionAtNs != null }
+            assertEquals(765_000_000L, r.capture.endpointDecisionAtNs)
+            assertTrue(r.logs.any { it.contains("endpointCue=smart_turn_complete") })
+            r.completeWav(); assertEquals(1, r.finalCalls)
+        } finally { r.close() }
+    }
+
+    @Test fun referenceWeakSpeechCompleteBindsOnTheNativeRouteOnSanityAlone() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = true, fixed = 1800, reference = true)
+        try {
+            r.capture.start(); repeat(5) { r.emit(.25f) }; repeat(4) { r.emit(.01f) }
+            eventually { r.backend.calls.get() == 1 }; r.result(.9f, 965)
+            // The native conjunction vetoed this verdict in LEGACY
+            // (ASR-corroborated weak speech). Input sanity is the only gate in
+            // REFERENCE: speech existed and the snapshot covers its span.
+            eventually { r.capture.endpointDecisionAtNs != null }
+            assertEquals(965_000_000L, r.capture.endpointDecisionAtNs)
+            r.completeWav()
+            assertEquals("skipped_smart_turn_caption", r.capture.finalAsrStatus)
+            assertEquals("", r.capture.finalTranscript)
+        } finally { r.close() }
+    }
+
+    @Test fun referenceEchoWindowCompleteStillFinalizesTheCaptionOnTheNativeRoute() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = true, reference = true)
+        try {
+            r.routeAllowed = false // Onset inside the playback echo window: the
+            // factory closes the Smart Turn route gate exactly when the final
+            // transcript is required for playback-echo rejection.
+            r.startPause(); r.result(.9f, 765) // COMPLETE
+            // The verdict still binds (under REFERENCE the gate is not a
+            // stop-decision veto); what the closed gate removes is the caption
+            // omission, the one place a binding COMPLETE used to discard the
+            // transcript acceptance-side echo rejection depends on.
+            eventually { r.capture.endpointDecisionAtNs != null }
+            assertTrue(r.capture.endpointDecisionAtNs!! < 5_300_000_000L)
+            assertTrue(r.logs.any { it.contains("endpointCue=smart_turn_complete") })
+            r.completeWav()
+            assertEquals(1, r.finalCalls)
+            assertEquals("finalized", r.capture.finalAsrStatus)
+            assertNotEquals("smart_turn_complete_native_audio", r.capture.captionFinalizationReason)
+            assertEquals("what is the", r.capture.finalTranscript)
+        } finally { r.close() }
+    }
+
+    @Test fun referenceNoCaptionEchoWindowCompleteIsRejectedAtAcceptance() = runBlocking<Unit> {
+        val r = Rig(this, captions = false, native = true, fixed = 650, reference = true)
+        try {
+            // Direct audio with captions off: the capture has no transcriber,
+            // so no final transcript can ever exist for it. This onset is
+            // inside the playback echo window — the route gate is closed and
+            // echo rejection would require exactly that transcript.
+            r.routeAllowed = false; r.needsTranscript = true
+            r.startPause(); r.result(.9f, 765) // COMPLETE
+            repeat(2) { r.emit(.01f) }
+            // The verdict still binds the stop (REFERENCE never vetoes it);
+            // the candidate dies at acceptance instead: unverifiable as
+            // non-echo, it is rejected through the final-candidate path and
+            // the retained playback audio is never submitted as a request.
+            eventually { r.logs.any { it.contains("final_candidate_rejected policy=existing_playback_echo") } }
+            assertNull(r.capture.endpointDecisionAtNs)
+            assertEquals("", r.capture.finalTranscript)
+            assertEquals("pending", r.capture.finalAsrStatus)
+            // The microphone stays open. Speech after the echo window is a
+            // fresh candidate and is accepted and submitted normally.
+            r.routeAllowed = true; r.needsTranscript = false
+            repeat(3) { r.emit(.99f) }; repeat(4) { r.emit(.01f) }
+            eventually { r.backend.calls.get() == 2 }
+            r.result(.9f, r.wall.get() + 65)
+            assertTrue(withTimeout(1000) { r.capture.awaitTurnCompletion() })
+            assertTrue(r.capture.stop().size > 44)
+        } finally { r.close() }
+    }
+
+    @Test fun referenceDecisionBindsCompleteOnSanityAlone() {
+        val sane = NativePauseEndpointPolicy.smartTurnSanity(true, 8000, 7168)
+        assertEquals(AdaptiveTurnEnd.Decision(350, "smart_turn_complete"),
+            SmartTurnEndpointPolicy.referenceDecision(
+                CaptureEndpointDecision(CaptureEndpointState.COMPLETE, 8000), sane, 16000, 350, 7168))
+    }
+
+    @Test fun referenceDecisionLeavesEveryOtherStateToTheBackstop() {
+        val sane = NativePauseEndpointPolicy.smartTurnSanity(true, 8000, 7168)
+        val complete = CaptureEndpointDecision(CaptureEndpointState.COMPLETE, 8000)
+        // Anything but the analyzer's COMPLETE leaves the turn open.
+        assertNull(SmartTurnEndpointPolicy.referenceDecision(
+            CaptureEndpointDecision(CaptureEndpointState.CONTINUE, 8000), sane, 16000, 5000, 7168))
+        assertNull(SmartTurnEndpointPolicy.referenceDecision(
+            CaptureEndpointDecision(CaptureEndpointState.PENDING, 8000), sane, 16000, 5000, 7168))
+        assertNull(SmartTurnEndpointPolicy.referenceDecision(
+            CaptureEndpointDecision(CaptureEndpointState.FALLBACK), sane, 16000, 5000, 7168))
+        // Sanity failures: no speech, no snapshot, a snapshot ending before the
+        // speech span, a snapshot ahead of everything collected, a short pause,
+        // and a COMPLETE whose snapshot never arrived.
+        assertNull(SmartTurnEndpointPolicy.referenceDecision(complete,
+            NativePauseEndpointPolicy.smartTurnSanity(false, 8000, 7168), 16000, 5000, 7168))
+        assertNull(SmartTurnEndpointPolicy.referenceDecision(complete,
+            NativePauseEndpointPolicy.smartTurnSanity(true, null, 7168), 16000, 5000, 7168))
+        assertNull(SmartTurnEndpointPolicy.referenceDecision(complete,
+            NativePauseEndpointPolicy.smartTurnSanity(true, 8000, 9000), 16000, 5000, 9000))
+        assertNull(SmartTurnEndpointPolicy.referenceDecision(
+            CaptureEndpointDecision(CaptureEndpointState.COMPLETE, 9000), sane, 16000, 5000, 7168))
+        assertNull(SmartTurnEndpointPolicy.referenceDecision(complete, sane, 16000, 349, 7168))
+        assertNull(SmartTurnEndpointPolicy.referenceDecision(
+            CaptureEndpointDecision(CaptureEndpointState.COMPLETE, null), sane, 16000, 5000, 7168))
+    }
+
+    // The reply/barge-in capture (ReplyVoiceCapture) constructs AudioTurnCapture
+    // in exactly two shapes, both now under REFERENCE: the ASR-free Gemma shape
+    // (captionOnly, no final transcriber, 650ms window, 28s cap with
+    // reject-at-limit, follow-up speech guard) and the recognition shape
+    // (transcriber present, no fixed window, 25s cap). The gated input decides
+    // only whether an interruption happened; these tests pin that the retained
+    // speech's stop is judged like any conversation turn's.
+
+    @Test fun replyShapeCompleteBindsUnderReference() = runBlocking<Unit> {
+        val r = Rig(this, captions = false, native = true, fixed = 650, reference = true,
+            guardFollowup = true, rejectAtLimit = true, maxDurationMs = 28_000)
+        try {
+            r.startPause(); r.result(.9f, 765) // COMPLETE
+            // LEGACY left this shape on the fixed window plus the native
+            // conjunction. REFERENCE binds the verdict at the decision point.
+            eventually { r.capture.endpointDecisionAtNs != null }
+            assertEquals(765_000_000L, r.capture.endpointDecisionAtNs)
+            assertTrue(r.logs.any { it.contains("endpointCue=smart_turn_complete") })
+            r.completeWav()
+        } finally { r.close() }
+    }
+
+    @Test fun replyShapeContinueKeepsTheCaptureOpenUntilTheBackstopUnderReference() = runBlocking<Unit> {
+        val r = Rig(this, captions = false, native = true, fixed = 650, reference = true,
+            guardFollowup = true, rejectAtLimit = true, maxDurationMs = 28_000)
+        try {
+            r.startPause(); r.result(.1f, 765) // CONTINUE
+            while (r.samples / 16 < 1200) r.emit(.01f)
+            eventually { r.backend.calls.get() == 2 }; r.result(.1f, 1265) // CONTINUE again
+            // No 650ms fixed ending and no legacy CONTINUE cap: the capture
+            // stays open until the 5s turn-stop backstop.
+            while (r.samples / 16 < 4000) r.emit(.01f)
+            assertNull(r.capture.endpointDecisionAtNs)
+            while (r.samples / 16 < 5200) r.emit(.01f)
+            assertNull(r.capture.endpointDecisionAtNs)
+            r.emit(.01f)
+            eventually { r.capture.endpointDecisionAtNs != null }
+            assertEquals(5_300_000_000L, r.capture.endpointDecisionAtNs)
+            assertEquals(2, r.backend.calls.get())
+            assertTrue(r.logs.any { it.contains("endpointCue=turn_stop_timeout") })
+            r.completeWav()
+        } finally { r.close() }
+    }
+
+    @Test fun replyShapeWithoutAnObserverEndsOnTheReferenceSpeechTimeout() = runBlocking<Unit> {
+        val r = Rig(this, captions = false, native = true, fixed = 650, available = false, reference = true,
+            guardFollowup = true, rejectAtLimit = true, maxDurationMs = 28_000)
+        try {
+            // No analyzer attached (setting off / model unavailable / comparison
+            // trial): the reference no-analyzer stop is this capture's own fixed
+            // speech-timeout window, under the speech_timeout cue — LEGACY
+            // recorded the same 650ms as the legacy fixed decision instead.
+            r.capture.start(); repeat(3) { r.emit(.99f) }; repeat(6) { r.emit(.01f) }
+            assertNull(r.capture.endpointDecisionAtNs) // 900ms wall: 600ms of silence, window is 650ms.
+            r.emit(.01f)
+            eventually { r.capture.endpointDecisionAtNs != null }
+            assertEquals(1_000_000_000L, r.capture.endpointDecisionAtNs)
+            assertTrue(r.logs.any { it.contains("endpointCue=speech_timeout") && it.contains("targetSilenceMs=650") })
+            r.completeWav()
+        } finally { r.close() }
+    }
+
+    @Test fun replyShapeCompleteBindsOnTheAsrRouteUnderReference() = runBlocking<Unit> {
+        // The recognition shape (Whisper route and the accepted-action pump):
+        // transcriber present, no fixed window, follow-up speech guard on.
+        val r = Rig(this, captions = true, native = false, reference = true, guardFollowup = true)
+        try {
+            r.caption = "no, use the other one"
+            r.startPause(); r.result(.9f, 765) // COMPLETE
+            eventually { r.capture.endpointDecisionAtNs != null }
+            assertEquals(765_000_000L, r.capture.endpointDecisionAtNs)
+            assertTrue(r.logs.any { it.contains("endpointCue=smart_turn_complete") })
+            r.completeWav(); assertEquals(1, r.finalCalls)
+        } finally { r.close() }
     }
 }

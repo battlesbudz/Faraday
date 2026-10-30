@@ -24,7 +24,9 @@ internal data class VoiceTurnRequest(
     val captionAsrEnabled: Boolean,
     val asrEngine: AsrEngine,
     val ttsEngine: TtsEngine,
-    val asrTurnId: String
+    val asrTurnId: String,
+    /** Reply interruption-confirmation probe; independent of [captionAsrEnabled]. */
+    val replyProbeEnabled: Boolean
 )
 
 /** Fully prepared resources. Their release owner is [VoiceTurnLifetime], not this value. */
@@ -42,7 +44,8 @@ internal data class PreparedVoiceTurn(
     val activeCapture: AudioTurnCapture,
     val correction: CapturedVoiceTurn?,
     val directAudioTurn: Boolean,
-    val replyAsrEnabled: Boolean
+    val replyAsrEnabled: Boolean,
+    val replyProbeEnabled: Boolean
 )
 
 /** Final recognition evidence. Only this value may advance to phone or ordinary answer stages. */

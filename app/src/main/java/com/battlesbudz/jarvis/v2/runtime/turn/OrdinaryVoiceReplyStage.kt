@@ -219,7 +219,23 @@ internal class OrdinaryVoiceReplyStage(
                         call.controller.updateReplyText(prepared.expectedCallId, request.asrTurnId, text,
                             finished = true, latency = observation.replyLatency.get())
                     }
-                    if (prepared.directAudioTurn && request.comparison == null && finalized.recognitionIssue == null) {
+                    val captionEngineClosed = prepared.engine.isNativeClosed
+                    if (prepared.directAudioTurn && request.comparison == null && finalized.recognitionIssue == null && captionEngineClosed) {
+                        // The answer generation already failed and the
+                        // conversation owner closed the native engine (its
+                        // failure path always does). The caption is optional:
+                        // attempting its native reset against a closing or
+                        // closed engine fails the reset, marks the caption
+                        // release failed and poisons model ownership for the
+                        // rest of the call. Skip cleanly instead. This guard
+                        // covers only the already-failed/closing case: on a
+                        // healthy, open engine the continuation below still
+                        // runs, and a genuine native drain failure there
+                        // still escapes and quarantines exactly as before.
+                        observation.benchmark.configuration("gemma_final_caption_result", "skipped_engine_closed")
+                        diagnosticRecorder.recordImportant("Gemma final caption skipped; answer engine already closed")
+                    }
+                    if (prepared.directAudioTurn && request.comparison == null && finalized.recognitionIssue == null && !captionEngineClosed) {
                         observation.benchmark.mark("answer_generation_finished")
                         lifetime.speechChunks.close() // Caption inference must not hold answer EOF/audio drain.
                         observation.benchmark.configuration("gemma_final_caption_scope", "structured_backstop_capture_first")
@@ -334,8 +350,29 @@ internal class OrdinaryVoiceReplyStage(
                 response
             },
             listen = { confirmed ->
+                // The reply capture's speech becomes this call's next user turn;
+                // its stop is judged by Smart Turn from the same call owner as
+                // the conversation captures (compare the follow-up capture's
+                // telemetry below, prefix followup_).
+                val replyShadowTelemetry = com.battlesbudz.jarvis.v2.diagnostics.SmartTurnBenchmarkTelemetry(
+                    observation.benchmark, prefix = "reply_") { category, evidence ->
+                    diagnosticRecorder.recordTurnEvidence(request.asrTurnId, category, evidence)
+                }
                 replyCapture.listenBenchmarkedReply(prepared.output, prepared.asrDirectory, confirmed, asrEngine = request.asrEngine, trace = observation.turnTrace,
                     recognitionEnabled = prepared.replyAsrEnabled,
+                    probeEnabled = prepared.replyProbeEnabled,
+                    shadowOwner = resources.smartTurn,
+                    shadowTelemetry = replyShadowTelemetry,
+                    expectedCallId = prepared.expectedCallId,
+                    shadowOwnerIsCurrent = { exactTurnJob?.isActive == true && call.state.turnJob === exactTurnJob &&
+                        call.state.armed && call.controller.currentCallId() == prepared.expectedCallId },
+                    smartTurnEndpointEnabled = request.comparison == null,
+                    smartTurnAdmissionBlocker = {
+                        when {
+                            lifetime.nativeSpeculation?.consumedEncoder == true -> "gemma_speculation"
+                            else -> null
+                        }
+                    },
                     onCandidateRetained = { sequence, bytes ->
                         rawInput?.retainCandidate(sequence, bytes)
                         if (rawInput != null) captionPublication.replyCandidate(true)

@@ -4,11 +4,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class GemmaAudioInputPolicyTest {
-    @Test fun captionsOffDisablesRecognizerAcrossCaptureAndInterruption() {
+    @Test fun captionsOffDisablesCaptionsButNotTheReplyProbe() {
+        // Direct audio with captions off: no caption recognizer, but the reply
+        // interruption probe stays on so natural speech can stop playback.
         assertFalse(GemmaAudioInputPolicy.usesRecognizer(directAudio = true, captions = false))
+        assertTrue(GemmaAudioInputPolicy.replyProbeEnabled())
         assertTrue(GemmaAudioInputPolicy.usesRecognizer(directAudio = true, captions = true))
+    }
+    @Test fun transcribedRouteKeepsRecognizerAndReplyProbe() {
         assertTrue(GemmaAudioInputPolicy.usesRecognizer(directAudio = false, captions = false))
+        assertTrue(GemmaAudioInputPolicy.replyProbeEnabled())
+    }
+    @Test fun asrFreeComparisonDisablesRecognizerAndReplyProbe() {
         assertFalse(GemmaAudioInputPolicy.usesRecognizer(directAudio = true, captions = true, nativeAudioComparison = true))
+        assertFalse(GemmaAudioInputPolicy.replyProbeEnabled(nativeAudioComparison = true))
     }
     @Test fun completeShortAudioUsesRecordingNotCaption() {
         assertNull(GemmaAudioInputPolicy.rejection(true, true, 16044))

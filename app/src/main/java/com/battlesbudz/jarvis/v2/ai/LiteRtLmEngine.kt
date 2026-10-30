@@ -97,6 +97,8 @@ class LiteRtLmEngine(
     /** A terminal callback is never proof that the model lease can be released. */
     val nativeResourcesSafeToRelease: Boolean get() = lifecycle.safeToRelease
     val isNativeQuarantined: Boolean get() = lifecycle.isQuarantined
+    /** True once engine close has been requested; a closed engine must not be reset or reused. */
+    val isNativeClosed: Boolean get() = lifecycle.isClosed
     val requiresConfirmedHistoryRebuild: Boolean get() = lifecycle.requiresConfirmedHistoryRebuild
 
     /** Reports actual submissions, including incremental input, retries and recognition fallback. */

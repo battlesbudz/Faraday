@@ -13,6 +13,11 @@ class SuppliedReferenceTest {
         val plan = TurnOrchestrator(client).plan(url, listOf("You" to "how do you make water soluble calcium?", "Jarvis" to "This is not a recognized method.", "You" to "no"))
         val result = client.fetchIfRequested(plan.lookupQuery!!)!!
         assertTrue(result.context.contains("eggshells and vinegar"))
+        // Partial evidence must not dead-end the answer: uncovered parts are
+        // answered from the model's own knowledge, not announced as missing.
+        assertTrue(result.context.contains("answer that part from"))
+        assertTrue(result.context.contains("your own knowledge rather than refusing"))
+        assertFalse(result.context.contains("If the evidence is insufficient, say so"))
         assertEquals(listOf(url), result.sources)
         assertEquals(listOf(url), calls)
     }

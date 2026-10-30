@@ -168,6 +168,26 @@ internal class AcceptedVoiceFollowupStage(
                     }, asrEngine = request.asrEngine,
                         inputFactory = { resources.resources.borrowMicrophone("accepted-followup", communication = true) },
                         modelSession = prepared.models, asrOnly = true,
+                        // The pump's retained speech is user turns in this call
+                        // (follow-up commands and new requests), so its stop is
+                        // judged by Smart Turn from the call owner like every
+                        // conversation capture. run() has already returned
+                        // NotApplicable for comparison trials, so endpoint
+                        // judging is unconditionally enabled here.
+                        shadowOwner = resources.smartTurn,
+                        shadowTelemetry = com.battlesbudz.jarvis.v2.diagnostics.SmartTurnBenchmarkTelemetry(
+                            observation.benchmark, prefix = "reply_") { category, evidence ->
+                            diagnosticRecorder.recordTurnEvidence(request.asrTurnId, category, evidence)
+                        },
+                        expectedCallId = prepared.expectedCallId,
+                        shadowOwnerIsCurrent = { call.state.armed && call.controller.currentCallId() == prepared.expectedCallId },
+                        smartTurnEndpointEnabled = true,
+                        smartTurnAdmissionBlocker = {
+                            when {
+                                lifetime.nativeSpeculation?.consumedEncoder == true -> "gemma_speculation"
+                                else -> null
+                            }
+                        },
                         outputProvider = { reportOutput ?: prepared.output },
                         log = { diagnosticRecorder.recordImportant("Action follow-up capture: $it") })
                 }.also { pumpLifetime.capture = it }
