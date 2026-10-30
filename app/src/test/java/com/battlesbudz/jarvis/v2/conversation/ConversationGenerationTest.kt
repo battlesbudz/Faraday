@@ -131,10 +131,10 @@ class ConversationGenerationTest {
     private suspend fun generateWithBackend(backend: ConversationBackend, audio: ByteArray?,
                                               phoneActions: ConversationActions? = null,
                                               plan: ActionTurnPlan = ActionTurnPlan.NotAction,
-                                              sessionProbe: (ConversationModelSession) -> Unit = {},
                                               callVisualContext: () -> CallVisualContext.Decision =
                                                   { CallVisualContext.INACTIVE },
-                                              summaryLog: MutableList<String>? = null): ConversationDraft {
+                                              summaryLog: MutableList<String>? = null,
+                                              sessionProbe: (ConversationModelSession) -> Unit = {}): ConversationDraft {
         val diagnostics = ConversationDiagnostics({}, {}, { line -> summaryLog?.add(line) }, {})
         val memory = MemoryDeliveryFence()
         val input = ConversationInvocation("Hello", emptyList(), voiceAudio = audio, directVoiceAudio = audio != null)
