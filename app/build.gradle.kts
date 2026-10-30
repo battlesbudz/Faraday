@@ -130,6 +130,9 @@ android {
             jvmTarget.set(JvmTarget.JVM_17)
         }
     }
+    // The sandbox rootfs asset must stay stored uncompressed: the installer
+    // reads its length via openFd to compute the extraction fraction.
+    androidResources { noCompress += "xz" }
     // Optional smaller sideload download. Android extracts these libraries at install;
     // the normal artifact keeps direct APK loading and lower installed storage.
     packaging.jniLibs.useLegacyPackaging = providers.gradleProperty("compactApk")
@@ -170,6 +173,9 @@ dependencies {
     implementation(files(sherpaDir.map { it.file("classes.jar") }).builtBy(extractSherpa))
     implementation(project(":phoneinference"))
     implementation("org.apache.commons:commons-compress:1.27.1")
+    // Sandbox: pure-Java XZ decoder for the vendored rootfs installer
+    // (org.tukaani:xz is public domain; see app/src/main/cpp/terminal/NOTICE.md).
+    implementation("org.tukaani:xz:1.10")
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test:rules:1.6.1")
