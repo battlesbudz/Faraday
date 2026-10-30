@@ -18,6 +18,7 @@ import com.battlesbudz.jarvis.v2.eval.ToolReliabilityBenchmark
 import com.battlesbudz.jarvis.v2.eval.admitReliabilityCheck
 import com.battlesbudz.jarvis.v2.eval.checkIdleBeforeClose
 import com.battlesbudz.jarvis.v2.voice.JarvisModelSetupWorker
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.takeWhile
@@ -176,12 +177,27 @@ internal class ModelSetupOperations(
         }
     }
 
+    private val downloadGeneration = DownloadGenerationGate()
+
     fun download(
         spec: LocalModelSpec,
         onProgress: (Long, Long) -> Unit,
         report: (String) -> Unit,
         onFinished: (String) -> Unit,
     ) {
+        // Only this invocation's callbacks may publish while it is the newest
+        // download; a superseded invocation's observer is silenced (see
+        // DownloadGenerationGate).
+        val generation = downloadGeneration.begin()
+        val liveProgress: (Long, Long) -> Unit = { downloaded, total ->
+            if (downloadGeneration.isCurrent(generation)) onProgress(downloaded, total)
+        }
+        val liveReport: (String) -> Unit = { message ->
+            if (downloadGeneration.isCurrent(generation)) report(message)
+        }
+        val liveFinished: (String) -> Unit = { message ->
+            if (downloadGeneration.isCurrent(generation)) onFinished(message)
+        }
         val request = OneTimeWorkRequestBuilder<JarvisModelSetupWorker>()
             .setInputData(workDataOf("model_id" to spec.id,
                 "prepare_voice" to (spec.id == store.selectedModel().id)))
@@ -199,7 +215,7 @@ internal class ModelSetupOperations(
                 if (infos.any { it.id == request.id }) request.id else priorActive?.id
             }
             if (observedId == null) {
-                onFinished("Another download is running. Let it finish or cancel it before downloading this model.")
+                liveFinished("Another download is running. Let it finish or cancel it before downloading this model.")
                 return@launch
             }
             var terminal: WorkInfo? = null
@@ -211,8 +227,8 @@ internal class ModelSetupOperations(
                         val stage = info.progress.getString("stage")
                         val downloaded = info.progress.getLong("downloaded", 0L)
                         val total = info.progress.getLong("total", -1L)
-                        if (!stage.isNullOrBlank()) report(stage)
-                        if (downloaded > 0L) onProgress(downloaded, total)
+                        if (!stage.isNullOrBlank()) liveReport(stage)
+                        if (downloaded > 0L) liveProgress(downloaded, total)
                         if (info.state.isFinished) {
                             terminal = info
                             false
@@ -223,13 +239,13 @@ internal class ModelSetupOperations(
             val result = terminal
             if (result?.state == WorkInfo.State.SUCCEEDED) {
                 // A background transfer must never close, load or test the user's current engine.
-                onFinished("${spec.id} downloaded. Choose it when you're ready.")
+                liveFinished("${spec.id} downloaded. Choose it when you're ready.")
             } else {
                 val message = result?.outputData?.getString("error")
                     ?: if (result?.state == WorkInfo.State.CANCELLED) "Download cancelled. Saved progress can be resumed."
                     else "Jarvis model setup did not complete."
-                report(message)
-                onFinished(message)
+                liveReport(message)
+                liveFinished(message)
             }
         }
     }
@@ -248,4 +264,24 @@ internal class ModelSetupOperations(
             }
         }
     }
+}
+
+/**
+ * Monotonic generation for download invocations. Cancelling a download does
+ * not stop its observer immediately: the cancelled work's terminal WorkInfo —
+ * carrying its last frozen progress — can be delivered after the download
+ * that replaced it has started publishing its own. Only the newest
+ * generation's callbacks may write into setup state, so the dying invocation
+ * cannot overwrite the live one's progress or stamp its "cancelled" message
+ * over the replacement's status. The transfer layer needs no such guard:
+ * WorkManager's unique-work KEEP policy and the model-operation gate
+ * already serialize the downloads themselves.
+ */
+internal class DownloadGenerationGate {
+    private val generation = AtomicInteger(0)
+
+    /** Starts a new invocation generation, superseding every earlier one. */
+    fun begin(): Int = generation.incrementAndGet()
+
+    fun isCurrent(candidate: Int): Boolean = generation.get() == candidate
 }
