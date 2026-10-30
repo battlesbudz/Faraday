@@ -169,8 +169,9 @@ internal class ConversationContextPreparation(
         reply.lookupMs += if (lookupAttempted) (System.nanoTime() - lookupStarted) / 1_000_000 else 0L
 
         // An attempted lookup that returns no usable evidence splits by
-        // turn kind: a supplied source is a retrieval failure (below),
-        // while an ordinary question still answers from local knowledge.
+        // turn kind: a supplied source or an explicitly requested lookup
+        // is a retrieval failure (below), while a question that never
+        // asked for a lookup still answers from local knowledge.
         if (lookupAttempted && referenceContext.isNullOrBlank()) {
             if (suppliedSourceLookup) {
                 // A supplied source is the turn's input, not a fact the
@@ -185,6 +186,24 @@ internal class ConversationContextPreparation(
                         "lookupQuery=${turnPlan.lookupQuery?.take(1_000)}"
                 )
                 postFinish("I couldn't retrieve the page at that link, so I don't have its contents to work from. Please check the link and try again.")
+                return null
+            }
+            if (turnPlan.kind == TurnKind.EXPLICIT_LOOKUP ||
+                turnPlan.kind == TurnKind.LOOKUP_CONFIRMATION) {
+                // The user explicitly asked for a lookup (or confirmed
+                // one): with nothing retrieved there is no evidence to
+                // answer from, and falling through would present the
+                // model's own knowledge as if the lookup had happened.
+                // End the turn with an honest retrieval failure, the
+                // same shape as the supplied-source block above; this
+                // restores the retrieval-failure response this path
+                // returned before the local-knowledge fallback.
+                diagnostics.record(
+                    "Explicit lookup returned no evidence; retrieval failed\n" +
+                        "user=${prompt.take(1_000)}\n" +
+                        "lookupQuery=${turnPlan.lookupQuery?.take(1_000)}"
+                )
+                postFinish("I couldn't find relevant reference evidence for that lookup, so I can't verify the answer yet.")
                 return null
             }
             // An attempted lookup that returns no usable evidence is not a

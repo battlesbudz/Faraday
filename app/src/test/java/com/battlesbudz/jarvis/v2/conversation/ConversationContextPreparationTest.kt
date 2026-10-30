@@ -140,12 +140,26 @@ class ConversationContextPreparationTest {
         assertTrue(f.terminal.isEmpty())
     }
 
-    @Test fun explicitLookupWithNoEvidenceProceedsToLocalGeneration() = runBlocking {
+    @Test fun explicitLookupWithNoEvidenceEndsWithRetrievalFailure() = runBlocking {
         val f = Fixture()
         f.evidence = null
-        val prepared = f.prepare("Use Wikipedia to find who Harry J. Anslinger was",
-            TurnPlan(TurnKind.EXPLICIT_LOOKUP, "explicit query"))!!
+        assertNull(f.prepare("Use Wikipedia to find who Harry J. Anslinger was",
+            TurnPlan(TurnKind.EXPLICIT_LOOKUP, "explicit query")))
+        // The user explicitly requested this lookup: with nothing
+        // retrieved the turn must end in a retrieval failure instead of
+        // generating an unverified answer from the model's knowledge.
         assertEquals(listOf("explicit query"), f.queries)
+        assertEquals(listOf("I couldn't find relevant reference evidence for that lookup, so I can't verify the answer yet."), f.terminal)
+    }
+
+    @Test fun ordinaryQuestionWithNoEvidenceStillProceedsToLocalGeneration() = runBlocking {
+        val f = Fixture()
+        f.evidence = null
+        val prepared = f.prepare("Who was Harry J. Anslinger?",
+            TurnPlan(TurnKind.NORMAL_CHAT, "ordinary query"))!!
+        // No lookup was explicitly requested for this turn, so the
+        // existing local-knowledge fallback stays unchanged.
+        assertEquals(listOf("ordinary query"), f.queries)
         assertNull(prepared.referenceContext)
         assertTrue(f.terminal.isEmpty())
     }
@@ -173,13 +187,23 @@ class ConversationContextPreparationTest {
         assertTrue(f.terminal.isEmpty())
     }
 
-    @Test fun lookupConfirmationWithNoEvidenceStillProceedsToLocalGeneration() = runBlocking {
+    @Test fun lookupConfirmationWithNoEvidenceEndsWithRetrievalFailure() = runBlocking {
         val f = Fixture()
         f.evidence = null
+        assertNull(f.prepare("yes",
+            TurnPlan(TurnKind.LOOKUP_CONFIRMATION, "confirmation query")))
+        // A confirmed lookup is still an explicitly requested lookup:
+        // no evidence means a retrieval failure, not local generation.
+        assertEquals(listOf("confirmation query"), f.queries)
+        assertEquals(listOf("I couldn't find relevant reference evidence for that lookup, so I can't verify the answer yet."), f.terminal)
+    }
+
+    @Test fun lookupConfirmationWithEvidenceProceedsWithFetchedContents() = runBlocking {
+        val f = Fixture()
         val prepared = f.prepare("yes",
             TurnPlan(TurnKind.LOOKUP_CONFIRMATION, "confirmation query"))!!
         assertEquals(listOf("confirmation query"), f.queries)
-        assertNull(prepared.referenceContext)
+        assertEquals("reference evidence", prepared.referenceContext)
         assertTrue(f.terminal.isEmpty())
     }
 
