@@ -282,3 +282,14 @@ else()
     add_executable(microwakeword_test ../../../../../scripts/microwakeword_test.cpp MicroWakeWordEngine.cpp MicroFrontendWrapper.cpp)
     target_link_libraries(microwakeword_test tflite_micro_frontend tflite_micro_interpreter)
 endif()
+
+# ------------------------------------------------------------------------------
+# Vendored terminal + chroot-ng (libterm.so) — Faraday sandbox.
+# The vendored tree keeps upstream's layout: JNI sources and their own
+# CMakeLists under cpp/terminal, the native trees under cpp/native.
+# Provenance and the adaptation list: cpp/terminal/NOTICE.md.
+# ------------------------------------------------------------------------------
+if(ANDROID)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../terminal
+        ${CMAKE_CURRENT_BINARY_DIR}/terminal)
+endif()
