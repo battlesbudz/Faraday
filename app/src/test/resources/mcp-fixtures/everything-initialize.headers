@@ -1,0 +1,3 @@
+HTTP/1.1 200 OK
+content-type: text/event-stream
+mcp-session-id: 230fbf2e-9fb5-4ad0-b499-285adb6eb8cc
