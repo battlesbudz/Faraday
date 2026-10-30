@@ -57,12 +57,35 @@ class ModelStore @JvmOverloads constructor(
 
     fun fileFor(spec: LocalModelSpec): File = File(modelDirectory, spec.fileName)
 
+    /**
+     * Root the native engine appends the model id to for its compiled cache:
+     * the models directory itself, so the compiled cache lives beside the
+     * model file in app files storage. It used to be the cache directory,
+     * which Android may evict under storage pressure — potentially
+     * mid-session, taking the compiled weights with it.
+     */
+    fun engineCacheRoot(): File = modelDirectory
+
+    /** This model's compiled-cache directory inside [engineCacheRoot]. */
+    fun compiledCacheDirectory(spec: LocalModelSpec): File = File(modelDirectory, spec.id)
+
+    /** Where the compiled cache lived before the move to files storage. */
+    private fun legacyCompiledCacheDirectory(spec: LocalModelSpec): File =
+        File(context.cacheDir, spec.id)
+
     /** Caller holds the model-operation lock and has closed the idle engine. */
     fun deleteModel(spec: LocalModelSpec) {
         require(ModelCatalog.find(spec.id) == spec) { "Unsupported model." }
         check(isModelOperationActive()) { "Model deletion requires exclusive ownership." }
         check(!operations.downloading(spec.id)) { "Cancel this model's download before deleting it." }
-        removeModelFiles(modelDirectory, spec.fileName, File(context.cacheDir, spec.id))
+        removeModelFiles(modelDirectory, spec.fileName, compiledCacheDirectory(spec))
+        // Installs from before the compiled-cache move kept it under the
+        // evictable cache directory; remove that too so deleting a model
+        // frees everything it did before the move.
+        val legacyCache = legacyCompiledCacheDirectory(spec)
+        check(!legacyCache.exists() || legacyCache.deleteRecursively()) {
+            "Could not remove the model cache. Please try again."
+        }
         val key = fingerprintKey(spec)
         val editor = preferences.edit()
         listOf(key, "${key}_length", "${key}_modified", "${key}_invalid",
@@ -75,9 +98,13 @@ class ModelStore @JvmOverloads constructor(
     fun storedBytes(spec: LocalModelSpec): Long = modelFiles(modelDirectory, spec.fileName)
         .sumOf { it.length() } + File(modelDirectory, "${spec.fileName}.part.chunks").let { chunks ->
             if (chunks.exists()) chunks.walkTopDown().filter { it.isFile }.sumOf { it.length() } else 0L
-        } + File(context.cacheDir, spec.id).let { cache ->
-            if (cache.exists()) cache.walkTopDown().filter { it.isFile }.sumOf { it.length() } else 0L
-        }
+        } + directoryBytes(compiledCacheDirectory(spec)) +
+        // A pre-move install's cache still occupies space until it is deleted
+        // or the system evicts it; count it while it exists.
+        directoryBytes(legacyCompiledCacheDirectory(spec))
+
+    private fun directoryBytes(directory: File): Long =
+        if (directory.exists()) directory.walkTopDown().filter { it.isFile }.sumOf { it.length() } else 0L
 
     fun hasModel(spec: LocalModelSpec): Boolean =
         fileFor(spec).let { it.isFile && it.length() > 0L }

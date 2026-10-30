@@ -87,7 +87,7 @@ internal class ModelSetupOperations(
                 engine = LiteRtLmEngine(
                     store.selectedModel().id,
                     store.fileFor(store.selectedModel()).path,
-                    context.cacheDir.path,
+                    store.engineCacheRoot().path,
                     useGpu = store.selectedModel().recommendedGpu,
                     tools = if (store.selectedModel().supportsTools) MobileActionToolDefinitions.all() else emptyList(),
                     visionEnabled = false,
@@ -165,7 +165,7 @@ internal class ModelSetupOperations(
                         LiteRtLmEngine(
                             spec.id,
                             store.fileFor(spec).path,
-                            context.cacheDir.path,
+                            store.engineCacheRoot().path,
                             useGpu = spec.recommendedGpu,
                             tools = MobileActionToolDefinitions.all()
                         )
