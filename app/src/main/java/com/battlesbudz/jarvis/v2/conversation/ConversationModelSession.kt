@@ -79,7 +79,11 @@ internal class ConversationModelSession(
             // the resident check must too. Without it, a text-built engine is
             // reused for a direct-audio turn and generateAudio's audio
             // requirement fails that turn instead of rebuilding once here.
-            if (state.engine?.audioEnabled != true) close() else reset()
+            // Escalate only when audio is missing: an audio-capable resident
+            // is left untouched, because direct-voice turns deliberately
+            // retain their prepared conversation (no drain, no reseed).
+            val resident = state.engine
+            if (resident != null && !resident.audioEnabled) close()
         }
         val started = System.nanoTime()
         reply.benchmark.mark("model_load_started")
