@@ -2,11 +2,13 @@ package com.battlesbudz.jarvis.v2.ai
 
 import com.battlesbudz.jarvis.v2.ai.storage.modelFiles
 import com.battlesbudz.jarvis.v2.ai.storage.removeModelFiles
+import com.battlesbudz.jarvis.v2.ai.storage.DownloadSpaceBudget
 import com.battlesbudz.jarvis.v2.ai.storage.ModelDownloader
 import com.battlesbudz.jarvis.v2.ai.storage.DownloadedModelLookup
 import com.battlesbudz.jarvis.v2.ai.storage.sha256
 import android.content.Context
 import android.net.Uri
+import android.os.storage.StorageManager
 import android.provider.OpenableColumns
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
@@ -213,6 +215,7 @@ class ModelStore @JvmOverloads constructor(
                 onProgress(fileFor(spec).length(), fileFor(spec).length())
                 return@runCatching fileFor(spec)
             }
+            checkDownloadSpace(spec)
             // Try the exact Downloads lookup first, but preserve download as
             // the explicit one-tap setup fallback when Android hides the file
             // from the app's background provider query.
@@ -280,6 +283,34 @@ class ModelStore @JvmOverloads constructor(
             operations.endDownload(spec.id)
         }
     }.onFailure { if (it is CancellationException) throw it }
+
+    /**
+     * Fail before the first byte moves when this phone cannot hold the model
+     * plus its compiled cache, naming the shortfall. Runs only once the
+     * installed-file check above has failed, so a verified model already on
+     * the phone is never refused. Bytes this model already occupies —
+     * including a resumable partial download — count toward the budget. A
+     * failed space probe never blocks setup: the check guards downloads, it
+     * does not gate on its own measurement.
+     */
+    private fun checkDownloadSpace(spec: LocalModelSpec) {
+        val modelBytes = spec.downloadBytes?.takeIf { it > 0L } ?: return
+        val allocatable = allocatableBytes() ?: return
+        val existing = storedBytes(spec)
+        val shortfall = DownloadSpaceBudget.shortfallBytes(modelBytes, existing, allocatable)
+        check(shortfall <= 0L) {
+            "Not enough free space for ${spec.id}. Free up about ${ModelGuidance.gb(shortfall)} " +
+                "and try again: the model and its cache need " +
+                "${ModelGuidance.gb(DownloadSpaceBudget.budgetBytes(modelBytes))} in total, " +
+                "${ModelGuidance.gb(existing)} is already on this phone for it, and " +
+                "${ModelGuidance.gb(allocatable)} can be made available."
+        }
+    }
+
+    private fun allocatableBytes(): Long? = runCatching {
+        val storageManager = context.getSystemService(StorageManager::class.java)
+        storageManager.getAllocatableBytes(storageManager.getUuidForPath(modelDirectory))
+    }.getOrNull()
 
     private sealed interface DownloadLookupResult {
         data class Completed(val uri: Uri?) : DownloadLookupResult
