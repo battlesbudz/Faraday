@@ -10,6 +10,7 @@ import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.battlesbudz.jarvis.v2.actions.MobileActionToolDefinitions
 import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngine
+import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngineFactory
 import com.battlesbudz.jarvis.v2.ai.LocalModelSpec
 import com.battlesbudz.jarvis.v2.ai.ModelStore
 import com.battlesbudz.jarvis.v2.chat.AssistantText
@@ -18,8 +19,11 @@ import com.battlesbudz.jarvis.v2.eval.ToolReliabilityBenchmark
 import com.battlesbudz.jarvis.v2.eval.admitReliabilityCheck
 import com.battlesbudz.jarvis.v2.eval.checkIdleBeforeClose
 import com.battlesbudz.jarvis.v2.voice.JarvisModelSetupWorker
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -83,16 +87,15 @@ internal class ModelSetupOperations(
                     "The selected model file changed or failed integrity verification. Re-import it."
                 }
                 session.closeConversation(resetCharacters = false)
-                engine = LiteRtLmEngine(
+                engine = LiteRtLmEngineFactory.createInitialized(
                     store.selectedModel().id,
                     store.fileFor(store.selectedModel()).path,
-                    context.cacheDir.path,
+                    store.engineCacheRoot().path,
                     useGpu = store.selectedModel().recommendedGpu,
                     tools = if (store.selectedModel().supportsTools) MobileActionToolDefinitions.all() else emptyList(),
                     visionEnabled = false,
                     audioEnabled = false,
                 )
-                engine.initialize()
                 val probe = engine.generate("Say hello in one short sentence.", onToken = {})
                 check(AssistantText.forDisplay(probe.text).any { it.isLetterOrDigit() }) {
                     "The selected model loaded but did not return readable text."
@@ -117,8 +120,72 @@ internal class ModelSetupOperations(
         job.invokeOnCompletion { store.endModelOperation() }
     }
 
-    fun cancelDownload() {
+    /**
+     * Pauses the running download: the durable work stops, and the transfer
+     * layer's resumable state — the partial file and its chunk checkpoints —
+     * stays on the phone, so a later download of the same model resumes
+     * where this one stopped. Nothing is deleted here; discarding the saved
+     * progress is [discardDownload]'s separate, explicit job.
+     */
+    fun pauseDownload() {
         WorkManager.getInstance(context).cancelUniqueWork(MODEL_SETUP_WORK_NAME)
+    }
+
+    /** Specs whose stopped download the user chose to discard, not pause. */
+    private val discardIntents = ConcurrentHashMap.newKeySet<String>()
+
+    private val discardStopWaitMs = 120_000L
+    private val discardPollMs = 200L
+
+    /**
+     * Cancels the running download AND discards its saved progress: stops
+     * the durable work, waits for the transfer to actually stop, then
+     * removes the partial file and chunk checkpoints under the
+     * model-operation gate. The live download observer stays silent about
+     * this cancellation (see [downloadFailureMessage]); this reports the
+     * one honest outcome — including the cases where nothing was discarded
+     * because the download finished first or a new one already started.
+     * Also the path for cancelling an already-paused download: its work is
+     * long finished, so the wait below returns immediately.
+     */
+    fun discardDownload(spec: LocalModelSpec, onFinished: (String) -> Unit) {
+        val generationAtStart = downloadGeneration.current()
+        discardIntents += spec.id
+        val workManager = WorkManager.getInstance(context)
+        workManager.cancelUniqueWork(MODEL_SETUP_WORK_NAME)
+        scope.launch {
+            val message = withContext(Dispatchers.IO) {
+                // Never touch the transfer's files while it may still be
+                // writing: wait until every piece of setup work is finished.
+                val deadlineMs = System.currentTimeMillis() + discardStopWaitMs
+                var stopped = false
+                while (System.currentTimeMillis() < deadlineMs) {
+                    val infos = workManager.getWorkInfosForUniqueWork(MODEL_SETUP_WORK_NAME).get()
+                    if (infos.all { it.state.isFinished }) { stopped = true; break }
+                    delay(discardPollMs)
+                }
+                when {
+                    !stopped -> "The download is still stopping. Its saved progress was kept."
+                    store.hasModel(spec) ->
+                        "The download had already finished, so ${spec.id} is installed. Delete it from model settings to remove it."
+                    store.isDownloading(spec) ->
+                        "A new download of ${spec.id} already started. Its progress was kept."
+                    !store.tryBeginModelOperation() ->
+                        "Wait for model setup or testing to finish, then cancel the download again to remove its saved progress."
+                    else -> try {
+                        store.discardPartialDownload(spec)
+                        "Download cancelled. Saved progress removed."
+                    } catch (error: Exception) {
+                        "Download stopped, but its saved progress could not be removed: ${error.message}"
+                    } finally {
+                        store.endModelOperation()
+                    }
+                }
+            }
+            discardIntents -= spec.id
+            // A newer download owns the surface now; its own messages win.
+            if (downloadGeneration.isCurrent(generationAtStart)) onFinished(message)
+        }
     }
 
     /**
@@ -161,10 +228,10 @@ internal class ModelSetupOperations(
                             session.record(message)
                     },
                     engineFactory = { spec ->
-                        LiteRtLmEngine(
+                        LiteRtLmEngineFactory.create(
                             spec.id,
                             store.fileFor(spec).path,
-                            context.cacheDir.path,
+                            store.engineCacheRoot().path,
                             useGpu = spec.recommendedGpu,
                             tools = MobileActionToolDefinitions.all()
                         )
@@ -176,12 +243,27 @@ internal class ModelSetupOperations(
         }
     }
 
+    private val downloadGeneration = DownloadGenerationGate()
+
     fun download(
         spec: LocalModelSpec,
         onProgress: (Long, Long) -> Unit,
         report: (String) -> Unit,
         onFinished: (String) -> Unit,
     ) {
+        // Only this invocation's callbacks may publish while it is the newest
+        // download; a superseded invocation's observer is silenced (see
+        // DownloadGenerationGate).
+        val generation = downloadGeneration.begin()
+        val liveProgress: (Long, Long) -> Unit = { downloaded, total ->
+            if (downloadGeneration.isCurrent(generation)) onProgress(downloaded, total)
+        }
+        val liveReport: (String) -> Unit = { message ->
+            if (downloadGeneration.isCurrent(generation)) report(message)
+        }
+        val liveFinished: (String) -> Unit = { message ->
+            if (downloadGeneration.isCurrent(generation)) onFinished(message)
+        }
         val request = OneTimeWorkRequestBuilder<JarvisModelSetupWorker>()
             .setInputData(workDataOf("model_id" to spec.id,
                 "prepare_voice" to (spec.id == store.selectedModel().id)))
@@ -199,7 +281,7 @@ internal class ModelSetupOperations(
                 if (infos.any { it.id == request.id }) request.id else priorActive?.id
             }
             if (observedId == null) {
-                onFinished("Another download is running. Let it finish or cancel it before downloading this model.")
+                liveFinished("Another download is running. Let it finish or cancel it before downloading this model.")
                 return@launch
             }
             var terminal: WorkInfo? = null
@@ -211,8 +293,8 @@ internal class ModelSetupOperations(
                         val stage = info.progress.getString("stage")
                         val downloaded = info.progress.getLong("downloaded", 0L)
                         val total = info.progress.getLong("total", -1L)
-                        if (!stage.isNullOrBlank()) report(stage)
-                        if (downloaded > 0L) onProgress(downloaded, total)
+                        if (!stage.isNullOrBlank()) liveReport(stage)
+                        if (downloaded > 0L) liveProgress(downloaded, total)
                         if (info.state.isFinished) {
                             terminal = info
                             false
@@ -223,13 +305,19 @@ internal class ModelSetupOperations(
             val result = terminal
             if (result?.state == WorkInfo.State.SUCCEEDED) {
                 // A background transfer must never close, load or test the user's current engine.
-                onFinished("${spec.id} downloaded. Choose it when you're ready.")
+                liveFinished("${spec.id} downloaded. Choose it when you're ready.")
             } else {
-                val message = result?.outputData?.getString("error")
-                    ?: if (result?.state == WorkInfo.State.CANCELLED) "Download cancelled. Saved progress can be resumed."
-                    else "Jarvis model setup did not complete."
-                report(message)
-                onFinished(message)
+                val message = downloadFailureMessage(
+                    state = result?.state,
+                    error = result?.outputData?.getString("error"),
+                    discardRequested = spec.id in discardIntents,
+                )
+                // Null means a discard owns this outcome: it reports the
+                // result of removing the saved progress itself.
+                if (message != null) {
+                    liveReport(message)
+                    liveFinished(message)
+                }
             }
         }
     }
@@ -248,4 +336,45 @@ internal class ModelSetupOperations(
             }
         }
     }
+}
+
+/**
+ * Monotonic generation for download invocations. Cancelling a download does
+ * not stop its observer immediately: the cancelled work's terminal WorkInfo —
+ * carrying its last frozen progress — can be delivered after the download
+ * that replaced it has started publishing its own. Only the newest
+ * generation's callbacks may write into setup state, so the dying invocation
+ * cannot overwrite the live one's progress or stamp its "cancelled" message
+ * over the replacement's status. The transfer layer needs no such guard:
+ * WorkManager's unique-work KEEP policy and the model-operation gate
+ * already serialize the downloads themselves.
+ */
+internal class DownloadGenerationGate {
+    private val generation = AtomicInteger(0)
+
+    /** Starts a new invocation generation, superseding every earlier one. */
+    fun begin(): Int = generation.incrementAndGet()
+
+    /** The newest generation without starting one. */
+    fun current(): Int = generation.get()
+
+    fun isCurrent(candidate: Int): Boolean = generation.get() == candidate
+}
+
+/**
+ * The one message a finished-but-not-succeeded download reports, or null
+ * when it must report nothing. A stopped download is a PAUSE — its saved
+ * progress can be resumed — unless the user chose to discard it, in which
+ * case the discard operation owns the outcome and this stays silent rather
+ * than claiming the progress was either saved or removed before it knows.
+ */
+internal fun downloadFailureMessage(
+    state: WorkInfo.State?,
+    error: String?,
+    discardRequested: Boolean,
+): String? = when {
+    error != null -> error
+    state == WorkInfo.State.CANCELLED && discardRequested -> null
+    state == WorkInfo.State.CANCELLED -> "Download paused. Saved progress can be resumed."
+    else -> "Jarvis model setup did not complete."
 }

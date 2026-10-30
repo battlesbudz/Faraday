@@ -207,6 +207,7 @@ internal class ConversationGeneration(
             runawayLoopStopped = stoppedLoop)
         executeNativeActions(draft, phoneActions)
         retryInvalidToolDraft(draft, input)
+        guardAudioAccessRefusal(draft, input)
         return draft
     }
 
@@ -380,5 +381,39 @@ internal class ConversationGeneration(
         answer.engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
         draft.generated = input.retry(answer.engine, prompt, answer.streamFilter::accept)
         answer.telemetry.record("invalid tool retry", draft.generated, answer.submittedPrompt.length)
+    }
+
+    /**
+     * Final generation-stage check on an audio turn. The draft — whether it
+     * came from the first generation or from a tool-failure regeneration
+     * above — may claim the audio is inaccessible ("I cannot respond to the
+     * audio as I do not have access to the audio content"). That claim is
+     * always false here: [ConversationInput.retry] and the first generation
+     * alike hand the engine the audio itself, so this is the model refusing
+     * despite attached audio, and no downstream stage recognises the text as
+     * a failure. Regenerate once, mirroring [retryInvalidToolDraft]'s reset
+     * and tool policy, with a correction that names the false claim; the
+     * regeneration goes through [ConversationInput.retry], so it carries the
+     * same authoritative audio. If the model refuses again, substitute the
+     * honest fallback rather than let the turn be answered with the claim.
+     */
+    private suspend fun guardAudioAccessRefusal(draft: ConversationDraft, input: ConversationInput) {
+        if (!input.carriesAudioInput || draft.actionResultMessage != null) return
+        if (!AudioAccessRefusal.isRefusal(AssistantText.forDisplay(draft.generated.text))) return
+        val answer = draft.answer
+        modelSession.reset()
+        answer.engine.setToolsEnabled(false)
+        answer.engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
+        val prompt = answer.submittedPrompt + AudioAccessRefusal.CORRECTION
+        val regenerated = input.retry(answer.engine, prompt, answer.streamFilter::accept)
+        answer.telemetry.record("audio refusal retry", regenerated, answer.submittedPrompt.length)
+        draft.generated = if (AudioAccessRefusal.isRefusal(AssistantText.forDisplay(regenerated.text))) {
+            diagnostics.summary("Audio access refusal guard outcome=fallback stage=generation " +
+                "reason=regeneration_refused_again")
+            GenerationResult(AudioAccessRefusal.FALLBACK, -1L, null)
+        } else {
+            diagnostics.summary("Audio access refusal guard outcome=regenerated stage=generation")
+            regenerated
+        }
     }
 }

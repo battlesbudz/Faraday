@@ -153,10 +153,14 @@ class JarvisModelSetupWorker(
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .build()
+        // SPECIAL_USE, not DATA_SYNC: from Android 15 the dataSync type gets a
+        // daily time budget that a multi-gigabyte model download can exhaust.
+        // The manifest's SystemForegroundService entry declares the matching
+        // specialUse type and subtype; the two must agree (Android 14+).
         return ForegroundInfo(
             NOTIFICATION_ID,
             notification,
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
         )
     }
 

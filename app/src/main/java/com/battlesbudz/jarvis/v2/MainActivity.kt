@@ -172,7 +172,8 @@ class MainActivity : ComponentActivity() {
                 onDownloadGemma = { spec, onProgress, onStatus, onFinished ->
                     modelSetup.download(spec, onProgress, onStatus, onFinished)
                 },
-                onCancelModelDownload = modelSetup::cancelDownload,
+                onCancelModelDownload = modelSetup::pauseDownload,
+                onDiscardModelDownload = modelSetup::discardDownload,
                 onImportModel = modelSetup::importModel,
                 onCopyDiagnostics = { _ -> copyDiagnostics() },
             )

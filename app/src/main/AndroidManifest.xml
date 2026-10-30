@@ -41,11 +41,19 @@
         <uses-native-library android:name="libvndksupport.so" android:required="false" />
         <uses-native-library android:name="libcdsprpc.so" android:required="false" />
         <uses-native-library android:name="libOpenCL.so" android:required="false" />
+        <!-- WorkManager's foreground service. The only worker that goes
+             foreground is JarvisModelSetupWorker (model setup downloads); it
+             runs as specialUse because dataSync foreground services are
+             time-budgeted from Android 15 and a model download can exceed
+             that. The worker's ForegroundInfo type must match this entry. -->
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
-            android:foregroundServiceType="dataSync"
+            android:foregroundServiceType="specialUse"
             android:exported="false"
-            tools:node="merge" />
+            tools:node="merge">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Long-running local model downloads: multi-gigabyte on-device AI model files download in the background so setup can complete while the app is not in the foreground." />
+        </service>
         <service android:name=".voice.KeyboardMicrophoneService" android:exported="true"
             android:label="@string/keyboard_microphone_label"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">

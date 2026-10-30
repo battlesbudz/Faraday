@@ -3,18 +3,23 @@ package com.battlesbudz.jarvis.v2.ui
 import com.battlesbudz.jarvis.v2.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -35,10 +40,35 @@ internal fun ModelSetup(
     downloadTotalBytes: Long,
     status: String,
     elapsedSeconds: Long,
+    paused: Boolean,
+    partialBytes: Long,
     onDownload: () -> Unit,
     onPickGemma: () -> Unit,
-    onTest: () -> Unit
+    onTest: () -> Unit,
+    onPauseDownload: () -> Unit,
+    onDiscardDownload: () -> Unit
 ) {
+    var confirmingDiscard by remember { mutableStateOf(false) }
+    if (confirmingDiscard) {
+        val savedBytes = if (downloading) downloadBytes else partialBytes
+        AlertDialog(
+            onDismissRequest = { confirmingDiscard = false },
+            title = { Text("Cancel this download?") },
+            text = {
+                Text(
+                    "This stops the download and removes the " +
+                        "${formatMegabytes(savedBytes)} MB already saved on this phone. " +
+                        "Pausing instead keeps that progress, so the download can resume where it left off."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { confirmingDiscard = false; onDiscardDownload() }) { Text("Cancel download") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingDiscard = false }) { Text("Keep it") }
+            }
+        )
+    }
     Column(
         Modifier
             .fillMaxSize()
@@ -67,6 +97,7 @@ internal fun ModelSetup(
                     downloading -> "Downloading and installing…"
                     !downloadAvailable -> "Use publisher download and import"
                     gemmaReady -> "Model installed"
+                    paused -> "Resume download"
                     else -> "Download selected model and voice setup"
                 }
             )
@@ -97,6 +128,34 @@ internal fun ModelSetup(
             Text(status, modifier = Modifier.padding(top = 20.dp))
         } else if (status.isNotBlank()) {
             Text(status, modifier = Modifier.padding(top = 20.dp))
+        }
+        if (downloading) {
+            // The transfer's controls live where its progress does: Pause
+            // stops the work and keeps the saved progress; Cancel (behind
+            // the confirmation above) stops it and removes that progress.
+            Row(
+                Modifier.fillMaxWidth().padding(top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onPauseDownload,
+                    modifier = Modifier.weight(1f).testTag("model_setup_pause")
+                ) { Text("Pause") }
+                TextButton(
+                    onClick = { confirmingDiscard = true },
+                    modifier = Modifier.weight(1f).testTag("model_setup_cancel_download")
+                ) { Text("Cancel download") }
+            }
+        } else if (paused) {
+            Text(
+                "Download paused · ${formatMegabytes(partialBytes)} MB saved on this phone. " +
+                    "Resume picks up where it left off.",
+                modifier = Modifier.padding(top = 12.dp)
+            )
+            TextButton(
+                onClick = { confirmingDiscard = true },
+                modifier = Modifier.testTag("model_setup_cancel_download")
+            ) { Text("Cancel download and remove saved progress") }
         }
         OutlinedButton(
             onClick = onPickGemma,

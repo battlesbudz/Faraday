@@ -725,7 +725,7 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             diagnosticRecorder::recordSummary, diagnosticRecorder::recordInferencePrompt)
         val models = ConversationModelSession(nativeSessionState, modelStore::selectedModel,
             modelStore::tryBeginModelOperation, modelStore::endModelOperation, modelStore::verifyIntegrity,
-            { modelStore.fileFor(it).path }, cacheDir.path, shortTermContext,
+            { modelStore.fileFor(it).path }, modelStore.engineCacheRoot().path, shortTermContext,
             { sessionPreferences.edit().putString(ConversationPolicy.SHORT_TERM_SUMMARY_KEY, it).apply() })
         val memory = object : ConversationMemoryAccess {
             override val deliveryFence get() = memoryDeliveryFence

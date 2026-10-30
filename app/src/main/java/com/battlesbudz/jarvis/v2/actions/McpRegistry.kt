@@ -91,6 +91,44 @@ private fun toolReviewFingerprint(tool: McpTool): String = McpProtocol.schemaHas
 private fun toolSchemaHashes(tools: List<McpTool>): Map<String, String> =
     tools.associate { it.name to toolReviewFingerprint(it) }
 
+/** Hard cap on tools/list pages followed during one discovery (item 3). */
+internal const val MAX_TOOLS_LIST_PAGES = 20
+
+/**
+ * Fetch a server's complete tool list, following `nextCursor` pagination
+ * for up to [MAX_TOOLS_LIST_PAGES] pages. A failed page fails the whole
+ * discovery with that page's reason: a partial list is never presented
+ * as the server's full surface. Transport exceptions propagate to the
+ * caller's existing failure handling.
+ */
+internal fun fetchAllTools(
+    http: McpHttpClient,
+    url: String,
+    headers: Map<String, String>,
+    nextId: () -> Int
+): McpProtocol.ToolsList {
+    val discovered = arrayListOf<McpTool>()
+    var cursor: String? = null
+    var pages = 0
+    while (true) {
+        val id = nextId()
+        val response = http.postForResponse(
+            url, McpProtocol.toolsListRequest(id, cursor), headers, id, McpPhase.LIST)
+        when (val parsed = McpProtocol.parseToolsList(response.status, response.body)) {
+            is McpProtocol.ToolsList.Failed -> return parsed
+            is McpProtocol.ToolsList.Ok -> {
+                discovered += parsed.tools
+                pages++
+                val next = parsed.nextCursor
+                if (next == null || pages >= MAX_TOOLS_LIST_PAGES) {
+                    return McpProtocol.ToolsList.Ok(discovered)
+                }
+                cursor = next
+            }
+        }
+    }
+}
+
 /**
  * Guided setup (D07): URL entry with validation, version negotiation,
  * tool discovery, then scope/pricing review. Each stage fails with an
@@ -123,8 +161,10 @@ class McpSetupFlow(
         val headers = mutableMapOf<String, String>()
         val token = authToken?.trim().orEmpty()
         if (token.isNotEmpty()) headers["Authorization"] = "Bearer $token"
+        val initId = nextId()
         val initResponse = try {
-            http.post(url, McpProtocol.initializeRequest(nextId()), headers)
+            http.postForResponse(url, McpProtocol.initializeRequest(initId), headers,
+                initId, McpPhase.DISCOVERY)
         } catch (_: Exception) {
             return FlowResult.Failed(Stage.NEGOTIATION,
                 "The server could not be reached at $url. Check the URL and network.")
@@ -140,16 +180,16 @@ class McpSetupFlow(
             val sessionHeaders = headers + sessionHeader(negotiation.sessionId)
             http.post(url, McpProtocol.initializedNotification(), sessionHeaders)
         } catch (_: Exception) { }
-        // Stage 3: discovery.
+        // Stage 3: discovery (paginated; see fetchAllTools).
         val sessionHeaders = headers + sessionHeader(negotiation.sessionId)
-        val toolsResponse = try {
-            http.post(url, McpProtocol.toolsListRequest(nextId()), sessionHeaders)
+        val discovery = try {
+            fetchAllTools(http, url, sessionHeaders) { nextId() }
         } catch (_: Exception) {
             return FlowResult.Failed(Stage.DISCOVERY, "The server stopped responding during tool discovery.")
         }
-        val tools = when (val parsed = McpProtocol.parseToolsList(toolsResponse.status, toolsResponse.body)) {
-            is McpProtocol.ToolsList.Failed -> return FlowResult.Failed(Stage.DISCOVERY, parsed.reason)
-            is McpProtocol.ToolsList.Ok -> parsed.tools
+        val tools = when (discovery) {
+            is McpProtocol.ToolsList.Failed -> return FlowResult.Failed(Stage.DISCOVERY, discovery.reason)
+            is McpProtocol.ToolsList.Ok -> discovery.tools
         }
         // Stage 4: review — free-only default; the caller persists the config
         // and stores the secret under its opaque reference.
@@ -259,8 +299,10 @@ class McpRegistry(
         status.config.authRef?.let { ref ->
             credentials.getSecret(ref)?.let { secret -> headers["Authorization"] = "Bearer $secret" }
         }
+        val initId = nextId()
         val initResponse = try {
-            http.post(status.config.url, McpProtocol.initializeRequest(nextId()), headers)
+            http.postForResponse(status.config.url, McpProtocol.initializeRequest(initId),
+                headers, initId, McpPhase.DISCOVERY)
         } catch (_: Exception) {
             return put(serverId, status.copy(state = McpServerState.UNAVAILABLE,
                 explanation = "The server could not be reached at ${status.config.url}."))
@@ -278,16 +320,16 @@ class McpRegistry(
             is McpProtocol.Negotiation.Ok -> {
                 val sessionHeaders = headers +
                     (negotiation.sessionId?.let { mapOf(McpProtocol.SESSION_HEADER to it) }.orEmpty())
-                val toolsResponse = try {
-                    http.post(status.config.url, McpProtocol.toolsListRequest(nextId()), sessionHeaders)
+                val discovery = try {
+                    fetchAllTools(http, status.config.url, sessionHeaders) { nextId() }
                 } catch (_: Exception) {
                     return put(serverId, status.copy(state = McpServerState.UNAVAILABLE,
                         explanation = "The server stopped responding during tool discovery."))
                 }
-                val tools = when (val parsed = McpProtocol.parseToolsList(toolsResponse.status, toolsResponse.body)) {
+                val tools = when (discovery) {
                     is McpProtocol.ToolsList.Failed -> return put(serverId,
-                        status.copy(state = McpServerState.UNAVAILABLE, explanation = parsed.reason))
-                    is McpProtocol.ToolsList.Ok -> parsed.tools
+                        status.copy(state = McpServerState.UNAVAILABLE, explanation = discovery.reason))
+                    is McpProtocol.ToolsList.Ok -> discovery.tools
                 }
                 val newListHash = McpProtocol.toolListHash(tools)
                 val newPerTool = toolSchemaHashes(tools)
@@ -336,6 +378,47 @@ class McpRegistry(
                 }
             }
         }
+    }
+
+    /**
+     * Re-run the initialize handshake for a server whose stored session
+     * the server has dropped (a tools/call answered 404), and store the
+     * fresh session id so the caller can retry its call exactly once
+     * (item 3). Exactly one handshake is attempted; on any failure the
+     * stored status is left untouched and false is returned. Only the
+     * session id and protocol version change here — tools, state and
+     * every review field are preserved: recovery restores reachability,
+     * it can never grant or clear a pending review.
+     */
+    fun reestablishSession(serverId: String): Boolean {
+        val status = servers[serverId] ?: return false
+        val headers = mutableMapOf<String, String>()
+        status.config.authRef?.let { ref ->
+            credentials.getSecret(ref)?.let { secret -> headers["Authorization"] = "Bearer $secret" }
+        }
+        val initId = nextId()
+        val initResponse = try {
+            http.postForResponse(status.config.url, McpProtocol.initializeRequest(initId),
+                headers, initId, McpPhase.DISCOVERY)
+        } catch (_: Exception) {
+            return false
+        }
+        val negotiation = when (val result = McpProtocol.parseInitializeResponse(
+            initResponse.status, initResponse.body, initResponse.headers)) {
+            is McpProtocol.Negotiation.Failed -> return false
+            is McpProtocol.Negotiation.Ok -> result
+        }
+        // Best-effort initialized notification, mirroring the setup flow;
+        // a failure here is not fatal.
+        try {
+            val sessionHeaders = headers +
+                (negotiation.sessionId?.let { mapOf(McpProtocol.SESSION_HEADER to it) }.orEmpty())
+            http.post(status.config.url, McpProtocol.initializedNotification(), sessionHeaders)
+        } catch (_: Exception) { }
+        servers[serverId] = status.copy(
+            sessionId = negotiation.sessionId,
+            protocolVersion = negotiation.protocolVersion)
+        return true
     }
 
     /**
@@ -401,13 +484,44 @@ class McpInvoker(
             credentials.getSecret(ref)?.let { secret -> headers["Authorization"] = "Bearer $secret" }
         }
         status.sessionId?.let { headers[McpProtocol.SESSION_HEADER] = it }
-        val response = try {
-            http.post(status.config.url,
-                McpProtocol.callToolRequest(nextId(), tool.name, call.arguments), headers)
-        } catch (_: Exception) {
-            return ProviderCallResult.TypedError(ProviderErrorCode.NETWORK_ERROR,
+        var response = postCall(status, tool, call.arguments, headers)
+            ?: return ProviderCallResult.TypedError(ProviderErrorCode.NETWORK_ERROR,
                 "The server could not be reached for '${tool.name}'. Nothing was confirmed.")
+        // Expired-session recovery (item 3): the server answered 404 for
+        // the session we hold, meaning it dropped that session. Re-run
+        // the handshake exactly once and retry the call exactly once with
+        // the fresh session id; a second failure surfaces the honest
+        // error from the parse below. Without a held session there is
+        // nothing to recover and the 404 stands as the error.
+        if (response.status == 404 && status.sessionId != null &&
+            registry.reestablishSession(call.provider.id)) {
+            val retryHeaders = mutableMapOf<String, String>()
+            status.config.authRef?.let { ref ->
+                credentials.getSecret(ref)?.let { secret -> retryHeaders["Authorization"] = "Bearer $secret" }
+            }
+            registry.status(call.provider.id)?.sessionId?.let {
+                retryHeaders[McpProtocol.SESSION_HEADER] = it
+            }
+            response = postCall(status, tool, call.arguments, retryHeaders)
+                ?: return ProviderCallResult.TypedError(ProviderErrorCode.NETWORK_ERROR,
+                    "The server could not be reached for '${tool.name}'. Nothing was confirmed.")
         }
         return McpProtocol.parseCallToolResponse(response.status, response.body)
+    }
+
+    /** One tools/call POST on the streaming contract; null on transport failure. */
+    private fun postCall(
+        status: McpServerStatus,
+        tool: McpTool,
+        arguments: Map<String, Any?>,
+        headers: Map<String, String>
+    ): McpHttpResponse? {
+        val id = nextId()
+        return try {
+            http.postForResponse(status.config.url,
+                McpProtocol.callToolRequest(id, tool.name, arguments), headers, id, McpPhase.CALL)
+        } catch (_: Exception) {
+            null
+        }
     }
 }
