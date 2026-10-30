@@ -234,8 +234,8 @@ class VideoCallService : LifecycleService() {
                 // This is the main-thread admission point. An off-main update
                 // rejection after admission queues cleanup behind this command;
                 // it never holds the publication lock during controller work.
-                if (notificationLifecycle.isOpen && !callId.isNullOrBlank() &&
-                    VoiceSessionUi.videoEnabled.value && captureStarts.admit(callId) {
+                if (VoiceSessionUi.videoEnabled.value && notificationLifecycle.isOpen &&
+                    !callId.isNullOrBlank() && captureStarts.admit(callId) {
                     // A newer call obsoletes any farewell refresh still
                     // queued for an older one: bump the generation first so
                     // a delayed refresh can never overwrite this call's
