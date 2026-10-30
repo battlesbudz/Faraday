@@ -205,5 +205,7 @@ fun videoStatusText(state: CallVisionController.State): String = when (state) {
     CallVisionController.State.DEGRADED -> "Camera unavailable — continuing audio-only"
     CallVisionController.State.CLEANUP_PENDING -> "Camera cleanup pending — video restarts after the camera releases"
     CallVisionController.State.DENIED -> "Camera unavailable — grant permission to enable video"
-    CallVisionController.State.IDLE -> "Video idle — starts with your next call"
+    // Step 5: capture no longer starts with the call — it starts when the
+    // user turns video on from the call screen, so idle says exactly that.
+    CallVisionController.State.IDLE -> "Video off — turn it on from the call screen"
 }

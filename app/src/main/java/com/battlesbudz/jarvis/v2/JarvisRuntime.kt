@@ -401,13 +401,16 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
                 SharedPreferencesVoiceCallStore(getSharedPreferences("voice_calls", MODE_PRIVATE)), conversationHistory),
             onFailure = { diagnosticRecorder.recordImportant("Voice checkpoint failed: ${it.javaClass.simpleName}") })
         voiceSessionController = VoiceSessionController(voiceCallStore)
-        // Video capture is call-scoped: every new call segment starts it for
-        // its own identity, and finishVoiceCall ends it for the ended call.
-        // A spoken farewell therefore ends capture while wake listening stays
-        // armed; only the owning call's identity can stop its capture.
-        voiceSessionController.onCallBegan = { callId ->
-            com.battlesbudz.jarvis.v2.voice.VideoCallService.startCapture(
-                this, callId, voiceSessionController::currentCallId)
+        // Video capture is call-scoped and, since step 5, user-gated: a new
+        // call segment always begins with video OFF (the toggle resets
+        // here), and capture runs only while the call screen's video toggle
+        // is on — the collector below starts and stops it for the current
+        // call's identity. finishVoiceCall still ends the ended call's
+        // capture, so a spoken farewell ends capture while wake listening
+        // stays armed; only the owning call's identity can stop its capture.
+        voiceSessionController.onCallBegan = { _ ->
+            com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.videoEnabled.value = false
+            com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.videoEnablePending = false
         }
         asrComparisonStore = com.battlesbudz.jarvis.v2.voice.AsrComparisonStore(getSharedPreferences("asr_comparison", MODE_PRIVATE))
         ttsComparisonStore = com.battlesbudz.jarvis.v2.voice.TtsComparisonStore(getSharedPreferences("tts_comparison", MODE_PRIVATE))
@@ -467,6 +470,24 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
                         // reenter ordinary runVoiceTurn while its accepted batch is active.
                         diagnosticRecorder.recordImportant("UI PAUSE suspended accepted capture; worker/report obligations retained")
                     } else voiceTurnJob?.cancel(com.battlesbudz.jarvis.v2.voice.VoiceControlCancellation(control))
+                }
+            }
+        }
+        // Step 5: drive call video capture from the call screen's toggle.
+        // The toggle is the only thing that starts capture now; flipping it
+        // off stops the current call's capture (which also clears the
+        // injected visual context, via the service's capture-ended path).
+        // With no live call there is nothing to start or stop — and the
+        // next call's onCallBegan resets the toggle to off regardless.
+        runtimeScope.launch {
+            com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.videoEnabled.collect { enabled ->
+                val callId = voiceSessionController.currentCallId() ?: return@collect
+                if (enabled) {
+                    com.battlesbudz.jarvis.v2.voice.VideoCallService.startCaptureFromToggle(
+                        this@JarvisRuntime, callId, voiceSessionController::currentCallId)
+                } else {
+                    com.battlesbudz.jarvis.v2.voice.VideoCallService.stopCapture(
+                        this@JarvisRuntime, callId)
                 }
             }
         }
@@ -967,6 +988,11 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         // route the new state into its notification update path — otherwise
         // the notification keeps reading "Video on" after the controller is
         // IDLE.
+        // Step 5: the ended call's video toggle resets with its capture —
+        // the next call segment starts with video off, and the toggle
+        // collector stops this call's capture alongside the farewell path.
+        com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.videoEnabled.value = false
+        com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.videoEnablePending = false
         endedCallId?.let { callId ->
             runCatching {
                 com.battlesbudz.jarvis.v2.voice.VideoCallService

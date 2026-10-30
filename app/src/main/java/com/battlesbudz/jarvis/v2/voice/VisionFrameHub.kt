@@ -8,11 +8,38 @@ package com.battlesbudz.jarvis.v2.voice
  * grow memory without bound. The cache holds exactly one frame (the most
  * recent dispatched one) for poll-style consumers.
  */
+/**
+ * Pixel dimensions and display rotation of one captured frame. Detection
+ * boxes are reported in the frame's own pixel space, so step 5's preview
+ * overlay needs the frame's geometry to map them onto the upright,
+ * display-rotated preview (see CallVideoPreview's mapping).
+ */
+data class FrameGeometry(
+    val width: Int,
+    val height: Int,
+    val rotationDegrees: Int,
+)
+
 class VisionFrameHub {
     private val observers = LinkedHashSet<VisionObserver>()
 
     @Volatile
     private var latest: VisionFrame? = null
+
+    /**
+     * Geometry of the most recently dispatched frame, noted by the binder
+     * on the dispatch path. Null before the first frame and after [clear]:
+     * no capture, no current frame geometry.
+     */
+    @Volatile
+    var lastFrameGeometry: FrameGeometry? = null
+        private set
+
+    /** Record the geometry of a frame that is about to be dispatched. */
+    fun noteFrameGeometry(width: Int, height: Int, rotationDegrees: Int) {
+        if (width <= 0 || height <= 0) return
+        lastFrameGeometry = FrameGeometry(width, height, rotationDegrees)
+    }
     private var droppedForNoObserver = 0L
     private var generation = 0L
 
@@ -87,6 +114,7 @@ class VisionFrameHub {
     fun clear() {
         generation++
         latest = null
+        lastFrameGeometry = null
     }
 
     @Synchronized

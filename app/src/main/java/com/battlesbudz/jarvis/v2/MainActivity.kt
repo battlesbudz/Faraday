@@ -179,6 +179,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Step 5: the camera permission prompt launched from the call screen's
+     * video toggle ([com.battlesbudz.jarvis.v2.voice.CameraPermission.request])
+     * lands here. A grant completes the pending enable — the runtime's
+     * toggle collector starts the current call's capture; a denial leaves
+     * the toggle off and the call audio-only, exactly like the previous
+     * degrade. The pending flag is consumed either way.
+     */
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != com.battlesbudz.jarvis.v2.voice.CameraPermission.REQUEST_CODE) return
+        val pending = com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.videoEnablePending
+        com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.videoEnablePending = false
+        if (pending && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.videoEnabled.value = true
+        }
+    }
+
     /** Streaming ASR -> speculative Gemma -> final validation -> tools and speech. */
     private fun runVoiceTurn(
         start: Boolean,

@@ -22,12 +22,15 @@ import kotlinx.coroutines.launch
  * and runs the frame-capture pipeline while a call is active.
  *
  * Audio stays entirely in VoiceCallService — this service never touches the
- * microphone, TTS, or audio routing. Lifecycle: capture starts per call via
- * [startCapture] (the call's identity owns the capture) and ends when that
- * call ends, by its own Stop action, by [onTaskRemoved], or automatically
- * when the voice session ends (it observes VoiceCallService.stopRequested
- * as a fail-safe). Capture never runs for a merely-armed wake session: a
- * spoken farewell ends the call's capture while wake listening stays armed.
+ * microphone, TTS, or audio routing. Lifecycle: capture is owned by a call's
+ * identity via [startCapture] and ends when that call ends, by its own Stop
+ * action, by [onTaskRemoved], or automatically when the voice session ends
+ * (it observes VoiceCallService.stopRequested as a fail-safe). Since step 5
+ * the start is user-driven: a call begins with video OFF, and the runtime
+ * calls [startCaptureFromToggle] / [stopCapture] as the user flips the call
+ * screen's video toggle — a call beginning no longer starts the camera.
+ * Capture never runs for a merely-armed wake session: a spoken farewell
+ * ends the call's capture while wake listening stays armed.
  *
  * If the camera permission is denied, the service still runs (so Stop works)
  * but never binds the camera: the call degrades to audio-only.
@@ -41,7 +44,7 @@ class VideoCallService : LifecycleService() {
     private val serverVisionHolder = LatestServerVisionResult()
     private var serverVisionObserver: CallServerVisionObserver? = null
     private var visionHub: VisionFrameHub? = null
-    private var status = "Video idle — starts with your next call"
+    private var status = videoStatusText(CallVisionController.State.IDLE)
     private val foregroundNotification = VideoForegroundNotification(
         cameraType = ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA,
         fallbackType = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
@@ -222,10 +225,17 @@ class VideoCallService : LifecycleService() {
             STOP -> stopVideo()
             START_CAPTURE -> {
                 val callId = intent.getStringExtra(EXTRA_CALL_ID)
+                // Step 5: the user's video toggle is re-read at delivery,
+                // before admission can advance the generation. A start that
+                // was queued while video was on but is delivered after the
+                // user toggled off (or any stale start for a call whose
+                // video is off) must never start the camera: since step 5,
+                // capture runs only while the toggle is on.
                 // This is the main-thread admission point. An off-main update
                 // rejection after admission queues cleanup behind this command;
                 // it never holds the publication lock during controller work.
-                if (notificationLifecycle.isOpen && !callId.isNullOrBlank() && captureStarts.admit(callId) {
+                if (notificationLifecycle.isOpen && !callId.isNullOrBlank() &&
+                    VoiceSessionUi.videoEnabled.value && captureStarts.admit(callId) {
                     // A newer call obsoletes any farewell refresh still
                     // queued for an older one: bump the generation first so
                     // a delayed refresh can never overwrite this call's
@@ -364,6 +374,42 @@ class VideoCallService : LifecycleService() {
         }
 
         /**
+         * Step 5: the user turned video ON from the call screen during
+         * [callId]. A previous toggle-off fenced this call's identity (its
+         * STOP_CAPTURE ended the fence so a queued start could never land
+         * after the stop), and a resumed call's identity may still carry the
+         * fence from its earlier farewell. The user's explicit tap is a new
+         * intent for a live call, so revive the identity first, then take
+         * the normal [startCapture] path — whose request still verifies the
+         * call is the current one before anything is queued.
+         */
+        fun startCaptureFromToggle(context: Context, callId: String, currentCallId: () -> String?) {
+            captureStarts.revive(callId)
+            startCapture(context, callId, currentCallId)
+        }
+
+        /**
+         * Step 5: the user turned video OFF during [callId]. The call itself
+         * continues audio-only; only its capture stops, through the same
+         * STOP_CAPTURE path that fences queued starts for the call. When no
+         * service is running there is no capture to stop — but a start may
+         * still be queued for delivery, so fence it here instead of
+         * creating the service just to stop it.
+         */
+        fun stopCapture(context: Context, callId: String) {
+            if (callId.isBlank()) return
+            if (instance == null) {
+                captureStarts.end(callId)
+                return
+            }
+            context.startService(
+                Intent(context, VideoCallService::class.java)
+                    .setAction(STOP_CAPTURE)
+                    .putExtra(EXTRA_CALL_ID, callId),
+            )
+        }
+
+        /**
          * A spoken farewell ends the call's capture outside this service's
          * start/stop command path. Route the refresh to the live service
          * instance only: it ends [endedCallId]'s capture through the registry
@@ -415,6 +461,19 @@ internal class VideoCaptureStartFence {
         // identity still has to be remembered for a delayed onCallBegan callback.
         if (currentCallId == null || currentCallId?.invoke() == callId) endedCallId = callId
         if (requestedCallId == callId) requestedCallId = null
+    }
+
+    /**
+     * Step 5: clear [callId]'s ended fence because the user explicitly
+     * turned video back on for the call that owns the identity (a
+     * toggle-off fenced it, or a resumed call kept its earlier farewell's
+     * fence). Only the marker is cleared: [request] still re-verifies the
+     * call is current, and [admit] still re-checks at delivery, so a
+     * revived identity whose call has since ended admits nothing.
+     */
+    @Synchronized
+    fun revive(callId: String) {
+        if (endedCallId == callId) endedCallId = null
     }
 
     @Synchronized

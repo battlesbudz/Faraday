@@ -1,6 +1,9 @@
 package com.battlesbudz.jarvis.v2.voice
 
 import com.battlesbudz.jarvis.v2.vision.NativeVisionSnapshot
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 
 /**
  * Where the latest Phone Inference server answer for the live video call
@@ -61,6 +64,15 @@ class LatestServerVisionResult {
     /** Invoked after every mutation, outside the lock. Set by the owner. */
     @Volatile
     var changeListener: (() -> Unit)? = null
+
+    private val revisionFlow = MutableStateFlow(0L)
+
+    /**
+     * Step 5: bumped on every mutation, mirroring [changeListener] for
+     * flow collectors — the call screen's preview overlay collects this to
+     * redraw tracked boxes as new detect results land.
+     */
+    val revision: StateFlow<Long> = revisionFlow
 
     fun recordReceived() {
         synchronized(lock) { framesReceived++ }
@@ -185,6 +197,11 @@ class LatestServerVisionResult {
         val tracked = trackedSnapshot()
         return buildString {
             append("SERVER VISION (video-call step 2: call frames sent to the Phone Inference server)\n")
+            // Step 5: the user's video toggle state, so a paste shows
+            // whether capture was user-enabled at all — a call with
+            // video=off must show zero frames because nobody turned the
+            // camera on, never because the loop silently failed.
+            append("video=${if (VoiceSessionUi.videoEnabled.value) "on" else "off"} ")
             append("framesReceived=${counters.framesReceived} framesSent=${counters.framesSent} ")
             append("framesDroppedInFlight=${counters.framesDroppedInFlight} ")
             append("detectsSucceeded=${counters.detectsSucceeded} detectsFailed=${counters.detectsFailed}\n")
@@ -227,6 +244,7 @@ class LatestServerVisionResult {
     }
 
     private fun notifyChanged() {
+        revisionFlow.update { it + 1 }
         runCatching { changeListener?.invoke() }
     }
 

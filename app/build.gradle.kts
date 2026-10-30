@@ -159,6 +159,8 @@ dependencies {
     implementation("androidx.camera:camera-core:$cameraXVersion")
     implementation("androidx.camera:camera-camera2:$cameraXVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraXVersion")
+    // Step 5: PreviewView for the call screen's live camera preview.
+    implementation("androidx.camera:camera-view:$cameraXVersion")
     implementation("androidx.lifecycle:lifecycle-service:2.8.7")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

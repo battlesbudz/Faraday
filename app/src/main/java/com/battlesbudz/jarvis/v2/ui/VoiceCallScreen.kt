@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextButton
@@ -26,11 +27,20 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
 
+
+/** Unwrap a Compose LocalContext to its hosting Activity, if any. */
+private fun android.content.Context.findActivity(): android.app.Activity? =
+    when (this) {
+        is android.app.Activity -> this
+        is android.content.ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
 
 @androidx.annotation.Keep
 internal object VoiceCallOverlay {
@@ -47,6 +57,11 @@ internal object VoiceCallOverlay {
     onStopReply: () -> Unit,
     onToggleMicrophone: () -> Unit,
     onEndCall: () -> Unit,
+    // Video-call step 5: the video toggle. Off at every call start; while
+    // on, the call's camera capture runs and the preview with tracked
+    // boxes shows above the controls.
+    videoEnabled: Boolean = false,
+    onToggleVideo: () -> Unit = {},
     transcriptSpeaker: String = "",
     transcript: String = "",
     // A call is in flight while the voice session is alive OR a voice turn is
@@ -59,6 +74,14 @@ internal object VoiceCallOverlay {
     // Only the orb and its opaque control pill paint over the chat. The live
     // transcript belongs to the conversation, rather than a duplicate overlay.
     Box(Modifier.fillMaxSize().testTag("voice_call_overlay_layer")) {
+        // Step 5: while video is on, the camera preview (the same feed the
+        // vision pipeline analyzes, with tracked boxes) sits at the top of
+        // the overlay, live whether or not Jarvis is speaking.
+        if (videoEnabled && callInFlight) {
+            CallVideoPreview(
+                Modifier.align(Alignment.TopCenter).padding(top = 24.dp).width(272.dp)
+            )
+        }
         Column(Modifier.align(Alignment.BottomEnd).imePadding()
             .padding(end = 16.dp, bottom = 104.dp).testTag("voice_call_overlay"),
             horizontalAlignment = Alignment.CenterHorizontally) {
@@ -85,6 +108,19 @@ internal object VoiceCallOverlay {
                                     }) {
                                 Text(if (microphonePaused) "Resume microphone" else "Pause microphone",
                                     style = MaterialTheme.typography.labelSmall)
+                            }
+                            // Step 5: the video toggle. Icon button, tinted
+                            // with the primary color while video is on; the
+                            // content description announces the action.
+                            IconButton(onClick = onToggleVideo,
+                                modifier = Modifier.defaultMinSize(minHeight = 48.dp)
+                                    .testTag("voice_call_video").semantics {
+                                        contentDescription = if (videoEnabled) "Turn video off" else "Turn video on"
+                                    }) {
+                                Icon(painter = painterResource(R.drawable.ic_call_video),
+                                    contentDescription = null,
+                                    tint = if (videoEnabled) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     } else if (canStart) {
@@ -173,6 +209,9 @@ internal fun VoiceCallScreen(
     // while the session (wake listener, mic, foreground service) is alive.
     val sessionAlive by runtime.sessionAlive.collectAsState()
     val microphonePaused by runtime.paused.collectAsState()
+    // Step 5: the video toggle state (owned by VoiceSessionUi; the runtime
+    // collects it and starts/stops the current call's capture).
+    val videoEnabled by runtime.videoEnabled.collectAsState()
     val microphoneLevel by runtime.level.collectAsState()
     val chatSending by chatBusy.collectAsState()
     // M1d: explicit silent work. While on, ordinary speech is ignored until
@@ -228,6 +267,28 @@ internal fun VoiceCallScreen(
                 if (failed) turnInFlight = false
             }
         )
+    }
+
+    // Step 5: flip the video toggle. Turning on needs the camera
+    // permission: when it is missing, run the existing permission request
+    // path (CameraPermission.request from the hosting Activity) instead of
+    // failing silently — the grant lands in MainActivity's permission
+    // result, which completes the enable via videoEnablePending, and a
+    // denial leaves the toggle off.
+    fun toggleVideo() {
+        if (videoEnabled) {
+            runtime.videoEnabled.value = false
+        } else if (com.battlesbudz.jarvis.v2.voice.CameraPermission.isGranted(wakeContext)) {
+            runtime.videoEnabled.value = true
+        } else {
+            runtime.videoEnablePending = true
+            val activity = wakeContext.findActivity()
+            if (activity != null) {
+                com.battlesbudz.jarvis.v2.voice.CameraPermission.request(activity)
+            } else {
+                runtime.videoEnablePending = false
+            }
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -287,7 +348,9 @@ internal fun VoiceCallScreen(
                 listening = false
                 turnInFlight = false
                 onEndVoiceCall { result -> status = result }
-            }
+            },
+            videoEnabled = videoEnabled,
+            onToggleVideo = { toggleVideo() }
         )
     }
     if (settingsOpen) androidx.compose.material3.AlertDialog(
