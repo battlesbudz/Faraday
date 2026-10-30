@@ -35,4 +35,30 @@ class ModelRemovalTest {
             removeModelFiles(models, "model.litertlm", cache)
         } finally { root.deleteRecursively() }
     }
+
+    @Test fun removePartialDownloadFilesRemovesOnlyTheResumableState() {
+        val root = Files.createTempDirectory("model-partial-removal").toFile()
+        try {
+            val models = root.resolve("models").apply { mkdirs() }
+            val cache = root.resolve("cache/selected").apply { mkdirs() }
+            cache.resolve("compiled.bin").writeText("cache")
+            models.resolve("model.litertlm").writeText("installed")
+            models.resolve("model.litertlm.part").writeText("partial")
+            val chunks = models.resolve("model.litertlm.part.chunks").apply { mkdirs() }
+            chunks.resolve("0.part").writeText("download checkpoint")
+            chunks.resolve("source").writeText("identity")
+            models.resolve("other.litertlm.part").writeText("other partial")
+            val otherChunks = models.resolve("other.litertlm.part.chunks").apply { mkdirs() }
+            otherChunks.resolve("0.part").writeText("other checkpoint")
+            removePartialDownloadFiles(models, "model.litertlm")
+            assertFalse(models.resolve("model.litertlm.part").exists())
+            assertFalse(chunks.exists())
+            assertEquals("installed", models.resolve("model.litertlm").readText())
+            assertEquals("cache", cache.resolve("compiled.bin").readText())
+            assertEquals("other partial", models.resolve("other.litertlm.part").readText())
+            assertEquals("other checkpoint", otherChunks.resolve("0.part").readText())
+            // A second discard with nothing left is harmless.
+            removePartialDownloadFiles(models, "model.litertlm")
+        } finally { root.deleteRecursively() }
+    }
 }

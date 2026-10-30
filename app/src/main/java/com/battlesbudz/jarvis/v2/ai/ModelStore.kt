@@ -2,6 +2,7 @@ package com.battlesbudz.jarvis.v2.ai
 
 import com.battlesbudz.jarvis.v2.ai.storage.modelFiles
 import com.battlesbudz.jarvis.v2.ai.storage.removeModelFiles
+import com.battlesbudz.jarvis.v2.ai.storage.removePartialDownloadFiles
 import com.battlesbudz.jarvis.v2.ai.storage.DownloadSpaceBudget
 import com.battlesbudz.jarvis.v2.ai.storage.ModelDownloader
 import com.battlesbudz.jarvis.v2.ai.storage.DownloadedModelLookup
@@ -93,6 +94,34 @@ class ModelStore @JvmOverloads constructor(
             .forEach { editor.remove(it) }
         if (spec == ModelCatalog.gemma4E2b) editor.remove("smoke_test_passed")
         check(editor.commit()) { "Model removed, but its test state could not be cleared." }
+    }
+
+    /**
+     * Bytes held by an unfinished download of this model: the partial file
+     * plus its chunk checkpoints. Zero when no resumable state exists. This
+     * is the "saved progress" a pause keeps and a cancel discards; the
+     * installed model file and the compiled caches are not part of it.
+     */
+    fun partialDownloadBytes(spec: LocalModelSpec): Long {
+        val partial = File(modelDirectory, "${spec.fileName}.part")
+        val chunks = File(modelDirectory, "${spec.fileName}.part.chunks")
+        return (if (partial.isFile) partial.length() else 0L) +
+            (if (chunks.exists()) directoryBytes(chunks) else 0L)
+    }
+
+    /**
+     * Discards a stopped download's resumable state — the partial file and
+     * its chunk checkpoints — so the next download of this model starts
+     * over. An installed model file and its caches are untouched; use
+     * [deleteModel] to remove those. Caller holds the model-operation lock
+     * (the same ownership contract as [deleteModel]) and has stopped the
+     * transfer: this refuses while the model is still marked downloading.
+     */
+    fun discardPartialDownload(spec: LocalModelSpec) {
+        require(ModelCatalog.find(spec.id) == spec) { "Unsupported model." }
+        check(isModelOperationActive()) { "Discarding a partial download requires exclusive ownership." }
+        check(!operations.downloading(spec.id)) { "Stop this model's download before discarding it." }
+        removePartialDownloadFiles(modelDirectory, spec.fileName)
     }
 
     fun storedBytes(spec: LocalModelSpec): Long = modelFiles(modelDirectory, spec.fileName)
