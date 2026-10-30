@@ -256,7 +256,8 @@ class ModelStore @JvmOverloads constructor(
                 temporary = temporary,
                 onProgress = reportProgress,
                 onStatus = onStatus,
-                onStall = onStall
+                onStall = onStall,
+                expectedSha256 = spec.expectedSha256
             )
             check(temporary.isFile && temporary.length() > 0L) { "The downloaded model is empty." }
             onStatus("Verifying the downloaded AI model…")

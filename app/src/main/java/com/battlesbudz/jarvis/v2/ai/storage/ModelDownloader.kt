@@ -66,7 +66,8 @@ internal class ModelDownloader(
         temporary: File,
         onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit,
         onStatus: (String) -> Unit,
-        onStall: (String?) -> Unit = {}
+        onStall: (String?) -> Unit = {},
+        expectedSha256: String? = null
     ): Unit = withContext(Dispatchers.IO) {
         val totalBytes = retryTransfer("size probe", onStall) { discoverDownloadSize(url) }
         if (totalBytes > 0L && temporary.length() == totalBytes) {
@@ -85,7 +86,7 @@ internal class ModelDownloader(
         val progressLock = Any()
         val completedBytes = AtomicLong(0L)
         val checkpoint = File(chunkDirectory, "source")
-        val identity = "$url\n$totalBytes\n$PARALLEL_CHUNKS"
+        val identity = downloadIdentity(url, totalBytes, expectedSha256)
         if (checkpoint.takeIf { it.isFile }?.readText() != identity) chunkDirectory.deleteRecursively()
         check(chunkDirectory.isDirectory || chunkDirectory.mkdirs()) { "Could not create model download storage." }
         checkpoint.writeText(identity)
@@ -334,6 +335,22 @@ internal class ModelDownloader(
             disconnectOnCancel.cancel()
             connection.disconnect()
         }
+    }
+
+    /**
+     * Checkpoint identity for the resumable chunks. The saved bytes are only
+     * trusted for the exact artifact they were fetched for: alongside the URL
+     * and total size, the identity binds a short form of the catalog SHA-256
+     * when the caller pins one. A re-pinned file at the same URL with the
+     * same length but different bytes therefore wipes the stale chunks and
+     * restarts, instead of resuming them into a spliced file that can only
+     * fail verification after a full transfer. Callers without a pinned hash
+     * keep the original identity unchanged.
+     */
+    private fun downloadIdentity(url: String, totalBytes: Long, expectedSha256: String?): String {
+        val hash = expectedSha256?.trim()?.lowercase()?.take(16)?.takeIf { it.isNotEmpty() }
+        return if (hash == null) "$url\n$totalBytes\n$PARALLEL_CHUNKS"
+        else "$url\n$totalBytes\n$PARALLEL_CHUNKS\n$hash"
     }
 
     private suspend fun disconnectOnCancellation(connection: HttpURLConnection): Job =
