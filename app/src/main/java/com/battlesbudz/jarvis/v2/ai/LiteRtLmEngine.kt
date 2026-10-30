@@ -493,3 +493,96 @@ class LiteRtLmEngine(
     /** Explicit recovery only; a failed attempt keeps both native resources and leases retained. */
     fun retryQuarantinedClose() = lifecycle.retryQuarantinedClose()
 }
+
+/**
+ * The backend fallback ladder for native engine creation (reliability epic
+ * M5, item 1). Engine creation used to be a single attempt on the catalog's
+ * recommended backend: on a device where GPU creation fails, every creation
+ * site failed every turn the same way, forever. The ladder tries the
+ * requested backend once, retries once on CPU, and surfaces the FIRST
+ * failure when both attempts fail — the requested backend's error is the
+ * actionable one, so the fallback's error is kept as suppressed evidence.
+ * Vision is never moved to CPU by the ladder: an engine created with vision
+ * keeps its GPU vision backend on both rungs (the engine's own
+ * configuration does that), so a fallback costs text speed, never vision
+ * capability.
+ *
+ * A GPU failure is latched per model for the process: later creations of
+ * the same model start on CPU instead of repaying the failed GPU attempt
+ * on every rebuild (model switch, capability escalation). Cancellation is
+ * never latched and never retried — it is the caller's decision, not a
+ * backend verdict.
+ */
+internal class EngineBackendLadder {
+    private val gpuFailedModelIds = mutableSetOf<String>()
+
+    suspend fun <T> run(
+        modelId: String,
+        gpuRequested: Boolean,
+        attempt: suspend (useGpu: Boolean) -> T
+    ): T {
+        if (!gpuRequested) return attempt(false)
+        if (synchronized(gpuFailedModelIds) { modelId in gpuFailedModelIds }) return attempt(false)
+        val firstFailure = try {
+            return attempt(true)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            error
+        }
+        synchronized(gpuFailedModelIds) { gpuFailedModelIds += modelId }
+        try {
+            return attempt(false)
+        } catch (cancelled: CancellationException) {
+            if (cancelled !== firstFailure) cancelled.addSuppressed(firstFailure)
+            throw cancelled
+        } catch (second: Throwable) {
+            if (second !== firstFailure) firstFailure.addSuppressed(second)
+            throw firstFailure
+        }
+    }
+}
+
+/** Creates [LiteRtLmEngine] instances through the [EngineBackendLadder]. */
+internal object LiteRtLmEngineFactory {
+    private val ladder = EngineBackendLadder()
+
+    /** Construct only; the caller initializes (and owns closing) the engine. */
+    suspend fun create(
+        modelId: String,
+        modelPath: String,
+        cacheDir: String,
+        useGpu: Boolean,
+        tools: List<OpenApiTool> = emptyList(),
+        visionEnabled: Boolean = false,
+        audioEnabled: Boolean = false,
+        speculativeDecoding: Boolean? = null
+    ): LiteRtLmEngine = ladder.run(modelId, useGpu) { gpu ->
+        LiteRtLmEngine(modelId, modelPath, cacheDir, gpu, tools, visionEnabled, audioEnabled, speculativeDecoding)
+    }
+
+    /**
+     * Construct and initialize as one attempt: an attempt that fails either
+     * step is closed before the ladder retries or rethrows, so a failed
+     * initialize never leaks a native engine.
+     */
+    suspend fun createInitialized(
+        modelId: String,
+        modelPath: String,
+        cacheDir: String,
+        useGpu: Boolean,
+        tools: List<OpenApiTool> = emptyList(),
+        visionEnabled: Boolean = false,
+        audioEnabled: Boolean = false,
+        speculativeDecoding: Boolean? = null
+    ): LiteRtLmEngine = ladder.run(modelId, useGpu) { gpu ->
+        val engine = LiteRtLmEngine(modelId, modelPath, cacheDir, gpu, tools, visionEnabled, audioEnabled, speculativeDecoding)
+        try {
+            engine.initialize()
+        } catch (error: Throwable) {
+            runCatching { engine.close() }
+            throw error
+        }
+        engine
+    }
+}

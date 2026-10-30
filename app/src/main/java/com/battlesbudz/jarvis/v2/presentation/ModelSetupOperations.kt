@@ -10,6 +10,7 @@ import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.battlesbudz.jarvis.v2.actions.MobileActionToolDefinitions
 import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngine
+import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngineFactory
 import com.battlesbudz.jarvis.v2.ai.LocalModelSpec
 import com.battlesbudz.jarvis.v2.ai.ModelStore
 import com.battlesbudz.jarvis.v2.chat.AssistantText
@@ -84,7 +85,7 @@ internal class ModelSetupOperations(
                     "The selected model file changed or failed integrity verification. Re-import it."
                 }
                 session.closeConversation(resetCharacters = false)
-                engine = LiteRtLmEngine(
+                engine = LiteRtLmEngineFactory.createInitialized(
                     store.selectedModel().id,
                     store.fileFor(store.selectedModel()).path,
                     store.engineCacheRoot().path,
@@ -93,7 +94,6 @@ internal class ModelSetupOperations(
                     visionEnabled = false,
                     audioEnabled = false,
                 )
-                engine.initialize()
                 val probe = engine.generate("Say hello in one short sentence.", onToken = {})
                 check(AssistantText.forDisplay(probe.text).any { it.isLetterOrDigit() }) {
                     "The selected model loaded but did not return readable text."
@@ -162,7 +162,7 @@ internal class ModelSetupOperations(
                             session.record(message)
                     },
                     engineFactory = { spec ->
-                        LiteRtLmEngine(
+                        LiteRtLmEngineFactory.create(
                             spec.id,
                             store.fileFor(spec).path,
                             store.engineCacheRoot().path,

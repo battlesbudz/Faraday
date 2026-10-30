@@ -5,7 +5,7 @@ import com.battlesbudz.jarvis.v2.BuildConfig
 import com.battlesbudz.jarvis.v2.ChatEntry
 import com.battlesbudz.jarvis.v2.actions.MobileActionToolDefinitions
 import com.battlesbudz.jarvis.v2.ai.ConversationPromptBuilder
-import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngine
+import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngineFactory
 import com.battlesbudz.jarvis.v2.ai.ModelStore
 import com.battlesbudz.jarvis.v2.chat.ConversationHistory
 import com.battlesbudz.jarvis.v2.conversation.ConversationSessionState
@@ -91,14 +91,12 @@ internal class VoiceTurnPreparation(
             nativeState.engine?.audioEnabled != selectedSpec.supportsAudio) {
             nativeState.engine?.close()
             nativeState.engine = null
-            val created = LiteRtLmEngine(
+            nativeState.engine = LiteRtLmEngineFactory.createInitialized(
                 modelStore.selectedModel().id, modelStore.fileFor(modelStore.selectedModel()).path,
                 modelStore.engineCacheRoot().path, useGpu = selectedSpec.recommendedGpu,
                 tools = if (selectedSpec.supportsTools) MobileActionToolDefinitions.all() else emptyList(),
                 audioEnabled = selectedSpec.supportsAudio
             )
-            try { created.initialize() } catch (error: Throwable) { created.close(); throw error }
-            nativeState.engine = created
         }
         val engine = requireNotNull(nativeState.engine)
         if (directAudioTurn) check(engine.audioEnabled) { "Select an audio-capable Gemma model for Gemma audio understanding." }
