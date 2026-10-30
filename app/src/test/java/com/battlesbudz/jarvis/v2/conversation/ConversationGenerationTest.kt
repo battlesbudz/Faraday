@@ -16,6 +16,7 @@ import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkProvenance
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkPurpose
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkSubmission
 import com.battlesbudz.jarvis.v2.memory.MemoryDeliveryFence
+import com.battlesbudz.jarvis.v2.voice.CallVisualContext
 import com.battlesbudz.jarvis.v2.voice.NativeAudioCaptureTiming
 import com.battlesbudz.jarvis.v2.voice.NativePauseCertificate
 import com.battlesbudz.jarvis.v2.voice.NativePauseProposal
@@ -130,8 +131,11 @@ class ConversationGenerationTest {
     private suspend fun generateWithBackend(backend: ConversationBackend, audio: ByteArray?,
                                               phoneActions: ConversationActions? = null,
                                               plan: ActionTurnPlan = ActionTurnPlan.NotAction,
-                                              sessionProbe: (ConversationModelSession) -> Unit = {}): ConversationDraft {
-        val diagnostics = ConversationDiagnostics({}, {}, {}, {})
+                                              sessionProbe: (ConversationModelSession) -> Unit = {},
+                                              callVisualContext: () -> CallVisualContext.Decision =
+                                                  { CallVisualContext.INACTIVE },
+                                              summaryLog: MutableList<String>? = null): ConversationDraft {
+        val diagnostics = ConversationDiagnostics({}, {}, { line -> summaryLog?.add(line) }, {})
         val memory = MemoryDeliveryFence()
         val input = ConversationInvocation("Hello", emptyList(), voiceAudio = audio, directVoiceAudio = audio != null)
         val callbacks = ConversationCallbacks({}, {})
@@ -155,7 +159,8 @@ class ConversationGenerationTest {
         val actions = phoneActions ?: ConversationActions({ error("No Android executor") },
             { _, _ -> error("No action admission") }, { _, _, _, _ -> error("No action dispatch") },
             {}, "conversation", { _, _, _ -> })
-        val generation = ConversationGeneration(session, references, builder, { error("No attachment") }, diagnostics)
+        val generation = ConversationGeneration(session, references, builder, { error("No attachment") }, diagnostics,
+            callVisualContext = callVisualContext)
         return generation.generate(input, 10_000,
             RoutedConversation(emptyList(), TurnPlan(TurnKind.NORMAL_CHAT), plan, null),
             PreparedConversation(emptyList(), null, null, null, false, false, null), emptyList(),
@@ -480,5 +485,75 @@ class ConversationGenerationTest {
             assertEquals(1, rollbacks)
             assertTrue(candidate.closeAndDrain())
         }
+    }
+
+    /** Plain-text backend for the step-4 wiring tests: records prompts, never calls tools. */
+    private class PlainTextBackend : ConversationBackend {
+        val requests = mutableListOf<String>()
+        override val modelId = "fake"
+        override var onPromptSubmitted: (String, Int) -> Unit = { _, _ -> }
+        override var onInferenceProgress: (InferenceProgress) -> Unit = {}
+        override var onBenchmarkSubmission: (PipelineBenchmarkSubmission) -> Unit = {}
+        override var benchmarkPurpose = PipelineBenchmarkPurpose.UNKNOWN
+        override fun inputContextDescription() = "fake"
+        override var toolsEnabled = false
+        override suspend fun setToolsEnabled(enabled: Boolean): Boolean {
+            val changed = toolsEnabled != enabled
+            toolsEnabled = enabled
+            return changed
+        }
+        private fun result(prompt: String, emit: (String) -> Unit): GenerationResult {
+            requests.add(prompt)
+            return GenerationResult("A fresh answer.", 1, null).also { emit(it.text) }
+        }
+        override suspend fun generate(prompt: String, onToken: (String) -> Unit) = result(prompt, onToken)
+        override suspend fun generateAudio(prompt: String, audioBytes: ByteArray, onToken: (String) -> Unit) =
+            result(prompt, onToken)
+        override suspend fun generate(prompt: String, imageBytes: ByteArray, onToken: (String) -> Unit): GenerationResult =
+            error("Unexpected image input")
+        override suspend fun sendToolResults(results: List<Pair<ToolCall, String>>, onToken: (String) -> Unit): GenerationResult =
+            error("Unrequested tools must not execute")
+    }
+
+    @Test fun callVisualBlockReachesVoicePromptAndDiagnostics() = runBlocking {
+        val backend = PlainTextBackend()
+        val summaries = mutableListOf<String>()
+        var consultations = 0
+        generateWithBackend(backend, byteArrayOf(1, 2, 3),
+            callVisualContext = {
+                consultations++
+                CallVisualContext.Decision("VISUAL BLOCK TEXT",
+                    "Call visual context: injected=true chars=17 snapshotAgeMs=700")
+            },
+            summaryLog = summaries)
+        assertEquals(1, consultations)
+        assertEquals(1, backend.requests.size)
+        assertTrue(backend.requests.single().contains("VISUAL BLOCK TEXT"))
+        assertTrue(summaries.any { it == "Call visual context: injected=true chars=17 snapshotAgeMs=700" })
+    }
+
+    @Test fun callVisualProviderIsNotConsultedForTextTurns() = runBlocking {
+        val backend = PlainTextBackend()
+        val summaries = mutableListOf<String>()
+        var consultations = 0
+        generateWithBackend(backend, null,
+            callVisualContext = {
+                consultations++
+                CallVisualContext.Decision("VISUAL BLOCK TEXT",
+                    "Call visual context: injected=true chars=17 snapshotAgeMs=700")
+            },
+            summaryLog = summaries)
+        assertEquals(0, consultations)
+        assertFalse(backend.requests.single().contains("VISUAL BLOCK TEXT"))
+        assertTrue(summaries.none { it.contains("Call visual context") })
+    }
+
+    @Test fun inactiveCallVisualDecisionLeavesVoicePromptAndDiagnosticsUntouched() = runBlocking {
+        val backend = PlainTextBackend()
+        val summaries = mutableListOf<String>()
+        generateWithBackend(backend, byteArrayOf(1, 2, 3),
+            callVisualContext = { CallVisualContext.INACTIVE }, summaryLog = summaries)
+        assertFalse(backend.requests.single().contains("Current visual context"))
+        assertTrue(summaries.none { it.contains("Call visual context") })
     }
 }

@@ -19,6 +19,7 @@ import com.battlesbudz.jarvis.v2.vision.PhoneVisionClient
 import com.battlesbudz.jarvis.v2.vision.VisionContextFormatter
 import com.battlesbudz.jarvis.v2.vision.VisionServerSettings
 import com.battlesbudz.jarvis.v2.voice.AudioToolGuard
+import com.battlesbudz.jarvis.v2.voice.CallVisualContext
 import com.battlesbudz.jarvis.v2.voice.FinalVoiceToolGuard
 import com.battlesbudz.jarvis.v2.voice.VoiceRepetitionGuard
 import com.battlesbudz.jarvis.v2.voice.comparison.LiveComparison
@@ -49,6 +50,14 @@ internal class ConversationGeneration(
      * fresh per turn so a Settings change applies without restart.
      */
     private val visionServerConfig: () -> VisionServerSettings.Config? = { null },
+    /**
+     * Video-call step 4: the live call camera's tracked scene as prompt
+     * context, read fresh per turn (the [visionServerConfig] pattern).
+     * [CallVisualContext.INACTIVE] unless a video call service is running,
+     * so ordinary turns are untouched; consulted only for voice /
+     * call-owned turns, and never for comparison trials.
+     */
+    private val callVisualContext: () -> CallVisualContext.Decision = { CallVisualContext.INACTIVE },
 ) {
     suspend fun generate(invocation: ConversationInvocation, contextLimit: Int,
                          routed: RoutedConversation, prepared: PreparedConversation,
@@ -117,7 +126,19 @@ internal class ConversationGeneration(
                 }
             } else null
         } else null
-        val submission = turnPrompt.assemble(invocation.prompt, visionContext, promptHistory, !modelSession.hasContext,
+        // Video-call step 4: on a voice or call-owned turn, read the live
+        // call camera's tracked scene (steps 2-3) as prompt context. The
+        // decision is INACTIVE unless VideoCallService is running a call,
+        // so non-call turns assemble exactly as before; a comparison trial
+        // is never a real call and never consults it.
+        val visualDecision = if (invocation.comparison == null &&
+            (invocation.voiceAudio != null || invocation.incrementalVoice != null ||
+                invocation.callOwned || invocation.callIdentity != null)
+        ) callVisualContext() else CallVisualContext.INACTIVE
+        visualDecision.diagnosticsLine?.let { diagnostics.summary(it) }
+        val promptContext = listOfNotNull(visionContext, visualDecision.block)
+            .joinToString("\n\n").takeIf { it.isNotBlank() }
+        val submission = turnPrompt.assemble(invocation.prompt, promptContext, promptHistory, !modelSession.hasContext,
             routed.plan.activeSubject, routed.plan.resolvedQuestion, prepared.referenceContext, contextLimit)
         validatePrompt(invocation, routed, prepared, promptHistory, turnPrompt, submission, contextLimit)
         val directAudio = invocation.directVoiceAudio || invocation.comparison?.request?.path == LiveComparison.Path.GEMMA_DIRECT
