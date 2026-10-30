@@ -167,6 +167,7 @@ class LatestServerVisionResult {
             lastLatencyMs = null
             lastDetectionCount = null
             tracker.reset()
+            PreviewOverlayTelemetry.reset()
         }
         notifyChanged()
     }
@@ -240,6 +241,12 @@ class LatestServerVisionResult {
                 "presentCounts: " +
                     if (tracked.presentObjects.isEmpty()) "none." else tracked.presentCountsText() + "."
             )
+            // Step 5: the preview overlay's own witness (build 1608's
+            // paste had none, so "no boxes drew" could not be localized):
+            // whether a preview surface was bound and what the latest
+            // draw pass actually painted.
+            append("\nPREVIEW OVERLAY (video-call step 5: boxes drawn on the call preview)\n")
+            append(PreviewOverlayTelemetry.text())
         }
     }
 
