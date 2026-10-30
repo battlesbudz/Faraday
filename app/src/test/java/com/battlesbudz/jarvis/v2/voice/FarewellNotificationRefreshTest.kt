@@ -52,7 +52,7 @@ class FarewellNotificationRefreshTest {
             assertEquals(CallVisionController.State.IDLE, controller.state)
             assertEquals(
                 "The notification must reflect the IDLE controller, never the stale \"Video on\"",
-                "Video idle — starts with your next call", status)
+                "Video off — turn it on from the call screen", status)
         }
     }
 
@@ -72,7 +72,7 @@ class FarewellNotificationRefreshTest {
 
     @Test fun farewellWithNoRegisteredControllerReportsIdle() {
         withRegistry(null) {
-            assertEquals("Video idle — starts with your next call",
+            assertEquals("Video off — turn it on from the call screen",
                 farewellVideoStatus("call-1"))
         }
     }
@@ -189,7 +189,7 @@ class FarewellNotificationRefreshTest {
                 currentGeneration = 3L,
                 isLive = true,
             )
-            assertEquals("Video idle — starts with your next call", derived)
+            assertEquals("Video off — turn it on from the call screen", derived)
             assertEquals(1, binder.unbinds)
             assertEquals(CallVisionController.State.IDLE, controller.state)
         }

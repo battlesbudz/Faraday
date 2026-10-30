@@ -107,13 +107,35 @@ class CameraXVideoBinderTest {
         )
     }
 
-    /** Conversion is injected, so only ImageProxy.close() is used by these races. */
-    private class FakeImage {
+    /**
+     * Conversion is injected, so the binder itself only touches close()
+     * and — since step 5 notes each dispatched frame's geometry on the
+     * hub for the preview overlay — width/height/rotationDegrees.
+     */
+    private class FakeImage(
+        private val width: Int = 640,
+        private val height: Int = 480,
+        private val rotationDegrees: Int = 0,
+    ) {
         val closes = AtomicInteger()
+        private val imageInfo = Proxy.newProxyInstance(
+            androidx.camera.core.ImageInfo::class.java.classLoader,
+            arrayOf(androidx.camera.core.ImageInfo::class.java)) { instance, method, args ->
+            when (method.name) {
+                "getRotationDegrees" -> rotationDegrees
+                "toString" -> "FakeImageInfo"
+                "hashCode" -> System.identityHashCode(instance)
+                "equals" -> instance === args?.get(0)
+                else -> error("Unexpected image info access: ${method.name}")
+            }
+        }
         val proxy = Proxy.newProxyInstance(ImageProxy::class.java.classLoader,
             arrayOf(ImageProxy::class.java)) { instance, method, args ->
             when (method.name) {
                 "close" -> { closes.incrementAndGet(); null }
+                "getWidth" -> width
+                "getHeight" -> height
+                "getImageInfo" -> imageInfo
                 "toString" -> "FakeImage"
                 "hashCode" -> System.identityHashCode(instance)
                 "equals" -> instance === args?.get(0)
@@ -249,6 +271,28 @@ class CameraXVideoBinderTest {
             controllerLocked.countDown()
             observerStopping.countDown()
             workers.shutdownNow()
+        }
+    }
+
+    @Test fun dispatchedFrameNotesItsGeometryOnTheHubAndClearResetsIt() {
+        val f = Fixture()
+        val controller = CallVisionController(f.binder, f.cadence, f.hub)
+        f.hub.register(object : VisionObserver {
+            override fun onFrame(jpegBytes: ByteArray, timestampMs: Long) {}
+        })
+        val frame = FakeImage(width = 640, height = 480, rotationDegrees = 90)
+        try {
+            assertNull(f.hub.lastFrameGeometry)
+            controller.start(true, "call-1")
+            f.platform.deliver(CameraXVideoBinder.AttachResult.Attached(FakeHandle()))
+            f.platform.analyzers.single()(frame.proxy)
+            // Step 5: the overlay maps server boxes with exactly this
+            // geometry — the dispatched frame's size and display rotation.
+            assertEquals(FrameGeometry(640, 480, 90), f.hub.lastFrameGeometry)
+            controller.stopForCall("call-1")
+            assertNull("clear drops the geometry with the frame cache", f.hub.lastFrameGeometry)
+        } finally {
+            controller.stop()
         }
     }
 

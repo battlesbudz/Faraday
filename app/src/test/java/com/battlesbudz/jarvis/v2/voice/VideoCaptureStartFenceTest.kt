@@ -93,6 +93,47 @@ class VideoCaptureStartFenceTest {
         assertEquals(0L, f.generation)
     }
 
+    @Test fun toggleOffFencesQueuedStartUntilUserTurnsVideoBackOn() {
+        val f = Fixture()
+        assertTrue(f.request())
+        assertTrue(f.deliver())
+        // Step 5: the user turns video off mid-call. The stop fences the
+        // identity, so no queued or stale start can restart this call's
+        // capture on its own.
+        f.fence.end("call-1")
+        assertFalse(f.request())
+        assertFalse(f.deliver())
+        // The user turns video back on for the SAME live call: the
+        // explicit tap revives the identity, and the ordinary request /
+        // admit checks (the call must still be current) apply as usual.
+        f.fence.revive("call-1")
+        assertTrue(f.request())
+        assertTrue(f.deliver())
+        assertEquals(2L, f.generation)
+    }
+
+    @Test fun reviveDoesNotHelpAnIdentityTheCallOwnerMovedOnFrom() {
+        val f = Fixture()
+        assertTrue(f.request())
+        f.fence.end("call-1")
+        f.currentCallId = "call-2"
+        f.fence.revive("call-1")
+        // Revive only clears the ended marker; request and admit still
+        // require the call to be the owner's current one.
+        assertFalse(f.request("call-1"))
+        assertFalse(f.deliver("call-1"))
+        assertEquals(0L, f.generation)
+    }
+
+    @Test fun reviveForAnotherCallLeavesTheEndedFenceAlone() {
+        val f = Fixture()
+        f.fence.end("call-1")
+        f.fence.revive("call-2")
+        assertFalse(f.request())
+        assertFalse(f.deliver())
+        assertEquals(0L, f.generation)
+    }
+
     @Test fun admittedStartAdvancesGenerationBeforeFarewellCanSnapshotIt() {
         val f = Fixture()
         assertTrue(f.request())

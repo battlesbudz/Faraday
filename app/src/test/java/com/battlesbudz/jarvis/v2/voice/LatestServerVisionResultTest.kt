@@ -117,6 +117,28 @@ class LatestServerVisionResultTest {
         assertTrue(text.contains("latestFrameTimestampMs=42"))
     }
 
+    @Test fun diagnosticsTextCarriesTheVideoToggleState() {
+        val holder = LatestServerVisionResult()
+        // Step 5: a paste must show whether capture was user-enabled —
+        // video=off with zero frames means nobody turned the camera on.
+        assertTrue(holder.diagnosticsText().contains("video=off"))
+        VoiceSessionUi.videoEnabled.value = true
+        try {
+            assertTrue(holder.diagnosticsText().contains("video=on"))
+        } finally {
+            VoiceSessionUi.videoEnabled.value = false
+        }
+    }
+
+    @Test fun revisionAdvancesOnEveryMutation() {
+        val holder = LatestServerVisionResult()
+        val start = holder.revision.value
+        holder.recordReceived()
+        holder.recordSuccess(snapshotOf(1), frameTimestampMs = 1L, latencyMs = 5L, receivedAtMs = 2L)
+        holder.clear()
+        assertEquals(start + 3, holder.revision.value)
+    }
+
     private fun snapshotOfDetections(vararg detections: Detection): NativeVisionSnapshot =
         NativeVisionSnapshot(
             detections = detections.toList(),

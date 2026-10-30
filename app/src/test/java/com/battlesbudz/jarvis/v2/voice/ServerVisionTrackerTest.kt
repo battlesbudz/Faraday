@@ -55,6 +55,28 @@ class ServerVisionTrackerTest {
         assertEquals(1_700L, second.firstSeenMs)
     }
 
+    @Test fun snapshotCarriesTheLatestBoxForEveryTrack() {
+        val tracker = ServerVisionTracker()
+        tracker.onDetections(listOf(
+            det("person", 0f, 0f, 100f, 200f),
+            det("chair", 300f, 300f, 400f, 500f),
+        ), 0L)
+        // Both objects move a little; overlap stays above the match gate.
+        tracker.onDetections(listOf(
+            det("person", 10f, 0f, 110f, 200f),
+            det("chair", 310f, 300f, 410f, 500f),
+        ), 1_700L)
+        val snapshot = tracker.snapshot(1_700L)
+        assertEquals(2, snapshot.objects.size)
+        // Step 5's preview overlay draws exactly these boxes: each track
+        // carries the box from its most recent match, not its first
+        // sighting, and tracks keep their boxes separate.
+        assertEquals(Box(10f, 0f, 110f, 200f),
+            snapshot.objects.single { it.label == "person" }.box)
+        assertEquals(Box(310f, 300f, 410f, 500f),
+            snapshot.objects.single { it.label == "chair" }.box)
+    }
+
     @Test fun differentLabelNeverMergesEvenWithFullOverlap() {
         val tracker = ServerVisionTracker()
         tracker.onDetections(listOf(det("person", 0f, 0f, 100f, 100f)), 0L)
