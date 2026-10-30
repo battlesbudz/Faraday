@@ -150,6 +150,39 @@ class ConversationContextPreparationTest {
         assertTrue(f.terminal.isEmpty())
     }
 
+    @Test fun suppliedSourceLookupWithNoEvidenceEndsWithRetrievalFailure() = runBlocking {
+        val f = Fixture()
+        f.evidence = null
+        val query = "Summarize the supplied document\\nhttps://example.com/article"
+        assertNull(f.prepare("https://example.com/article",
+            TurnPlan(TurnKind.FACTUAL_LOCAL_FIRST, query)))
+        // The fetch was attempted, but with nothing retrieved the turn must
+        // end honestly instead of generating a summary of a document the
+        // model never received.
+        assertEquals(listOf(query), f.queries)
+        assertEquals(listOf("I couldn't retrieve the page at that link, so I don't have its contents to work from. Please check the link and try again."), f.terminal)
+    }
+
+    @Test fun suppliedSourceLookupWithEvidenceProceedsWithFetchedContents() = runBlocking {
+        val f = Fixture()
+        val query = "Summarize the supplied document\\nhttps://example.com/article"
+        val prepared = f.prepare("https://example.com/article",
+            TurnPlan(TurnKind.FACTUAL_LOCAL_FIRST, query))!!
+        assertEquals(listOf(query), f.queries)
+        assertEquals("reference evidence", prepared.referenceContext)
+        assertTrue(f.terminal.isEmpty())
+    }
+
+    @Test fun lookupConfirmationWithNoEvidenceStillProceedsToLocalGeneration() = runBlocking {
+        val f = Fixture()
+        f.evidence = null
+        val prepared = f.prepare("yes",
+            TurnPlan(TurnKind.LOOKUP_CONFIRMATION, "confirmation query"))!!
+        assertEquals(listOf("confirmation query"), f.queries)
+        assertNull(prepared.referenceContext)
+        assertTrue(f.terminal.isEmpty())
+    }
+
     @Test fun explicitLookupKeepsRequestedReferenceRouteWithApprovedMemoryPresent() = runBlocking {
         val f = Fixture()
         val prepared = f.prepare("Look up my name", TurnPlan(TurnKind.EXPLICIT_LOOKUP, "explicit query"))!!

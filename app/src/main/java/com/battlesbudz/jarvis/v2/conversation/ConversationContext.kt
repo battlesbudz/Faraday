@@ -168,11 +168,30 @@ internal class ConversationContextPreparation(
         }
         reply.lookupMs += if (lookupAttempted) (System.nanoTime() - lookupStarted) / 1_000_000 else 0L
 
-        // An attempted lookup that returns no usable evidence is not a
-        // dead end. Generation proceeds and answers from the model's own
-        // knowledge; the assembled prompt handles how (and whether) the
-        // empty lookup may be mentioned for this kind of turn.
+        // An attempted lookup that returns no usable evidence splits by
+        // turn kind: a supplied source is a retrieval failure (below),
+        // while an ordinary question still answers from local knowledge.
         if (lookupAttempted && referenceContext.isNullOrBlank()) {
+            if (suppliedSourceLookup) {
+                // A supplied source is the turn's input, not a fact the
+                // model can recall instead: with nothing retrieved there
+                // is no document to summarize or answer from, and falling
+                // through would let generation invent its contents. End
+                // the turn with an honest retrieval failure, the same
+                // shape as the private-mode lookup block above.
+                diagnostics.record(
+                    "Supplied source lookup returned no evidence; retrieval failed\\n" +
+                        "user=${prompt.take(1_000)}\\n" +
+                        "lookupQuery=${turnPlan.lookupQuery?.take(1_000)}"
+                )
+                postFinish("I couldn't retrieve the page at that link, so I don't have its contents to work from. Please check the link and try again.")
+                return null
+            }
+            // An attempted lookup that returns no usable evidence is not a
+            // dead end for an ordinary question. Generation proceeds and
+            // answers from the model's own knowledge; the assembled prompt
+            // handles how (and whether) the empty lookup may be mentioned
+            // for this kind of turn.
             diagnostics.record(
                 "Reference lookup returned no evidence; answering locally\\n" +
                     "user=${prompt.take(1_000)}\\n" +
