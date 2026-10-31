@@ -99,8 +99,8 @@ class IncrementalVoiceInput(
         worker.join()
     }
 
-    suspend fun answer(finalPrompt: String, onToken: (String) -> Unit,
-                       imageBytes: ByteArray? = null): GenerationResult {
+    suspend fun answer(finalPrompt: String, imageBytes: ByteArray? = null,
+                       onToken: (String) -> Unit): GenerationResult {
         seal()
         check(!closed && !consumed)
         consumed = true
@@ -162,10 +162,10 @@ class IncrementalVoiceInput(
     ): GenerationResult {
         var outputStarted = false
         try {
-            return answer(finalPrompt, { token ->
+            return answer(finalPrompt, imageBytes = imageBytes, onToken = { token ->
                 if (token.isNotBlank()) outputStarted = true
                 onToken(token)
-            }, imageBytes)
+            })
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (error: Exception) {
             close()

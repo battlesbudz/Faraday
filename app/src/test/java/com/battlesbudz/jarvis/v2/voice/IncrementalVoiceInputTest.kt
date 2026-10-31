@@ -359,7 +359,7 @@ class IncrementalVoiceInputTest {
         track.submit("What do you see?")
         events.awaitEvent("input_prefilled")
         val image = byteArrayOf(1, 2, 3, 4)
-        track.answer("User: What do you see?", {}, image)
+        track.answer("User: What do you see?", image, {})
         // Exactly one image, after every text append, before the decode.
         assertEquals(1, native.images.size)
         assertTrue(image.contentEquals(native.images.single()))
