@@ -2182,7 +2182,7 @@ index 0000000..bba5502
 +}
 +#endif
 diff --git a/kotlin/java/com/google/ai/edge/litertlm/Conversation.kt b/kotlin/java/com/google/ai/edge/litertlm/Conversation.kt
-index 4291494..d908a08 100644
+index 7c94bdf..070f121 100644
 --- a/kotlin/java/com/google/ai/edge/litertlm/Conversation.kt
 +++ b/kotlin/java/com/google/ai/edge/litertlm/Conversation.kt
 @@ -67,17 +67,34 @@ import kotlinx.coroutines.flow.callbackFlow
@@ -2230,7 +2230,7 @@ index 4291494..d908a08 100644
     *
     * This method handles potential tool calls returned by the model. If a tool call is detected, the
     * corresponding tool is executed, and the result is sent back to the model. This process is
-@@ -127,40 +145,55 @@ class Conversation(
+@@ -128,41 +146,55 @@ class Conversation(
          "response_format cannot be used unless enableResponseFormat=True was passed to ConversationConfig."
        )
      }
@@ -2258,12 +2258,13 @@ index 4291494..d908a08 100644
 -          visualTokenBudget,
 -          repetitionPenaltyConfig,
 -          noRepeatNgramConfig,
--          suppressTokensConfig,
+-          suppressTokensConfig?.suppressTokens?.toIntArray(),
 -          maxOutputToken ?: -1,
 -          if (i == 0) thinkingConfig else null,
 -          activeResponseFormat?.type?.value ?: 0,
 -          activeResponseFormat?.schemaOrPattern,
 -        )
+-
 -      val responseJsonObject = JsonParser.parseString(responseJsonString).asJsonObject
 -
 -      if (responseJsonObject.has("tool_calls")) {
@@ -2278,7 +2279,7 @@ index 4291494..d908a08 100644
 +            visualTokenBudget,
 +            repetitionPenaltyConfig,
 +            noRepeatNgramConfig,
-+            suppressTokensConfig,
++            suppressTokensConfig?.suppressTokens?.toIntArray(),
 +            maxOutputToken ?: -1,
 +            if (i == 0) thinkingConfig else null,
 +            activeResponseFormat?.type?.value ?: 0,
@@ -2311,7 +2312,7 @@ index 4291494..d908a08 100644
        }
      }
      throw IllegalStateException("Exceeded recurring tool call limit of $RECURRING_TOOL_CALL_LIMIT")
-@@ -290,11 +323,17 @@ class Conversation(
+@@ -295,11 +327,17 @@ class Conversation(
          "response_format cannot be used unless enableResponseFormat=True was passed to ConversationConfig."
        )
      }
@@ -2330,7 +2331,7 @@ index 4291494..d908a08 100644
      val activeResponseFormat = resolveResponseFormat(currentMessageJson, responseFormat)
  
      val jniCallback =
-@@ -305,21 +344,25 @@ class Conversation(
+@@ -310,21 +348,25 @@ class Conversation(
          suppressTokensConfig,
          maxOutputToken,
          responseFormat,
@@ -2344,7 +2345,7 @@ index 4291494..d908a08 100644
 -      visualTokenBudget,
 -      repetitionPenaltyConfig,
 -      noRepeatNgramConfig,
--      suppressTokensConfig,
+-      suppressTokensConfig?.suppressTokens?.toIntArray(),
 -      maxOutputToken ?: -1,
 -      thinkingConfig,
 -      activeResponseFormat?.type?.value ?: 0,
@@ -2360,7 +2361,7 @@ index 4291494..d908a08 100644
 +        visualTokenBudget,
 +        repetitionPenaltyConfig,
 +        noRepeatNgramConfig,
-+        suppressTokensConfig,
++        suppressTokensConfig?.suppressTokens?.toIntArray(),
 +        maxOutputToken ?: -1,
 +        thinkingConfig,
 +        activeResponseFormat?.type?.value ?: 0,
@@ -2370,7 +2371,7 @@ index 4291494..d908a08 100644
    }
  
    /**
-@@ -586,83 +629,146 @@ class Conversation(
+@@ -593,84 +635,146 @@ class Conversation(
      private val suppressTokensConfig: SuppressTokensConfig? = null,
      private val maxOutputToken: Int? = null,
      private val responseFormat: ResponseFormat? = null,
@@ -2401,7 +2402,7 @@ index 4291494..d908a08 100644
 +        }
 +      }
 +    }
- 
++
 +    private fun fail(error: Throwable) {
 +      terminal = true
 +      pendingToolResponseJSONMessage = null
@@ -2416,7 +2417,7 @@ index 4291494..d908a08 100644
 +        reuseGuard.onNativeError(projectedAudioTurn)
 +      }
 +    }
-+
+ 
 +    override fun onMessage(messageJsonString: String) = dispatch {
 +      val messageJsonObject = JsonParser.parseString(messageJsonString).asJsonObject
        if (messageJsonObject.has("tool_calls")) {
@@ -2460,12 +2461,13 @@ index 4291494..d908a08 100644
 -          @OptIn(ExperimentalApi::class) ExperimentalFlags.visualTokenBudget,
 -          repetitionPenaltyConfig,
 -          noRepeatNgramConfig,
--          suppressTokensConfig,
+-          suppressTokensConfig?.suppressTokens?.toIntArray(),
 -          maxOutputToken ?: -1,
 -          null,
 -          activeResponseFormat?.type?.value ?: 0,
 -          activeResponseFormat?.schemaOrPattern,
 -        )
+-
 -        pendingToolResponseJSONMessage = null // Clear after sending
 +        // Clear before a potentially synchronous callback from the next native send.
 +        pendingToolResponseJSONMessage = null
@@ -2478,7 +2480,7 @@ index 4291494..d908a08 100644
 +            @OptIn(ExperimentalApi::class) ExperimentalFlags.visualTokenBudget,
 +            repetitionPenaltyConfig,
 +            noRepeatNgramConfig,
-+            suppressTokensConfig,
++            suppressTokensConfig?.suppressTokens?.toIntArray(),
 +            maxOutputToken ?: -1,
 +            null,
 +            activeResponseFormat?.type?.value ?: 0,
@@ -2554,7 +2556,7 @@ index 4291494..d908a08 100644
    /**
     * Gets the benchmark info for the conversation.
     *
-@@ -728,18 +834,34 @@ class Conversation(
+@@ -736,18 +840,34 @@ class Conversation(
    }
  
    /**
@@ -2591,7 +2593,7 @@ index 4291494..d908a08 100644
    /** Throws [IllegalStateException] if the conversation is not alive. */
    private fun checkIsAlive() {
      check(isAlive) { "Conversation is not alive." }
-@@ -824,3 +946,64 @@ interface MessageCallback {
+@@ -830,3 +950,64 @@ interface MessageCallback {
     */
    fun onError(throwable: Throwable)
  }
@@ -2657,10 +2659,10 @@ index 4291494..d908a08 100644
 +  }
 +}
 diff --git a/kotlin/java/com/google/ai/edge/litertlm/Engine.kt b/kotlin/java/com/google/ai/edge/litertlm/Engine.kt
-index 2a68916..27ea4e9 100644
+index 669e206..64fe6d4 100644
 --- a/kotlin/java/com/google/ai/edge/litertlm/Engine.kt
 +++ b/kotlin/java/com/google/ai/edge/litertlm/Engine.kt
-@@ -131,6 +131,17 @@ class Engine(val engineConfig: EngineConfig) : AutoCloseable {
+@@ -133,6 +133,17 @@ class Engine(val engineConfig: EngineConfig) : AutoCloseable {
            }
          }
  
@@ -2678,7 +2680,7 @@ index 2a68916..27ea4e9 100644
        // Convert the channels to a JSON array, if provided.
        // If `channels` is null, the `Conversation` uses the default from the
        // `LlmMetadata` or the model type.
-@@ -144,8 +155,18 @@ class Engine(val engineConfig: EngineConfig) : AutoCloseable {
+@@ -146,11 +157,21 @@ class Engine(val engineConfig: EngineConfig) : AutoCloseable {
            }
          }
  
@@ -2693,15 +2695,18 @@ index 2a68916..27ea4e9 100644
 +        hasAudioLora = hasAudioLora,
 +      )
        @OptIn(ExperimentalApi::class) // opt-in experimental flags
+       // Keep backward compatibility with deprecated ExperimentalFlags.overwritePromptTemplate;
+       // this fallback will be removed when the deprecated property is deleted.
+       @Suppress("DEPRECATION")
 -      return Conversation(
 +      val nativeHandle =
          LiteRtLmJni.nativeCreateConversation(
            handle!!, // Using !! is okay. Checked initialization already.
            conversationConfig.samplerConfig,
-@@ -162,11 +183,9 @@ class Engine(val engineConfig: EngineConfig) : AutoCloseable {
-           conversationConfig.maxOutputToken ?: -1,
+@@ -168,11 +189,9 @@ class Engine(val engineConfig: EngineConfig) : AutoCloseable {
            conversationConfig.thinkingConfig,
            conversationConfig.enableResponseFormat,
+           conversationConfig.enableSpeculativeDecoding,
 -        ),
 -        toolManager,
 -        conversationConfig.automaticToolCalling,
@@ -2713,7 +2718,7 @@ index 2a68916..27ea4e9 100644
      }
    }
  
-@@ -180,9 +199,13 @@ class Engine(val engineConfig: EngineConfig) : AutoCloseable {
+@@ -186,9 +205,13 @@ class Engine(val engineConfig: EngineConfig) : AutoCloseable {
    fun createSession(sessionConfig: SessionConfig = SessionConfig()): Session {
      synchronized(lock) {
        checkInitialized()
@@ -2729,8 +2734,8 @@ index 2a68916..27ea4e9 100644
          LiteRtLmJni.nativeCreateSession(
            handle!!,
            sessionConfig.samplerConfig,
-@@ -190,6 +213,7 @@ class Engine(val engineConfig: EngineConfig) : AutoCloseable {
-           sessionConfig.loraConfig?.audioLoraPath,
+@@ -197,6 +220,7 @@ class Engine(val engineConfig: EngineConfig) : AutoCloseable {
+           sessionConfig.enableSpeculativeDecoding,
          )
        )
 +      return session
@@ -2738,7 +2743,7 @@ index 2a68916..27ea4e9 100644
    }
  
 diff --git a/kotlin/java/com/google/ai/edge/litertlm/LiteRtLmJni.kt b/kotlin/java/com/google/ai/edge/litertlm/LiteRtLmJni.kt
-index 797a5ab..3785523 100644
+index 4902fb8..0f53348 100644
 --- a/kotlin/java/com/google/ai/edge/litertlm/LiteRtLmJni.kt
 +++ b/kotlin/java/com/google/ai/edge/litertlm/LiteRtLmJni.kt
 @@ -22,6 +22,10 @@ internal object LiteRtLmJni {
@@ -2752,7 +2757,7 @@ index 797a5ab..3785523 100644
    /**
     * Creates a new LiteRT-LM engine.
     *
-@@ -118,6 +122,16 @@ internal object LiteRtLmJni {
+@@ -125,6 +129,16 @@ internal object LiteRtLmJni {
     */
    external fun nativeDeleteSession(sessionPointer: Long)
  
@@ -2769,7 +2774,7 @@ index 797a5ab..3785523 100644
    /**
     * Runs the prefill step for the given input data.
     *
-@@ -236,6 +250,9 @@ internal object LiteRtLmJni {
+@@ -246,6 +260,9 @@ internal object LiteRtLmJni {
     */
    external fun nativeDeleteConversation(conversationPointer: Long)
  
@@ -2779,7 +2784,7 @@ index 797a5ab..3785523 100644
    /**
     * Send message from the given input data asynchronously.
     *
-@@ -306,6 +323,9 @@ internal object LiteRtLmJni {
+@@ -320,6 +337,9 @@ internal object LiteRtLmJni {
     */
    external fun nativeConversationCancelProcess(conversationPointer: Long)
  
@@ -2790,7 +2795,7 @@ index 797a5ab..3785523 100644
     * Gets the benchmark info for the conversation.
     *
 diff --git a/kotlin/java/com/google/ai/edge/litertlm/Message.kt b/kotlin/java/com/google/ai/edge/litertlm/Message.kt
-index baa72f3..e0ac814 100644
+index 12e042b..1983d9d 100644
 --- a/kotlin/java/com/google/ai/edge/litertlm/Message.kt
 +++ b/kotlin/java/com/google/ai/edge/litertlm/Message.kt
 @@ -17,6 +17,8 @@ package com.google.ai.edge.litertlm
@@ -3215,10 +3220,10 @@ index a76d770..bff7d5f 100644
  }
  
 diff --git a/kotlin/java/com/google/ai/edge/litertlm/jni/BUILD b/kotlin/java/com/google/ai/edge/litertlm/jni/BUILD
-index fb6e0e5..8cac059 100644
+index 89ac93d..7f892df 100644
 --- a/kotlin/java/com/google/ai/edge/litertlm/jni/BUILD
 +++ b/kotlin/java/com/google/ai/edge/litertlm/jni/BUILD
-@@ -24,6 +24,7 @@ cc_binary(
+@@ -26,6 +26,7 @@ cc_binary(
      srcs = ["litertlm.cc"],
      linkshared = 1,
      deps = [
@@ -3227,26 +3232,26 @@ index fb6e0e5..8cac059 100644
          "@com_google_absl//absl/container:flat_hash_map",
          "@com_google_absl//absl/container:flat_hash_set",
 diff --git a/kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc b/kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc
-index 9f27231..f25be29 100644
+index 5c9f382..eb845f2 100644
 --- a/kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc
 +++ b/kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc
-@@ -16,6 +16,7 @@
- #include <sys/stat.h>
- 
+@@ -20,6 +20,7 @@
+ #include <cstdint>
+ #include <cstring>
  #include <memory>
 +#include <mutex>
  #include <optional>
  #include <string>
  #include <utility>
-@@ -36,6 +37,7 @@
- #include "runtime/components/logits_processor/repetition_penalty_config.h"
- #include "runtime/components/logits_processor/suppress_tokens_config.h"
+@@ -44,6 +45,7 @@
+ #include "runtime/components/model_resources.h"
+ #include "runtime/components/model_resources_litert_lm.h"
  #include "runtime/components/prompt_template.h"
 +#include "support/util/projected_audio_payload.h"
  #include "runtime/conversation/conversation.h"
  #include "runtime/conversation/io_types.h"
  #include "runtime/conversation/model_data_processor/config_registry.h"
-@@ -198,64 +200,121 @@ jobject CreateBenchmarkInfoJni(
+@@ -177,114 +179,235 @@ jobject CreateBenchmarkInfoJni(
        last_decode_tokens_per_second);
  }
  
@@ -3423,12 +3428,7 @@ index 9f27231..f25be29 100644
 -  return contents;
  }
  
- // Helper to get JNIEnv and attach to the current thread if necessary.
-@@ -287,54 +346,117 @@ JNIEnv* GetJniEnvAndAttach(JavaVM* jvm, bool* attached) {
-   }
- }
- 
--// Helper function to create SamplerParameters from Java SamplerConfig object.
+ // Helper function to create SamplerParameters from Java SamplerConfig object.
 -SamplerParameters CreateSamplerParamsFromJni(JNIEnv* env,
 -                                             jobject sampler_config_obj) {
 -  SamplerParameters sampler_params;
@@ -3570,7 +3570,7 @@ index 9f27231..f25be29 100644
  
    env->DeleteLocalRef(thinking_config_cls);
  
-@@ -488,10 +610,113 @@ std::optional<litert::lm::DataProcessorArguments> GetDataProcessorArguments(
+@@ -439,10 +562,113 @@ std::optional<litert::lm::DataProcessorArguments> GetDataProcessorArguments(
    return std::nullopt;
  }
  
@@ -3684,8 +3684,8 @@ index 9f27231..f25be29 100644
  LITERTLM_JNIEXPORT void JNICALL
  Java_com_google_ai_edge_litertlm_NativeLibraryLoader_nativeCheckLoaded(
      JNIEnv* env, jclass thiz) {}
-@@ -771,8 +996,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateSession)(
-   auto session_config = SessionConfig::CreateDefault();
+@@ -751,8 +977,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateSession)(
+   }
  
    if (sampler_config_obj != nullptr) {
 -    session_config.GetMutableSamplerParams() =
@@ -3696,7 +3696,7 @@ index 9f27231..f25be29 100644
    }
  
    if (lora_path_str != nullptr) {
-@@ -824,6 +1050,33 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeDeleteSession)(
+@@ -804,6 +1031,33 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeDeleteSession)(
    delete reinterpret_cast<Engine::Session*>(session_pointer);
  }
  
@@ -3730,7 +3730,7 @@ index 9f27231..f25be29 100644
  LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeRunPrefill)(
      JNIEnv* env, jclass thiz, jlong session_pointer, jobjectArray input_data) {
    Engine::Session* session =
-@@ -893,7 +1146,7 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeGenerateContent)(
+@@ -873,7 +1127,7 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeGenerateContent)(
    return NewStringStandardUTF(env, responses->GetTexts()[0]);
  }
  
@@ -3739,7 +3739,7 @@ index 9f27231..f25be29 100644
      JNIEnv* env, jclass thiz, jlong session_pointer, jobjectArray input_data,
      jobject callback) {
    JavaVM* jvm = nullptr;
-@@ -901,93 +1154,129 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeGenerateContentStream)(
+@@ -881,93 +1135,129 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeGenerateContentStream)(
      ThrowLiteRtLmJniException(env, "Failed to get JavaVM");
      return;
    }
@@ -3945,7 +3945,7 @@ index 9f27231..f25be29 100644
  LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeCancelProcess)(
      JNIEnv* env, jclass thiz, jlong session_pointer) {
    Engine::Session* session =
-@@ -1044,8 +1333,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
+@@ -1029,8 +1319,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
      session_config.SetMaxOutputTokens(max_output_token);
    }
    if (sampler_config_obj != nullptr) {
@@ -3957,7 +3957,7 @@ index 9f27231..f25be29 100644
    }
  
    if (lora_path_str != nullptr) {
-@@ -1173,8 +1463,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
+@@ -1158,8 +1449,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
  
    // Set the thinking config, if provided.
    if (thinking_config_obj != nullptr) {
@@ -3969,7 +3969,7 @@ index 9f27231..f25be29 100644
    }
  
    // Build the conversation
-@@ -1197,9 +1488,25 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
+@@ -1182,9 +1474,25 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
  
  LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeDeleteConversation)(
      JNIEnv* env, jclass thiz, jlong conversation_pointer) {
@@ -3995,7 +3995,7 @@ index 9f27231..f25be29 100644
  LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
      JNIEnv* env, jclass thiz, jlong conversation_pointer,
      jstring messageJSONString, jstring extraContextJsonString, jobject callback,
-@@ -1253,8 +1560,11 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
+@@ -1238,8 +1546,11 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
    }
  
    if (thinking_config_obj != nullptr) {
@@ -4009,7 +4009,7 @@ index 9f27231..f25be29 100644
    }
  
    if (constraint_type != 0) {
-@@ -1275,73 +1585,132 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
+@@ -1260,73 +1571,132 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
    }
  
    jobject callback_global = env->NewGlobalRef(callback);
@@ -4185,7 +4185,7 @@ index 9f27231..f25be29 100644
          }
        };
  
-@@ -1349,6 +1718,8 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
+@@ -1334,6 +1704,8 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
        json_message, std::move(callback_fn), std::move(optional_args));
  
    if (!status.ok()) {
@@ -4194,7 +4194,7 @@ index 9f27231..f25be29 100644
      ThrowLiteRtLmJniException(
          env, "Failed to start nativeSendMessageAsync: " + status.ToString());
    }
-@@ -1401,8 +1772,9 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeSendMessage)(
+@@ -1386,8 +1758,9 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeSendMessage)(
    }
  
    if (thinking_config_obj != nullptr) {
@@ -4206,7 +4206,7 @@ index 9f27231..f25be29 100644
    }
  
    if (constraint_type != 0) {
-@@ -1440,6 +1812,17 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeConversationCancelProcess)(
+@@ -1425,6 +1798,17 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeConversationCancelProcess)(
    conversation->CancelProcess();
  }
  
@@ -4225,10 +4225,10 @@ index 9f27231..f25be29 100644
      nativeConversationRenderMessageIntoString)(JNIEnv* env, jclass thiz,
                                                 jlong conversation_pointer,
 diff --git a/runtime/components/embedding_lookup/BUILD b/runtime/components/embedding_lookup/BUILD
-index e861168..5b263eb 100644
+index fb79847..1e84c22 100644
 --- a/runtime/components/embedding_lookup/BUILD
 +++ b/runtime/components/embedding_lookup/BUILD
-@@ -135,6 +135,7 @@ cc_library(
+@@ -142,6 +142,7 @@ cc_library(
          "@com_google_absl//absl/status:statusor",
          "@com_google_absl//absl/strings:string_view",
          "@com_google_absl//absl/types:span",
@@ -4236,7 +4236,7 @@ index e861168..5b263eb 100644
          "@litert//litert/cc:litert_environment",
          "@litert//litert/cc:litert_macros",
          "@litert//litert/cc:litert_model",
-@@ -148,3 +149,28 @@ cc_library(
+@@ -157,3 +158,28 @@ cc_library(
          "@litert//tflite/kernels:builtin_ops",
      ],
  )
@@ -4266,7 +4266,7 @@ index e861168..5b263eb 100644
 +    ],
 +)
 diff --git a/runtime/components/embedding_lookup/embedding_lookup_manager.cc b/runtime/components/embedding_lookup/embedding_lookup_manager.cc
-index d254a65..9538176 100644
+index c6320f0..df4ce7e 100644
 --- a/runtime/components/embedding_lookup/embedding_lookup_manager.cc
 +++ b/runtime/components/embedding_lookup/embedding_lookup_manager.cc
 @@ -30,6 +30,7 @@
@@ -4277,14 +4277,14 @@ index d254a65..9538176 100644
  #include "litert/cc/litert_environment.h"  // from @litert
  #include "litert/cc/litert_macros.h"  // from @litert
  #include "litert/cc/litert_model.h"  // from @litert
-@@ -76,6 +77,36 @@ EmbeddingLookupManager::Create(
+@@ -109,6 +110,36 @@ EmbeddingLookupManager::Create(
  
  absl::Status EmbeddingLookupManager::UpdateMultiModalEmbeddings(
      const ::litert::lm::ExecutorInputs& inputs) {
 +  // An external projected-audio tensor must match the active text model before
 +  // any lookup state is changed. Do not infer projection correctness merely
 +  // from a caller-provided width or from matching an encoder's output width.
-+  auto audio_embeddings = inputs.GetAudioEmbeddingsPtr();
++  auto audio_embeddings = inputs.GetProjectedAudioEmbeddingsPtr();
 +  if (audio_embeddings.ok() && *audio_embeddings != nullptr) {
 +    if (text_embedding_lookup_ == nullptr) {
 +      return absl::FailedPreconditionError(
@@ -4314,27 +4314,19 @@ index d254a65..9538176 100644
    auto vision_embeddings = inputs.GetVisionEmbeddingsPtr();
    if (vision_embeddings.ok() && *vision_embeddings != nullptr) {
      if (!fully_supports_multi_modal_) {
-@@ -93,7 +124,6 @@ absl::Status EmbeddingLookupManager::UpdateMultiModalEmbeddings(
-         std::move(*vision_embedding_lookup));
-   }
- 
--  auto audio_embeddings = inputs.GetAudioEmbeddingsPtr();
-   if (audio_embeddings.ok() && *audio_embeddings != nullptr) {
-     if (!fully_supports_multi_modal_) {
-       return absl::InvalidArgumentError(
 diff --git a/runtime/components/embedding_lookup/embedding_lookup_manager_test.cc b/runtime/components/embedding_lookup/embedding_lookup_manager_test.cc
-index 77395b8..fee8120 100644
+index 1467aec..11bb7ec 100644
 --- a/runtime/components/embedding_lookup/embedding_lookup_manager_test.cc
 +++ b/runtime/components/embedding_lookup/embedding_lookup_manager_test.cc
-@@ -39,6 +39,7 @@
- #include "litert/cc/litert_tensor_buffer_types.h"  // from @litert
+@@ -40,6 +40,7 @@
  #include "litert/test/matchers.h"  // from @litert
+ #include "runtime/components/embedding_lookup/embedding_lookup_text.h"
  #include "runtime/executor/llm_executor_io_types.h"
 +#include "runtime/util/test_utils.h"  // Standalone OSS status macros/matchers.
  
  namespace litert::lm {
  
-@@ -1701,4 +1702,27 @@ TEST_F(EmbeddingLookupManagerTest,
+@@ -1702,6 +1703,29 @@ TEST_F(EmbeddingLookupManagerTest,
    ASSERT_OK(embedding_lookup_manager_->CleanupMultiModalEmbeddings());
  }
  
@@ -4361,9 +4353,11 @@ index 77395b8..fee8120 100644
 +  ASSERT_OK(embedding_lookup_manager_->CleanupMultiModalEmbeddings());
 +}
 +
- }  // namespace litert::lm
+ TEST_F(EmbeddingLookupManagerTest, CreateFromPrebuiltEmbeddingLookupText) {
+   auto text_embedding_model_path = std::filesystem::path(::testing::SrcDir()) /
+                                    kTestdataDir /
 diff --git a/runtime/conversation/BUILD b/runtime/conversation/BUILD
-index 66a4615..4f69d25 100644
+index cc2e52f..bcd1ca2 100644
 --- a/runtime/conversation/BUILD
 +++ b/runtime/conversation/BUILD
 @@ -143,6 +143,7 @@ cc_library(
@@ -4383,10 +4377,10 @@ index 66a4615..4f69d25 100644
      ],
  )
 diff --git a/runtime/conversation/conversation.cc b/runtime/conversation/conversation.cc
-index 414a41d..c5e321f 100644
+index 41336fc..bc5376b 100644
 --- a/runtime/conversation/conversation.cc
 +++ b/runtime/conversation/conversation.cc
-@@ -50,6 +50,7 @@
+@@ -51,6 +51,7 @@
  #include "runtime/conversation/model_data_processor/config_registry.h"
  #include "runtime/conversation/model_data_processor/model_data_processor.h"
  #include "runtime/conversation/model_data_processor/model_data_processor_factory.h"
@@ -4394,7 +4388,7 @@ index 414a41d..c5e321f 100644
  #include "runtime/conversation/prompt_utils.h"
  #include "runtime/conversation/thinking_config.h"
  #include "runtime/engine/engine.h"
-@@ -426,6 +427,12 @@ absl::StatusOr<std::unique_ptr<Conversation>> Conversation::Create(
+@@ -422,6 +423,12 @@ absl::StatusOr<std::unique_ptr<Conversation>> Conversation::Create(
    if (!std::holds_alternative<JsonPreface>(config.GetPreface())) {
      return absl::InvalidArgumentError("Only JsonPreface is supported for now.");
    }
@@ -4407,7 +4401,7 @@ index 414a41d..c5e321f 100644
    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Engine::Session> session,
                          engine.CreateSession(config.GetSessionConfig()));
    ABSL_ASSIGN_OR_RETURN(
-@@ -569,6 +576,12 @@ absl::Status Conversation::SendMessageAsync(
+@@ -565,6 +572,11 @@ absl::Status Conversation::SendMessageAsync(
      const Message& message,
      absl::AnyInvocable<void(absl::StatusOr<Message>)> user_callback,
      OptionalArgs optional_args) {
@@ -4416,22 +4410,21 @@ index 414a41d..c5e321f 100644
 +    return absl::FailedPreconditionError(
 +        "Sealed projected audio does not support audio LoRA.");
 +  }
-+  const bool prior_appending_message = is_appending_message_;
-   ABSL_ASSIGN_OR_RETURN(std::string single_turn_text,
-                         GetSingleTurnText(message, optional_args));
+   if (optional_args.args.has_value() &&
+       engine_.GetEngineSettings().GetMaxVisionTokensPerImage().has_value()) {
+     ABSL_RETURN_IF_ERROR(ValidateVisualTokenBudget(
+@@ -582,12 +594,58 @@ absl::Status Conversation::SendMessageAsync(
    auto open_channel_name =
-@@ -576,8 +589,53 @@ absl::Status Conversation::SendMessageAsync(
+       GetOpenChannelName(single_turn_text, config_.GetChannels());
  
+-  size_t num_messages_added = 0;
    bool was_history_empty = false;
+-  bool is_appending_message = false;
    {
--    absl::MutexLock lock(history_mutex_);  // NOLINT
-+    absl::MutexLock lock(history_mutex_);
+     absl::MutexLock lock(history_mutex_);  // NOLINT
      was_history_empty = history_.empty();
 +  }
 +
-+  // Parse/validate all multimodal payloads before mutating history or session
-+  // checkpoints. A later executor failure still requires cancel/drain/dispose;
-+  // this is not a KV-cache transaction or a promise of safe failed-turn reuse.
 +  nlohmann::ordered_json messages_for_conversion;
 +  if (was_history_empty && !config_.prefill_preface_on_init()) {
 +    if (std::holds_alternative<JsonPreface>(preface_)) {
@@ -4460,22 +4453,28 @@ index 414a41d..c5e321f 100644
 +    }
 +  }
 +
++  // Parse/validate all multimodal payloads before mutating history or session
++  // checkpoints. A later executor failure still requires cancel/drain/dispose;
++  // this is not a KV-cache transaction or a promise of safe failed-turn reuse.
 +  auto parsed_inputs = model_data_processor_->ToInputDataVector(
 +      single_turn_text, messages_for_conversion,
 +      optional_args.args.value_or(std::monostate()));
 +  if (!parsed_inputs.ok()) {
 +    // Single-turn template rendering can change append state before parsing.
-+    is_appending_message_ = prior_appending_message;
++    absl::MutexLock lock(history_mutex_);
++    is_appending_message_ = prev_is_appending_message;
 +    return parsed_inputs.status();
 +  }
 +  auto session_inputs = std::move(*parsed_inputs);
 +
++  size_t num_messages_added = 0;
++  bool is_appending_message = false;
 +  {
-+    absl::MutexLock lock(history_mutex_);
++    absl::MutexLock lock(history_mutex_);  // NOLINT
      if (message.is_array()) {
        for (const auto& message : message) {
          history_.push_back(message);
-@@ -612,39 +670,6 @@ absl::Status Conversation::SendMessageAsync(
+@@ -634,39 +692,6 @@ absl::Status Conversation::SendMessageAsync(
      checkpoint_message_index_ = history_.size() - 1;
    }
  
@@ -4512,10 +4511,18 @@ index 414a41d..c5e321f 100644
 -                            single_turn_text, messages_for_conversion,
 -                            optional_args.args.value_or(std::monostate())));
 -
-   if (is_appending_message_) {
+   if (is_appending_message) {
      ABSL_ASSIGN_OR_RETURN(
          auto task_controller,
-@@ -854,6 +879,8 @@ absl::StatusOr<BenchmarkInfo*> Conversation::GetMutableBenchmarkInfo() {
+@@ -843,6 +868,7 @@ absl::Status Conversation::SendMessageAsync(
+   return run_prefill();
+ };
+ 
++
+ absl::StatusOr<Responses> Conversation::RunTextScoring(
+     const std::vector<absl::string_view>& target_text,
+     OptionalArgs optional_args) {
+@@ -880,6 +906,8 @@ absl::StatusOr<BenchmarkInfo*> Conversation::GetMutableBenchmarkInfo() {
  
  void Conversation::CancelProcess() { session_->CancelProcess(); }
  
@@ -4525,10 +4532,10 @@ index 414a41d..c5e321f 100644
    absl::MutexLock lock(task_controllers_mutex_);
    if (auto it = task_controllers_.find(task_group_id);
 diff --git a/runtime/conversation/conversation.h b/runtime/conversation/conversation.h
-index 7726890..53d0e6c 100644
+index 8dfd73b..55464ae 100644
 --- a/runtime/conversation/conversation.h
 +++ b/runtime/conversation/conversation.h
-@@ -635,6 +635,14 @@ class Conversation {
+@@ -637,6 +637,14 @@ class Conversation {
    // on the same Conversation will fail.
    void CancelProcess();
  
@@ -4544,10 +4551,10 @@ index 7726890..53d0e6c 100644
    // original conversation, including the history, state, etc.
    //
 diff --git a/runtime/conversation/conversation_test.cc b/runtime/conversation/conversation_test.cc
-index 88b87a7..f92874e 100644
+index 72551e0..8c0b136 100644
 --- a/runtime/conversation/conversation_test.cc
 +++ b/runtime/conversation/conversation_test.cc
-@@ -55,6 +55,7 @@
+@@ -56,6 +56,7 @@
  #include "runtime/executor/executor_settings_base.h"
  #include "runtime/proto/llm_metadata.pb.h"
  #include "runtime/proto/token.pb.h"
@@ -4555,7 +4562,7 @@ index 88b87a7..f92874e 100644
  #include "runtime/util/test_utils.h"  // IWYU pragma: keep
  
  namespace litert::lm {
-@@ -476,6 +477,130 @@ TEST_P(ConversationTest, SendMessage) {
+@@ -477,6 +478,130 @@ TEST_P(ConversationTest, SendMessage) {
                testing::ElementsAre(user_message, expected_message));
  }
  
@@ -4687,10 +4694,10 @@ index 88b87a7..f92874e 100644
    ASSERT_OK_AND_ASSIGN(auto model_assets,
                         ModelAssets::Create(GetTestdataPath(kTestLlmPath)));
 diff --git a/runtime/conversation/model_data_processor/BUILD b/runtime/conversation/model_data_processor/BUILD
-index 2af97b3..5f4c0f2 100644
+index f83ef9f..b54b0f5 100644
 --- a/runtime/conversation/model_data_processor/BUILD
 +++ b/runtime/conversation/model_data_processor/BUILD
-@@ -95,6 +95,9 @@ cc_library(
+@@ -103,6 +103,9 @@ cc_library(
      srcs = ["multimodal_processor_helper.cc"],
      hdrs = ["multimodal_processor_helper.h"],
      deps = [
@@ -4700,7 +4707,7 @@ index 2af97b3..5f4c0f2 100644
          ":data_utils",
          "@com_google_absl//absl/status",
          "@com_google_absl//absl/status:status_macros",
-@@ -303,6 +306,7 @@ cc_test(
+@@ -312,6 +315,7 @@ cc_test(
          ":multimodal_processor_helper",
          ":processor_test_utils",
          "@com_google_googletest//:gtest_main",
@@ -4709,10 +4716,10 @@ index 2af97b3..5f4c0f2 100644
          "@nlohmann_json//:json",
          "@litert//litert/cc:litert_layout",
 diff --git a/runtime/conversation/model_data_processor/gemma4_data_processor.cc b/runtime/conversation/model_data_processor/gemma4_data_processor.cc
-index 8c87983..9493025 100644
+index b63db47..0c61e04 100644
 --- a/runtime/conversation/model_data_processor/gemma4_data_processor.cc
 +++ b/runtime/conversation/model_data_processor/gemma4_data_processor.cc
-@@ -348,6 +348,7 @@ Gemma4DataProcessor::ToInputDataVectorImpl(
+@@ -128,6 +128,7 @@ Gemma4DataProcessor::ToInputDataVectorImpl(
        .audio_prefix = "",
        .audio_suffix = "",
        .add_audio_end = true,
@@ -4721,10 +4728,10 @@ index 8c87983..9493025 100644
    ImagePreprocessParameter image_preprocess_parameter;
    image_preprocess_parameter.SetPatchifyConfig(
 diff --git a/runtime/conversation/model_data_processor/generic_data_processor.cc b/runtime/conversation/model_data_processor/generic_data_processor.cc
-index 8772ffc..584311b 100644
+index c8578da..04a889f 100644
 --- a/runtime/conversation/model_data_processor/generic_data_processor.cc
 +++ b/runtime/conversation/model_data_processor/generic_data_processor.cc
-@@ -66,6 +66,10 @@ GenericDataProcessor::ToInputDataVectorImpl(
+@@ -60,6 +60,10 @@ GenericDataProcessor::ToInputDataVectorImpl(
      const nlohmann::ordered_json& messages,
      const GenericDataProcessorArguments& args) const {
    if (!config_.multimodal.has_value()) {
@@ -4736,7 +4743,7 @@ index 8772ffc..584311b 100644
      input_data.emplace_back(InputText(rendered_template_prompt));
      return input_data;
 diff --git a/runtime/conversation/model_data_processor/generic_data_processor_test.cc b/runtime/conversation/model_data_processor/generic_data_processor_test.cc
-index a2c20f2..59fc25e 100644
+index e2e9a08..35611ce 100644
 --- a/runtime/conversation/model_data_processor/generic_data_processor_test.cc
 +++ b/runtime/conversation/model_data_processor/generic_data_processor_test.cc
 @@ -22,6 +22,7 @@
@@ -4747,7 +4754,7 @@ index a2c20f2..59fc25e 100644
  #include "absl/strings/string_view.h"  // from @com_google_absl
  #include "nlohmann/json.hpp"  // from @nlohmann_json
  #include "litert/cc/litert_layout.h"  // from @litert
-@@ -66,6 +67,37 @@ TEST(GenericDataProcessorTest, ToInputDataVector) {
+@@ -67,6 +68,37 @@ TEST(GenericDataProcessorTest, ToInputDataVector) {
    EXPECT_THAT(input_data, ElementsAre(HasInputText(&expected_text)));
  }
  
@@ -4785,13 +4792,13 @@ index a2c20f2..59fc25e 100644
  TEST(GenericDataProcessorTest, ToMessageDefault) {
    ASSERT_OK_AND_ASSIGN(auto processor, GenericDataProcessor::Create());
  
-@@ -316,4 +348,3 @@ TEST(GenericDataProcessorTest, RenderSingleTurnTemplateAppendUser) {
+@@ -278,4 +310,3 @@ TEST(GenericDataProcessorTest, RenderSingleTurnTemplateAppendUser) {
  
  }  // namespace
  }  // namespace litert::lm
 -
 diff --git a/runtime/conversation/model_data_processor/multimodal_processor_helper.cc b/runtime/conversation/model_data_processor/multimodal_processor_helper.cc
-index 456f40d..822278d 100644
+index dc25d4e..e4bd6c6 100644
 --- a/runtime/conversation/model_data_processor/multimodal_processor_helper.cc
 +++ b/runtime/conversation/model_data_processor/multimodal_processor_helper.cc
 @@ -16,6 +16,7 @@
@@ -4979,7 +4986,7 @@ index 456f40d..822278d 100644
          }
        }
      }
-@@ -149,11 +282,6 @@ absl::StatusOr<std::vector<InputData>> ProcessMultimodalPrompt(
+@@ -151,11 +284,6 @@ absl::StatusOr<std::vector<InputData>> ProcessMultimodalPrompt(
          input_data.emplace_back(InputText(config.image_suffix));
        }
      } else if (RE2::FullMatch(part, re_audio)) {
@@ -4991,7 +4998,7 @@ index 456f40d..822278d 100644
        std::string text =
            absl::StrCat(text_part, config.audio_prefix, config.boa_token);
        if (!text.empty()) {
-@@ -164,20 +292,29 @@ absl::StatusOr<std::vector<InputData>> ProcessMultimodalPrompt(
+@@ -166,20 +294,29 @@ absl::StatusOr<std::vector<InputData>> ProcessMultimodalPrompt(
          return absl::InvalidArgumentError(
              "Provided less audio than expected in the prompt.");
        }
@@ -5179,7 +5186,7 @@ index 94e6bdd..db16c2e 100644
  }  // namespace
  }  // namespace litert::lm
 diff --git a/runtime/core/cached_session.cc b/runtime/core/cached_session.cc
-index 98dcebb..e6ef4e6 100644
+index 75da07f..47aba85 100644
 --- a/runtime/core/cached_session.cc
 +++ b/runtime/core/cached_session.cc
 @@ -244,6 +244,20 @@ absl::StatusOr<MediaHash> GetImageHash(
@@ -5213,10 +5220,10 @@ index 98dcebb..e6ef4e6 100644
                          input_audio.GetPreprocessedAudioTensor());
    ABSL_ASSIGN_OR_RETURN(size_t hash, HashTensorBuffer(*buffer));
 diff --git a/runtime/core/cached_session_test.cc b/runtime/core/cached_session_test.cc
-index ae491e0..0f09682 100644
+index 781d20f..561dc56 100644
 --- a/runtime/core/cached_session_test.cc
 +++ b/runtime/core/cached_session_test.cc
-@@ -158,6 +158,161 @@ class CachedSessionTest : public ::testing::Test {
+@@ -168,6 +168,161 @@ class CachedSessionTest : public ::testing::Test {
    std::optional<litert::Environment> env_;
  };
  
@@ -5379,10 +5386,10 @@ index ae491e0..0f09682 100644
    auto mock_session = std::make_unique<MockSession>();
    auto* mock_session_ptr = mock_session.get();
 diff --git a/runtime/core/session_utils.cc b/runtime/core/session_utils.cc
-index e8dad37..c3f554a 100644
+index 06f9a25..9037395 100644
 --- a/runtime/core/session_utils.cc
 +++ b/runtime/core/session_utils.cc
-@@ -213,7 +213,7 @@ absl::StatusOr<std::vector<InputData>> PreprocessContents(
+@@ -212,7 +212,7 @@ absl::StatusOr<std::vector<InputData>> PreprocessContents(
        }
      } else if (const auto* input_audio_end =
                     std::get_if<InputAudioEnd>(&content)) {
@@ -5392,10 +5399,10 @@ index e8dad37..c3f554a 100644
        return absl::InternalError(
            "Unsupported input type in preprocessed_contents.");
 diff --git a/runtime/core/session_utils_test.cc b/runtime/core/session_utils_test.cc
-index b8d1047..2e92996 100644
+index 8050d03..f8952fe 100644
 --- a/runtime/core/session_utils_test.cc
 +++ b/runtime/core/session_utils_test.cc
-@@ -562,6 +562,56 @@ TEST_F(SessionUtilsTest, PreprocessContentsMultimodal) {
+@@ -563,6 +563,56 @@ TEST_F(SessionUtilsTest, PreprocessContentsMultimodal) {
    ASSERT_TRUE(std::holds_alternative<InputAudioEnd>(preprocessed_contents[6]));
  }
  
@@ -5453,50 +5460,50 @@ index b8d1047..2e92996 100644
    SessionConfig session_config = SessionConfig::CreateDefault();
    std::vector<InputData> contents;
 diff --git a/runtime/framework/resource_management/BUILD b/runtime/framework/resource_management/BUILD
-index 533c3e0..d757d2d 100644
+index 0afb5e5..c0eee79 100644
 --- a/runtime/framework/resource_management/BUILD
 +++ b/runtime/framework/resource_management/BUILD
-@@ -157,6 +157,9 @@ cc_test(
-         "@com_google_absl//absl/strings:string_view",
+@@ -183,6 +183,9 @@ cc_test(
          "@com_google_absl//absl/synchronization",
          "@com_google_absl//absl/time",
+         "@com_google_absl//absl/types:span",
 +        "@litert//litert/cc:litert_element_type",
 +        "@litert//litert/cc:litert_layout",
 +        "@litert//litert/cc:litert_ranked_tensor_type",
          "@litert//litert/cc:litert_tensor_buffer",
          "//runtime/components:model_resources",
-         "//runtime/components/logits_processor:no_repeat_ngram_config",
-@@ -172,6 +175,7 @@ cc_test(
-         "//runtime/executor:llm_executor_io_types",
+         "//runtime/components/constrained_decoding:fake_constraint",
+@@ -199,6 +202,7 @@ cc_test(
          "//runtime/proto:token_cc",
+         "//runtime/util:convert_tensor_buffer",
          "//runtime/util:litert_status_util",
 +        "//runtime/util:scoped_file",
          "//runtime/util:test_utils",
          "//support/tokenizer",
      ],
 diff --git a/runtime/framework/resource_management/execution_manager_test.cc b/runtime/framework/resource_management/execution_manager_test.cc
-index 9542fc0..a8d48fd 100644
+index a7623ae..0a96db4 100644
 --- a/runtime/framework/resource_management/execution_manager_test.cc
 +++ b/runtime/framework/resource_management/execution_manager_test.cc
-@@ -31,6 +31,9 @@
- #include "absl/strings/string_view.h"  // from @com_google_absl
+@@ -32,6 +32,9 @@
  #include "absl/synchronization/mutex.h"  // from @com_google_absl
  #include "absl/time/time.h"  // from @com_google_absl
+ #include "absl/types/span.h"  // from @com_google_absl
 +#include "litert/cc/litert_element_type.h"
 +#include "litert/cc/litert_layout.h"
 +#include "litert/cc/litert_ranked_tensor_type.h"
  #include "litert/cc/litert_tensor_buffer.h"  // from @litert
- #include "runtime/components/logits_processor/constrained_decoding/fake_constraint.h"
- #include "runtime/components/logits_processor/no_repeat_ngram_config.h"
-@@ -48,6 +51,7 @@
- #include "runtime/framework/resource_management/threaded_execution_manager.h"
+ #include "runtime/components/constrained_decoding/fake_constraint.h"
+ #include "runtime/components/constrained_decoding/no_repeat_ngram_config.h"
+@@ -50,6 +53,7 @@
  #include "runtime/proto/token.pb.h"
+ #include "runtime/util/convert_tensor_buffer.h"
  #include "runtime/util/status_macros.h"  // IWYU pragma: keep
 +#include "runtime/util/scoped_file.h"
  #include "runtime/util/test_utils.h"  // NOLINT
  #include "support/tokenizer/tokenizer.h"
  
-@@ -85,6 +89,51 @@ class FakeAudioExecutor : public AudioExecutor {
+@@ -165,6 +169,51 @@ class FailingAudioExecutor : public AudioExecutor {
    }
  };
  
@@ -5548,7 +5555,7 @@ index 9542fc0..a8d48fd 100644
  enum class ExecutionManagerType {
    kThreaded,
    kSerial,
-@@ -285,6 +334,135 @@ TEST_P(ExecutionManagerTest, AddPrefillTaskWithAudioModality) {
+@@ -367,6 +416,138 @@ TEST_P(ExecutionManagerTest, AddPrefillTaskWithAudioModality) {
    EXPECT_OK(execution_manager_->WaitUntilDone(task_id, absl::Seconds(3)));
  }
  
@@ -5556,7 +5563,8 @@ index 9542fc0..a8d48fd 100644
 +  auto calls = std::make_shared<std::atomic<int>>(0);
 +  ASSERT_OK_AND_ASSIGN(auto model_assets, ModelAssets::Create("projected-test-model"));
 +  ASSERT_OK_AND_ASSIGN(auto audio_settings,
-+      AudioExecutorSettings::CreateDefault(model_assets, 128, Backend::CPU));
++      AudioExecutorSettings::CreateDefault(model_assets, 128, Backend::CPU,
++                                     Backend::CPU));
 +  CreateExecutionManager(std::make_unique<FakeLlmExecutor>(kVocabSize,
 +      std::vector<std::vector<int>>{{-2, -2, -4}},
 +      std::vector<std::vector<int>>{{4}, {5}, {6}}, 1,
@@ -5601,7 +5609,8 @@ index 9542fc0..a8d48fd 100644
 +    auto* audio = audio_executor.get();
 +    ASSERT_OK_AND_ASSIGN(auto model_assets, ModelAssets::Create("audio-lora-test"));
 +    ASSERT_OK_AND_ASSIGN(auto audio_settings,
-+        AudioExecutorSettings::CreateDefault(model_assets, 128, Backend::CPU));
++        AudioExecutorSettings::CreateDefault(model_assets, 128, Backend::CPU,
++                                     Backend::CPU));
 +    CreateExecutionManager(CreateDefaultFakeLlmExecutor(),
 +        std::make_unique<AudioExecutorSettings>(std::move(audio_settings)),
 +        std::move(audio_executor));
@@ -5643,7 +5652,8 @@ index 9542fc0..a8d48fd 100644
 +  auto* audio = audio_executor.get();
 +  ASSERT_OK_AND_ASSIGN(auto model_assets, ModelAssets::Create("audio-lora-test"));
 +  ASSERT_OK_AND_ASSIGN(auto audio_settings,
-+      AudioExecutorSettings::CreateDefault(model_assets, 128, Backend::CPU));
++      AudioExecutorSettings::CreateDefault(model_assets, 128, Backend::CPU,
++                                     Backend::CPU));
 +  CreateExecutionManager(CreateDefaultFakeLlmExecutor({{{1, 2, 3, -4}}}),
 +      std::make_unique<AudioExecutorSettings>(std::move(audio_settings)),
 +      std::move(audio_executor));
@@ -5681,56 +5691,28 @@ index 9542fc0..a8d48fd 100644
 +  EXPECT_EQ(audio->flushes.load(), 1);
 +}
 +
- TEST_P(ExecutionManagerTest, AddPrefillTaskInvalidAudioInput) {
-   CreateExecutionManager(CreateDefaultFakeLlmExecutor());
-   ASSERT_OK_AND_ASSIGN(auto session_config, CreateDefaultSessionConfig());
+ TEST_P(ExecutionManagerTest, EncodeAudioWithSessionInfo) {
+   auto fake_llm_executor = CreateDefaultFakeLlmExecutor();
+ 
 diff --git a/runtime/framework/resource_management/serial_execution_manager.cc b/runtime/framework/resource_management/serial_execution_manager.cc
-index 1357921..78d9aec 100644
+index a7959af..bbca9f5 100644
 --- a/runtime/framework/resource_management/serial_execution_manager.cc
 +++ b/runtime/framework/resource_management/serial_execution_manager.cc
-@@ -623,17 +623,30 @@ SerialExecutionManager::ProcessAndCombineContents(
-         return absl::FailedPreconditionError(
-             "The audio is not a preprocessed tensor.");
-       }
--      ABSL_ASSIGN_OR_RETURN(const auto* spectrogram_tensor,
--                            input_audio->GetPreprocessedAudioTensor());
--      if (benchmark_info.has_value()) {
--        ABSL_RETURN_IF_ERROR(benchmark_info->TimeMarkDelta("audio_executor"));
--      }
--      ABSL_ASSIGN_OR_RETURN(auto audio_executor,
--                            resource_manager_->AcquireAudioExecutor());
--      ABSL_ASSIGN_OR_RETURN(auto single_audio_data,
--                            audio_executor->Encode(*spectrogram_tensor));
--      if (benchmark_info.has_value()) {
--        ABSL_RETURN_IF_ERROR(benchmark_info->TimeMarkDelta("audio_executor"));
-+      ExecutorAudioData single_audio_data;
-+      if (input_audio->IsAudioEmbeddings()) {
+@@ -650,8 +650,13 @@ SerialExecutionManager::ProcessAndCombineContents(
+       combined_token_ids.push_back(ExecutorVisionData::kEndToken);
+     } else if (const auto* input_audio =
+                    std::get_if<InputAudio>(&preprocessed_content)) {
++      if (!input_audio->IsTensorBuffer()) {
++        return absl::FailedPreconditionError(
++            "The audio is not a preprocessed tensor.");
++      }
+       ExecutorAudioData single_audio_data;
+       if (input_audio->IsAudioEmbeddings()) {
 +        ABSL_RETURN_IF_ERROR(input_audio->ValidateAudioEmbeddings());
-+        ABSL_ASSIGN_OR_RETURN(const auto* embeddings,
-+                              input_audio->GetPreprocessedAudioTensor());
-+        LITERT_ASSIGN_OR_RETURN(auto owned_embeddings, embeddings->Duplicate());
-+        ABSL_ASSIGN_OR_RETURN(const auto& dims,
-+                              TensorBufferDims(owned_embeddings));
-+        const int valid_tokens = dims[1];
-+        single_audio_data.SetEmbeddings(std::move(owned_embeddings));
-+        single_audio_data.SetValidTokens(valid_tokens);
-+      } else {
-+        ABSL_ASSIGN_OR_RETURN(const auto* spectrogram_tensor,
-+                              input_audio->GetPreprocessedAudioTensor());
-+        if (benchmark_info.has_value()) {
-+          ABSL_RETURN_IF_ERROR(benchmark_info->TimeMarkDelta("audio_executor"));
-+        }
-+        ABSL_ASSIGN_OR_RETURN(auto audio_executor,
-+                              resource_manager_->AcquireAudioExecutor());
-+        ABSL_ASSIGN_OR_RETURN(single_audio_data,
-+                              audio_executor->Encode(*spectrogram_tensor));
-+        if (benchmark_info.has_value()) {
-+          ABSL_RETURN_IF_ERROR(benchmark_info->TimeMarkDelta("audio_executor"));
-+        }
-       }
-       const int num_audio_tokens = single_audio_data.GetValidTokens();
-       if (num_audio_tokens > 0) {
-@@ -645,20 +658,22 @@ SerialExecutionManager::ProcessAndCombineContents(
+         ABSL_ASSIGN_OR_RETURN(const auto* tensor,
+                               input_audio->GetPreprocessedAudioTensor());
+         LITERT_ASSIGN_OR_RETURN(auto dup, tensor->Duplicate());
+@@ -693,20 +698,22 @@ SerialExecutionManager::ProcessAndCombineContents(
                     std::get_if<InputAudioEnd>(&preprocessed_content)) {
        // We allow audio end token even if the audio executor is not
        // available.
@@ -5766,7 +5748,7 @@ index 1357921..78d9aec 100644
          }
        }
        combined_token_ids.push_back(ExecutorAudioData::kEndToken);
-@@ -699,6 +714,20 @@ absl::Status SerialExecutionManager::AddPrefillTask(
+@@ -747,6 +754,20 @@ absl::Status SerialExecutionManager::AddPrefillTask(
      absl::flat_hash_set<TaskId> dep_tasks,
      std::shared_ptr<std::atomic<bool>> absl_nonnull cancelled,
      absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) {
@@ -5788,52 +5770,18 @@ index 1357921..78d9aec 100644
      callback = [](absl::StatusOr<Responses>) {};
    }
 diff --git a/runtime/framework/resource_management/threaded_execution_manager.cc b/runtime/framework/resource_management/threaded_execution_manager.cc
-index 135851e..20a33f8 100644
+index 0a11da4..b747485 100644
 --- a/runtime/framework/resource_management/threaded_execution_manager.cc
 +++ b/runtime/framework/resource_management/threaded_execution_manager.cc
-@@ -646,17 +646,30 @@ ThreadedExecutionManager::ProcessAndCombineContents(
-       combined_token_ids.push_back(ExecutorVisionData::kEndToken);
-     } else if (const auto* input_audio =
+@@ -678,6 +678,7 @@ ThreadedExecutionManager::ProcessAndCombineContents(
                     std::get_if<InputAudio>(&preprocessed_content)) {
--      ABSL_ASSIGN_OR_RETURN(const auto* spectrogram_tensor,
--                            input_audio->GetPreprocessedAudioTensor());
--      if (benchmark_info.has_value()) {
--        ABSL_RETURN_IF_ERROR(benchmark_info->TimeMarkDelta("audio_executor"));
--      }
--      ABSL_ASSIGN_OR_RETURN(auto audio_executor,
--                            resource_manager_->AcquireAudioExecutor());
--      ABSL_ASSIGN_OR_RETURN(auto single_audio_data,
--                            audio_executor->Encode(*spectrogram_tensor));
--      if (benchmark_info.has_value()) {
--        ABSL_RETURN_IF_ERROR(benchmark_info->TimeMarkDelta("audio_executor"));
-+      ExecutorAudioData single_audio_data;
-+      if (input_audio->IsAudioEmbeddings()) {
+       ExecutorAudioData single_audio_data;
+       if (input_audio->IsAudioEmbeddings()) {
 +        ABSL_RETURN_IF_ERROR(input_audio->ValidateAudioEmbeddings());
-+        ABSL_ASSIGN_OR_RETURN(const auto* embeddings,
-+                              input_audio->GetPreprocessedAudioTensor());
-+        LITERT_ASSIGN_OR_RETURN(auto owned_embeddings, embeddings->Duplicate());
-+        ABSL_ASSIGN_OR_RETURN(const auto& dims,
-+                              TensorBufferDims(owned_embeddings));
-+        const int valid_tokens = dims[1];
-+        single_audio_data.SetEmbeddings(std::move(owned_embeddings));
-+        single_audio_data.SetValidTokens(valid_tokens);
-+      } else {
-+        ABSL_ASSIGN_OR_RETURN(const auto* spectrogram_tensor,
-+                              input_audio->GetPreprocessedAudioTensor());
-+        if (benchmark_info.has_value()) {
-+          ABSL_RETURN_IF_ERROR(benchmark_info->TimeMarkDelta("audio_executor"));
-+        }
-+        ABSL_ASSIGN_OR_RETURN(auto audio_executor,
-+                              resource_manager_->AcquireAudioExecutor());
-+        ABSL_ASSIGN_OR_RETURN(single_audio_data,
-+                              audio_executor->Encode(*spectrogram_tensor));
-+        if (benchmark_info.has_value()) {
-+          ABSL_RETURN_IF_ERROR(benchmark_info->TimeMarkDelta("audio_executor"));
-+        }
-       }
-       const int num_audio_tokens = single_audio_data.GetValidTokens();
-       if (num_audio_tokens > 0) {
-@@ -668,20 +681,22 @@ ThreadedExecutionManager::ProcessAndCombineContents(
+         ABSL_ASSIGN_OR_RETURN(const auto* tensor,
+                               input_audio->GetPreprocessedAudioTensor());
+         LITERT_ASSIGN_OR_RETURN(auto dup, tensor->Duplicate());
+@@ -719,20 +720,22 @@ ThreadedExecutionManager::ProcessAndCombineContents(
                     std::get_if<InputAudioEnd>(&preprocessed_content)) {
        // We allow audio end token even if the audio executor is not
        // available.
@@ -5869,7 +5817,7 @@ index 135851e..20a33f8 100644
          }
        }
        combined_token_ids.push_back(ExecutorAudioData::kEndToken);
-@@ -784,6 +799,20 @@ absl::Status ThreadedExecutionManager::AddPrefillTask(
+@@ -837,6 +840,20 @@ absl::Status ThreadedExecutionManager::AddPrefillTask(
      absl::flat_hash_set<TaskId> dep_tasks,
      std::shared_ptr<std::atomic<bool>> absl_nonnull cancelled,
      absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) {
@@ -5891,10 +5839,10 @@ index 135851e..20a33f8 100644
      callback = [](absl::StatusOr<Responses> responses) {};
    }
 diff --git a/runtime/util/BUILD b/runtime/util/BUILD
-index 7bce128..183a4c1 100644
+index aefd758..068556a 100644
 --- a/runtime/util/BUILD
 +++ b/runtime/util/BUILD
-@@ -102,6 +102,7 @@ cc_library(
+@@ -200,6 +200,7 @@ cc_library(
          "@com_google_absl//absl/status",
          "@com_google_absl//absl/status:status_macros",
          "@com_google_absl//absl/status:statusor",
@@ -5903,7 +5851,7 @@ index 7bce128..183a4c1 100644
          "@litert//litert/cc:litert_macros",
          "@litert//litert/cc:litert_ranked_tensor_type",
 diff --git a/runtime/util/executor_data_util.cc b/runtime/util/executor_data_util.cc
-index c94c4ce..5c400e6 100644
+index 7b10ed7..61ecccb 100644
 --- a/runtime/util/executor_data_util.cc
 +++ b/runtime/util/executor_data_util.cc
 @@ -15,6 +15,7 @@
@@ -5922,7 +5870,7 @@ index c94c4ce..5c400e6 100644
  #include "litert/cc/litert_layout.h"  // from @litert
  #include "litert/cc/litert_macros.h"  // from @litert
  #include "litert/cc/litert_ranked_tensor_type.h"  // from @litert
-@@ -53,7 +55,7 @@ absl::StatusOr<T> CombineExecutorDataImpl(std::vector<T>& executor_data) {
+@@ -73,7 +75,7 @@ absl::StatusOr<T> CombineExecutorDataImpl(std::vector<T>& executor_data) {
    ABSL_ASSIGN_OR_RETURN(auto first_tensor_dims,
                          TensorBufferDims(*first_tensor));
    int total_token_num = 0;
@@ -5931,7 +5879,7 @@ index c94c4ce..5c400e6 100644
    std::vector<int> combined_token_num;
    for (const auto& executor_data : executor_data) {
      ABSL_ASSIGN_OR_RETURN(const auto* embeddings_ptr,
-@@ -63,9 +65,39 @@ absl::StatusOr<T> CombineExecutorDataImpl(std::vector<T>& executor_data) {
+@@ -83,9 +85,39 @@ absl::StatusOr<T> CombineExecutorDataImpl(std::vector<T>& executor_data) {
        return absl::InvalidArgumentError(
            "The embedding tensor type must have 3 or 4 dimensions.");
      }
@@ -5974,10 +5922,10 @@ index c94c4ce..5c400e6 100644
    }
    Layout combined_layout;
 diff --git a/runtime/util/executor_data_util_test.cc b/runtime/util/executor_data_util_test.cc
-index dd97d93..83f9905 100644
+index 061491d..15ab65c 100644
 --- a/runtime/util/executor_data_util_test.cc
 +++ b/runtime/util/executor_data_util_test.cc
-@@ -212,6 +212,30 @@ TEST(ExecutorDataUtilTest, CombineExecutorAudioDataMultiSuccess) {
+@@ -220,6 +220,30 @@ TEST(ExecutorDataUtilTest, CombineExecutorAudioDataMultiSuccess) {
                            11.0, 12.0));
  }
  
@@ -6009,11 +5957,11 @@ index dd97d93..83f9905 100644
    std::vector<ExecutorVisionData> executor_data;
    EXPECT_THAT(
 diff --git a/support/util/BUILD b/support/util/BUILD
-index 7cc080b..a867da0 100644
+index 4d6d183..5e14f76 100644
 --- a/support/util/BUILD
 +++ b/support/util/BUILD
-@@ -152,6 +152,8 @@ cc_library(
-         "@com_google_absl//absl/status:statusor",
+@@ -151,6 +151,8 @@ cc_library(
+         "@com_google_absl//absl/strings",
          "@com_google_absl//absl/strings:string_view",
          "@com_google_absl//absl/types:span",
 +        "@litert//litert/cc:litert_element_type",
@@ -6021,7 +5969,7 @@ index 7cc080b..a867da0 100644
          "@litert//litert/cc:litert_environment",  # litert runtime dependency
          "@litert//litert/cc:litert_macros",
          "@litert//litert/cc:litert_tensor_buffer",
-@@ -191,3 +193,15 @@ cc_library(
+@@ -188,3 +190,15 @@ cc_library(
  )
  
  # Dummy comment to trigger copybara.
@@ -6038,27 +5986,30 @@ index 7cc080b..a867da0 100644
 +    deps = [":projected_audio_payload"],
 +)
 diff --git a/support/util/io_types.cc b/support/util/io_types.cc
-index e00a4df..81001ed 100644
+index f0fa398..02ffa1f 100644
 --- a/support/util/io_types.cc
 +++ b/support/util/io_types.cc
-@@ -14,6 +14,7 @@
+@@ -14,6 +14,9 @@
  
  #include "support/util/io_types.h"
  
 +#include <cmath>
- #include <cstddef>
- #include <cstdint>
++#include <cstddef>
++#include <cstdint>
  #include <string>
-@@ -26,6 +27,8 @@
+ #include <utility>
+ #include <variant>
+@@ -24,7 +27,9 @@
  #include "absl/status/statusor.h"  // from @com_google_absl
  #include "absl/strings/string_view.h"  // from @com_google_absl
  #include "absl/types/span.h"  // from @com_google_absl
 +#include "litert/cc/litert_element_type.h"  // from @litert
+ #include "litert/cc/litert_macros.h"  // from @litert
 +#include "litert/cc/litert_tensor_buffer_types.h"  // from @litert
  #include "litert/cc/litert_tensor_buffer.h"  // from @litert
  
  namespace litert::support {
-@@ -137,13 +140,53 @@ absl::StatusOr<absl::Span<const float>> InputAudio::GetPcmFrames() const {
+@@ -136,6 +141,46 @@ absl::StatusOr<absl::Span<const float>> InputAudio::GetPcmFrames() const {
    return absl::FailedPreconditionError("The audio is not a float vector.");
  }
  
@@ -6104,22 +6055,14 @@ index e00a4df..81001ed 100644
 +
  absl::StatusOr<InputAudio> InputAudio::CreateCopy() const {
    if (std::holds_alternative<std::string>(data_)) {
-     return InputAudio(std::move(std::get<std::string>(data_)));
-   } else if (std::holds_alternative<::litert::TensorBuffer>(data_)) {
-     LITERT_ASSIGN_OR_RETURN(auto tensor_buffer_clone,
-                             std::get<::litert::TensorBuffer>(data_).Duplicate());
--    return InputAudio(std::move(tensor_buffer_clone));
-+    return InputAudio(std::move(tensor_buffer_clone), is_embeddings_);
-   } else if (std::holds_alternative<std::vector<float>>(data_)) {
-     return InputAudio(std::get<std::vector<float>>(data_));
-   }
+     return InputAudio(std::get<std::string>(data_));
 diff --git a/support/util/io_types.h b/support/util/io_types.h
-index ffca5b2..7ad2c31 100644
+index cd524fa..1a18bb3 100644
 --- a/support/util/io_types.h
 +++ b/support/util/io_types.h
-@@ -171,6 +171,12 @@ class InputAudio {
-       std::variant<std::string, ::litert::TensorBuffer, std::vector<float>> data)
-       : data_(std::move(data)) {}
+@@ -175,6 +175,12 @@ class InputAudio {
+   explicit InputAudio(::litert::TensorBuffer tensor, bool is_embeddings = false)
+       : data_(std::move(tensor)), is_embeddings_(is_embeddings) {}
  
 +  // Explicitly marks already-adapted soft tokens in the LLM embedding space.
 +  // This must never be used for raw encoder features. The tensor excludes EOA;
@@ -6130,32 +6073,20 @@ index ffca5b2..7ad2c31 100644
    // Copy constructor.
    InputAudio(const InputAudio& other) = delete;
    // Copy assignment operator.
-@@ -190,6 +196,16 @@ class InputAudio {
-     return std::holds_alternative<std::vector<float>>(data_);
-   }
+@@ -197,6 +203,12 @@ class InputAudio {
+   // Returns true if the audio is pre-computed audio embeddings.
+   bool IsAudioEmbeddings() const { return is_embeddings_; }
  
-+  // True only for explicitly supplied, post-adapter audio soft tokens.
-+  bool IsAudioEmbeddings() const { return is_embeddings_; }
-+
 +  // Checks the bounded host Float32 [1, audio_tokens, model_width] contract.
 +  // The active model width is checked by its embedding lookup before prefill.
 +  absl::Status ValidateAudioEmbeddings() const;
 +
 +  static constexpr int kMaxAudioEmbeddingTokens = 750;
 +  static constexpr int kMaxAudioEmbeddingWidth = 8192;
-+
    // Returns the raw audio bytes. Returns an error if the audio is preprocessed.
    absl::StatusOr<absl::string_view> GetRawAudioBytes() const;
  
-@@ -209,6 +225,7 @@ class InputAudio {
- 
-  private:
-   std::variant<std::string, ::litert::TensorBuffer, std::vector<float>> data_;
-+  bool is_embeddings_ = false;
- };
- 
- inline std::ostream& operator<<(std::ostream& os,
-@@ -220,7 +237,14 @@ inline std::ostream& operator<<(std::ostream& os,
+@@ -229,7 +241,14 @@ inline std::ostream& operator<<(std::ostream& os,
  // A signal to indicate the end of input audio.
  class InputAudioEnd {
   public:
@@ -6171,7 +6102,7 @@ index ffca5b2..7ad2c31 100644
  };
  
  inline std::ostream& operator<<(std::ostream& os,
-@@ -247,8 +271,8 @@ inline absl::StatusOr<InputData> CreateInputDataCopy(const InputData& data) {
+@@ -256,8 +275,8 @@ inline absl::StatusOr<InputData> CreateInputDataCopy(const InputData& data) {
      return input_image->CreateCopy();
    } else if (const auto* input_audio = std::get_if<InputAudio>(&data)) {
      return input_audio->CreateCopy();
@@ -6183,18 +6114,20 @@ index ffca5b2..7ad2c31 100644
      return InputImageEnd();
    }
 diff --git a/support/util/io_types_test.cc b/support/util/io_types_test.cc
-index 4bcf936..e41c555 100644
+index 01d7999..eedf9fb 100644
 --- a/support/util/io_types_test.cc
 +++ b/support/util/io_types_test.cc
-@@ -16,6 +16,7 @@
+@@ -16,6 +16,9 @@
  
  #include <cstddef>
  #include <cstdint>
 +#include <limits>
- #include <optional>
- #include <sstream>
++#include <optional>
++#include <sstream>
  #include <string>
-@@ -162,6 +163,64 @@ TEST(InputImageTest, GetPreprocessedImageTensor) {
+ #include <utility>
+ #include <variant>
+@@ -156,6 +159,64 @@ TEST(InputImageTest, GetPreprocessedImageTensor) {
    EXPECT_THAT(retrieved_data, ElementsAreArray(kTensorData));
  }
  
@@ -6259,7 +6192,7 @@ index 4bcf936..e41c555 100644
  TEST(InputAudioTest, GetRawAudioBytes) {
    InputAudio input_audio("Hello Audio!");
    ASSERT_OK_AND_ASSIGN(auto raw_audio_bytes, input_audio.GetRawAudioBytes());
-@@ -462,6 +521,13 @@ TEST(CreateInputDataCopyTest, InputAudioEnd) {
+@@ -548,6 +609,13 @@ TEST(CreateInputDataCopyTest, InputAudioEnd) {
    ASSERT_TRUE(std::holds_alternative<InputAudioEnd>(copied_data));
  }
  

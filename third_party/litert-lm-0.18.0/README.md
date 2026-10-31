@@ -1,9 +1,9 @@
-# LiteRT-LM 0.16.0 reviewed source delta
+# LiteRT-LM 0.18.0 reviewed source delta
 
 Upstream: https://github.com/google-ai-edge/LiteRT-LM
 
-- SDK commit: `924e79c91542761242244e4f1651851f822e4cbb`
-- LiteRT dependency: `0ff28117f1cb5556d0e015bf80b773f74e2bee51`
+- SDK commit: `b2f686e2ed4718fb84ec398a61dd59ca0f0aff27`
+- LiteRT dependency: `26895c9fbcc25c43faa8c1a98cd1fd28951602c3`
 - Source patch and every changed file SHA256: `reviewed-source.json`
 - Upstream license: `LICENSE` (Apache2.0)
 
