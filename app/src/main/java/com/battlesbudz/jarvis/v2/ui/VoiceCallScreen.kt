@@ -317,6 +317,8 @@ internal fun VoiceCallScreen(
         val assistantContext = androidx.compose.ui.platform.LocalContext.current
         VoiceInputSettings(enabled = !chatSending && !runtimeArmed && !turnInFlight && !inputTesting, onBusy = { inputTesting = it })
         VisionServerSettingsSection(enabled = !chatSending && !runtimeArmed && !turnInFlight && !inputTesting)
+        androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 16.dp))
+        SandboxSettingsSection(enabled = !chatSending && !runtimeArmed && !turnInFlight && !inputTesting)
         var assistantSettingsMessage by remember { mutableStateOf(
             if (assistantContext.getSystemService(android.app.role.RoleManager::class.java)
                 .isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT)) "Jarvis is your default assistant."
