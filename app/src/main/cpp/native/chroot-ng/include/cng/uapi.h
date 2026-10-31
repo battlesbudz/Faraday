@@ -226,6 +226,8 @@ struct cng_prctl_mm_map {
 
 /* AF_UNIX sockets + ppoll — the --shared-proc registry broker (procreg.c). */
 #define CNG_AF_UNIX      1
+#define CNG_AF_INET      2  /* FARADAY: named for the --no-network gate */
+#define CNG_AF_INET6     10 /* FARADAY: likewise */
 #define CNG_SOCK_STREAM  1
 #define CNG_SOCK_SEQPACKET 5
 #define CNG_SOCK_CLOEXEC CNG_O_CLOEXEC

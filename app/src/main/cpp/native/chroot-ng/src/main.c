@@ -472,6 +472,13 @@ static void help(char **envp) {
                       "tracer our own re-issued syscalls and host paths. The "
                       "machinery costs nothing until something actually traces, "
                       "but a traced task then stops on every syscall."},
+        {"    --no-network", "Refuse guest networking (FARADAY addition): "
+                      "AF_INET/AF_INET6 sockets fail with EACCES at socket(), "
+                      "and bind/connect/sendto/sendmsg/sendmmsg to a non-UNIX "
+                      "address fail with EACCES in the dispatcher. AF_UNIX "
+                      "translation and the emulated NETLINK_ROUTE socket are "
+                      "unaffected. Without this flag the guest shares the "
+                      "host process's network access in full."},
         {"    --shared-proc", "Share the guest process view between independent "
                       "chroot-ng invocations of the same rootfs, so ps/top in "
                       "one session see the guest processes of another. The "
@@ -904,6 +911,11 @@ int cng_main(int argc, char **argv, char **envp, unsigned long *auxv) {
             } else if (!strcmp(n, "no-ptrace")) {
                 if (val) return err_noval(arg);
                 cng_g_no_ptrace = 1;
+            } else if (!strcmp(n, "no-network")) {
+                /* FARADAY (security review M-1): launcher-set only; the
+                 * guest has no channel to this flag. */
+                if (val) return err_noval(arg);
+                cng_g_no_network = 1;
             } else if (!strcmp(n, "no-dev")) {
                 if (val) return err_noval(arg);
                 cng_g_no_dev = 1;

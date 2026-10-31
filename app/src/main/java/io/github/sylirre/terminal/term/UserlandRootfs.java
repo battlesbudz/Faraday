@@ -114,6 +114,30 @@ public final class UserlandRootfs {
     }
 
     /**
+     * FARADAY ADDITION: a session command that runs the engine's own
+     * capability probe ({@code chroot-ng --probe <rootfs>}) and exits —
+     * no guest program, no rootfs session. The probe's output is the
+     * ground truth for what the mediation layer can do on this device;
+     * Faraday captures it at install time for the diagnostics paste
+     * (security review M-6). SessionCommand's constructor is
+     * package-private, so the command is built here beside the other
+     * builders.
+     */
+    public static SessionCommand probeCommand(Context ctx) {
+        List<String> argv = new ArrayList<>();
+        argv.add("chroot-ng");
+        argv.add("--probe");
+        argv.add(dir(ctx).getAbsolutePath());
+        List<String> env = new ArrayList<>();
+        env.add("PATH=/system/bin");
+        env.add("TMPDIR=" + TmpDir.ensure(ctx));
+        env.add("TERM=xterm-256color");
+        return new SessionCommand(null, argv.toArray(new String[0]),
+                env.toArray(new String[0]), ctx.getFilesDir().getAbsolutePath(),
+                "sandbox-probe", true);
+    }
+
+    /**
      * The rootfs is present and actually runnable: the directory exists
      * <em>and</em> the bash binary the login command execs is still there.
      *
@@ -427,6 +451,10 @@ public final class UserlandRootfs {
         // FARADAY (security review M-3): no guest-debugger need in Phase 1;
         // --no-ptrace removes the in-guest ptrace emulation surface.
         argv.add("--no-ptrace");
+        // FARADAY (security review M-1): the settings-driven network gate.
+        // The flag lives in the engine monitor's memory, set here before
+        // launch; the guest has no channel to it (decision D3).
+        if (opts.networkDisabled) argv.add("--no-network");
         // Guest identity: --fake-id takes numeric uid:gid only, so the "User
         // identity" setting is resolved against the rootfs passwd/group here.
         // An empty/invalid/unresolvable value yields 0:0 (root), matching the

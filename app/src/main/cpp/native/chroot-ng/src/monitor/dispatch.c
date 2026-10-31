@@ -786,6 +786,20 @@ static int sun_family(const void *sa, long len, int *unreadable) {
     return fam == CNG_AF_UNIX;
 }
 
+/* FARADAY (security review M-1): the address family at `sa`, read with the
+ * same probe sun_family uses, or -1 when there is no readable address —
+ * none passed, too short, or unreadable; the call itself answers those
+ * cases (EFAULT, or success for an address-less form), so the network
+ * gate below leaves them alone. */
+static int sockaddr_family(const void *sa, long len) {
+    unsigned short fam = 0;
+    if (!sa || len < (long)sizeof fam)
+        return -1;
+    if (cng_user_copyin(&fam, sa, sizeof fam) < 0)
+        return -1;
+    return fam;
+}
+
 /* Can an open of `p` (translated, against `dirfd`) with `oflags` block? A
  * FIFO's does until its other end is opened, and a character device's can (a
  * serial line waiting for carrier), never with O_NONBLOCK; O_PATH and
@@ -5639,6 +5653,13 @@ static long dispatch_1(long nr, long a0, long a1, long a2, long a3, long a4,
         long fd = cng_nl_socket(a0, a1, a2);
         if (fd != -1)
             return fd;
+        /* FARADAY (security review M-1): with --no-network, INET sockets
+         * are refused at creation — no socket, nothing to bind, connect,
+         * or listen on. The netlink substitution above is monitor
+         * machinery, not guest networking, and stays available; AF_UNIX
+         * and every other family are untouched. */
+        if (cng_g_no_network && (a0 == CNG_AF_INET || a0 == CNG_AF_INET6))
+            return -EACCES;
         long r = reissue(a0, a1, a2, a3, a4, a5, nr);
         /* The same policy denies NETLINK_AUDIT, which is not emulated but does
          * need the refusal libaudit's callers survive: a permission error there
@@ -5687,6 +5708,18 @@ static long dispatch_1(long nr, long a0, long a1, long a2, long a3, long a4,
             if (r >= 0)
                 cng_nl_sync((int)a0);
             return r;
+        }
+        /* FARADAY (security review M-1): with --no-network, an INET
+         * address is refused here, at the point where the call would
+         * otherwise be re-issued with the guest's original sockaddr.
+         * socket() already refuses to create such sockets under the
+         * policy; this is the second layer, for any descriptor that
+         * exists anyway. AF_UNIX goes on to translation below, and an
+         * unreadable or absent address is left for the call to answer. */
+        if (cng_g_no_network) {
+            int fam = sockaddr_family((const void *)aa, al);
+            if (fam == CNG_AF_INET || fam == CNG_AF_INET6)
+                return -EACCES;
         }
         struct cng_sun_xlate x;
         long r;
@@ -5752,6 +5785,16 @@ static long dispatch_1(long nr, long a0, long a1, long a2, long a3, long a4,
                 cng_nl_sync((int)a0);
             return r;
         }
+        /* FARADAY (security review M-1): as bind/connect/sendto above —
+         * an INET msg_name is refused under --no-network. A NULL header
+         * or name (a send on a connected socket) carries no address and
+         * is left alone; such a socket cannot be INET under the policy,
+         * since socket() refuses to create it. */
+        if (cng_g_no_network && a1) {
+            int fam = sockaddr_family(mh.name, (long)mh.namelen);
+            if (fam == CNG_AF_INET || fam == CNG_AF_INET6)
+                return -EACCES;
+        }
         struct cng_sun_xlate x;
         long r;
         x.dirfd = -1; /* a NULL msghdr never reaches cng_sun_in, and cng_sun_done
@@ -5816,6 +5859,13 @@ static long dispatch_1(long nr, long a0, long a1, long a2, long a3, long a4,
                 cng_nl_sync((int)a0);
             return r;
         }
+        /* FARADAY (security review M-1): with --no-network, a batch on an
+         * INET socket is refused whole. `dom` was fetched for the `plain`
+         * computation above; when it could not be fetched the batch falls
+         * through to the per-message path, where sendmsg's own gate
+         * refuses any INET msg_name. */
+        if (cng_g_no_network && (dom == CNG_AF_INET || dom == CNG_AF_INET6))
+            return -EACCES;
         /* A socket that is not AF_UNIX cannot carry a sun_path at all, and a UDP
          * batch is what this call exists for — so the socket was asked once
          * instead of reading up to 1024 addresses out of guest memory to find

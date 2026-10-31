@@ -48,7 +48,7 @@ sylirre/terminal/`) vendors code from **ghostty-android-terminal** by Sylirre:
   chroot_ng_image.h, and an adapted CMakeLists.txt.
 - `app/src/main/cpp/native/chroot-ng/`: the complete upstream chroot-ng
   tree, byte-identical except `src/run.c` (Faraday patch, adaptation 4
-  below).
+  below) and the `--no-network` gate files (adaptation 5 below).
 - `app/src/main/cpp/native/ghostty-vt/`: headers and the arm64-v8a prebuilt
   archive only. The archive is vendored split in two
   (`libghostty-vt.a` + `libghostty-vt-zcu.a`): upstream's single 14.6 MB
@@ -95,6 +95,17 @@ Native:
    keys it) and refuses to run when the backing is CNG_PROCREG_B_NONE,
    where upstream would degrade to host /proc passthrough with the kill
    family unmediated.
+5. The `--no-network` gate (security review M-1), a Faraday feature with
+   no upstream counterpart: `src/main.c` (option + built-in help),
+   `include/cng/path.h` + `src/path/path.c` (the launcher-set
+   `cng_g_no_network` flag), `include/cng/uapi.h` (AF_INET/AF_INET6
+   constants), and `src/monitor/dispatch.c` (the gate itself: INET refused
+   with EACCES at socket() and at addressed bind/connect/sendto/sendmsg/
+   sendmmsg; AF_UNIX translation and the emulated netlink socket are
+   unaffected). Without the flag the guest shares the host process's
+   network access in full — upstream's documented design; Faraday's
+   sessions are spawned with the gate engaged unless the user enables
+   networking in settings.
 
 Java:
 
@@ -126,11 +137,16 @@ Java:
      guest program tokens instead of a login shell, with extra `--bind`
      specs and a working-directory override; argv/env construction is
      shared with `command()` in `buildCommand(...)`.
+   - Added `probeCommand(...)`: builds the engine's own
+     `chroot-ng --probe` session (SessionCommand's constructor is
+     package-private, so it is built here); Faraday captures the probe
+     output at install time for diagnostics (security review M-6).
    - Session argv hardening (Faraday security review M-3): the host
      `/sys` bind upstream added in `buildCommand(...)` is removed — no
      host tree beyond the scoped binds a caller passes is ever bound —
      and `--no-ptrace` is always passed, since Faraday sessions have no
-     guest-debugger need.
+     guest-debugger need. `buildCommand(...)` also emits `--no-network`
+     when the options carry it (native adaptation 5).
    - Guest defaults: the default `/etc/resolv.conf` is written only when
      networking is enabled (Faraday's sandbox networking defaults off);
      `install(...)` gained a networking-aware overload and
@@ -138,7 +154,8 @@ Java:
      tree. Install also stamps `rootfs.version` (see `BUNDLED_VERSION` /
      `installedVersion(...)`); there are no rootfs updates in Faraday
      Phase 1.
-10. `UserlandOptions.java` — added `withWorkDir(...)`; engine-field
+10. `UserlandOptions.java` — added `withWorkDir(...)` and the
+   `networkDisabled` field with `withNetworkDisabled(...)`; engine-field
    comments annotated (chroot-ng is the only vendored engine).
 11. Comment-only engine-name updates in SessionCommand, UserlandDistro,
    UserlandIdentity, and UserlandOptions where the text described runtime

@@ -44,6 +44,11 @@ extern int cng_g_no_proc;
  * rootfs (or an explicit -b) only. */
 extern int cng_g_no_dev;
 
+/* --no-network (FARADAY, security review M-1): refuse AF_INET/AF_INET6 socket
+ * creation and non-UNIX addressed sends/connects in the dispatcher. Set by
+ * the launcher before the guest starts; never writable from the guest. */
+extern int cng_g_no_network;
+
 /* The /dev passthrough whitelist, shared by the path zone and the getdents64
  * synthesis so the two can never disagree about what /dev contains. `host` is
  * what the name resolves to (usually itself; the std* aliases and fd point into

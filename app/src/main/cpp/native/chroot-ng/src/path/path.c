@@ -20,6 +20,11 @@ static int proc_zone(const char *canon) {
 
 int cng_g_no_dev = 0;
 
+/* FARADAY (security review M-1): the --no-network policy flag. The gate
+ * itself lives in the dispatcher's socket cases (monitor/dispatch.c); the
+ * flag sits here beside the other launcher-set policy globals. */
+int cng_g_no_network = 0;
+
 /* The /dev zone. A rootfs directory tree ships no device nodes and mknod(2)
  * needs privileges we do not have, so a fixed whitelist of harmless host
  * devices passes through and everything else under /dev resolves into the

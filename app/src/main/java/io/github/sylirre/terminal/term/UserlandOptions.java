@@ -46,10 +46,27 @@ public final class UserlandOptions {
      * "chroot-ng"); it is kept for upstream source compatibility.
      */
     public final boolean chrootNg;
+    /**
+     * FARADAY ADDITION: when true, the session is spawned with the
+     * engine's {@code --no-network} gate (security review M-1): INET
+     * sockets and non-UNIX addressed calls fail with EACCES in the
+     * engine's dispatcher. Sourced from the sandbox settings toggle
+     * (default off = disabled) by Faraday's own callers; the vendored
+     * default is false, matching upstream behavior.
+     */
+    public final boolean networkDisabled;
 
     public UserlandOptions(String loginShell, boolean bindExternalStorage,
             String identity, String home, String workDir, String locale,
             String path, boolean jit, int jitBufferMb, boolean chrootNg) {
+        this(loginShell, bindExternalStorage, identity, home, workDir,
+                locale, path, jit, jitBufferMb, chrootNg, false);
+    }
+
+    public UserlandOptions(String loginShell, boolean bindExternalStorage,
+            String identity, String home, String workDir, String locale,
+            String path, boolean jit, int jitBufferMb, boolean chrootNg,
+            boolean networkDisabled) {
         this.loginShell = loginShell;
         this.bindExternalStorage = bindExternalStorage;
         this.identity = identity;
@@ -60,6 +77,7 @@ public final class UserlandOptions {
         this.jit = jit;
         this.jitBufferMb = jitBufferMb;
         this.chrootNg = chrootNg;
+        this.networkDisabled = networkDisabled;
     }
 
     /**
@@ -78,6 +96,14 @@ public final class UserlandOptions {
     /** FARADAY ADDITION: a copy with the working-directory setting replaced. */
     public UserlandOptions withWorkDir(String newWorkDir) {
         return new UserlandOptions(loginShell, bindExternalStorage, identity,
-                home, newWorkDir, locale, path, jit, jitBufferMb, chrootNg);
+                home, newWorkDir, locale, path, jit, jitBufferMb, chrootNg,
+                networkDisabled);
+    }
+
+    /** FARADAY ADDITION: a copy with the network gate setting replaced. */
+    public UserlandOptions withNetworkDisabled(boolean disabled) {
+        return new UserlandOptions(loginShell, bindExternalStorage, identity,
+                home, workDir, locale, path, jit, jitBufferMb, chrootNg,
+                disabled);
     }
 }
