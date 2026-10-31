@@ -1,5 +1,46 @@
 # Feature and acceptance map
 
+## Memory RAG Unit 1.5/2: LiteRT-LM 0.18 bump and EmbeddingGemma 2 binding — 31 October 2026
+
+The reviewed LiteRT-LM bridge moved from 0.16.0 (924e79c9) to 0.18.0
+(b2f686e2, LiteRT pin 26895c9f) on `feature/memory-rag`, and the production
+`MemoryEmbeddingEngine` is now bound to the 0.18 `EmbeddingEngine` over the
+pinned EmbeddingGemma 2 text artifact (CPU backend only; the chip-specific
+NPU variant stays unpinned). The binding returns raw model-width vectors;
+role formatting, Matryoshka truncation to the stamped stored dimension
+(256) and normalization stay in `MemoryEmbeddingService`, unchanged from
+Unit 1. The indexer therefore runs live against approved, unexpired
+records whenever the pinned model file is installed and verified; with no
+model installed the engine reports unavailable with a reason and nothing
+is fabricated.
+
+Bump notes worth keeping: the reviewed patch is 51 files (was 50) —
+upstream 0.18 removed `SessionConfig`'s audio-embeddings callback, which
+the hosted quality probe uses to prove the raw and sealed-projected audio
+lanes produce bitwise-identical embeddings, so the patch now carries that
+hook itself (inert unless a callback is set; production never sets one)
+plus the moved-header and projected-slot retargets in the probe.
+Production inventory is measured, not assumed: 104 SDK classes, 52 JNI
+methods, 53 JNI exports in `native-owner-production.json`.
+
+Acceptance: run 41177598086 on 3d727abf is fully green — producer,
+release tests and APK, all five sandbox journey profiles, native 16 KB
+compatibility, and the full-E2B native quality prerequisite including the
+embedding-tap equivalence (calls=1, valid_tokens=77, bytes_compared=
+473088). Branch prerelease `faraday-feature/memory-rag-build.1628`.
+Binding contract tests fake the native runtime at the
+`EmbeddingRuntimeFactory` seam (the native library cannot load in JVM
+tests); the indexer live path is covered through the real binding class
+with that seam faked.
+
+Explicitly NOT covered: real-model/device behavior. Still open and owed
+on a physical Fold 6: EmbeddingGemma 2 latency and RSS beside a resident
+E2B/E4B conversation, and — because this branch carries the 0.18
+conversation runtime — the M5 engine-lifecycle and audio-refusal
+re-proofs when the branch's runtime is adopted. No conversation wiring,
+no UI and no recall changes are in this unit; hybrid recall is Unit 2 of
+the memory RAG plan.
+
 ## Faraday main integration and rename repairs — 12 October 2026
 
 [Integration evidence](faraday-integration-2026-10-12.md) retains Build 1295's
