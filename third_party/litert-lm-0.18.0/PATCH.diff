@@ -6057,23 +6057,22 @@ index f0fa398..02ffa1f 100644
    if (std::holds_alternative<std::string>(data_)) {
      return InputAudio(std::get<std::string>(data_));
 diff --git a/support/util/io_types.h b/support/util/io_types.h
-index cd524fa..1a18bb3 100644
+index cd524fa..22fcdb4 100644
 --- a/support/util/io_types.h
 +++ b/support/util/io_types.h
-@@ -175,6 +175,12 @@ class InputAudio {
-   explicit InputAudio(::litert::TensorBuffer tensor, bool is_embeddings = false)
-       : data_(std::move(tensor)), is_embeddings_(is_embeddings) {}
+@@ -170,8 +170,9 @@ class InputAudio {
+           data)
+       : data_(std::move(data)), is_embeddings_(false) {}
  
+-  // Constructs an InputAudio from a TensorBuffer of processed audio bytes or
+-  // pre-computed audio embeddings.
 +  // Explicitly marks already-adapted soft tokens in the LLM embedding space.
 +  // This must never be used for raw encoder features. The tensor excludes EOA;
 +  // a separate InputAudioEnd preserves the runtime's native end marker.
-+  explicit InputAudio(::litert::TensorBuffer tensor, bool is_embeddings = false)
-+      : data_(std::move(tensor)), is_embeddings_(is_embeddings) {}
-+
-   // Copy constructor.
-   InputAudio(const InputAudio& other) = delete;
-   // Copy assignment operator.
-@@ -197,6 +203,12 @@ class InputAudio {
+   explicit InputAudio(::litert::TensorBuffer tensor, bool is_embeddings = false)
+       : data_(std::move(tensor)), is_embeddings_(is_embeddings) {}
+ 
+@@ -197,6 +198,12 @@ class InputAudio {
    // Returns true if the audio is pre-computed audio embeddings.
    bool IsAudioEmbeddings() const { return is_embeddings_; }
  
@@ -6086,7 +6085,7 @@ index cd524fa..1a18bb3 100644
    // Returns the raw audio bytes. Returns an error if the audio is preprocessed.
    absl::StatusOr<absl::string_view> GetRawAudioBytes() const;
  
-@@ -229,7 +241,14 @@ inline std::ostream& operator<<(std::ostream& os,
+@@ -229,7 +236,14 @@ inline std::ostream& operator<<(std::ostream& os,
  // A signal to indicate the end of input audio.
  class InputAudioEnd {
   public:
@@ -6102,7 +6101,7 @@ index cd524fa..1a18bb3 100644
  };
  
  inline std::ostream& operator<<(std::ostream& os,
-@@ -256,8 +275,8 @@ inline absl::StatusOr<InputData> CreateInputDataCopy(const InputData& data) {
+@@ -256,8 +270,8 @@ inline absl::StatusOr<InputData> CreateInputDataCopy(const InputData& data) {
      return input_image->CreateCopy();
    } else if (const auto* input_audio = std::get_if<InputAudio>(&data)) {
      return input_audio->CreateCopy();

@@ -3,7 +3,7 @@
   "upstream_url": "https://github.com/google-ai-edge/LiteRT-LM.git",
   "sdk_commit": "b2f686e2ed4718fb84ec398a61dd59ca0f0aff27",
   "litert_commit": "26895c9fbcc25c43faa8c1a98cd1fd28951602c3",
-  "patch_sha256": "20f94c038027c050101832373ab43e28c8f430de7a55e1b10d7c5431e94bf26d",
+  "patch_sha256": "eeff28dda502917f80d3532267f3bc2e525168cacf935a8076095d7f3af1a5ab",
   "files": {
     "experimental/native_audio_owner_20261006/BUILD": "8bd8c8cb0c2dff8b97eb9831c50a41ec82f43142e27fe1aa62186c3a3c891cc7",
     "experimental/native_audio_owner_20261006/lifecycle_tests.cc": "75c4aa2fba26ca4e5e1d0a7a3e0b9bdaef94e1179efcc0e063d24288f8b02a1b",
@@ -50,7 +50,7 @@
     "runtime/util/executor_data_util_test.cc": "6920bb5a2526828129c465cad72ce22bdf83a63e0f8a36f0da54540d13df26e8",
     "support/util/BUILD": "29602c77ef063282eb8410ef7d5eeaf1fff596cd56da943b494c80e5e095ce89",
     "support/util/io_types.cc": "c08b5404e2ccd9aa487d00b37cd661d352ccaace4d89059b2c45b170f4a81e94",
-    "support/util/io_types.h": "d68a81e9aa9d59947b030468b951242d0784a3d3b2ec42b9e38e02979a356a30",
+    "support/util/io_types.h": "4295d5910176c6deda943947b05e84fae9247c18e9a5a20a7206ed7eb1463d09",
     "support/util/io_types_test.cc": "d281ac02d9cc92823b74b4186819b3516e0d8f22bb81ec3e355fbea929543144",
     "support/util/projected_audio_payload.cc": "7ac240b5ad29c1de927e8896380ca5baf0ed0d8fe253215f41b74eead0227fce",
     "support/util/projected_audio_payload.h": "488a9d769bb3e4845cb441a79576aa71cfa788849ef162fd1d8a2117beb69270",
