@@ -46,13 +46,27 @@ class SandboxManager(private val context: Context) {
 
     private val sessions = mutableListOf<TerminalSession>()
     private val markerFile: File = File(store.stateDir, "session-armed")
+    private val sessionsLostFile: File = File(store.stateDir, "sessions-lost.txt")
+    private val probeFile: File = File(store.stateDir, "probe.txt")
 
     init {
         store.ensureLayout()
+        // The persisted total survives process death, so diagnostics can
+        // report losses from before this process started too.
+        sessionsLost.set(try {
+            sessionsLostFile.readText().trim().toInt()
+        } catch (e: Exception) {
+            0
+        })
         if (markerFile.exists()) {
             // The previous process died with sessions open; the vendored
             // contract says those sessions are gone, so say so and disarm.
-            sessionsLost.incrementAndGet()
+            val total = sessionsLost.incrementAndGet()
+            try {
+                sessionsLostFile.writeText(total.toString())
+            } catch (e: Exception) {
+                // Bookkeeping only.
+            }
             markerFile.delete()
         }
     }
@@ -83,6 +97,63 @@ class SandboxManager(private val context: Context) {
                 lastInstallError = result.message
             }
         }
+        if (installState == InstallState.READY) refreshProbe()
+    }
+
+    /**
+     * Runs the engine's capability probe once per install and caches the
+     * output for diagnostics (review M-6: the probe is the ground truth
+     * for what the mediation layer can do on this device). Best-effort —
+     * a probe failure never fails an install. Blocking; called on the
+     * install path, off the main thread.
+     */
+    fun refreshProbe() {
+        if (probeFile.exists()) return
+        val output = StringBuilder()
+        val exited = java.util.concurrent.CountDownLatch(1)
+        val session = try {
+            SessionManager.get().create(
+                io.github.sylirre.terminal.term.UserlandRootfs.probeCommand(context),
+                80, 24, 0, 0, 200,
+                /* terminateProcessesOnExit = */ true,
+                object : TerminalSession.Listener {
+                    override fun onUpdate(session: TerminalSession) {}
+                    override fun onTitleChanged(session: TerminalSession) {}
+                    override fun onBell(session: TerminalSession) {}
+                    override fun onExited(session: TerminalSession, code: Int) {
+                        exited.countDown()
+                    }
+                }
+            )
+        } catch (e: Exception) {
+            return
+        }
+        onSessionOpened(session)
+        session.setRawOutputListener { buf, n ->
+            synchronized(output) {
+                output.append(String(buf, 0, n, Charsets.UTF_8))
+            }
+        }
+        try {
+            exited.await(15, java.util.concurrent.TimeUnit.SECONDS)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
+        SessionManager.get().close(session)
+        onSessionClosed(session)
+        try {
+            store.ensureLayout()
+            probeFile.writeText(output.toString().replace("\r\n", "\n").trim() + "\n")
+        } catch (e: Exception) {
+            // Diagnostics garnish only.
+        }
+    }
+
+    /** The cached engine probe output, or null when never captured. */
+    fun probeOutput(): String? = try {
+        probeFile.readText().trim().ifEmpty { null }
+    } catch (e: Exception) {
+        null
     }
 
     /** Registers an open session: arms the marker and the keepalive on the first. */
@@ -132,6 +203,8 @@ class SandboxManager(private val context: Context) {
     fun reset() {
         closeAllSessions()
         store.resetRootfs()
+        // The probe described the old tree; the next install re-captures it.
+        probeFile.delete()
         installState = if (store.isInstalled()) InstallState.FAILED else InstallState.NOT_INSTALLED
         lastInstallError = null
     }

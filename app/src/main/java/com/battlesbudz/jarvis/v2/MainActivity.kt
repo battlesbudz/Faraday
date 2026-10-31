@@ -227,7 +227,9 @@ class MainActivity : ComponentActivity() {
     private fun copyDiagnostics() {
         // The runtime ring contains the latest call's ASR, inference and playback events.
         // Comparison archives and full chat histories do not belong in a call failure report.
-        val diagnostics = "Jarvis OS V2 — latest Voice Call diagnostics\n\n${runtime.diagnosticRecorder.snapshot()}\n\n${com.battlesbudz.jarvis.v2.voice.MicrophoneHandoff.diagnostics()}"
+        // The sandbox block (Phase 1 scope §12) rides along: install state,
+        // run bookkeeping and the engine probe answer most sandbox reports.
+        val diagnostics = "Jarvis OS V2 — latest Voice Call diagnostics\n\n${runtime.diagnosticRecorder.snapshot()}\n\n${com.battlesbudz.jarvis.v2.voice.MicrophoneHandoff.diagnostics()}\n\n${com.battlesbudz.jarvis.v2.sandbox.SandboxDiagnostics.snapshot(this)}"
         val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("Jarvis diagnostics", diagnostics))
     }
