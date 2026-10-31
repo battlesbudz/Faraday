@@ -64,7 +64,7 @@ internal class LiteRtEmbeddingRuntime(modelFile: File, maxInputLength: Int) : Em
  * native `outputSize` option is deliberately left unset and the stored dimension
  * keeps flowing from the stamped spec through the service.
  */
-class LiteRtLmMemoryEmbeddingEngine(
+class LiteRtLmMemoryEmbeddingEngine internal constructor(
     private val store: EmbeddingModelStore,
     private val spec: EmbeddingModelSpec = EmbeddingModelCatalog.default,
     private val runtimeFactory: EmbeddingRuntimeFactory =
