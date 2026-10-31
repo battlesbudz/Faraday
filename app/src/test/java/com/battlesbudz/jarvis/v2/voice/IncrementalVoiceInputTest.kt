@@ -374,7 +374,7 @@ class IncrementalVoiceInputTest {
         val native = Native()
         val receipts = mutableListOf<String>()
         val track = IncrementalVoiceInput(this, "User: ", { native }, log = { receipts.add(it) })
-        track.answer("User: Hello?", {})
+        track.answer("User: Hello?") {}
         assertTrue(native.images.isEmpty())
         assertFalse(native.order.contains("image"))
         assertTrue(receipts.single { it.startsWith("input_finalized ") }
