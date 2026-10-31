@@ -24,9 +24,9 @@ interface MemoryEmbeddingEngine {
 }
 
 /**
- * Production placeholder until the runtime-binding spike (plan Unit 1.5) lands a real
- * engine behind this port. Reporting unavailable is the honest state: the pinned
- * LiteRT-LM bridge predates EmbeddingGemma 2 and its embedding surface is unverified.
+ * Honest stand-in engine: reports unavailable and refuses to embed. Retained for
+ * tests and for any surface that must run without the native runtime; production
+ * binds [LiteRtLmMemoryEmbeddingEngine] instead.
  */
 object UnavailableMemoryEmbeddingEngine : MemoryEmbeddingEngine {
     override val modelId: String = EmbeddingModelCatalog.default.id

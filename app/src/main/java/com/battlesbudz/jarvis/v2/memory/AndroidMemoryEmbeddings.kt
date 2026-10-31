@@ -8,8 +8,8 @@ import java.io.File
  * Process-wide access to the memory embedding projection: its vector store (a sibling
  * of the canonical ledger in noBackupFilesDir), its model acquisition (sharing the
  * chat models directory and the existing downloader), and the indexer that reconciles
- * the two. The engine is the honest unavailable placeholder until the runtime-binding
- * spike lands a real one; nothing here fabricates embeddings.
+ * the two. The engine is the LiteRT-LM binding: it reports unavailable until the
+ * pinned embedding model is installed, and nothing here fabricates embeddings.
  */
 object AndroidMemoryEmbeddings {
     private data class Services(
@@ -38,7 +38,7 @@ object AndroidMemoryEmbeddings {
             }
             val modelStore = EmbeddingModelStore(File(app.filesDir, "models"), transfer)
             val vectorStore = SQLiteMemoryVectorStore(File(app.noBackupFilesDir, "memory-embeddings.db"))
-            val service = MemoryEmbeddingService(UnavailableMemoryEmbeddingEngine)
+            val service = MemoryEmbeddingService(LiteRtLmMemoryEmbeddingEngine(modelStore))
             Services(modelStore, vectorStore, MemoryEmbeddingIndexer(AndroidMemoryOs.get(app), vectorStore, service)).also { instance = it }
         }
     }
