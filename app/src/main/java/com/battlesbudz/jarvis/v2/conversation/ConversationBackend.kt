@@ -21,6 +21,15 @@ internal interface ConversationBackend : LocalModelEngine {
      * run while a speculative owner is still draining.
      */
     val toolsEnabled: Boolean
+
+    /**
+     * Snapshot synthesis: whether [generate] with image bytes can succeed
+     * on this backend right now — the engine was built with its vision
+     * backend AND the model supports image input. Call turns consult this
+     * before attaching the retained call frame, so a non-vision engine
+     * takes the honest text fallback instead of failing the turn.
+     */
+    val imageInputCapable: Boolean get() = false
     fun inputContextDescription(): String
     suspend fun setToolsEnabled(enabled: Boolean): Boolean
     suspend fun generate(prompt: String, imageBytes: ByteArray, onToken: (String) -> Unit): GenerationResult
@@ -47,6 +56,9 @@ internal class LiteRtConversationBackend(private val engine: LiteRtLmEngine) : C
         set(value) { engine.benchmarkPurpose = value }
     override fun inputContextDescription() = engine.inputContextDescription()
     override val toolsEnabled: Boolean get() = engine.toolsEnabledState
+    override val imageInputCapable: Boolean
+        get() = engine.visionEnabled &&
+            com.battlesbudz.jarvis.v2.ai.ModelCatalog.resolve(engine.modelId).supportsVision
     override suspend fun setToolsEnabled(enabled: Boolean) = engine.setToolsEnabled(enabled)
     override suspend fun generate(prompt: String, onToken: (String) -> Unit) = engine.generate(prompt, onToken)
     override suspend fun generate(prompt: String, imageBytes: ByteArray, onToken: (String) -> Unit) = engine.generate(prompt, imageBytes, onToken)

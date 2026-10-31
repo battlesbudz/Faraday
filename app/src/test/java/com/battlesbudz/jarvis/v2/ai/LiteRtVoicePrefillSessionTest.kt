@@ -30,11 +30,13 @@ class LiteRtVoicePrefillSessionTest {
     private class Native : VoiceNativeSession {
         val prefilled = StringBuilder()
         val submitted = StringBuilder()
+        val images = mutableListOf<ByteArray>()
         var calls = 0
         var closes = 0
         var cancelled = false
         var stream: (VoiceNativeCallback) -> Unit = { it.onNext("Certainly, sir."); it.onDone() }
         var failPrefill = false
+        var failImage = false
         private var callback: VoiceNativeCallback? = null
         private fun text(input: List<String>): String {
             // Match the C++ RunPrefillAsync precondition that build 708 violated.
@@ -44,6 +46,10 @@ class LiteRtVoicePrefillSessionTest {
         override fun runPrefill(input: List<String>) {
             if (failPrefill) error("prefill failed")
             prefilled.append(text(input))
+        }
+        override fun runPrefillImage(imageBytes: ByteArray) {
+            if (failImage) error("image prefill failed")
+            images += imageBytes
         }
         override fun generateContentStream(input: List<String>, callback: VoiceNativeCallback) {
             submitted.append(text(input)); calls++
@@ -243,6 +249,55 @@ class LiteRtVoicePrefillSessionTest {
         try { session.append("Hello"); fail("expected prefill failure") } catch (_: IllegalStateException) { }
         native.failPrefill = false
         try { session.append("retry"); fail("failed Session reused") } catch (_: IllegalStateException) { }
+        try { session.decode {}; fail("failed Session decoded") } catch (_: IllegalStateException) { }
+        assertEquals(0, native.calls)
+        session.close()
+    }
+
+    @Test fun appendedImageReachesTheNativeSessionOnceAndDecodeStillWorks() = runBlocking {
+        val native = Native()
+        val records = mutableListOf<PipelineBenchmarkSubmission>()
+        val session = LiteRtVoicePrefillSession(native, benchmarkSink = { records += it })
+        session.append("What do you see?")
+        val image = byteArrayOf(7, 7, 7)
+        session.appendImage(image)
+        assertEquals(1, native.images.size)
+        assertTrue(image.contentEquals(native.images.single()))
+        val result = session.decode {}
+        assertEquals("Certainly, sir.", result.text)
+        assertEquals("incremental_image_text", records.single().metadata["input_mode"])
+        assertEquals(3.0, records.single().measurements["image_bytes"]!!, 0.0)
+        session.close()
+    }
+
+    @Test fun imageBeforeAnyTextIsRejected() = runBlocking {
+        val session = LiteRtVoicePrefillSession(Native())
+        try {
+            session.appendImage(byteArrayOf(1))
+            fail("image without a started turn must be rejected")
+        } catch (_: IllegalStateException) { }
+        session.close()
+    }
+
+    @Test fun secondImageInOneTurnIsRejected() = runBlocking {
+        val native = Native()
+        val session = LiteRtVoicePrefillSession(native)
+        session.append("Hello")
+        session.appendImage(byteArrayOf(1))
+        try {
+            session.appendImage(byteArrayOf(2))
+            fail("a second image in one turn must be rejected")
+        } catch (_: IllegalStateException) { }
+        assertEquals(1, native.images.size)
+        session.close()
+    }
+
+    @Test fun failedImagePrefillPoisonsTheSessionLikeAFailedTextPrefill() = runBlocking {
+        val native = Native().apply { failImage = true }
+        val session = LiteRtVoicePrefillSession(native)
+        session.append("Hello")
+        try { session.appendImage(byteArrayOf(1)); fail("expected image failure") }
+        catch (expected: IllegalStateException) { assertEquals("image prefill failed", expected.message) }
         try { session.decode {}; fail("failed Session decoded") } catch (_: IllegalStateException) { }
         assertEquals(0, native.calls)
         session.close()

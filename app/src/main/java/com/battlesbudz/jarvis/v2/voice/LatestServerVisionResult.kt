@@ -38,6 +38,24 @@ class LatestServerVisionResult {
         val receivedAtMs: Long,
     )
 
+    /**
+     * Snapshot synthesis: the newest camera frame itself, retained so a
+     * call turn can attach exactly one real image to Gemma at question
+     * end (Battles's approved design, 2026-10-30). [bytes] is the JPEG
+     * exactly as the hub dispatched it (the array is created fresh per
+     * frame by the binder and never mutated afterwards, so it is held by
+     * reference, never copied per read). [geometry] is the frame's pixel
+     * space — the same space the server reports detection boxes in.
+     * Lifecycle matches [Entry]: dropped by [clear] and [reset], so a
+     * frame from a finished call (or a toggled-off camera) can never be
+     * read as current.
+     */
+    class Frame(
+        val bytes: ByteArray,
+        val capturedAtMs: Long,
+        val geometry: FrameGeometry?,
+    )
+
     /** Point-in-time copy of the proof counters. */
     data class Counters(
         val framesReceived: Long,
@@ -52,6 +70,7 @@ class LatestServerVisionResult {
     private val lock = Any()
     private val tracker = ServerVisionTracker()
     private var entry: Entry? = null
+    private var latestFrame: Frame? = null
     private var lastError: String? = null
     private var framesReceived = 0L
     private var framesSent = 0L
@@ -78,6 +97,21 @@ class LatestServerVisionResult {
         synchronized(lock) { framesReceived++ }
         notifyChanged()
     }
+
+    /**
+     * Snapshot synthesis: retain [bytes] as the newest camera frame,
+     * replacing any older one wholesale — only the newest frame can ever
+     * be attached to a turn, so nothing accumulates. Recorded for every
+     * dispatched frame, independent of the vision-server gating: the
+     * frame serves Gemma's snapshot, not the server detect.
+     */
+    fun recordFrame(bytes: ByteArray, capturedAtMs: Long, geometry: FrameGeometry?) {
+        synchronized(lock) { latestFrame = Frame(bytes, capturedAtMs, geometry) }
+        notifyChanged()
+    }
+
+    /** The newest retained camera frame, or null when none (or cleared). */
+    fun latestFrame(): Frame? = synchronized(lock) { latestFrame }
 
     fun recordSent() {
         synchronized(lock) { framesSent++ }
@@ -149,6 +183,7 @@ class LatestServerVisionResult {
     fun clear() {
         synchronized(lock) {
             entry = null
+            latestFrame = null
             lastError = null
         }
         notifyChanged()
@@ -158,6 +193,7 @@ class LatestServerVisionResult {
     fun reset() {
         synchronized(lock) {
             entry = null
+            latestFrame = null
             lastError = null
             framesReceived = 0L
             framesSent = 0L
@@ -218,6 +254,13 @@ class LatestServerVisionResult {
             } else {
                 append("latestResult=none")
             }
+            val frame = latestFrame()
+            append(
+                "\nretainedFrame=" + if (frame != null) {
+                    "bytes=${frame.bytes.size} capturedAtMs=${frame.capturedAtMs} geometry=" +
+                        (frame.geometry?.let { "${it.width}x${it.height} rot=${it.rotationDegrees}" } ?: "none")
+                } else "none"
+            )
             append("\nTRACKED OBJECTS (video-call step 3: identity across frames)\n")
             if (tracked.objects.isEmpty()) {
                 append("trackedObjects=none\n")

@@ -86,15 +86,24 @@ internal class VoiceTurnPreparation(
         val selectedSpec = modelStore.selectedModel()
         val comparisonLoadStarted = System.nanoTime()
         observation.benchmark.mark("llm_setup_started")
+        // Snapshot synthesis: a turn prepared while the call's video
+        // toggle is ON needs a vision-capable engine, so the turn can
+        // attach the retained camera frame at finalization. Keyed into
+        // the reuse check exactly like audioEnabled: toggling video
+        // rebuilds the engine once, on the next turn, never mid-question.
+        val snapshotVisionWanted = com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.videoEnabled.value &&
+            selectedSpec.supportsVision
         request.comparison?.put("llm_reused", nativeState.engine != null && nativeState.engine?.modelId == selectedSpec.id && nativeState.engine?.audioEnabled == selectedSpec.supportsAudio)
         if (nativeState.engine == null || nativeState.engine?.modelId != selectedSpec.id ||
-            nativeState.engine?.audioEnabled != selectedSpec.supportsAudio) {
+            nativeState.engine?.audioEnabled != selectedSpec.supportsAudio ||
+            nativeState.engine?.visionEnabled != snapshotVisionWanted) {
             nativeState.engine?.close()
             nativeState.engine = null
             nativeState.engine = LiteRtLmEngineFactory.createInitialized(
                 modelStore.selectedModel().id, modelStore.fileFor(modelStore.selectedModel()).path,
                 modelStore.engineCacheRoot().path, useGpu = selectedSpec.recommendedGpu,
                 tools = if (selectedSpec.supportsTools) MobileActionToolDefinitions.all() else emptyList(),
+                visionEnabled = snapshotVisionWanted,
                 audioEnabled = selectedSpec.supportsAudio
             )
         }

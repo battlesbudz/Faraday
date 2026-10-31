@@ -4469,3 +4469,61 @@ They do not establish actual Android input delivery, Compose rendering,
 accessibility overlay behavior, R8 compatibility or a verified APK. Build 1256
 remains failed evidence; a fresh full release gate for the exact repaired
 revision is required.
+
+## Video-call snapshot synthesis (October 30, 2026)
+
+Owner-approved design (2026-10-30): on a video-call turn, when the user
+finishes asking, attach ONE retained camera frame to Gemma together with
+the full object track list from the last 15 seconds, so the model grounds
+its answer in the scene instead of step 4's label summary alone (build
+1612's paste: 12 minted tracks reached the prompt as three toilets).
+
+Acceptance checks and their JVM coverage:
+
+- The newest dispatched frame (JPEG bytes, capture timestamp, pixel
+  geometry) is retained by `LatestServerVisionResult`, replaced wholesale
+  per frame, recorded by `CallServerVisionObserver` before the
+  vision-server gating (the frame serves the local model, not the
+  server), and dropped by the same `clear()`/`reset()` lifecycle as the
+  live detect entry — toggle-off and call end can never leave a stale
+  frame readable as current (`LatestServerVisionResultTest`,
+  `CallServerVisionObserverTest`).
+- A snapshot turn (video toggle on, live detect result fresh, retained
+  frame fresh, engine image-capable) replaces the summary block with
+  every track whose last-seen age is at most 15,000 ms — present or not,
+  one-frame tracks included — each rendered with its `#id`, label, latest
+  box in frame pixels and last-seen age, newest first, under a 2,400-char
+  budget that drops the oldest tracks first and counts the omission. The
+  framing states the boxes are pixels in the attached snapshot's own
+  frame, and keeps the quoted-data/not-instructions discipline
+  (`CallVisualContextTest`).
+- The image attaches exactly once, at turn finalization: the incremental
+  session appends it after the final question text and before decode
+  (`IncrementalVoiceInput` → `VoicePrefillSession.appendImage` → the
+  pinned SDK session's `InputData.Image` prefill); retries and the
+  incremental-failure fallback regenerate with the same image on the
+  conversation route, never a silent text-only downgrade
+  (`IncrementalVoiceInputTest`, `LiteRtVoicePrefillSessionTest`,
+  `TemplateVoiceSessionTest`, `ConversationGenerationTest`).
+- Honest fallbacks: video off, no frame, stale frame, a non-vision
+  engine, or a direct-audio turn each proceed with step 4's summary block
+  (or none) and a diagnostics line naming the reason; the per-turn
+  `Call snapshot: attached=…` line reports frame age, frame bytes, track
+  count, window and omissions (`CallVisualContextTest`,
+  `ConversationGenerationTest`).
+- The engine for a turn prepared with the video toggle on is created
+  vision-enabled through the existing reuse/rebuild check in
+  `VoiceTurnPreparation`, keyed like `audioEnabled`; repetition
+  suppression and the refusal backstop see image turns through the same
+  `ConversationInput` as text turns (call turns keep `imageUri == null`,
+  so the repetition guard still applies).
+- Preview telemetry: the overlay's result age is computed from a fresh
+  wall-clock read and clamped at zero (build 1612 printed
+  `lastDrawResultAgeMs=-682` from the 1-second tick clock)
+  (`PreviewOverlayTelemetryTest`).
+
+JVM tests pin behavior only; that the pinned LiteRT-LM session accepts
+the image on device, and that Gemma's answer grounds in the attached
+frame, remain Fold 6 phone proof (a "what do you see?" against a scene
+whose detector labels alone mislead, e.g. the car infotainment screen
+detected as a cell phone).

@@ -265,7 +265,12 @@ internal fun CallVideoPreview(modifier: Modifier = Modifier) {
                             geometryWidth = liveGeometry?.width,
                             geometryHeight = liveGeometry?.height,
                             geometryRotationDegrees = liveGeometry?.rotationDegrees,
-                            latestResultAgeMs = liveEntry?.let { drawNowMs - it.receivedAtMs },
+                            // Fresh wall clock, not the 1 s tick: the tick
+                            // can lag a just-arrived result and printed a
+                            // negative age (-682) in the build-1612 paste.
+                            latestResultAgeMs = liveEntry?.let {
+                                PreviewOverlayTelemetry.resultAgeMs(System.currentTimeMillis(), it.receivedAtMs)
+                            },
                             viewWidthPx = size.width.toInt(),
                             viewHeightPx = size.height.toInt(),
                             holderRevision = drawRevision,

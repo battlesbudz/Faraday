@@ -55,6 +55,17 @@ object PreviewOverlayTelemetry {
         }
     }
 
+    /**
+     * Age of a detect result at draw time. Clamped at zero: the build-1612
+     * paste printed lastDrawResultAgeMs=-682 because the draw read the
+     * preview's 1-second tick clock, which can lag a just-arrived result
+     * whose receive stamp came from a fresh wall-clock read. An age can
+     * never be negative; a result stamped "in the future" relative to
+     * the reader's clock is simply brand new.
+     */
+    fun resultAgeMs(nowMs: Long, receivedAtMs: Long): Long =
+        (nowMs - receivedAtMs).coerceAtLeast(0L)
+
     /** One draw pass of the box overlay (called even when nothing drew). */
     fun recordDraw(record: DrawRecord) {
         synchronized(lock) {

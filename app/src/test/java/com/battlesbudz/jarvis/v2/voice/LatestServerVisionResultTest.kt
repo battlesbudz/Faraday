@@ -206,6 +206,31 @@ class LatestServerVisionResultTest {
         assertEquals(1, tracked.objects.single().id)
     }
 
+    @Test fun recordFrameRetainsOnlyTheNewestFrame() {
+        val holder = LatestServerVisionResult()
+        val first = byteArrayOf(1, 2, 3)
+        val second = byteArrayOf(4, 5, 6, 7)
+        holder.recordFrame(first, capturedAtMs = 100L, geometry = FrameGeometry(640, 480, 0))
+        holder.recordFrame(second, capturedAtMs = 200L, geometry = FrameGeometry(320, 240, 90))
+        val frame = holder.latestFrame()
+        assertTrue(second.contentEquals(frame!!.bytes))
+        assertEquals(200L, frame.capturedAtMs)
+        assertEquals(320, frame.geometry?.width)
+        assertEquals(90, frame.geometry?.rotationDegrees)
+        assertTrue(holder.diagnosticsText().contains("retainedFrame=bytes=4 capturedAtMs=200"))
+    }
+
+    @Test fun clearAndResetDropTheRetainedFrame() {
+        val holder = LatestServerVisionResult()
+        holder.recordFrame(byteArrayOf(1), capturedAtMs = 1L, geometry = null)
+        holder.clear()
+        assertNull(holder.latestFrame())
+        holder.recordFrame(byteArrayOf(2), capturedAtMs = 2L, geometry = null)
+        holder.reset()
+        assertNull(holder.latestFrame())
+        assertTrue(holder.diagnosticsText().contains("retainedFrame=none"))
+    }
+
     @Test fun changeListenerFiresOnMutation() {
         val holder = LatestServerVisionResult()
         var calls = 0

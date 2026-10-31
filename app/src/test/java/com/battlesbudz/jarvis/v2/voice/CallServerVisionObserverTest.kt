@@ -183,6 +183,33 @@ class CallServerVisionObserverTest {
         scope.cancel()
     }
 
+    @Test fun framesAreRetainedForTheSnapshotEvenWhenTheServerIsDisabled() {
+        // Snapshot synthesis: the retained frame serves Gemma's per-turn
+        // snapshot, not the server, so the server gating must not starve
+        // it — while still making zero server calls.
+        val holder = LatestServerVisionResult()
+        val detect = FakeDetect(snapshotOf(1))
+        val scope = testScope()
+        val observer = CallServerVisionObserver(
+            holder = holder,
+            settings = { VisionServerSettings.Config(enabled = false, token = "") },
+            detect = detect.fn,
+            scope = scope,
+            frameGeometry = { FrameGeometry(640, 480, 0) },
+        )
+        val jpeg = byteArrayOf(9, 9, 9)
+        observer.onFrame(jpeg, 123L)
+        assertEquals(0, detect.callCount())
+        val frame = holder.latestFrame()
+        assertNotNull(frame)
+        assertTrue(jpeg.contentEquals(frame!!.bytes))
+        assertEquals(123L, frame.capturedAtMs)
+        assertEquals(640, frame.geometry?.width)
+        observer.onCaptureEnded()
+        assertNull(holder.latestFrame())
+        scope.cancel()
+    }
+
     @Test fun captureEndClearsResultButKeepsCounters() {
         val holder = LatestServerVisionResult()
         val detect = FakeDetect(snapshotOf(4))

@@ -127,6 +127,7 @@ class VideoCallService : LifecycleService() {
         val serverVision = CallServerVisionObserver(
             holder = serverVisionHolder,
             settings = { VisionServerSettings.snapshot(applicationContext) },
+            frameGeometry = { hub.lastFrameGeometry },
         )
         serverVisionObserver = serverVision
         serverVisionHolder.changeListener = {

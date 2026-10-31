@@ -1,6 +1,7 @@
 package com.battlesbudz.jarvis.v2.voice
 
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -73,6 +74,15 @@ class PreviewOverlayTelemetryTest {
         assertTrue(text.contains("lastDrawBoxes=0"))
         assertTrue(text.contains("lastDrawGeometry=none"))
         assertTrue(text.contains("lastDrawResultAgeMs=none"))
+    }
+
+    @Test fun resultAgeNeverGoesNegative() {
+        // The build-1612 paste printed lastDrawResultAgeMs=-682: the
+        // draw's 1-second tick clock lagged a just-arrived result's
+        // receive stamp. An age is clamped at zero.
+        assertEquals(0L, PreviewOverlayTelemetry.resultAgeMs(nowMs = 1_000L, receivedAtMs = 1_682L))
+        assertEquals(0L, PreviewOverlayTelemetry.resultAgeMs(nowMs = 1_682L, receivedAtMs = 1_682L))
+        assertEquals(812L, PreviewOverlayTelemetry.resultAgeMs(nowMs = 2_000L, receivedAtMs = 1_188L))
     }
 
     @Test fun resetClearsSurfaceDrawsAndLastDraw() {

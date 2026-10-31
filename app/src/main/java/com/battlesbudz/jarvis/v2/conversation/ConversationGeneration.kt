@@ -55,9 +55,12 @@ internal class ConversationGeneration(
      * context, read fresh per turn (the [visionServerConfig] pattern).
      * [CallVisualContext.INACTIVE] unless a video call service is running,
      * so ordinary turns are untouched; consulted only for voice /
-     * call-owned turns, and never for comparison trials.
+     * call-owned turns, and never for comparison trials. The argument is
+     * the turn engine's image capability, which gates snapshot synthesis:
+     * a vision-capable engine gets the retained frame attached (and the
+     * full 15-second track block); any other engine gets step 4's summary.
      */
-    private val callVisualContext: () -> CallVisualContext.Decision = { CallVisualContext.INACTIVE },
+    private val callVisualContext: (Boolean) -> CallVisualContext.Decision = { CallVisualContext.INACTIVE },
 ) {
     suspend fun generate(invocation: ConversationInvocation, contextLimit: Int,
                          routed: RoutedConversation, prepared: PreparedConversation,
@@ -126,6 +129,7 @@ internal class ConversationGeneration(
                 }
             } else null
         } else null
+        val directAudio = invocation.directVoiceAudio || invocation.comparison?.request?.path == LiveComparison.Path.GEMMA_DIRECT
         // Video-call step 4: on a voice or call-owned turn, read the live
         // call camera's tracked scene (steps 2-3) as prompt context. The
         // decision is INACTIVE unless VideoCallService is running a call,
@@ -134,16 +138,28 @@ internal class ConversationGeneration(
         val visualDecision = if (invocation.comparison == null &&
             (invocation.voiceAudio != null || invocation.incrementalVoice != null ||
                 invocation.callOwned || invocation.callIdentity != null)
-        ) callVisualContext() else CallVisualContext.INACTIVE
+        ) callVisualContext(engine.imageInputCapable) else CallVisualContext.INACTIVE
         visualDecision.diagnosticsLine?.let { diagnostics.summary(it) }
+        // Snapshot synthesis: the decision's image attaches only on the
+        // normal voice pipeline. A direct-audio turn submits audio, not
+        // text+image, so its snapshot stays unattached — said out loud in
+        // diagnostics rather than silently dropped.
+        val snapshotAttachment = visualDecision.snapshot?.takeUnless { directAudio }
+        if (visualDecision.snapshot != null && directAudio) {
+            diagnostics.summary("Call snapshot: attached=false reason=direct_audio_turn")
+        } else {
+            visualDecision.snapshotLine?.let { diagnostics.summary(it) }
+        }
         val promptContext = listOfNotNull(visionContext, visualDecision.block)
             .joinToString("\n\n").takeIf { it.isNotBlank() }
         val submission = turnPrompt.assemble(invocation.prompt, promptContext, promptHistory, !modelSession.hasContext,
             routed.plan.activeSubject, routed.plan.resolvedQuestion, prepared.referenceContext, contextLimit)
         validatePrompt(invocation, routed, prepared, promptHistory, turnPrompt, submission, contextLimit)
-        val directAudio = invocation.directVoiceAudio || invocation.comparison?.request?.path == LiveComparison.Path.GEMMA_DIRECT
         check(invocation.sealedVoiceAudio == null || invocation.voiceAudioIsComplete) { "Incomplete native audio cannot be submitted" }
-        val input = ConversationInput(invocation.voiceAudio, directAudio, prepared.textInput, attachments.image, attachments.audio, invocation.sealedVoiceAudio, invocation.nativeSpeculation)
+        // A call turn never carries a chat attachment, so the image slot
+        // is free for the snapshot; an explicit chat image always wins.
+        val input = ConversationInput(invocation.voiceAudio, directAudio, prepared.textInput,
+            attachments.image ?: snapshotAttachment?.bytes, attachments.audio, invocation.sealedVoiceAudio, invocation.nativeSpeculation)
         if (invocation.sealedVoiceAudio != null) {
             reply.benchmark.configuration("native_audio_input_path", "incremental_encoder_sealed_conversation_v1")
             reply.benchmark.metric("native_audio_pcm_samples", invocation.sealedVoiceAudio.pcmSampleCount)
@@ -202,7 +218,8 @@ internal class ConversationGeneration(
         if (!stoppedLoop) telemetry.record("answer", generated, submission.text.length)
         telemetry.terminal(generated)
         val answer = ConversationAnswer(invocation, routed, prepared, promptHistory, turnPrompt,
-            engine, reply, submission.text, attachments.image, directAudio, stream, guard, telemetry)
+            engine, reply, submission.text, attachments.image ?: snapshotAttachment?.bytes,
+            directAudio, stream, guard, telemetry)
         val draft = ConversationDraft(answer, generated, input.nativeConversationContainsTurn,
             runawayLoopStopped = stoppedLoop)
         executeNativeActions(draft, phoneActions)

@@ -7,6 +7,16 @@ import kotlinx.coroutines.channels.Channel
 /** One append-only native input track. No answer tokens or tool calls during listening. */
 interface VoicePrefillSession : AutoCloseable {
     fun append(text: String)
+
+    /**
+     * Snapshot synthesis: append ONE image to the pending turn, after the
+     * question's text and before [decode] — the image lands inside the
+     * user turn, exactly once per turn, only at finalization. Sessions
+     * whose native side cannot accept an image throw; the caller's text
+     * fallback then regenerates with the image on the conversation route
+     * instead of silently dropping it.
+     */
+    fun appendImage(imageBytes: ByteArray)
     suspend fun decode(onToken: (String) -> Unit): GenerationResult
 }
 
@@ -89,7 +99,8 @@ class IncrementalVoiceInput(
         worker.join()
     }
 
-    suspend fun answer(finalPrompt: String, onToken: (String) -> Unit): GenerationResult {
+    suspend fun answer(finalPrompt: String, onToken: (String) -> Unit,
+                       imageBytes: ByteArray? = null): GenerationResult {
         seal()
         check(!closed && !consumed)
         consumed = true
@@ -115,6 +126,7 @@ class IncrementalVoiceInput(
         // the real append call for ephemeral common-clock begin/end observations.
         log("input_finalized reuse=$reuse reuseReason=$reuseReason chunks=$chunks retainedChars=${if (reuse) retained.length else 0} " +
             "finalPromptChars=${finalPrompt.length} listeningPrefillMs=$prefillMs audioSubmitted=false " +
+            "imageAttached=${imageBytes != null} imageBytes=${imageBytes?.size ?: 0} " +
             "prefillTimingSchema=seal_relative_v1 " +
             "contextPrefillCompletedOffsetMs=${completionOffsetMs(contextPrefillCompletedAtNanos)} " +
             "firstWordPrefillCompletedOffsetMs=${completionOffsetMs(firstWordPrefillCompletedAtNanos)} " +
@@ -122,6 +134,11 @@ class IncrementalVoiceInput(
         val remaining = if (reuse) finalPrompt.substring(retained.length) else finalPrompt
         val finalStarted = nowNanos()
         if (remaining.isNotEmpty()) native.append(remaining)
+        // Snapshot synthesis: the turn's one image goes in only now —
+        // question complete, after the final text, before decode. A
+        // session that rejects it throws and the caller's fallback
+        // regenerates with the image on the conversation route.
+        if (imageBytes != null) native.appendImage(imageBytes)
         log("input_final_prefill remainingChars=${remaining.length} finalPrefillMs=${(nowNanos() - finalStarted).coerceAtLeast(0) / 1_000_000}")
         return native.decode(onToken)
     }
@@ -140,14 +157,15 @@ class IncrementalVoiceInput(
     suspend fun answerWithTextFallback(
         finalPrompt: String,
         onToken: (String) -> Unit,
+        imageBytes: ByteArray? = null,
         retry: suspend (Exception) -> GenerationResult
     ): GenerationResult {
         var outputStarted = false
         try {
-            return answer(finalPrompt) { token ->
+            return answer(finalPrompt, { token ->
                 if (token.isNotBlank()) outputStarted = true
                 onToken(token)
-            }
+            }, imageBytes)
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (error: Exception) {
             close()

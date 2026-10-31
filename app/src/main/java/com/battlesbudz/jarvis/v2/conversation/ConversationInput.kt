@@ -76,15 +76,21 @@ internal class ConversationInput(
         }
         textInput != null -> {
             engine.onPromptSubmitted(prompt, 0)
-            textInput.answerWithTextFallback(prompt, onToken) { error ->
+            textInput.answerWithTextFallback(prompt, onToken, imageBytes) { error ->
                 onIncrementalFallback(error)
                 incrementalFallbackUsed = true
                 engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
-                engine.generate(prompt, onToken)
+                // Snapshot synthesis: when this turn carries an image (a
+                // chat photo, or a call turn's retained snapshot), the
+                // fallback regenerates WITH it on the conversation route —
+                // never a silent text-only downgrade of an image turn.
+                if (imageBytes != null) engine.generate(prompt, imageBytes, onToken)
+                else engine.generate(prompt, onToken)
             }
         }
         // Retained voice audio accompanies ASR text but must not override that mode.
-        voiceAudio != null -> engine.generate(prompt, onToken)
+        voiceAudio != null -> if (imageBytes != null) engine.generate(prompt, imageBytes, onToken)
+            else engine.generate(prompt, onToken)
         else -> retry(engine, prompt, onToken)
     }
 

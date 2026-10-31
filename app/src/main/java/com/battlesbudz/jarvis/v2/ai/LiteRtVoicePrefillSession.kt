@@ -22,6 +22,8 @@ internal interface VoiceNativeCallback {
 
 internal interface VoiceNativeSession : AutoCloseable {
     fun runPrefill(input: List<String>)
+    /** Snapshot synthesis: prefill one image into the pending turn. */
+    fun runPrefillImage(imageBytes: ByteArray)
     fun generateContentStream(input: List<String>, callback: VoiceNativeCallback)
     fun cancelProcess()
     /** Includes native callbacks returning; terminal notification alone is insufficient. */
@@ -45,6 +47,8 @@ internal class LiteRtVoicePrefillSession(private val session: VoiceNativeSession
     private var promptChars = 0
     private var prefillFailure: Throwable? = null
     private var prefillReported = false
+    /** Snapshot synthesis: bytes of the one image appended to this turn. */
+    private var appendedImageBytes = 0
     override fun append(text: String) {
         synchronized(accessLock) {
             check(!closed && !decoding && !nativeBorrowed && prefillFailure == null)
@@ -66,6 +70,36 @@ internal class LiteRtVoicePrefillSession(private val session: VoiceNativeSession
             synchronized(accessLock) { nativeBorrowed = false }
         }
     }
+    /**
+     * Snapshot synthesis: the turn's one image, appended after the final
+     * text chunk and before [decode], so it lands inside the user turn.
+     * Requires a started session (the question's text went first — an
+     * image-only turn is not a shape this pipeline submits) and at most
+     * one image per session. A native rejection is recorded as the
+     * session's prefill failure and thrown, so the caller's fallback can
+     * regenerate with the image on the conversation route.
+     */
+    override fun appendImage(imageBytes: ByteArray) {
+        synchronized(accessLock) {
+            check(!closed && !decoding && !nativeBorrowed && prefillFailure == null)
+            check(started) { "Snapshot image requires the question text to be prefilled first" }
+            check(appendedImageBytes == 0) { "Only one snapshot image per turn" }
+            nativeBorrowed = true
+        }
+        val began = System.nanoTime()
+        prefillChunks++
+        try {
+            onBenchmarkNativeWorkStarted()
+            session.runPrefillImage(imageBytes)
+            appendedImageBytes = imageBytes.size
+        } catch (error: Throwable) {
+            prefillFailure = error
+            throw error
+        } finally {
+            prefillNanos += (System.nanoTime() - began).coerceAtLeast(0)
+            synchronized(accessLock) { nativeBorrowed = false }
+        }
+    }
     override suspend fun decode(onToken: (String) -> Unit): GenerationResult {
         currentCoroutineContext().ensureActive()
         synchronized(accessLock) {
@@ -79,7 +113,9 @@ internal class LiteRtVoicePrefillSession(private val session: VoiceNativeSession
         val finalInput = listOf("<turn|>\n<|turn>model\n")
         val began = System.nanoTime()
         val benchmark = NativeInferenceBenchmark(benchmarkModelId, benchmarkPurpose,
-            PipelineBenchmarkWarmState.UNKNOWN, "incremental_text", initializationMs = benchmarkInitializationMs,
+            PipelineBenchmarkWarmState.UNKNOWN,
+            if (appendedImageBytes > 0) "incremental_image_text" else "incremental_text",
+            imageBytes = appendedImageBytes, initializationMs = benchmarkInitializationMs,
             sink = benchmarkSink)
         val tokens = Channel<String>(Channel.UNLIMITED)
         val ownerJob = currentCoroutineContext()[Job]

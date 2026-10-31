@@ -53,6 +53,14 @@ internal class CallServerVisionObserver(
         { imageBytes, token -> PhoneVisionClient().detect(imageBytes, token) },
     private val clockMs: () -> Long = System::currentTimeMillis,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    /**
+     * Snapshot synthesis: the pixel geometry of the frame currently
+     * being delivered. The binder notes each frame's geometry on the hub
+     * immediately before dispatching it (same analysis thread), so the
+     * hub's latest geometry at [onFrame] time is this frame's. Injected
+     * so unit tests never touch a real hub.
+     */
+    private val frameGeometry: () -> FrameGeometry? = { null },
 ) : VisionObserver {
     private val inFlight = AtomicBoolean(false)
 
@@ -65,6 +73,12 @@ internal class CallServerVisionObserver(
         runCatching {
             if (closed) return
             holder.recordReceived()
+            // Snapshot synthesis: retain the frame itself for Gemma's
+            // per-turn snapshot. Deliberately BEFORE the server gating
+            // below: the snapshot serves the local model, not the server,
+            // so a disabled/unconfigured server must not starve it (the
+            // tracks it is paired with still come only from real detects).
+            holder.recordFrame(jpegBytes, timestampMs, runCatching { frameGeometry() }.getOrNull())
             val config = runCatching { settings() }.getOrNull() ?: return
             if (!config.enabled || config.token.isBlank()) return
             if (!inFlight.compareAndSet(false, true)) {

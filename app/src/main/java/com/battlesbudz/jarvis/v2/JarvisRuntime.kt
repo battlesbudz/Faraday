@@ -753,7 +753,9 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             }, diagnostics,
                 appAssets = applicationContext.assets,
                 visionServerConfig = { VisionServerSettings.snapshot(applicationContext) },
-                callVisualContext = { com.battlesbudz.jarvis.v2.voice.CallVisualContext.current() },
+                callVisualContext = { imageCapable ->
+                    com.battlesbudz.jarvis.v2.voice.CallVisualContext.current(imageCapable = imageCapable)
+                },
                 // M1d: model-proposed screen mutations never auto-dispatch
                 // (D23); M4: model-proposed browse_submit never auto-dispatches
                 // (D11). Park them for the user's explicit approval.

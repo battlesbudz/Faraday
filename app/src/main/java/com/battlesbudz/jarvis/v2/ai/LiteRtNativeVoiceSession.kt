@@ -15,6 +15,17 @@ internal class LiteRtNativeVoiceSession(
         session.runPrefill(input.map { InputData.Text(it) })
     }
 
+    /**
+     * Snapshot synthesis: one image into the pending turn. The pinned
+     * SDK's Session.runPrefill accepts InputData.Image alongside text —
+     * its JNI input bridge converts image bytes exactly as it does for
+     * the conversation route's Content.ImageBytes.
+     */
+    override fun runPrefillImage(imageBytes: ByteArray) {
+        checkWorkerThread()
+        session.runPrefill(listOf(InputData.Image(imageBytes)))
+    }
+
     override fun generateContentStream(input: List<String>, callback: VoiceNativeCallback) {
         checkWorkerThread()
         require(input.isNotEmpty()) { "Streaming generation requires a final input chunk" }
