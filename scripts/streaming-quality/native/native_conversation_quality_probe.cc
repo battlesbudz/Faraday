@@ -119,8 +119,8 @@ struct Tap {
 
 void Run(const Json& request, Json& result, std::unique_ptr<Engine>& engine,
          std::unique_ptr<Conversation>& conversation) {
-  Need(request.at("sdk_commit") == "924e79c91542761242244e4f1651851f822e4cbb", "SDK pin mismatch");
-  Need(request.at("litert_workspace_pin") == "0ff28117f1cb5556d0e015bf80b773f74e2bee51", "LiteRT pin mismatch");
+  Need(request.at("sdk_commit") == "b2f686e2ed4718fb84ec398a61dd59ca0f0aff27", "SDK pin mismatch");
+  Need(request.at("litert_workspace_pin") == "26895c9fbcc25c43faa8c1a98cd1fd28951602c3", "LiteRT pin mismatch");
   Need(request.at("bundle_sha256") == "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", "Bundle pin mismatch");
   Need(request.at("producer_sha256") == "d5c50b140ace235717e6713d287e73ccfa4f32d0090e1cceb9d00714da850a1b", "Producer pin mismatch");
   Need(request.at("case") == "transcribe", "Only bounded transcription is implemented in this minimal runner");

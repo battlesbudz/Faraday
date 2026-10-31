@@ -25,8 +25,8 @@ from hash_bazel_action_metadata import action_metadata
 from diagnostic_status import Status, Parser, build_dir_from_argv, validate_context, instance_from_argv
 
 GIB=1024**3
-SDK_PIN='924e79c91542761242244e4f1651851f822e4cbb'
-LITERT_PIN='0ff28117f1cb5556d0e015bf80b773f74e2bee51'
+SDK_PIN='b2f686e2ed4718fb84ec398a61dd59ca0f0aff27'
+LITERT_PIN='26895c9fbcc25c43faa8c1a98cd1fd28951602c3'
 BAZEL_SHA='ac6249d1192aea9feaf49dfee2ab50c38cee2454b00cf29bbec985a11795c025'
 ENCODER_TARGET='//experimental/hosted_audio_quality_20261006:pinned_encoder_probe'
 

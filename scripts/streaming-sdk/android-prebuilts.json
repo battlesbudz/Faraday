@@ -1,44 +1,44 @@
 [
   {
     "path": "prebuilt/android_arm64/libGemmaModelConstraintProvider.so",
-    "url": "https://media.githubusercontent.com/media/google-ai-edge/LiteRT-LM/924e79c91542761242244e4f1651851f822e4cbb/prebuilt/android_arm64/libGemmaModelConstraintProvider.so",
-    "sha256": "d305460ed571ba0e527f9f75e34de4d8b13d5d6af906431c36d04795f14411ca",
-    "bytes": 19589096
+    "url": "https://media.githubusercontent.com/media/google-ai-edge/LiteRT-LM/b2f686e2ed4718fb84ec398a61dd59ca0f0aff27/prebuilt/android_arm64/libGemmaModelConstraintProvider.so",
+    "sha256": "f2aa38cecc5c728050652ffdbaed4c6f2d444e098e1ca3ecf8b85be46baae5b9",
+    "bytes": 19606552
   },
   {
     "path": "prebuilt/android_arm64/libLiteRtGpuAccelerator.so",
-    "url": "https://media.githubusercontent.com/media/google-ai-edge/LiteRT-LM/924e79c91542761242244e4f1651851f822e4cbb/prebuilt/android_arm64/libLiteRtGpuAccelerator.so",
-    "sha256": "1287e5ae01666a605f2bc5d72453f32cf4a294ef38acabb86cd61140207e41c3",
-    "bytes": 3269584
+    "url": "https://media.githubusercontent.com/media/google-ai-edge/LiteRT-LM/b2f686e2ed4718fb84ec398a61dd59ca0f0aff27/prebuilt/android_arm64/libLiteRtGpuAccelerator.so",
+    "sha256": "75ee49f6f31faf44b3b5ac54f15d58abd75438bc9e2f9abcf47f24279d337bc8",
+    "bytes": 3416880
   },
   {
     "path": "prebuilt/android_arm64/libLiteRtOpenClAccelerator.so",
-    "url": "https://media.githubusercontent.com/media/google-ai-edge/LiteRT-LM/924e79c91542761242244e4f1651851f822e4cbb/prebuilt/android_arm64/libLiteRtOpenClAccelerator.so",
-    "sha256": "dfdcb6a551dc78a9dab88883ad6e8e2d9b090ecda383a5cea3731c6b9561d244",
-    "bytes": 3023816
+    "url": "https://media.githubusercontent.com/media/google-ai-edge/LiteRT-LM/b2f686e2ed4718fb84ec398a61dd59ca0f0aff27/prebuilt/android_arm64/libLiteRtOpenClAccelerator.so",
+    "sha256": "dfc714a0b59d5e1bf5155db7533070bf13da28574a3bc52396a4ba22d23d893c",
+    "bytes": 3187496
   },
   {
     "path": "prebuilt/android_arm64/libLiteRtTopKOpenClSampler.so",
-    "url": "https://media.githubusercontent.com/media/google-ai-edge/LiteRT-LM/924e79c91542761242244e4f1651851f822e4cbb/prebuilt/android_arm64/libLiteRtTopKOpenClSampler.so",
-    "sha256": "4404dc68786460602685cab62ddfa29035e9cfc38bb4550dec15abaaa1302a82",
-    "bytes": 11712744
+    "url": "https://media.githubusercontent.com/media/google-ai-edge/LiteRT-LM/b2f686e2ed4718fb84ec398a61dd59ca0f0aff27/prebuilt/android_arm64/libLiteRtTopKOpenClSampler.so",
+    "sha256": "0f77c888ad2a2ae044e189fd0fb87844c47fe46c8e68a677e6f204dac1096e24",
+    "bytes": 11824752
   },
   {
     "path": "prebuilt/android_arm64/libLiteRtTopKWebGpuSampler.so",
-    "url": "https://media.githubusercontent.com/media/google-ai-edge/LiteRT-LM/924e79c91542761242244e4f1651851f822e4cbb/prebuilt/android_arm64/libLiteRtTopKWebGpuSampler.so",
-    "sha256": "c52a1cf69a92a2d2c4d3c08f5c087d1eb405f709af61c3312b215221135e18db",
-    "bytes": 11678008
+    "url": "https://media.githubusercontent.com/media/google-ai-edge/LiteRT-LM/b2f686e2ed4718fb84ec398a61dd59ca0f0aff27/prebuilt/android_arm64/libLiteRtTopKWebGpuSampler.so",
+    "sha256": "1ab8e8b49d3c7e4fa64c5a50f58d507de2db7936e4b8fc0d008782724aa5862c",
+    "bytes": 11793320
   },
   {
     "path": "prebuilt/android_arm64/libLiteRtWebGpuAccelerator.so",
-    "url": "https://media.githubusercontent.com/media/google-ai-edge/LiteRT-LM/924e79c91542761242244e4f1651851f822e4cbb/prebuilt/android_arm64/libLiteRtWebGpuAccelerator.so",
-    "sha256": "acf02905cd1d7b7d1f0f70a6d885ddbd392c0c69a99b92834da7e26d6859abcf",
-    "bytes": 3040208
+    "url": "https://media.githubusercontent.com/media/google-ai-edge/LiteRT-LM/b2f686e2ed4718fb84ec398a61dd59ca0f0aff27/prebuilt/android_arm64/libLiteRtWebGpuAccelerator.so",
+    "sha256": "57f8bd360a4293c57703d097a26ffa2dc89ee1884573289fdaf455f3098a6cdc",
+    "bytes": 3203888
   },
   {
     "path": "prebuilt/android_arm64/libwebgpu_dawn.so",
-    "url": "https://media.githubusercontent.com/media/google-ai-edge/LiteRT-LM/924e79c91542761242244e4f1651851f822e4cbb/prebuilt/android_arm64/libwebgpu_dawn.so",
-    "sha256": "3b2a53de934efabce2efb5e9f703a7bd6b63a5814b2f8f0c7ed610cabf53b147",
-    "bytes": 19517752
+    "url": "https://media.githubusercontent.com/media/google-ai-edge/LiteRT-LM/b2f686e2ed4718fb84ec398a61dd59ca0f0aff27/prebuilt/android_arm64/libwebgpu_dawn.so",
+    "sha256": "657b2beb6456d50d7f6c86b315d5c2e97ad5a3870b134bcfcc2aa682ef467977",
+    "bytes": 19702160
   }
 ]

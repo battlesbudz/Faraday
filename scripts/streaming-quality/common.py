@@ -7,8 +7,8 @@ import time
 import urllib.request
 
 HERE = Path(__file__).resolve().parent
-SDK_PIN = '924e79c91542761242244e4f1651851f822e4cbb'
-LITERT_PIN = '0ff28117f1cb5556d0e015bf80b773f74e2bee51'
+SDK_PIN = 'b2f686e2ed4718fb84ec398a61dd59ca0f0aff27'
+LITERT_PIN = '26895c9fbcc25c43faa8c1a98cd1fd28951602c3'
 BUNDLE = dict(bytes=2588147712, sha256='181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c',
     revision='6e5c4f1e395deb959c494953478fa5cec4b8008f',
     url='https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/6e5c4f1e395deb959c494953478fa5cec4b8008f/gemma-4-E2B-it.litertlm')

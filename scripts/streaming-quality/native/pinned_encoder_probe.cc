@@ -23,7 +23,7 @@
 
 namespace {
 namespace fs = std::filesystem;
-constexpr char kPin[] = "0ff28117f1cb5556d0e015bf80b773f74e2bee51";
+constexpr char kPin[] = "26895c9fbcc25c43faa8c1a98cd1fd28951602c3";
 constexpr size_t kMaxTensorBytes = 16 * 1024 * 1024;
 
 [[noreturn]] void Fail(const std::string& message) {

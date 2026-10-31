@@ -18,8 +18,8 @@ import urllib.request
 import zipfile
 
 HERE = Path(__file__).resolve().parent
-SDK_PIN = '924e79c91542761242244e4f1651851f822e4cbb'
-LITERT_PIN = '0ff28117f1cb5556d0e015bf80b773f74e2bee51'
+SDK_PIN = 'b2f686e2ed4718fb84ec398a61dd59ca0f0aff27'
+LITERT_PIN = '26895c9fbcc25c43faa8c1a98cd1fd28951602c3'
 BAZEL = {'filename': 'bazel-7.6.1-linux-x86_64', 'bytes': 57509759,
          'sha256': 'ac6249d1192aea9feaf49dfee2ab50c38cee2454b00cf29bbec985a11795c025',
          'url': 'https://github.com/bazelbuild/bazel/releases/download/7.6.1/bazel-7.6.1-linux-x86_64'}
@@ -245,7 +245,7 @@ def main():
     for pin in kotlin_pins:
         download(pin, downloads / pin['filename'])
     base_pin = json.loads((HERE / 'official-litert-aar-metadata.json').read_text())
-    base = downloads / 'litertlm-android-0.16.0.aar'
+    base = downloads / 'litertlm-android-0.18.0.aar'
     download(base_pin, base)
     receipt = {'sdk_commit': SDK_PIN, 'litert_commit': LITERT_PIN,
                'reviewed_patch_sha256': args.patch_sha256,
@@ -294,7 +294,7 @@ def main():
     command = [sys.executable, HERE / 'package_android_aar.py', '--base-aar', base, '--classes-jar', classes_jar,
                '--ndk', ndk, '--page-auditor', args.page_auditor.resolve(), '--source-receipt', source_receipt,
                '--patchelf', patchelf,
-               '--out', out / 'litertlm-android-0.16.0-sealed-audio-arm64.aar']
+               '--out', out / 'litertlm-android-0.18.0-sealed-audio-arm64.aar']
     owner_native = repo / 'bazel-bin/experimental/native_audio_owner_jni_20261006'
     for path in [native, owner_native, repo / 'prebuilt/android_arm64', *solib]:
         command += ['--native-directory', path]
