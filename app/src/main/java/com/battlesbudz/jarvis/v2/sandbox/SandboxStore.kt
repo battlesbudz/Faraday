@@ -111,6 +111,26 @@ class SandboxStore(private val context: Context) {
     fun resetRootfs() {
         deleteTree(rootfsDir())
         deleteTree(File(rootDir, "rootfs.tmp"))
+        // Counted for the diagnostics block (scope §14 item 8 reads it).
+        try {
+            ensureLayout()
+            val file = File(stateDir, "resets.txt")
+            val count = (try {
+                file.readText().trim().toInt()
+            } catch (e: Exception) {
+                0
+            }) + 1
+            file.writeText(count.toString())
+        } catch (e: Exception) {
+            // Bookkeeping only.
+        }
+    }
+
+    /** Resets performed in this install's lifetime. */
+    fun resetsCount(): Int = try {
+        File(stateDir, "resets.txt").readText().trim().toInt()
+    } catch (e: Exception) {
+        0
     }
 
     /** Clear workspace (decision D2): empties /workspace, keeps the rootfs. */

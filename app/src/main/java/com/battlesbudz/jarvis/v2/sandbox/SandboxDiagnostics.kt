@@ -33,6 +33,7 @@ internal object SandboxDiagnostics {
             appendLine("  networking: $network (default off; settings-only toggle)")
             appendLine("  storage: ${"%.1f".format(storageMb)} MB under files/sandbox")
             appendLine("  runs: ${store.runCount()}, last: ${store.lastRunSummary() ?: "none"}")
+            appendLine("  resets: ${store.resetsCount()}")
             appendLine("  sessions lost to process death: ${sessionsLost(store)}")
             val probe = probeOutput(store)
             if (probe != null) {

@@ -1,7 +1,9 @@
 package com.battlesbudz.jarvis.v2.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -42,6 +44,7 @@ internal fun SandboxSettingsSection(enabled: Boolean) {
     var confirmClear by remember { mutableStateOf(false) }
     var proofRunning by remember { mutableStateOf(false) }
     var proofResults by remember { mutableStateOf("") }
+    var commandText by remember { mutableStateOf("") }
 
     // Read on every recomposition; `refresh` bumps after each action.
     val state = manager.installState
@@ -169,6 +172,40 @@ internal fun SandboxSettingsSection(enabled: Boolean) {
         }
         if (message.isNotBlank()) Text(message, style = MaterialTheme.typography.bodySmall)
         if (state == SandboxManager.InstallState.READY || state == SandboxManager.InstallState.BUSY) {
+            // The free-form console (scope §12): type a command, run it,
+            // read the raw output. The §14 proof list is executed through
+            // this field; the fixed sequence below is a one-tap subset.
+            OutlinedTextField(
+                value = commandText,
+                onValueChange = { commandText = it },
+                enabled = enabled && !busy && !proofRunning,
+                label = { Text("Command to run in the sandbox") },
+                modifier = Modifier.testTag("sandbox_command_field").fillMaxWidth()
+            )
+            TextButton(
+                enabled = enabled && !busy && !proofRunning && commandText.isNotBlank(),
+                modifier = Modifier.testTag("sandbox_command_run"),
+                onClick = {
+                    val script = commandText
+                    proofRunning = true
+                    proofResults = "Running…"
+                    scope.launch(Dispatchers.IO) {
+                        val r = runner.runShellCommand(script)
+                        proofResults = buildString {
+                            appendLine("— $script")
+                            appendLine(when {
+                                r.error != null -> "start failed: ${r.error}"
+                                r.timedOut -> "TIMED OUT after ${r.durationMs} ms (watchdog)"
+                                else -> "exit ${r.exitCode} in ${r.durationMs} ms"
+                            })
+                            append(r.output.trim().ifEmpty { "(no output)" })
+                            if (r.truncated) append("\n(output truncated)")
+                        }
+                        proofRunning = false
+                        refresh++
+                    }
+                }
+            ) { Text("Run command") }
             TextButton(
                 enabled = enabled && !busy && !proofRunning,
                 modifier = Modifier.testTag("sandbox_proof_run"),
