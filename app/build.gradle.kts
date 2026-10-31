@@ -23,7 +23,7 @@ val prepareWhisperQnn by tasks.registering(Exec::class) {
 val sherpaDir = layout.buildDirectory.dir("sherpa-sdk")
 val sherpaNativeDir = layout.buildDirectory.dir("sherpa-native")
 // The streaming API and checked lifecycle ABI must come from one reviewed build.
-// A missing property deliberately fails; stock Maven 0.16.0 is not API-compatible.
+// A missing property deliberately fails; stock Maven 0.18.0 is not API-compatible.
 fun requiredStreamingProperty(name: String): String = providers.gradleProperty(name).orNull
     ?.takeIf { it.isNotBlank() }
     ?: throw GradleException("Missing -P$name. Build the reviewed SDK with scripts/streaming-sdk first.")
