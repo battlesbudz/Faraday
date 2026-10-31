@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import com.battlesbudz.jarvis.v2.sandbox.SandboxManager
+import com.battlesbudz.jarvis.v2.sandbox.SandboxRunner
 import com.battlesbudz.jarvis.v2.sandbox.SandboxSettings
 import io.github.sylirre.terminal.term.UserlandRootfs
 import kotlinx.coroutines.Dispatchers
@@ -33,11 +34,14 @@ internal fun SandboxSettingsSection(enabled: Boolean) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val manager = remember { SandboxManager(context.applicationContext) }
+    val runner = remember { SandboxRunner(context.applicationContext, manager) }
     var refresh by remember { mutableIntStateOf(0) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     var confirmReset by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
+    var proofRunning by remember { mutableStateOf(false) }
+    var proofResults by remember { mutableStateOf("") }
 
     // Read on every recomposition; `refresh` bumps after each action.
     val state = manager.installState
@@ -164,5 +168,57 @@ internal fun SandboxSettingsSection(enabled: Boolean) {
             ) { Text("Cancel") }
         }
         if (message.isNotBlank()) Text(message, style = MaterialTheme.typography.bodySmall)
+        if (state == SandboxManager.InstallState.READY || state == SandboxManager.InstallState.BUSY) {
+            TextButton(
+                enabled = enabled && !busy && !proofRunning,
+                modifier = Modifier.testTag("sandbox_proof_run"),
+                onClick = {
+                    proofRunning = true
+                    proofResults = "Running proof checks…"
+                    scope.launch(Dispatchers.IO) {
+                        proofResults = runSandboxProofs(runner)
+                        proofRunning = false
+                        refresh++
+                    }
+                }
+            ) { Text(if (proofRunning) "Running proof checks…" else "Run proof checks") }
+            if (proofResults.isNotBlank()) {
+                Text(
+                    proofResults,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag("sandbox_proof_results")
+                )
+            }
+        }
     }
+}
+
+/**
+ * The Phase 1 proof console (scope §14): a fixed sequence of runs whose
+ * results are shown verbatim — the checks a human verifies on the phone
+ * (echo, workspace persistence, exit codes, the timeout watchdog, the
+ * inherited-fd hygiene from review M-4, multi-exec pipelines from review
+ * M-6, and the network posture under the current toggle). Nothing here
+ * interprets beyond labeling: the output is the evidence.
+ */
+private fun runSandboxProofs(runner: SandboxRunner): String {
+    fun line(label: String, script: String, timeoutMs: Long = SandboxRunner.DEFAULT_TIMEOUT_MS): String {
+        val r = runner.runShellCommand(script, timeoutMs)
+        val outcome = when {
+            r.error != null -> "start failed: ${r.error}"
+            r.timedOut -> "TIMED OUT after ${r.durationMs} ms (watchdog)"
+            else -> "exit ${r.exitCode} in ${r.durationMs} ms"
+        }
+        val body = r.output.trim().ifEmpty { "(no output)" }
+        return "— $label: $outcome\n$body"
+    }
+    return listOf(
+        line("echo", "echo sandbox-ok"),
+        line("workspace write + read", "echo proof-line > /workspace/proof.txt && cat /workspace/proof.txt"),
+        line("exit code 3", "exit 3"),
+        line("timeout watchdog (2 s limit on a 30 s sleep)", "sleep 30", timeoutMs = 2_000),
+        line("open fds inside the guest (M-4: only the PTY/stdio set)", "ls /proc/self/fd"),
+        line("multi-exec pipeline (M-6)", "echo a b c | tr ' ' '\\n' | wc -l && ls /bin | wc -l"),
+        line("network posture", "ping -c 1 -W 2 1.1.1.1 2>&1 | head -2 || echo ping-failed")
+    ).joinToString("\n")
 }
