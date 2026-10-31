@@ -122,6 +122,43 @@ class SandboxStore(private val context: Context) {
     /** Total bytes under files/sandbox — the settings storage line. */
     fun storageBytes(): Long = treeBytes(rootDir)
 
+    /**
+     * Records one finished run for the diagnostics block (scope §12):
+     * bumps the persisted run count and stores the last run's outcome.
+     * Best-effort by design — bookkeeping never fails a run.
+     */
+    fun recordRun(exitCode: Int?, timedOut: Boolean, durationMs: Long) {
+        try {
+            ensureLayout()
+            val countFile = File(stateDir, "run-count.txt")
+            val count = (try {
+                countFile.readText().trim().toInt()
+            } catch (e: Exception) {
+                0
+            }) + 1
+            countFile.writeText(count.toString())
+            File(stateDir, "last-run.txt").writeText(
+                "exit=${exitCode ?: "none"}\ntimedOut=$timedOut\ndurationMs=$durationMs\n"
+            )
+        } catch (e: Exception) {
+            // Diagnostics bookkeeping is not worth surfacing.
+        }
+    }
+
+    /** Runs recorded by [recordRun] in this install's lifetime. */
+    fun runCount(): Int = try {
+        File(stateDir, "run-count.txt").readText().trim().toInt()
+    } catch (e: Exception) {
+        0
+    }
+
+    /** The last recorded run's outcome lines, or null when none ran yet. */
+    fun lastRunSummary(): String? = try {
+        File(stateDir, "last-run.txt").readText().trim().replace("\n", ", ")
+    } catch (e: Exception) {
+        null
+    }
+
     private fun treeBytes(file: File): Long {
         if (isSymlink(file)) return 0L
         if (file.isFile) return file.length()
