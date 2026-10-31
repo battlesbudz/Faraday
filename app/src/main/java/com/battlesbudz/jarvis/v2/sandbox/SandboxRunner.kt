@@ -70,9 +70,9 @@ class SandboxRunner(
         try {
             val opts = UserlandOptions.defaults("/bin/sh")
                 .withWorkDir("/workspace")
-                // Decision D3 + review M-1: the settings toggle is the only
-                // source; while networking is off the engine gate is engaged.
-                .withNetworkDisabled(!SandboxSettings.networkEnabled(context))
+            // The settings-driven network gate (decision D3, review M-1)
+            // is wired into these options in unit 6, together with the
+            // engine-side --no-network flag it drives.
             val command = UserlandRootfs.commandExec(
                 context, opts,
                 listOf("/bin/sh", "-c", script),
