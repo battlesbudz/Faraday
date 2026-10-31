@@ -388,7 +388,7 @@ public final class UserlandRootfs {
      * FARADAY ADDITION: chroot-ng command for an exec-style run — the guest
      * program tokens (e.g. {@code /bin/sh}, {@code -c}, {@code <script>}) run
      * directly instead of a login shell. Everything else (identity, env,
-     * /sys bind, TMPDIR) matches {@link #command(Context, UserlandOptions)}.
+     * TMPDIR) matches {@link #command(Context, UserlandOptions)}.
      *
      * @param extraBinds additional {@code --bind} specs in the engine's
      *        {@code host:guest} form (Faraday binds its workspace directory
@@ -424,6 +424,9 @@ public final class UserlandRootfs {
         List<String> argv = new ArrayList<>();
         argv.add("chroot-ng");
         argv.add("--link2symlink");  // apps can't hard-link; dpkg needs ln to work
+        // FARADAY (security review M-3): no guest-debugger need in Phase 1;
+        // --no-ptrace removes the in-guest ptrace emulation surface.
+        argv.add("--no-ptrace");
         // Guest identity: --fake-id takes numeric uid:gid only, so the "User
         // identity" setting is resolved against the rootfs passwd/group here.
         // An empty/invalid/unresolvable value yields 0:0 (root), matching the
@@ -439,13 +442,11 @@ public final class UserlandRootfs {
         String workDir = resolveGuestDir(root, opts.workDir, opts.identity);
         argv.add("--work-dir");
         argv.add(workDir);
-        // The engine synthesizes /proc and whitelists /dev itself; /sys is
-        // the one host tree it does not special-case, so bind it in like
-        // PRoot did.
-        if (new File("/sys").isDirectory()) {
-            argv.add("--bind");
-            argv.add("/sys:/sys");
-        }
+        // FARADAY (security review M-3): upstream bound the host's whole
+        // /sys here. That bind is forbidden for Faraday — the engine
+        // synthesizes /proc and whitelists /dev itself, and no host tree
+        // beyond the scoped /workspace bind (extraBinds, below) is ever
+        // bound in.
         if (extraBinds != null) {
             for (String bind : extraBinds) {
                 argv.add("--bind");

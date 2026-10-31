@@ -126,6 +126,11 @@ Java:
      guest program tokens instead of a login shell, with extra `--bind`
      specs and a working-directory override; argv/env construction is
      shared with `command()` in `buildCommand(...)`.
+   - Session argv hardening (Faraday security review M-3): the host
+     `/sys` bind upstream added in `buildCommand(...)` is removed — no
+     host tree beyond the scoped binds a caller passes is ever bound —
+     and `--no-ptrace` is always passed, since Faraday sessions have no
+     guest-debugger need.
    - Guest defaults: the default `/etc/resolv.conf` is written only when
      networking is enabled (Faraday's sandbox networking defaults off);
      `install(...)` gained a networking-aware overload and

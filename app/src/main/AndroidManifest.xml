@@ -54,6 +54,16 @@
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Long-running local model downloads: multi-gigabyte on-device AI model files download in the background so setup can complete while the app is not in the foreground." />
         </service>
+        <!-- Sandbox session keepalive (Sandbox Phase 1): holds the process
+             while a guest session is live, as specialUse like the model
+             setup service above. Started/stopped only by SandboxManager. -->
+        <service
+            android:name=".sandbox.SandboxKeepaliveService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the on-device Linux sandbox session alive while a command or terminal session runs in the background." />
+        </service>
         <service android:name=".voice.KeyboardMicrophoneService" android:exported="true"
             android:label="@string/keyboard_microphone_label"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
