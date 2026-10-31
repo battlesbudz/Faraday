@@ -90,7 +90,7 @@ struct Tap {
     try {
       receipt["calls"] = receipt["calls"].get<int>() + 1;
       receipt["valid_tokens"] = audio.GetValidTokens();
-      auto ptr = audio.GetEmbeddingsPtr();
+      auto ptr = audio.GetProjectedAudioEmbeddingsPtr();
       Need(ptr.ok() && *ptr != nullptr, "Audio callback has no embeddings");
       auto type = (*ptr)->TensorType();
       Need(type.HasValue(), "Cannot get callback tensor type");

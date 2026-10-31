@@ -5459,6 +5459,47 @@ index 8050d03..f8952fe 100644
  TEST_F(SessionUtilsTest, PreprocessContentsWithEmptyInputText) {
    SessionConfig session_config = SessionConfig::CreateDefault();
    std::vector<InputData> contents;
+diff --git a/runtime/engine/engine_settings.h b/runtime/engine/engine_settings.h
+index 3c4046a..b925347 100644
+--- a/runtime/engine/engine_settings.h
++++ b/runtime/engine/engine_settings.h
+@@ -32,6 +32,7 @@
+ #include "runtime/components/constrained_decoding/suppress_tokens_config.h"
+ #include "runtime/executor/audio/audio_executor_settings.h"
+ #include "runtime/executor/executor_settings_base.h"
++#include "runtime/executor/llm_executor_io_types.h"
+ #include "runtime/executor/llm_executor_settings.h"
+ #include "runtime/executor/vision/vision_executor_settings.h"
+ #include "runtime/proto/engine.pb.h"
+@@ -298,6 +299,16 @@ class SessionConfig {
+     max_output_tokens_ = max_output_tokens;
+   }
+ 
++  using AudioEmbeddingsCallback =
++      absl::AnyInvocable<void(const ExecutorAudioData&) const>;
++  const AudioEmbeddingsCallback* GetAudioEmbeddingsCallback() const {
++    return audio_embeddings_callback_.get();
++  }
++  void SetAudioEmbeddingsCallback(AudioEmbeddingsCallback callback) {
++    audio_embeddings_callback_ =
++        std::make_shared<AudioEmbeddingsCallback>(std::move(callback));
++  }
++
+   // Speculative decoding:
+   // Getters and setters for configuring speculative decoding in the session.
+   //
+@@ -393,6 +404,11 @@ class SessionConfig {
+   // By default, std::nullopt (inherits the engine's speculative decoding
+   // configuration).
+   std::optional<bool> enable_speculative_decoding_ = std::nullopt;
++
++  // We use std::shared_ptr to wrap the move-only absl::AnyInvocable callback.
++  // This allows SessionConfig to remain copy-constructible, which is required
++  // because SessionConfig is copied in various engine and library interfaces.
++  std::shared_ptr<AudioEmbeddingsCallback> audio_embeddings_callback_;
+ };
+ 
+ std::ostream& operator<<(std::ostream& os, const SessionConfig& config);
 diff --git a/runtime/framework/resource_management/BUILD b/runtime/framework/resource_management/BUILD
 index 0afb5e5..c0eee79 100644
 --- a/runtime/framework/resource_management/BUILD
@@ -5695,7 +5736,7 @@ index a7623ae..0a96db4 100644
    auto fake_llm_executor = CreateDefaultFakeLlmExecutor();
  
 diff --git a/runtime/framework/resource_management/serial_execution_manager.cc b/runtime/framework/resource_management/serial_execution_manager.cc
-index a7959af..bbca9f5 100644
+index a7959af..92e6783 100644
 --- a/runtime/framework/resource_management/serial_execution_manager.cc
 +++ b/runtime/framework/resource_management/serial_execution_manager.cc
 @@ -650,8 +650,13 @@ SerialExecutionManager::ProcessAndCombineContents(
@@ -5769,8 +5810,23 @@ index a7959af..bbca9f5 100644
    if (callback == nullptr) {
      callback = [](absl::StatusOr<Responses>) {};
    }
+@@ -776,6 +797,14 @@ absl::Status SerialExecutionManager::AddPrefillTask(
+ 
+     auto executor_inputs =
+         ProcessAndCombineContents(inputs, session_info->benchmark_info);
++    if (executor_inputs.ok() &&
++        session_info->session_config.GetAudioEmbeddingsCallback() != nullptr) {
++      auto audio_data_status = executor_inputs->GetAudioDataPtr();
++      if (audio_data_status.ok() && *audio_data_status != nullptr) {
++        (*session_info->session_config.GetAudioEmbeddingsCallback())(
++            **audio_data_status);
++      }
++    }
+     if (!executor_inputs.ok()) {
+       llm_executor.value().reset();
+       if (executor_inputs.status().message() ==
 diff --git a/runtime/framework/resource_management/threaded_execution_manager.cc b/runtime/framework/resource_management/threaded_execution_manager.cc
-index 0a11da4..b747485 100644
+index 0a11da4..662a4c4 100644
 --- a/runtime/framework/resource_management/threaded_execution_manager.cc
 +++ b/runtime/framework/resource_management/threaded_execution_manager.cc
 @@ -678,6 +678,7 @@ ThreadedExecutionManager::ProcessAndCombineContents(
@@ -5838,6 +5894,21 @@ index 0a11da4..b747485 100644
    if (callback == nullptr) {
      callback = [](absl::StatusOr<Responses> responses) {};
    }
+@@ -881,6 +898,14 @@ absl::Status ThreadedExecutionManager::AddPrefillTask(
+ 
+     auto executor_inputs =
+         ProcessAndCombineContents(inputs, session_info->benchmark_info);
++    if (executor_inputs.ok() &&
++        session_info->session_config.GetAudioEmbeddingsCallback() != nullptr) {
++      auto audio_data_status = executor_inputs->GetAudioDataPtr();
++      if (audio_data_status.ok() && *audio_data_status != nullptr) {
++        (*session_info->session_config.GetAudioEmbeddingsCallback())(
++            **audio_data_status);
++      }
++    }
+     if (!executor_inputs.ok()) {
+       llm_executor.value().reset();
+       if (executor_inputs.status().message() ==
 diff --git a/runtime/util/BUILD b/runtime/util/BUILD
 index aefd758..068556a 100644
 --- a/runtime/util/BUILD
