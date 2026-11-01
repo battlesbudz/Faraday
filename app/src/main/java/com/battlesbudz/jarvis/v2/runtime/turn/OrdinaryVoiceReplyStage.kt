@@ -7,6 +7,7 @@ import com.battlesbudz.jarvis.v2.conversation.ConversationCallbacks
 import com.battlesbudz.jarvis.v2.conversation.ConversationInvocation
 import com.battlesbudz.jarvis.v2.diagnostics.DiagnosticRecorder
 import com.battlesbudz.jarvis.v2.diagnostics.ReplyCaptureBenchmark
+import com.battlesbudz.jarvis.v2.memory.AutoMemorySource
 import com.battlesbudz.jarvis.v2.memory.ConversationMemorySource
 import com.battlesbudz.jarvis.v2.runtime.RuntimeVoiceResources
 import com.battlesbudz.jarvis.v2.voice.AsrComparisonStore
@@ -204,6 +205,21 @@ internal class OrdinaryVoiceReplyStage(
                                     if (streamed.isBlank() && text.isNotBlank()) lifetime.speechChunks.trySend(AssistantText.forSpeech(text))
                                 }
                                 completed.complete(text)
+                                // Automatic memory (D-3): a finalized ordinary voice answer queues a
+                                // candidate exactly like a chat turn, so the idle evaluator can commit
+                                // it above thresholds. Comparison trials never capture (chat parity);
+                                // direct-audio turns queue from the final-caption site below instead,
+                                // where the real transcript exists. Recognition-issue and
+                                // interruption-test turns never start a conversation, so they never
+                                // reach this callback.
+                                if (request.comparison == null && !prepared.directAudioTurn && finalized.transcript.isNotBlank()) {
+                                    memory.autoCaptureTurn(
+                                        prepared.correction?.utteranceId ?: request.asrTurnId,
+                                        if (prepared.correction?.origin == com.battlesbudz.jarvis.v2.voice.TranscriptOrigin.TYPED)
+                                            AutoMemorySource.CHAT else AutoMemorySource.VOICE,
+                                        finalized.transcript, text,
+                                        prepared.correction?.capturedAtMs ?: System.currentTimeMillis())
+                                }
                             }
                         ))
                     }
@@ -287,6 +303,14 @@ internal class OrdinaryVoiceReplyStage(
                                             prepared.expectedCallId, ConversationMemorySource.VOICE, finalCaption,
                                             prepared.correction?.capturedAtMs ?: System.currentTimeMillis()) }
                                             .onFailure { diagnosticRecorder.recordImportant("Final caption memory capture failed; not retried reason=${it.javaClass.simpleName}") }
+                                        // Automatic memory (D-3): the committed final caption is this
+                                        // direct-audio turn's real transcript, so the turn's candidate
+                                        // queues from here with the answer actually given, mirroring
+                                        // the receipt capture above.
+                                        runCatching { memory.autoCaptureTurn(prepared.correction?.utteranceId ?: request.asrTurnId,
+                                            AutoMemorySource.VOICE, finalCaption, text,
+                                            prepared.correction?.capturedAtMs ?: System.currentTimeMillis()) }
+                                            .onFailure { diagnosticRecorder.recordImportant("Final caption auto-memory capture failed; not retried reason=${it.javaClass.simpleName}") }
                                     }
                                 } finally {
                                     // A storage failure cannot leave an atomically ended input gate armed.

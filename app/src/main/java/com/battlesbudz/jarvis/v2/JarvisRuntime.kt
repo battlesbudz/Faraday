@@ -646,6 +646,23 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         if (conversationHistory.isCurrentPrivate()) return false
         return memoryCoordinator.captureFinalMemory(eventId, conversationId, callId, source, text, capturedAtMs)
     }
+    /**
+     * Automatic-memory queueing for completed turns (the chat completion wrapper and
+     * the voice stages share this one port). Private mode writes nothing, mirroring
+     * [captureFinalMemory]'s early return. Fire-and-forget on IO: queueing a candidate
+     * must never break or block the turn that produced it.
+     */
+    private fun captureAutoMemory(eventId: String, source: AutoMemorySource, text: String, capturedAtMs: Long) {
+        if (conversationHistory.isCurrentPrivate()) return
+        runtimeScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                AndroidMemoryOs.automaticMemory(this@JarvisRuntime).capture(
+                    CandidateInput(eventId, source, text, capturedAtMs))
+            } catch (_: Exception) {
+                // Auto-memory must never break a turn.
+            }
+        }
+    }
     internal fun takeMemoryCaptureReceipt(text: String): com.battlesbudz.jarvis.v2.memory.ConversationMemoryResult? =
         memoryCoordinator.takeMemoryCaptureReceipt(text)
 
@@ -777,7 +794,7 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         val conversation = VoiceConversationAccess(VoiceConversationDispatch(::startConversation),
             currentJob = { conversationJob }, resetConversation = ::resetNativeConversation,
             previewNativeAudioPrompt = conversationCoordinator::previewNativeAudioPrompt)
-        val memory = VoiceMemoryAccess(memoryDeliveryFence, voiceMemoryDelivery, ::captureFinalMemory)
+        val memory = VoiceMemoryAccess(memoryDeliveryFence, voiceMemoryDelivery, ::captureAutoMemory, ::captureFinalMemory)
         val typedInputs = VoiceTypedInputOwnership(call)
         val createLease = { VoiceTurnModelLease(modelStore::tryBeginModelOperation, modelStore::endModelOperation) }
         VoiceTurnRunner(runtimeScope, call, acceptedActionCoordinator, turnOrchestrator,
@@ -859,20 +876,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
                 if (comparison == null && !conversationHistory.isCurrentPrivate()) {
                     val source = if (voiceAudio != null || incrementalVoice != null) AutoMemorySource.VOICE else AutoMemorySource.CHAT
                     val captureText = if (answer.isNotBlank()) "$prompt\n$answer" else prompt
-                    runtimeScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                        try {
-                            AndroidMemoryOs.automaticMemory(this@JarvisRuntime).capture(
-                                CandidateInput(
-                                    eventId = "turn-${System.currentTimeMillis()}-${prompt.hashCode()}",
-                                    source = source,
-                                    text = captureText,
-                                    capturedAtMs = System.currentTimeMillis(),
-                                )
-                            )
-                        } catch (_: Exception) {
-                            // Auto-memory must never break a turn.
-                        }
-                    }
+                    captureAutoMemory("turn-${System.currentTimeMillis()}-${prompt.hashCode()}", source,
+                        captureText, System.currentTimeMillis())
                 }
             }
         }
