@@ -116,7 +116,9 @@ class HeuristicMemoryEvaluator : MemoryEvaluator {
     }
 
     companion object {
-        private val PREFERENCE_PATTERN = Regex("\\b(i like|i love|i prefer|i hate|i dislike|my favorit\\w*|i can't stand)\\b")
+        // v2 also tolerates one intervening adverb ("I also love …"), the spoken form
+        // the v1 adjacency requirement missed entirely.
+        private val PREFERENCE_PATTERN = Regex("\\b(i (?:(?:really|also|just|actually) )?(?:like|love|prefer|enjoy|hate|dislike)|my favorit\\w*|i can't stand)\\b")
         // v2 (2026-10-31): pattern coverage only — the name class gains the "full name"
         // form and biography/past-activity forms ("I used to …", "I've been to …") join
         // the fact class, so voice-captured statements of those classes can reach the
