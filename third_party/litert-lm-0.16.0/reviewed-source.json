@@ -3,7 +3,7 @@
   "upstream_url": "https://github.com/google-ai-edge/LiteRT-LM.git",
   "sdk_commit": "924e79c91542761242244e4f1651851f822e4cbb",
   "litert_commit": "0ff28117f1cb5556d0e015bf80b773f74e2bee51",
-  "patch_sha256": "a1872985d7bd4eb23f6855090aec935bf752327a28ce867715c4f33204d15229",
+  "patch_sha256": "542510812386bb16f3e4fc9553aa62dd34fc5e0164b6bf5a9b6a080041006782",
   "files": {
     "experimental/native_audio_owner_20261006/BUILD": "8bd8c8cb0c2dff8b97eb9831c50a41ec82f43142e27fe1aa62186c3a3c891cc7",
     "experimental/native_audio_owner_20261006/lifecycle_tests.cc": "75c4aa2fba26ca4e5e1d0a7a3e0b9bdaef94e1179efcc0e063d24288f8b02a1b",
@@ -14,14 +14,16 @@
     "experimental/native_audio_owner_20261006/real_native_tests.cc": "cb600e25fbc0eea54af3d691cc41a6986cedac60a23f95016e6340bc0be84b14",
     "experimental/native_audio_owner_jni_20261006/BUILD": "bba731936a74867e0e38b0d35438ab8b4465e15829634989c73e020b3695b495",
     "experimental/native_audio_owner_jni_20261006/NativeAudioOwner.kt": "2c7c82fb16f35b4bd4d454e6e76c2414d1da23302dfd123840a381ec6c9e2215",
+    "experimental/native_audio_owner_jni_20261006/NativeAudioTiming.kt": "8c63317a814410b6a26fc87a31f203b57b52c60112272674f1c01663c62afbdf",
     "experimental/native_audio_owner_jni_20261006/native_audio_owner_jni.cc": "f736fa9da2eee2cb962962b1d1c957625ef50bba9748b10cf2b955880ec4236a",
     "kotlin/java/com/google/ai/edge/litertlm/Conversation.kt": "c4da22296e96651d581b9871283aab90722058e3e218c3fc4ff445fd66ed5264",
     "kotlin/java/com/google/ai/edge/litertlm/Engine.kt": "09bc70edf899362d357500af479542d3fbf4ecc28eca716d2d25d1e210d46405",
-    "kotlin/java/com/google/ai/edge/litertlm/LiteRtLmJni.kt": "c6fa4013fab04af3cc383f84e41b85532632901ee898671cee401863b5305489",
+    "kotlin/java/com/google/ai/edge/litertlm/LiteRtLmJni.kt": "650ce981ed2273c04f1cc8d304db5968ccadb3e81d4b053fc3081f88a4a14bdd",
     "kotlin/java/com/google/ai/edge/litertlm/Message.kt": "9dd22e6439a3332158dfad291250a7fc67af42bf568d92c941210cfb5ef31f8e",
-    "kotlin/java/com/google/ai/edge/litertlm/Session.kt": "984c0907e255f13541ef2ce58a298c1d37ecef26f7dcb5d252f2e93c52b5cb73",
-    "kotlin/java/com/google/ai/edge/litertlm/jni/BUILD": "799668d47a0de340a1712e9d86ac5105b1945ae4d85b87d940c29167f2027bbf",
-    "kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc": "110f21791ebb2be0f349b6c0be2cbabe75e57d70cc70a76b4e1797510b2593ef",
+    "kotlin/java/com/google/ai/edge/litertlm/PreprocessedImage.kt": "66a6bc8aafa0411917e994bc435f0aa7b3b9eb86a391c899a7075742490371d9",
+    "kotlin/java/com/google/ai/edge/litertlm/Session.kt": "a29a59380dd8b35f652d0119bbfb1986bd16b0b233a6b99046c6879f439ef228",
+    "kotlin/java/com/google/ai/edge/litertlm/jni/BUILD": "2e0d89ac8e752000e40e3bc223c00c439ce06f3716bcc3ef4d1f1e9b0846c38e",
+    "kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc": "390826500464be49785b212e8948f422994f8b90c110bc6ecd4eb019a0d88b5b",
     "runtime/components/embedding_lookup/BUILD": "ad90e4182fc08ab574f9669e793ba59ae61542fb1afc9cdb7343def98fd9f298",
     "runtime/components/embedding_lookup/embedding_lookup_manager.cc": "b98999f6a39fad010e069647778c0b40bcc7b37e7e8a9c772d82fe793df93d10",
     "runtime/components/embedding_lookup/embedding_lookup_manager_test.cc": "d600d642828724a6264a563ee4213f4c80741c0921e3ed61068da23540814879",
@@ -53,8 +55,7 @@
     "support/util/io_types_test.cc": "9a9d9bfde8ca73b97bc9b83304bec7a9f6ea7e80b0eed877b44f7fcac64435e6",
     "support/util/projected_audio_payload.cc": "7ac240b5ad29c1de927e8896380ca5baf0ed0d8fe253215f41b74eead0227fce",
     "support/util/projected_audio_payload.h": "488a9d769bb3e4845cb441a79576aa71cfa788849ef162fd1d8a2117beb69270",
-    "support/util/projected_audio_payload_contract_test.cc": "0d3ea35089afe29734f439c86cfb9fbb1114ddfbc2b79d9ac5fee0de38fb1116",
-    "experimental/native_audio_owner_jni_20261006/NativeAudioTiming.kt": "8c63317a814410b6a26fc87a31f203b57b52c60112272674f1c01663c62afbdf"
+    "support/util/projected_audio_payload_contract_test.cc": "0d3ea35089afe29734f439c86cfb9fbb1114ddfbc2b79d9ac5fee0de38fb1116"
   },
   "scope": "Reviewed source-only streaming owner, observational timing, checked Session/Conversation changes and focused source regression tests. No model weights, compiled binaries or host harness outputs."
 }

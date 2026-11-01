@@ -8,8 +8,10 @@ Upstream: https://github.com/google-ai-edge/LiteRT-LM
 - Upstream license: `LICENSE` (Apache2.0)
 
 `PATCH.diff` contains the frozen runtime projected-audio path, native PCM owner,
-normal owner JNI binding, observational timing, checked Session/Conversation lifecycle changes and their
-focused source regression tests. It includes 50 source files. It does not contain
+normal owner JNI binding, observational timing, checked Session/Conversation lifecycle changes, the
+Session image-preprocess entry point (a native preprocess JNI mirroring ConversationImpl's
+model-derived image preprocessor, with its Kotlin handle type) and their
+focused source regression tests. It includes 51 source files. It does not contain
 model weights, materialized Git-LFS objects, host binaries, compiled classes,
 experimental quality harnesses, audio/activations or research scratch logs.
 
