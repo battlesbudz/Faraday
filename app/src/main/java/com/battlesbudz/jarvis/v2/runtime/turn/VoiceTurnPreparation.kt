@@ -23,6 +23,19 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
+/**
+ * Whether a prepared turn's engine must be vision-capable for snapshot
+ * synthesis. Call turns key capability to the MODEL, never to the video
+ * toggle sampled at preparation: every call starts with the toggle off and
+ * the snapshot decision reads it live at finalization, so a toggle-keyed
+ * sample structurally disables the first turn and any turn whose toggle
+ * flips mid-question. Comparison trials are not calls and keep the
+ * historical toggle sample.
+ */
+internal fun snapshotVisionCapability(supportsVision: Boolean, comparisonTrial: Boolean,
+                                      videoToggleOn: Boolean): Boolean =
+    if (comparisonTrial) videoToggleOn && supportsVision else supportsVision
+
 /** Prepares native/call resources and a started capture; lifetime cleanup owns every acquired handle. */
 internal class VoiceTurnPreparation(
     private val context: Context,
@@ -86,13 +99,26 @@ internal class VoiceTurnPreparation(
         val selectedSpec = modelStore.selectedModel()
         val comparisonLoadStarted = System.nanoTime()
         observation.benchmark.mark("llm_setup_started")
-        // Snapshot synthesis: a turn prepared while the call's video
-        // toggle is ON needs a vision-capable engine, so the turn can
-        // attach the retained camera frame at finalization. Keyed into
-        // the reuse check exactly like audioEnabled: toggling video
-        // rebuilds the engine once, on the next turn, never mid-question.
-        val snapshotVisionWanted = com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.videoEnabled.value &&
-            selectedSpec.supportsVision
+        // Snapshot synthesis: the turn's engine must be vision-capable
+        // whenever the selected model supports vision, NOT keyed to the
+        // video toggle's state at preparation time. Every call starts
+        // with the toggle OFF (runVoiceTurn's onCallBegan resets it; the
+        // toggle lives on the call screen), so a toggle sample taken
+        // here is always false for a call's first turn and stale for any
+        // turn where the user flips the toggle while speaking — yet the
+        // snapshot decision reads the toggle LIVE at finalization. That
+        // mismatch made turn 1 structurally incapable of attaching its
+        // snapshot (build 1624: engine_not_vision_capable). Keying
+        // capability to the model instead makes it follow the toggle at
+        // finalization: toggling video on mid-call attaches on that same
+        // turn, toggling off takes the summary path, and the engine is
+        // built once per call, never rebuilt mid-question. Comparison
+        // trials are not calls and keep the toggle sample.
+        val snapshotVisionWanted = snapshotVisionCapability(
+            supportsVision = selectedSpec.supportsVision,
+            comparisonTrial = request.comparison != null,
+            videoToggleOn = com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.videoEnabled.value
+        )
         request.comparison?.put("llm_reused", nativeState.engine != null && nativeState.engine?.modelId == selectedSpec.id && nativeState.engine?.audioEnabled == selectedSpec.supportsAudio)
         if (nativeState.engine == null || nativeState.engine?.modelId != selectedSpec.id ||
             nativeState.engine?.audioEnabled != selectedSpec.supportsAudio ||

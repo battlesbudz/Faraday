@@ -146,10 +146,17 @@ internal class ConversationGeneration(
         // diagnostics rather than silently dropped.
         val snapshotAttachment = visualDecision.snapshot?.takeUnless { directAudio }
         if (visualDecision.snapshot != null && directAudio) {
-            diagnostics.summary("Call snapshot: attached=false reason=direct_audio_turn")
-        } else {
-            visualDecision.snapshotLine?.let { diagnostics.summary(it) }
+            diagnostics.summary("Call snapshot: attached=false reason=direct_audio_turn submitted=false")
+        } else if (snapshotAttachment == null) {
+            // No submission will be attempted on this turn, so the decision
+            // line is complete as emitted: attached=false, submitted=false.
+            visualDecision.snapshotLine?.let { diagnostics.summary("$it submitted=false") }
         }
+        // An attached snapshot's line is deliberately NOT emitted yet: it is
+        // recorded after the native submission attempt, with the outcome
+        // fields that prove whether the model actually received the image
+        // (see recordSnapshotOutcome below). attached= alone was misleading
+        // on build 1624 — it recorded the decision, not the delivery.
         val promptContext = listOfNotNull(visionContext, visualDecision.block)
             .joinToString("\n\n").takeIf { it.isNotBlank() }
         val submission = turnPrompt.assemble(invocation.prompt, promptContext, promptHistory, !modelSession.hasContext,
@@ -160,6 +167,14 @@ internal class ConversationGeneration(
         // is free for the snapshot; an explicit chat image always wins.
         val input = ConversationInput(invocation.voiceAudio, directAudio, prepared.textInput,
             attachments.image ?: snapshotAttachment?.bytes, attachments.audio, invocation.sealedVoiceAudio, invocation.nativeSpeculation)
+        var snapshotOutcomeRecorded = false
+        fun recordSnapshotOutcome() {
+            if (snapshotAttachment == null || snapshotOutcomeRecorded) return
+            snapshotOutcomeRecorded = true
+            val base = visualDecision.snapshotLine ?: return
+            diagnostics.summary(if (input.snapshotImageSubmitted) "$base submitted=true"
+                else "$base submitted=false submitError=${input.snapshotImageSubmitError ?: "not_attempted"}")
+        }
         if (invocation.sealedVoiceAudio != null) {
             reply.benchmark.configuration("native_audio_input_path", "incremental_encoder_sealed_conversation_v1")
             reply.benchmark.metric("native_audio_pcm_samples", invocation.sealedVoiceAudio.pcmSampleCount)
@@ -214,7 +229,20 @@ internal class ConversationGeneration(
             reply.benchmark.configuration("generation_recovery_reason", "runaway_repetition")
             diagnostics.important("Runaway repetition cancelled before speech publication; preserving valid opening.")
             GenerationResult(guard?.text.orEmpty(), -1L, null)
+        } catch (undeliverable: SnapshotImageUndeliverableException) {
+            // Snapshot honesty: the image reached no native route, so this
+            // turn must not describe the scene from the visual block's
+            // detector labels. Substitute the honest disclosure, mirroring
+            // the audio-access refusal fallback; the outcome line recorded
+            // below carries submitted=false and the failure reason.
+            if (snapshotAttachment == null) throw undeliverable
+            diagnostics.summary("Call snapshot: image undeliverable on every route; disclosure substituted")
+            GenerationResult(CallVisualContext.SNAPSHOT_DISCLOSURE, -1L, null)
+        } catch (error: Throwable) {
+            recordSnapshotOutcome()
+            throw error
         }
+        recordSnapshotOutcome()
         if (!stoppedLoop) telemetry.record("answer", generated, submission.text.length)
         telemetry.terminal(generated)
         val answer = ConversationAnswer(invocation, routed, prepared, promptHistory, turnPrompt,

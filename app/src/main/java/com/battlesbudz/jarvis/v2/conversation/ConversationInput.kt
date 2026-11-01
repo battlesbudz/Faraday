@@ -8,6 +8,15 @@ import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkPurpose
 import com.battlesbudz.jarvis.v2.voice.IncrementalVoiceInput
 import java.io.InputStream
 
+/**
+ * A snapshot turn's image could not be delivered on any native route. The
+ * generation owner substitutes the honest disclosure answer: a scene
+ * description generated from the detector labels alone is never spoken for
+ * an image the model did not receive.
+ */
+internal class SnapshotImageUndeliverableException(cause: Throwable) :
+    Exception("Snapshot image undeliverable: ${cause.message}", cause)
+
 /** Typed inference input selection, including the one permitted incremental-to-text fallback. */
 internal class ConversationInput(
     private val voiceAudio: ByteArray?,
@@ -27,6 +36,19 @@ internal class ConversationInput(
      * direct voice audio (raw or sealed) or an attached audio file. */
     val carriesAudioInput: Boolean get() = directAudio || attachedAudio != null
     var incrementalFallbackUsed = false
+        private set
+    /**
+     * Snapshot turns only: true when an image-bearing generation route
+     * accepted this turn's image for the answer — the incremental session's
+     * preprocessed submission, or the conversation-route regeneration. A
+     * submission no completed generation used does not count: diagnostics
+     * must prove the model actually received the image, not merely that an
+     * append was attempted.
+     */
+    var snapshotImageSubmitted: Boolean = false
+        private set
+    /** Snapshot turns only: short reason the final image submission failed, when none succeeded. */
+    var snapshotImageSubmitError: String? = null
         private set
     private var speculativeResultUsed = false
     val nativeConversationContainsTurn: Boolean get() = !speculativeResultUsed && (textInput == null || incrementalFallbackUsed)
@@ -76,23 +98,48 @@ internal class ConversationInput(
         }
         textInput != null -> {
             engine.onPromptSubmitted(prompt, 0)
-            textInput.answerWithTextFallback(prompt, onToken, imageBytes) { error ->
+            val result = textInput.answerWithTextFallback(prompt, onToken, imageBytes) { error ->
                 onIncrementalFallback(error)
                 incrementalFallbackUsed = true
                 engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
                 // Snapshot synthesis: when this turn carries an image (a
                 // chat photo, or a call turn's retained snapshot), the
                 // fallback regenerates WITH it on the conversation route —
-                // never a silent text-only downgrade of an image turn.
-                if (imageBytes != null) engine.generate(prompt, imageBytes, onToken)
+                // never a silent text-only downgrade of an image turn. If
+                // that submission also fails, the image turn is
+                // undeliverable and the generation owner substitutes the
+                // honest disclosure instead of a labels-only answer.
+                if (imageBytes != null) generateWithImage(engine, prompt, imageBytes, onToken)
                 else engine.generate(prompt, onToken)
             }
+            if (imageBytes != null && textInput.imageSubmissionAccepted) snapshotImageSubmitted = true
+            result
         }
         // Retained voice audio accompanies ASR text but must not override that mode.
-        voiceAudio != null -> if (imageBytes != null) engine.generate(prompt, imageBytes, onToken)
+        voiceAudio != null -> if (imageBytes != null) generateWithImage(engine, prompt, imageBytes, onToken)
             else engine.generate(prompt, onToken)
         else -> retry(engine, prompt, onToken)
     }
+
+    /**
+     * One image-bearing generation attempt with submission bookkeeping: a
+     * success proves the model received the image on this route; a failure
+     * is recorded and rethrown as [SnapshotImageUndeliverableException] so
+     * the generation owner can keep the turn honest.
+     */
+    private suspend fun generateWithImage(engine: ConversationBackend, prompt: String,
+                                          image: ByteArray, onToken: (String) -> Unit): GenerationResult {
+        try {
+            return engine.generate(prompt, image, onToken).also { snapshotImageSubmitted = true }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (error: Throwable) {
+            snapshotImageSubmitError = shortSubmitError(error)
+            throw SnapshotImageUndeliverableException(error)
+        }
+    }
+
+    private fun shortSubmitError(error: Throwable): String =
+        "${error.javaClass.simpleName}: ${error.message?.replace('\n', ' ')?.take(80) ?: "no message"}"
 
     /** Retry keeps the authoritative direct-audio/image/file attachment, never a spent prefill. */
     suspend fun retry(engine: ConversationBackend, prompt: String, onToken: (String) -> Unit): GenerationResult {

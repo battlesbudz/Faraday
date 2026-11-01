@@ -39,6 +39,17 @@ class IncrementalVoiceInput(
     private var closed = false
     private var chunks = 0
     private var prefillMs = 0L
+    /**
+     * Snapshot turns: true once the turn's image was accepted by the native
+     * session — or, for buffered template sessions whose submission happens
+     * inside decode, once that decode completed. Read by the generation
+     * owner to record whether the model actually received the image.
+     */
+    var imageSubmissionAccepted: Boolean = false
+        private set
+    /** Snapshot turns: the failure that kept the image from the model, if any. */
+    var imageSubmissionFailure: Throwable? = null
+        private set
     private var contextPrefillCompletedAtNanos: Long? = null
     private var firstWordPrefillCompletedAtNanos: Long? = null
     private var lastWordPrefillCompletedAtNanos: Long? = null
@@ -138,9 +149,21 @@ class IncrementalVoiceInput(
         // question complete, after the final text, before decode. A
         // session that rejects it throws and the caller's fallback
         // regenerates with the image on the conversation route.
-        if (imageBytes != null) native.appendImage(imageBytes)
+        if (imageBytes != null) {
+            try {
+                native.appendImage(imageBytes)
+                imageSubmissionAccepted = true
+            } catch (error: Exception) {
+                imageSubmissionFailure = error
+                throw error
+            }
+        }
         log("input_final_prefill remainingChars=${remaining.length} finalPrefillMs=${(nowNanos() - finalStarted).coerceAtLeast(0) / 1_000_000}")
-        return native.decode(onToken)
+        val result = native.decode(onToken)
+        // Buffered template sessions submit the image inside decode; a
+        // completed decode is their acceptance signal.
+        if (imageBytes != null) imageSubmissionAccepted = true
+        return result
     }
 
     private fun completionOffsetMs(completedAtNanos: Long?): String {

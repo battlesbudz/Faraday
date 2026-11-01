@@ -83,6 +83,15 @@ object CallVisualContext {
     /** Snapshot turns list every track seen within this window. */
     const val SNAPSHOT_WINDOW_MS = 15_000L
 
+    /**
+     * Spoken when a snapshot turn's image could not be submitted on any
+     * native route: an honest non-answer instead of a scene description
+     * generated from this block's detector labels, which the model would
+     * otherwise narrate as if it had seen the picture.
+     */
+    const val SNAPSHOT_DISCLOSURE = "I couldn't actually see the camera image on that turn, sir. " +
+        "The picture never reached my vision, so I won't describe the scene from the detector labels alone."
+
     /** Hard budget for the snapshot block; over-budget drops the OLDEST
      * tracks first (the list is newest-first) and counts the omission. */
     const val MAX_SNAPSHOT_BLOCK_CHARS = 2_400
