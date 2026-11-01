@@ -14,12 +14,14 @@ class IncrementalVoiceInputTest {
         val order = mutableListOf<String>()
         var decodes = 0
         var closes = 0
+        var failImageWith: Throwable? = null
         override fun append(text: String) {
             if (failFirst) error("prefill failed")
             order += "append"
             input.append(text)
         }
         override fun appendImage(imageBytes: ByteArray) {
+            failImageWith?.let { throw it }
             order += "image"
             images += imageBytes
         }
@@ -367,6 +369,31 @@ class IncrementalVoiceInputTest {
         assertEquals("decode", native.order.last())
         assertTrue(receipts.single { it.startsWith("input_finalized ") }
             .contains("imageAttached=true imageBytes=4"))
+        track.close()
+    }
+
+    @Test fun imageAcceptanceIsRecordedWhenTheSessionTakesTheImage() = runBlocking {
+        val native = Native()
+        val track = IncrementalVoiceInput(this, "User: ", { native })
+        track.answer("User: What do you see?", byteArrayOf(1, 2)) {}
+        assertTrue(track.imageSubmissionAccepted)
+        assertNull(track.imageSubmissionFailure)
+        track.close()
+    }
+
+    @Test fun imageRejectionIsRecordedWithTheSubmissionFailure() = runBlocking {
+        val failure = com.battlesbudz.jarvis.v2.ai.SnapshotImageSubmissionException(
+            IllegalStateException("Image must be preprocessed"))
+        val native = Native().apply { failImageWith = failure }
+        val track = IncrementalVoiceInput(this, "User: ", { native })
+        try {
+            track.answer("User: What do you see?", byteArrayOf(1, 2)) {}
+            fail("expected the submission failure to propagate")
+        } catch (expected: com.battlesbudz.jarvis.v2.ai.SnapshotImageSubmissionException) {
+            assertSame(failure, expected)
+        }
+        assertFalse(track.imageSubmissionAccepted)
+        assertSame(failure, track.imageSubmissionFailure)
         track.close()
     }
 

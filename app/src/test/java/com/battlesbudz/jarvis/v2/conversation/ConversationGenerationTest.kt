@@ -564,6 +564,7 @@ class ConversationGenerationTest {
         val textPrompts = mutableListOf<String>()
         val imageRequests = mutableListOf<Pair<String, ByteArray>>()
         val audioRequests = mutableListOf<String>()
+        var failImageGenerate = false
         override val modelId = "fake"
         override var onPromptSubmitted: (String, Int) -> Unit = { _, _ -> }
         override var onInferenceProgress: (InferenceProgress) -> Unit = {}
@@ -588,6 +589,7 @@ class ConversationGenerationTest {
             return result(prompt, onToken)
         }
         override suspend fun generate(prompt: String, imageBytes: ByteArray, onToken: (String) -> Unit): GenerationResult {
+            if (failImageGenerate) throw IllegalStateException("native image reject")
             imageRequests += prompt to imageBytes
             return result(prompt, onToken)
         }
@@ -619,7 +621,12 @@ class ConversationGenerationTest {
         assertTrue(backend.imageRequests.single().first.contains("SNAPSHOT BLOCK TEXT"))
         assertTrue(backend.textPrompts.isEmpty())
         assertTrue(backend.audioRequests.isEmpty())
-        assertTrue(summaries.any { it.startsWith("Call snapshot: attached=true") })
+        // The outcome fields are recorded after the submission attempt:
+        // submitted=true proves the model received the image on this turn,
+        // where build 1624's attached=true line only proved the decision.
+        assertTrue(summaries.any {
+            it == "Call snapshot: attached=true frameAgeMs=300 frameBytes=3 tracks=2 windowMs=15000 omitted=0 submitted=true"
+        })
     }
 
     @Test fun snapshotDecisionStaysUnattachedOnADirectAudioTurn() = runBlocking {
@@ -631,7 +638,38 @@ class ConversationGenerationTest {
             summaryLog = summaries)
         assertTrue(backend.imageRequests.isEmpty())
         assertEquals(1, backend.audioRequests.size)
-        assertTrue(summaries.any { it == "Call snapshot: attached=false reason=direct_audio_turn" })
+        assertTrue(summaries.any { it == "Call snapshot: attached=false reason=direct_audio_turn submitted=false" })
         assertTrue(summaries.none { it.startsWith("Call snapshot: attached=true") })
+    }
+
+    @Test fun snapshotTurnWhoseImageSubmissionFailsEverywhereGetsTheDisclosureNotALabelsAnswer() = runBlocking {
+        val backend = SnapshotBackend().apply { failImageGenerate = true }
+        val summaries = mutableListOf<String>()
+        val image = byteArrayOf(9, 8, 7)
+        val draft = generateWithBackend(backend, byteArrayOf(1, 2, 3), directAudio = false,
+            callVisualContext = { snapshotDecision(image) },
+            summaryLog = summaries)
+        // No route delivered the image: the spoken answer is the honest
+        // disclosure, never a scene description generated from the block's
+        // detector labels, and the diagnostics line proves the failure.
+        assertEquals(CallVisualContext.SNAPSHOT_DISCLOSURE, draft.generated.text)
+        assertTrue(backend.imageRequests.isEmpty())
+        assertTrue(summaries.any {
+            it == "Call snapshot: attached=true frameAgeMs=300 frameBytes=3 tracks=2 windowMs=15000 omitted=0" +
+                " submitted=false submitError=IllegalStateException: native image reject"
+        })
+    }
+
+    @Test fun unattachedSnapshotDecisionRecordsSubmittedFalse() = runBlocking {
+        val backend = SnapshotBackend()
+        val summaries = mutableListOf<String>()
+        val decision = CallVisualContext.Decision(null,
+            "Call visual context: injected=false reason=video_off",
+            snapshotLine = "Call snapshot: attached=false reason=video_off")
+        generateWithBackend(backend, byteArrayOf(1, 2, 3), directAudio = false,
+            callVisualContext = { decision },
+            summaryLog = summaries)
+        assertTrue(backend.imageRequests.isEmpty())
+        assertTrue(summaries.any { it == "Call snapshot: attached=false reason=video_off submitted=false" })
     }
 }
