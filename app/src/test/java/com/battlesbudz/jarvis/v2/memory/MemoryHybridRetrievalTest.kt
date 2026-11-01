@@ -146,9 +146,17 @@ class MemoryHybridRetrievalTest {
         val car = record("car", MemoryGoldenCorpus.Text.CAR)
         indexAll(service, vectors, notebook, car)
         val result = hybridWith(engine, vectors).retrieve(snapshot(notebook, car), MemoryGoldenCorpus.Queries.NOTEBOOK, 5, now)
+        // The wiki source keeps stop words in its token rule, so a natural question
+        // ("what is my…") never wiki-matches; a keyword-style query does. Both
+        // shapes are pinned so the third source's real behavior is on record.
         assertEquals(
-            "Memory retrieval: lexical=1 semantic=1 wiki=1 fused=1 profile=0 semantic=available top=[nb]",
+            "Memory retrieval: lexical=1 semantic=1 wiki=0 fused=1 profile=0 semantic=available top=[nb]",
             result.diagnosticsLine(),
+        )
+        val keyword = hybridWith(engine, vectors).retrieve(snapshot(notebook, car), "notebook color teal", 5, now)
+        assertEquals(
+            "Memory retrieval: lexical=1 semantic=0 wiki=1 fused=1 profile=0 semantic=available top=[nb]",
+            keyword.diagnosticsLine(),
         )
         assertFalse(result.diagnosticsLine().contains("teal"))
     }
@@ -164,7 +172,7 @@ class MemoryHybridRetrievalTest {
         val engine = MemoryGoldenCorpus.ConceptEngine()
         val service = MemoryEmbeddingService(engine)
         val vectors = MemoryGoldenCorpus.FakeVectorStore()
-        val file: File = Files.createTempFile("memory-hybrid-os", ".json").toFile()
+        val file: File = Files.createTempFile("memory-hybrid-os", ".json").toFile().apply { delete(); deleteOnExit() }
         val os = MemoryOs(MemoryStore(file), { now }).also { it.hybridRetrievalProvider = { MemoryHybridRetrieval(service, vectors) } }
         val tea = os.addApproved(MemoryGoldenCorpus.Text.TEA, MemoryCategory.PREFERENCE)
         val notebook = os.addApproved(MemoryGoldenCorpus.Text.NOTEBOOK, MemoryCategory.FACT)
@@ -188,7 +196,7 @@ class MemoryHybridRetrievalTest {
     }
 
     @Test fun contextPacketWithoutProviderIsLexicalAndDiagnosticFree() {
-        val file: File = Files.createTempFile("memory-lexical-os", ".json").toFile()
+        val file: File = Files.createTempFile("memory-lexical-os", ".json").toFile().apply { delete(); deleteOnExit() }
         val os = MemoryOs(MemoryStore(file), { now })
         val notebook = os.addApproved(MemoryGoldenCorpus.Text.NOTEBOOK, MemoryCategory.FACT)
         val result = os.contextPacket(MemoryGoldenCorpus.Queries.NOTEBOOK, 4_000, limit = 5, nowMs = now)

@@ -153,7 +153,7 @@ internal object MemoryGoldenCorpus {
         val service = MemoryEmbeddingService(engine)
         val vectors = FakeVectorStore()
         val retriever = MemoryHybridRetrieval(service, vectors)
-        private val ledgerFile: java.io.File = java.nio.file.Files.createTempFile("memory-golden-corpus", ".json").toFile()
+        private val ledgerFile: java.io.File = java.nio.file.Files.createTempFile("memory-golden-corpus", ".json").toFile().apply { delete(); deleteOnExit() }
         val os: MemoryOs = MemoryOs(MemoryStore(ledgerFile), { now }).also { it.hybridRetrievalProvider = { retriever } }
         val lexicalOs: MemoryOs = MemoryOs(MemoryStore(ledgerFile), { now })
         val byText = LinkedHashMap<String, MemoryRecord>()
