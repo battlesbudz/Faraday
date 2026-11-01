@@ -1,5 +1,131 @@
 # Feature and acceptance map
 
+## Memory RAG Unit 2 — hybrid recall wired into conversation + embedding-model install/sync — 1 November 2026
+
+Ships on `feature/memory-rag` over the Unit 1 foundation, the 0.18
+bump/binding, and the capture fix (build 1648). Commits on 40fe7acb:
+125d6e25 (retrieval machinery + golden corpus), f30d28e5 (provider binding
+fix), 26abbfb3 (test fixes), 5c004e4e (production wiring), a2255bbb
+(install surface + sync triggers). The evaluation gate passed, so hybrid
+recall is the production path from this build on.
+
+Retrieval pipeline. `MemoryOs.contextPacket` resolves an optional hybrid
+provider per packet (an internal property the Android edge sets; the
+default keeps the lexical-only path byte-identical). When bound and the
+budget is positive, `MemoryHybridRetrieval` generates candidates over the
+same canonical snapshot from three peer sources: the existing lexical
+ranker unchanged (personal-recall fallbacks included), semantic search
+over the Unit 1 projection (the query embedded exactly once through
+`MemoryEmbeddingService`'s query role; only vectors whose model /
+dimension / content-fingerprint stamp still matches an eligible record in
+the snapshot are usable — a stale projection is rejected at read time
+exactly as the indexer rejects it at sync), and `MemoryWiki` page search,
+reused as-is. The lists fuse with reciprocal rank fusion (k=60,
+`MemoryRankFusion`). A fused rank is not relevance: when the semantic
+source actually ran, an uncorroborated candidate needs stronger lexical
+evidence than one shared token (≥2 matched tokens, a phrase hit, or a
+strict fallback match) — the "what is my brother's phone number?"
+false-friend shape. When semantic never ran (model absent, index empty,
+source error), every fused candidate passes, so a phone without the model
+behaves exactly as lexical+wiki did before this unit. The public-info /
+device-command boundary applies at the hybrid entry, identical to the
+lexical path's: such queries get no candidates and no profile slice.
+Eligibility is the existing rule everywhere: APPROVED and non-expired.
+
+LangMem split. Every hybrid packet leads with a deterministic profile
+slice — PERSON class then PREFERENCE class, confidence desc, updatedAtMs
+desc, id asc, capped at 4 — ahead of the searched collection (the existing
+limit), deduplicated by id at the profile position. The packet builder,
+its untrusted-data framing and its budget mechanics are unchanged; the
+epoch/state-token delivery fence is untouched, and the zero-budget state
+recheck runs no source and embeds nothing (pinned by test: the embed
+counter does not move).
+
+Diagnostics. Each accepted hybrid context build records one content-free
+line through the coordinator's existing diagnostic port, e.g. `Memory
+retrieval: lexical=1 semantic=1 wiki=0 fused=1 profile=0
+semantic=available top=[<id>]` — candidate counts by source, the semantic
+source's honest state (available / unavailable / empty / error /
+skipped), and the fused top-5 ids. Ids and counts only, never memory
+content. Absent on the lexical path.
+
+Embedding-model install + sync (closes the gap the 1648 audit proved:
+`downloadOrReuse` had no production caller, `sync()` was never invoked
+from production, and no settings surface existed). Memory settings gains
+a "Memory embeddings" card at the top of the Wiki tab
+(`MemoryEmbeddingSetupController` / `MemoryEmbeddingSetupState`): the
+store's pin-verified installed state, the catalog download size (~157
+MB), a partial-download resume note, live download progress, and the
+acquisition layer's own failure message with retry. Install runs
+`EmbeddingModelStore.downloadOrReuse` unchanged (.part resume,
+free-space pre-check, SHA-256 pin, atomic rename). A completed install
+fires an immediate projection sync. Background syncs are owned by
+`MemoryEmbeddingSyncScheduler` — coalesced, serialized, idle-gated on the
+runtime's conversation-idleness probe (`!modelStore.isModelOperationActive()
+&& ConversationWork.activeJobs == 0`, the automatic-memory evaluator's
+rule), and dropped rather than forced if idle never comes inside the
+bounded window; sync is idempotent, so a later trigger catches up and the
+existing `Memory embeddings:` line keeps reporting the honest pending
+count meanwhile. Triggers: app start and every approved-state change,
+registered in `JarvisRuntime` beside the delivery-fence observer. Nothing
+here runs on a conversation turn.
+
+Evaluation gate. Fixed golden corpus
+(`app/src/test/java/com/battlesbudz/jarvis/v2/memory/MemoryGoldenCorpus.kt`):
+15 ledger records (including a pending, an expired, and a superseded
+record, each carrying projection rows, plus one current record with a
+deliberately stale vector stamp) and 16 fixed queries — 10 positives (2
+lexical controls, 5 paraphrases, 2 coreference, 1 mixed), 3
+stored-topic/unstored-fact negatives, 2 no-relevant-memory turns, 1
+boundary turn. Embeddings are a concept-geometry fixture (declared axes
+per text), so the corpus measures the pipeline — candidate generation,
+eligibility, fusion, filtering, the profile split — not EmbeddingGemma's
+raw quality, which remains a device measurement. Recall@5 through
+`MemoryOs.contextPacket` (production packet order: profile slice, then
+searched): **lexical-only 0.3, hybrid 1.0**. Measured in CI run
+41330483148's unit-test artifact on the machinery head and reproduced
+identically in the final head's run 41335148799. Negatives and
+no-relevant turns injected zero searched results; the superseded record
+never surfaced; the boundary turn skipped every source.
+
+Tests: MemoryGoldenCorpusTest (gate + negatives + boundary + lifecycle
+leakage, 5 tests), MemoryHybridRetrievalTest (RRF math, embed-once,
+degradation states, stale-stamp rejection, weak-hit filter, profile
+selection, exact diagnostics format, contextPacket wiring incl. the
+zero-budget recheck, 10 tests), MemoryEmbeddingSetupTest (install action
+invokes acquisition with the catalog spec, completed install triggers
+sync, reuse without a second transfer, honest failure states, partial
+progress, scheduler coalescing/idle-deferral/immediate sync, 8 tests).
+Final head's per-push selection ran 2,675 tests, 0 failures.
+
+Acceptance: Android run 41335148799 on a2255bbb SUCCESS (all jobs,
+including all five sandbox journey profiles); nightly full suite run
+41339484954 on a2255bbb SUCCESS. Prerelease
+faraday-feature/memory-rag-build.1655 (API-verified target a2255bbb):
+app-compact.apk 143,272,637 bytes; app-release.apk 213,261,765 bytes.
+En-route failures, all classified from their logs: machinery head
+41322392883 failed test compilation (wrong result shapes in the new
+tests; a constructor parameter broke trailing-lambda clock call sites)
+and 41326448226 failed 8 of the new tests (zero-byte temp ledger read as
+corrupt; a wiki expectation that ignored MemoryWiki's stop-word-keeping
+token rule) — both fixed forward. The wiring commit 5c004e4e alone does
+not compile: it references the `hybridRetrieval` accessor that landed in
+a2255bbb; the combined head is green. On machinery head 26abbfb3 the
+30-phone journey profile failed twice on infrastructure with zero
+per-test errors (attempt 1: emulator died during evidence collection,
+"device 'emulator-5554' not found"; attempt 2, the sanctioned re-run:
+"Missing or duplicate evidence for test01_accessibleChatAndCallControls.png")
+while the other four profiles passed; on the final head all five
+profiles passed.
+
+Explicitly NOT covered: no on-device proof of any of this — Battles has
+not installed build 1655. The EmbeddingGemma 2 download/install on a real
+phone, real-model semantic quality (the corpus geometry is a fixture),
+Fold 6 embedding latency/RSS beside a resident chat model, sync behavior
+under real conversation load, and the settings card's rendering are all
+device-side. On build 1648 there was no install path at all; this unit is
+what creates it.
+
 ## Voice memory capture fix + embeddings diagnostics line — 31 October 2026
 
 Ordinary voice turns never reached AutomaticMemory: the D-3 auto-commit
