@@ -130,7 +130,7 @@ internal object VisionPerceptionClaim {
     private val sceneNoun =
         "(room|office|kitchen|bedroom|living room|bathroom|street|garden|yard|desk|table|" +
             "window|door|wall|floor|ceiling|chair|sofa|couch|bed|lamp|screen|monitor|" +
-            "television|tv|car|person|man|woman|child|dog|cat|building|house|tree|plant|fan)"
+            "television|tv|car|person|man|woman|child|dog|cat|building|house|tree|plant|fan|map)"
 
     private val sceneOpening = Regex("(?i)^\\s*(a|an|the) $sceneNoun\\b")
     private val sceneContinuation = Regex(
