@@ -2944,7 +2944,7 @@ index baa72f3..e0ac814 100644
 +}
 diff --git a/kotlin/java/com/google/ai/edge/litertlm/PreprocessedImage.kt b/kotlin/java/com/google/ai/edge/litertlm/PreprocessedImage.kt
 new file mode 100644
-index 0000000..87c8a65
+index 0000000..61580d8
 --- /dev/null
 +++ b/kotlin/java/com/google/ai/edge/litertlm/PreprocessedImage.kt
 @@ -0,0 +1,66 @@
@@ -2981,7 +2981,7 @@ index 0000000..87c8a65
 + * own lifecycle, so closing after the submitting call returns is always safe.
 + * [close] is idempotent.
 + */
-+class PreprocessedImage internal constructor(handle: Long) : AutoCloseable {
++class PreprocessedImage(handle: Long) : AutoCloseable {
 +  private val lock = Any()
 +
 +  @Volatile private var handle: Long = handle

@@ -3,7 +3,7 @@
   "upstream_url": "https://github.com/google-ai-edge/LiteRT-LM.git",
   "sdk_commit": "924e79c91542761242244e4f1651851f822e4cbb",
   "litert_commit": "0ff28117f1cb5556d0e015bf80b773f74e2bee51",
-  "patch_sha256": "0bde4db0b4c08958a8974d6498c5638e55746b68686ce9eb0adc9c569ebaad5f",
+  "patch_sha256": "9cefbcebc11837e5bf266c4570eebb317bcd956c6111ed62014eb91cd8bf7d88",
   "files": {
     "experimental/native_audio_owner_20261006/BUILD": "8bd8c8cb0c2dff8b97eb9831c50a41ec82f43142e27fe1aa62186c3a3c891cc7",
     "experimental/native_audio_owner_20261006/lifecycle_tests.cc": "75c4aa2fba26ca4e5e1d0a7a3e0b9bdaef94e1179efcc0e063d24288f8b02a1b",
@@ -20,7 +20,7 @@
     "kotlin/java/com/google/ai/edge/litertlm/Engine.kt": "09bc70edf899362d357500af479542d3fbf4ecc28eca716d2d25d1e210d46405",
     "kotlin/java/com/google/ai/edge/litertlm/LiteRtLmJni.kt": "650ce981ed2273c04f1cc8d304db5968ccadb3e81d4b053fc3081f88a4a14bdd",
     "kotlin/java/com/google/ai/edge/litertlm/Message.kt": "9dd22e6439a3332158dfad291250a7fc67af42bf568d92c941210cfb5ef31f8e",
-    "kotlin/java/com/google/ai/edge/litertlm/PreprocessedImage.kt": "0c98e6e7521012fa3736c8d5d6597019b5cc26e8924826684abbdaa0328299d3",
+    "kotlin/java/com/google/ai/edge/litertlm/PreprocessedImage.kt": "96947997a047a06363c6b148e0462c775fea03873ce99957ad53661e8344740f",
     "kotlin/java/com/google/ai/edge/litertlm/Session.kt": "c95c7e45c4bad22338d200518fa908d63c9ad42002d04430f73d12c0553bcefc",
     "kotlin/java/com/google/ai/edge/litertlm/jni/BUILD": "2e0d89ac8e752000e40e3bc223c00c439ce06f3716bcc3ef4d1f1e9b0846c38e",
     "kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc": "0fbd10c5fee57edda6e729744b51a5b49d6560f1e6f9171d6a5ce2ebb1b36d6a",

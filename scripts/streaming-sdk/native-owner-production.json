@@ -18,7 +18,7 @@
     "kotlin/java/com/google/ai/edge/litertlm/Conversation.kt": "c4da22296e96651d581b9871283aab90722058e3e218c3fc4ff445fd66ed5264",
     "kotlin/java/com/google/ai/edge/litertlm/Engine.kt": "09bc70edf899362d357500af479542d3fbf4ecc28eca716d2d25d1e210d46405",
     "kotlin/java/com/google/ai/edge/litertlm/LiteRtLmJni.kt": "650ce981ed2273c04f1cc8d304db5968ccadb3e81d4b053fc3081f88a4a14bdd",
-    "kotlin/java/com/google/ai/edge/litertlm/PreprocessedImage.kt": "0c98e6e7521012fa3736c8d5d6597019b5cc26e8924826684abbdaa0328299d3",
+    "kotlin/java/com/google/ai/edge/litertlm/PreprocessedImage.kt": "96947997a047a06363c6b148e0462c775fea03873ce99957ad53661e8344740f",
     "kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc": "0fbd10c5fee57edda6e729744b51a5b49d6560f1e6f9171d6a5ce2ebb1b36d6a",
     "experimental/native_audio_owner_jni_20261006/NativeAudioTiming.kt": "8c63317a814410b6a26fc87a31f203b57b52c60112272674f1c01663c62afbdf"
   },
