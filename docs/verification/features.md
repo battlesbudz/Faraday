@@ -4527,3 +4527,69 @@ the image on device, and that Gemma's answer grounds in the attached
 frame, remain Fold 6 phone proof (a "what do you see?" against a scene
 whose detector labels alone mislead, e.g. the car infotainment screen
 detected as a cell phone).
+
+## Video-call snapshot delivery repair (October 31, 2026)
+
+The October 30 section's phone proof FAILED on build 1624 (call
+5fdff010): the image never reached the model on either turn. The native
+Session gate (`PreprocessContents`) admits only preprocessed tensor
+images; the bridge submitted raw bytes, the append was rejected with
+"Image must be preprocessed before being used in SessionAdvanced", and
+the shipped text-only fallback answered from the detector labels. Two
+further defects compounded it: turn 1's engine was built
+vision-incapable because capability was sampled from the video toggle at
+preparation (every call starts with the toggle off), and the
+`Call snapshot: attached=true` line recorded the app-layer decision, not
+the native delivery. The owner chose the bridge-extension route
+(Option B) over rerouting snapshot turns through Conversation.
+
+Acceptance checks and their coverage:
+
+- Reviewed bridge extension (pinned 0.16.0 patch, 51 files): a native
+  preprocess entry point (`nativeCreatePreprocessedImage` /
+  `nativeDeletePreprocessedImage`, Kotlin `Session.preprocessImage`,
+  `PreprocessedImage`, `InputData.Preprocessed`) derives the
+  data-processor config from the session's own `LlmModelType` via the
+  same factory route ConversationImpl uses
+  (`CreateDataProcessorConfigFromLlmModelType`), builds the Gemma 4
+  `ImagePreprocessParameter` from that config alone, runs the same
+  `ImagePreprocessor::Create()` the Gemma4 processor constructs, and
+  stores the emitted BOI-text / preprocessed-image / InputImageEnd
+  sequence as a caller-owned payload; submission copies it, never moves
+  it. Other model types fail closed rather than approximating their
+  processors. Producer inventories re-derived, not hand-written:
+  17 Kotlin sources, 106 production classes (+2), 32 SDK JNI methods
+  (+2), 33 SDK JNI exports (+2); producer and quality helper suites pass.
+- Voice wiring: `LiteRtNativeVoiceSession.runPrefillImage` preprocesses
+  before submitting, in that order, and throws
+  `SnapshotImageSubmissionException` on any failure;
+  `IncrementalVoiceInput` records acceptance/failure per turn
+  (`LiteRtNativeVoiceSessionTest`, `IncrementalVoiceInputTest`).
+- First-turn capability: call turns key the engine's vision capability
+  to the selected model (`snapshotVisionCapability` in
+  `VoiceTurnPreparation`), never to the preparation-time toggle sample;
+  the attach decision still reads the toggle live at finalization, so
+  turning video on mid-call attaches on that same turn and the engine is
+  never rebuilt mid-question. Comparison trials keep the toggle sample
+  (`VoiceTurnPreparationTest`).
+- Honest outcomes: the `Call snapshot:` line is recorded after the
+  submission attempt and gains `submitted=true/false` (plus
+  `submitError=<short reason>` when false); `submitted=true` only when
+  an image-bearing route accepted the image for the answer. When no
+  route delivers the image, the spoken answer is
+  `CallVisualContext.SNAPSHOT_DISCLOSURE` — never a scene description
+  generated from the labels. Non-image turns' `final_text_once`
+  fallback, the repetition guard and the refusal backstop are unchanged
+  (`ConversationGenerationTest`, `ConversationInput` bookkeeping).
+
+Device proof still owed (Fold 6): install the branch build, start a
+call, turn video ON, and ask the FIRST question ("What do you see?") in
+the fan / car-screen scene. Success requires her answer to describe the
+actual fan or dashboard screen from the image, and the diagnostics paste
+to show the snapshot line ending `submitted=true` — attached=true alone
+no longer counts as delivery evidence.
+
+Known future cost, named not solved: this branch's bridge is LiteRT-LM
+0.16.0 while `feature/memory-rag` carries 0.18.0. The preprocess JNI
+surface added here must ride the eventual merge of the two bridge lines
+and be re-derived against the 0.18.0 inventories there.
