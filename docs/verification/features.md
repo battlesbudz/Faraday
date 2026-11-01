@@ -4555,8 +4555,10 @@ Acceptance checks and their coverage:
   `ImagePreprocessParameter` from that config alone, runs the same
   `ImagePreprocessor::Create()` the Gemma4 processor constructs, and
   stores the emitted BOI-text / preprocessed-image / InputImageEnd
-  sequence as a caller-owned payload; submission copies it, never moves
-  it. Other model types fail closed rather than approximating their
+  sequence as a caller-owned payload; submission consumes it (the
+  native input sequence is move-only, so each submission preprocesses
+  fresh bytes and re-submitting a consumed handle fails loudly). Other
+  model types fail closed rather than approximating their
   processors. Producer inventories re-derived, not hand-written:
   17 Kotlin sources, 106 production classes (+2), 32 SDK JNI methods
   (+2), 33 SDK JNI exports (+2); producer and quality helper suites pass.

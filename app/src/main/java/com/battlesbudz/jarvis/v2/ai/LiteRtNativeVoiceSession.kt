@@ -37,8 +37,9 @@ internal class LiteRtNativeVoiceSession(
      * preprocessed through the bridge entry point that mirrors the
      * Conversation route's internal construction (same factory-derived
      * preprocessor for this session's model), then the payload is submitted.
-     * Submission copies the payload natively, so the handle is closed as soon
-     * as the submitting call returns. Any failure is thrown as
+     * Submission consumes the payload natively (the input sequence is
+     * move-only), so each call preprocesses fresh bytes and the handle is
+     * closed as soon as the submitting call returns. Any failure is thrown as
      * [SnapshotImageSubmissionException]: the image was not delivered.
      */
     override fun runPrefillImage(imageBytes: ByteArray) {
