@@ -24,6 +24,7 @@ internal class ConversationRecovery(
         recoverReferenceGap(draft)
         recoverRepetition(draft)
         discardAudioAccessRefusal(draft)
+        discardVisionPerceptionClaim(draft)
     }
 
     private suspend fun recoverLocalFactuality(draft: ConversationDraft) {
@@ -361,6 +362,58 @@ internal class ConversationRecovery(
             AudioAccessRefusal.FALLBACK
         } else {
             diagnostics.record("Audio access refusal guard outcome=regenerated stage=recovery")
+            cleaned
+        }
+    }
+
+    /**
+     * Publication backstop for the no-vision honesty guard, mirroring
+     * [discardAudioAccessRefusal]: a cleaned response that asserts
+     * perception on a vision-directed turn whose inputs carried no image
+     * and no injected visual-context block is always false, so regenerate
+     * once with the correction before the finalizer can publish the
+     * claim. Runs last, so it also catches a claim produced by one of the
+     * recovery regenerations above. Like the reference stages, it never
+     * replaces a reply whose sentences were already accepted for
+     * publication; that ordering is also what keeps the honest fallback
+     * from becoming a repetition-guard casualty — a substituted fallback
+     * is final text, published by the finalizer rather than re-streamed
+     * through the guard, and on the next vision question the generation
+     * stage substitutes it before recovery's repetition handling runs.
+     * The regeneration resubmits the retained audio on direct-audio
+     * turns, exactly as the other recovery stages do; an image turn
+     * cannot reach here because the presence check returns first.
+     */
+    private suspend fun discardVisionPerceptionClaim(draft: ConversationDraft) {
+        val answer = draft.answer
+        if (draft.actionResultMessage != null) return
+        if (answer.imageBytes != null || answer.visualContextInjected) return
+        if (!VisionPerceptionClaim.isVisionDirectedQuestion(answer.invocation.prompt)) return
+        if (!VisionPerceptionClaim.assertsPerception(draft.cleanedResponse)) return
+        if ((answer.repetitionGuard?.acceptedSentences ?: 0) > 0) return
+        val engine = answer.engine
+        resetNative()
+        answer.repetitionGuard?.discardPending()
+        val prompt = answer.turnPrompt.build(answer.invocation.prompt, null, answer.promptHistory,
+            seedContext = true) + VisionPerceptionClaim.CORRECTION
+        engine.setToolsEnabled(false)
+        engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
+        val voiceAudio = answer.invocation.voiceAudio
+        val regenerated = if (answer.directAudio && voiceAudio != null) {
+            engine.generateAudio(prompt, voiceAudio, answer.streamFilter::accept)
+        } else {
+            engine.generate(prompt = prompt, onToken = answer.streamFilter::accept)
+        }
+        answer.telemetry.record("vision claim guard", regenerated, answer.submittedPrompt.length)
+        draft.generated = regenerated
+        draft.containsCurrentTurn = true
+        val cleaned = AssistantText.forDisplay(regenerated.text)
+        draft.cleanedResponse = if (VisionPerceptionClaim.assertsPerception(cleaned)) {
+            diagnostics.record("Vision perception claim guard outcome=fallback stage=recovery " +
+                "reason=regeneration_claimed_again")
+            VisionPerceptionClaim.FALLBACK
+        } else {
+            diagnostics.record("Vision perception claim guard outcome=regenerated stage=recovery")
             cleaned
         }
     }

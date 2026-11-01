@@ -19,7 +19,16 @@ internal data class ConversationAnswer(
     val directAudio: Boolean,
     val streamFilter: AssistantStreamFilter,
     val repetitionGuard: VoiceRepetitionGuard?,
-    val telemetry: ConversationInferenceTelemetry
+    val telemetry: ConversationInferenceTelemetry,
+    /**
+     * True when a structured visual-context block was injected into this
+     * turn's prompt. The no-vision honesty guard treats an attached image
+     * or an injected visual-context block as visual input for the turn;
+     * on main today the block exists only when a chat image was attached,
+     * but the flag is the seam the video-call branch's live visual context
+     * will use unchanged.
+     */
+    val visualContextInjected: Boolean = false
 )
 
 /** One native draft, including whether its resident session still contains this user turn. */

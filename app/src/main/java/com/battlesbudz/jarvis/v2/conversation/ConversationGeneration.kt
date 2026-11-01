@@ -123,6 +123,11 @@ internal class ConversationGeneration(
         val directAudio = invocation.directVoiceAudio || invocation.comparison?.request?.path == LiveComparison.Path.GEMMA_DIRECT
         check(invocation.sealedVoiceAudio == null || invocation.voiceAudioIsComplete) { "Incomplete native audio cannot be submitted" }
         val input = ConversationInput(invocation.voiceAudio, directAudio, prepared.textInput, attachments.image, attachments.audio, invocation.sealedVoiceAudio, invocation.nativeSpeculation)
+        // Visual input for the no-vision honesty guard: an attached image
+        // or an injected visual-context block. Checked against the general
+        // turn inputs so the guard ports to the video-call branch's live
+        // visual context unchanged.
+        val hasVisualInput = input.imageBytes != null || visionContext != null
         if (invocation.sealedVoiceAudio != null) {
             reply.benchmark.configuration("native_audio_input_path", "incremental_encoder_sealed_conversation_v1")
             reply.benchmark.metric("native_audio_pcm_samples", invocation.sealedVoiceAudio.pcmSampleCount)
@@ -181,12 +186,14 @@ internal class ConversationGeneration(
         if (!stoppedLoop) telemetry.record("answer", generated, submission.text.length)
         telemetry.terminal(generated)
         val answer = ConversationAnswer(invocation, routed, prepared, promptHistory, turnPrompt,
-            engine, reply, submission.text, attachments.image, directAudio, stream, guard, telemetry)
+            engine, reply, submission.text, attachments.image, directAudio, stream, guard, telemetry,
+            visualContextInjected = visionContext != null)
         val draft = ConversationDraft(answer, generated, input.nativeConversationContainsTurn,
             runawayLoopStopped = stoppedLoop)
         executeNativeActions(draft, phoneActions)
         retryInvalidToolDraft(draft, input)
         guardAudioAccessRefusal(draft, input)
+        guardVisionPerceptionClaim(draft, input, hasVisualInput)
         return draft
     }
 
@@ -392,6 +399,48 @@ internal class ConversationGeneration(
             GenerationResult(AudioAccessRefusal.FALLBACK, -1L, null)
         } else {
             diagnostics.summary("Audio access refusal guard outcome=regenerated stage=generation")
+            regenerated
+        }
+    }
+
+    /**
+     * No-vision honesty guard, mirroring [guardAudioAccessRefusal]. A
+     * vision-directed question on a turn with no visual input must never be
+     * answered with an invented perception claim: on 31 October 2026 a
+     * device build with no vision input at all answered "Can you tell me
+     * what you see?" with "I see a room with a window and a desk. This is
+     * the primary visual data I am currently processing." Regenerate once,
+     * mirroring the refusal guard's reset and tool policy, with a
+     * correction that names the false claim; the regeneration goes through
+     * [ConversationInput.retry], so it carries the same authoritative
+     * inputs. If the model claims perception again, substitute the honest
+     * fallback rather than let the turn be answered with the claim. A turn
+     * with an image or an injected visual-context block is never guarded —
+     * bad recognition is a different problem — and an answer that is
+     * honest about not seeing passes untouched.
+     */
+    private suspend fun guardVisionPerceptionClaim(
+        draft: ConversationDraft,
+        input: ConversationInput,
+        hasVisualInput: Boolean
+    ) {
+        if (hasVisualInput || draft.actionResultMessage != null) return
+        if (!VisionPerceptionClaim.isVisionDirectedQuestion(draft.answer.invocation.prompt)) return
+        if (!VisionPerceptionClaim.assertsPerception(AssistantText.forDisplay(draft.generated.text))) return
+        val answer = draft.answer
+        modelSession.reset()
+        answer.engine.setToolsEnabled(false)
+        answer.engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
+        val prompt = answer.submittedPrompt + VisionPerceptionClaim.CORRECTION
+        val regenerated = input.retry(answer.engine, prompt, answer.streamFilter::accept)
+        answer.telemetry.record("vision claim retry", regenerated, answer.submittedPrompt.length)
+        draft.generated = if (VisionPerceptionClaim.assertsPerception(
+                AssistantText.forDisplay(regenerated.text))) {
+            diagnostics.summary("Vision perception claim guard outcome=fallback stage=generation " +
+                "reason=regeneration_claimed_again")
+            GenerationResult(VisionPerceptionClaim.FALLBACK, -1L, null)
+        } else {
+            diagnostics.summary("Vision perception claim guard outcome=regenerated stage=generation")
             regenerated
         }
     }
