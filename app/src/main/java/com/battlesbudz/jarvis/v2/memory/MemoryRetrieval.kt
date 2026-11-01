@@ -26,7 +26,31 @@ object MemoryRetrieval {
     }
 
 
-    private fun isPublicInformationOrDeviceCommand(query: String): Boolean {
+    /** Per-record lexical evidence behind [retrieve]'s scores, for hybrid fusion's relevance filter. */
+    internal data class LexicalEvidence(val matchedTokens: Int, val phraseHit: Boolean)
+
+    /**
+     * The same token scoring [retrieve] applies, exposed per record: how many distinct
+     * query tokens occur in the record's content, and whether the full query phrase
+     * occurs verbatim. Only eligible (APPROVED, non-expired) records with at least one
+     * matched token appear. [retrieve] itself is unchanged.
+     */
+    internal fun lexicalEvidence(memories: List<MemoryRecord>, query: String, nowMs: Long): Map<String, LexicalEvidence> {
+        val queryTokens = tokens(query)
+        if (queryTokens.isEmpty()) return emptyMap()
+        val phrase = query.trim().lowercase()
+        return memories.asSequence()
+            .filter { it.reviewStatus == MemoryReviewStatus.APPROVED && (it.expiresAtMs == null || it.expiresAtMs > nowMs) }
+            .mapNotNull { memory ->
+                val words = tokens(memory.content)
+                val matches = queryTokens.count { it in words }
+                if (matches == 0) null
+                else memory.id to LexicalEvidence(matches, phrase.length > 2 && memory.content.lowercase().contains(phrase))
+            }
+            .toMap()
+    }
+
+    internal fun isPublicInformationOrDeviceCommand(query: String): Boolean {
         val normalized = query.lowercase()
         return Regex("\\b(?:weather|forecast|news|stock(?:s)?|score)\\b").containsMatchIn(normalized) ||
             Regex("^(?:set|turn|open|call|text|send|play|pause)\\b").containsMatchIn(normalized)

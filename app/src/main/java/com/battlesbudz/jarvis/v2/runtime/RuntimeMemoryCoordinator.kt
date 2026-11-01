@@ -62,6 +62,9 @@ internal class RuntimeMemoryCoordinator(
             val result = memory().approvedContext(query, maxChars, limit = 8)
             if (boundaryPending.get() || before != epoch.get()) return@repeat
             val packet = result.packet ?: return null
+            // Hybrid retrieval reports its candidate counts and semantic state per
+            // accepted context build; content-free, and absent on the lexical path.
+            result.diagnostics?.let { recordDiagnostic(it) }
             // Core supplies the earliest approved expiry from this same coherent snapshot,
             // including facts absent from this packet but retained by history/native context.
             return MemoryTurnContext(packet.text, result.stateToken, query, result.nextApprovedExpiryMs, before,

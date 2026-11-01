@@ -5,7 +5,16 @@ import java.util.UUID
 import java.util.concurrent.CopyOnWriteArraySet
 
 /** Explicit-review memory lifecycle. It never observes chat/voice itself: callers must propose an event. */
-class MemoryOs(private val store: MemoryPersistence, private val clock: () -> Long = { System.currentTimeMillis() }) {
+class MemoryOs(
+    private val store: MemoryPersistence,
+    private val clock: () -> Long = { System.currentTimeMillis() },
+    /**
+     * Hybrid recall (memory RAG Unit 2), resolved lazily per packet so the Android
+     * edge can bind it after both process singletons exist. The default keeps the
+     * lexical-only behavior every existing construction and test relies on.
+     */
+    private val hybridRetrieval: () -> MemoryHybridRetrieval? = { null },
+) {
     private val approvedStateObservers = CopyOnWriteArraySet<(String) -> Unit>()
 
     /** In-process fence notification after a durable approved-history mutation. Pending proposals never notify. */
@@ -142,13 +151,27 @@ class MemoryOs(private val store: MemoryPersistence, private val clock: () -> Lo
         val read = read()
         val snapshot = read.snapshot ?: return MemoryPacketResult(MemoryOutcome.STORAGE_FAILURE, read.error ?: "Memory store failed.")
         if (query.isBlank() || limit !in 1..50 || maxChars < 0) return MemoryPacketResult(MemoryOutcome.INVALID, "A query, limit 1-50, and non-negative budget are required.")
-        val candidates = MemoryRetrieval.retrieve(snapshot.memories, query, limit, nowMs)
         val nextApprovedExpiryMs = snapshot.memories.asSequence()
             .filter { it.reviewStatus == MemoryReviewStatus.APPROVED }
             .mapNotNull { it.expiresAtMs }
             .filter { it > nowMs }
             .minOrNull()
-        return MemoryPacketResult(null, "ok", MemoryRetrieval.packetFromRetrieved(candidates, maxChars), MemoryRetrieval.approvedStateToken(snapshot.memories, nowMs), nextApprovedExpiryMs)
+        val stateToken = MemoryRetrieval.approvedStateToken(snapshot.memories, nowMs)
+        // A zero budget builds no packet content (the delivery fence's state recheck
+        // calls with one), so no candidate source runs and no query is embedded there:
+        // the query embedding happens once per real context build.
+        val hybrid = if (maxChars > 0) hybridRetrieval() else null
+        if (hybrid == null) {
+            val candidates = MemoryRetrieval.retrieve(snapshot.memories, query, limit, nowMs)
+            return MemoryPacketResult(null, "ok", MemoryRetrieval.packetFromRetrieved(candidates, maxChars), stateToken, nextApprovedExpiryMs)
+        }
+        val result = hybrid.retrieve(snapshot, query, limit, nowMs)
+        val profileIds = result.profile.mapTo(HashSet()) { it.id }
+        // Profile slice first (always injected, budget permitting), then the searched
+        // collection; one id appears once, at its profile position when it has one.
+        val combined = result.profile.map { RetrievedMemory(it, PROFILE_SLICE_SCORE) } +
+            result.searched.filterNot { it.memory.id in profileIds }
+        return MemoryPacketResult(null, "ok", MemoryRetrieval.packetFromRetrieved(combined, maxChars), stateToken, nextApprovedExpiryMs, diagnostics = result.diagnosticsLine())
     }
 
     private fun lineage(memories: List<MemoryRecord>, id: String): Set<String> {
@@ -165,4 +188,9 @@ class MemoryOs(private val store: MemoryPersistence, private val clock: () -> Lo
     }
 
     private fun MemoryRecord.toProposal() = MemoryProposal(content, source, category, tier, type, confidence, expiresAtMs, correctsMemoryId, null, wikiAssignment)
+
+    private companion object {
+        /** Profile-slice entries are placed by list position, not search rank; their score is nominal. */
+        const val PROFILE_SLICE_SCORE = 0
+    }
 }
