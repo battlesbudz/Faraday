@@ -1,5 +1,86 @@
 # Feature and acceptance map
 
+## Voice memory capture fix + embeddings diagnostics line — 31 October 2026
+
+Ordinary voice turns never reached AutomaticMemory: the D-3 auto-commit
+pipeline was wired only inside JarvisRuntime.runConversationInternal (chat
+sends and accepted voice actions), so finalized ordinary voice replies —
+which flow through OrdinaryVoiceReplyStage — queued nothing, and the
+receipt path's extractor ignored natural spoken phrasing anyway. Battles's
+2026-10-31 device test (build 1632, call 8b65b21b) showed all four of his
+spoken facts IGNORED and nothing saved. Three parts, all on
+`feature/memory-rag`:
+
+A (wiring): VoiceMemoryAccess gains an autoCapture port; JarvisRuntime's
+captureAutoMemory is the single production binding (private mode writes
+nothing, mirroring captureFinalMemory; fire-and-forget on IO). Ordinary
+replies queue from the conversation completion callback; direct-audio
+turns queue from the Gemma final-caption commit, where their real
+transcript exists; typed-during-call turns queue on completion as CHAT.
+Candidates are the finalized transcript plus the answer actually given —
+the chat path's blob shape. Comparison trials, recognition-issue and
+interruption-test turns queue nothing; accepted-action turns were already
+covered through runConversationInternal.
+
+B (receipt extractor): ConversationMemory.extract matches against a
+lead-in-stripped core ("So …", "Yeah, and …"), tolerates one preference
+adverb ("I also love …"), splits out "my (full) name is" as PERSON, and
+recognizes biography forms ("I used to …", "I've been to …"). Candidate
+content stays the original finalized text; questions, commands and drafts
+still yield no candidate, and the receipt path stays PENDING-only.
+
+C (evaluator/classifier coverage): HeuristicMemoryEvaluator v2 — FACT
+gains the full-name and biography forms; the preference pattern (and
+AutomaticMemory.classify) tolerates the intervening adverb and aligns its
+verb set with the extractor; classify maps the name forms to PERSON.
+Thresholds unchanged (SAVE_RELEVANCE=30, SAVE_CONFIDENCE=60); the tuning
+fixtures now include the four device statements and the documented
+separation still holds (positives ≥ 40 relevance, negatives ≤ 15).
+
+Also in this unit (diagnostics completeness, not a behavior change): the
+"Memory embeddings:" line can now actually appear in a Copy Diagnostics
+export. It existed only as a formatter on the sync report — no production
+code ran a sync and neither assembly site included it.
+MemoryEmbeddingIndexer.diagnosticsLine() is a read-only probe computed at
+copy time (live ledger + vector store; the engine's live availability,
+with its reason when unavailable; engine=error on a store failure, never
+invented counts), and DiagnosticRecorder's new liveSection hook appends
+it to every snapshot, which both assembly sites build on (MainActivity
+copyDiagnostics, JarvisAppComposition call evidence). JarvisRuntime binds
+the hook at construction.
+
+Acceptance: run 41269474247 on 61459552 is fully green — producer,
+release tests and APK, the full-E2B native quality prerequisite, all five
+sandbox journey profiles, native 16 KB compatibility, consolidation and
+publication. The nightly full unit suite (run 41269479405) is green on
+the same head. Branch prerelease `faraday-feature/memory-rag-build.1648`
+(compact 143,238,153 bytes). The intermediate ead976f6 run's only failure
+was a log-verified journey infra flake on the 35-phone-compact profile
+(adb device-offline at emulator start, instrumentation past its 900 s
+budget, one missing evidence png); the same profile passed on the final
+head. Tests: ConversationMemoryTest (the four
+statements PROPOSED and PENDING; a lead-in question and a command still
+IGNORED), AutomaticMemoryTest (the four statements commit end-to-end as
+VOICE candidates through the real pipeline; threshold fixtures extended),
+VoiceMemoryAccessTest (blob shape and blank guards),
+TypedVoiceInputStageTest (a completed typed turn queues its candidate and
+keeps its receipt capture; a foreign call's turn queues nothing),
+MemoryEmbeddingIndexerTest (read-only line in the unavailable+reason and
+post-sync available states), DiagnosticRecorderTest (the export carries
+the line from faked services; a failing probe degrades to the plain
+snapshot). The first nightly full-suite run on the A+B+C head caught the
+evaluator's own preference-adverb blind spot in exactly two tests; the
+correction is part of this unit (commit ead976f6).
+
+Explicitly NOT covered: on-device proof. Owed on a physical Fold 6 with
+the branch build: state the four facts in a voice call, let the idle
+evaluator cadence elapse (one pass at runtime start, then every 15
+minutes, each pass only while no model operation is active and no
+conversation jobs are running), ask "What's my full name?", and confirm
+the committed records in Memory settings. The same build's Copy
+Diagnostics paste should contain the "Memory embeddings:" line with live
+counts and the engine state for this device.
+
 ## Memory RAG Unit 1.5/2: LiteRT-LM 0.18 bump and EmbeddingGemma 2 binding — 31 October 2026
 
 The reviewed LiteRT-LM bridge moved from 0.16.0 (924e79c9) to 0.18.0
