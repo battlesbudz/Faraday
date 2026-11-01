@@ -154,7 +154,7 @@ internal object MemoryGoldenCorpus {
         val vectors = FakeVectorStore()
         val retriever = MemoryHybridRetrieval(service, vectors)
         private val ledgerFile: java.io.File = java.nio.file.Files.createTempFile("memory-golden-corpus", ".json").toFile()
-        val os: MemoryOs = MemoryOs(MemoryStore(ledgerFile), { now }, { retriever })
+        val os: MemoryOs = MemoryOs(MemoryStore(ledgerFile), { now }).also { it.hybridRetrievalProvider = { retriever } }
         val lexicalOs: MemoryOs = MemoryOs(MemoryStore(ledgerFile), { now })
         val byText = LinkedHashMap<String, MemoryRecord>()
         private var eventSeq = 0
@@ -176,11 +176,12 @@ internal object MemoryGoldenCorpus {
             )
             val proposed = os.propose(proposal)
             require(proposed.outcome == MemoryOutcome.CREATED) { "propose $text -> ${proposed.outcome}: ${proposed.message}" }
+            val createdId = proposed.memory!!.id
             if (approve) {
-                val approved = os.approve(proposed.recordId!!)
+                val approved = os.approve(createdId)
                 require(approved.outcome == MemoryOutcome.APPROVED) { "approve $text -> ${approved.outcome}: ${approved.message}" }
             }
-            val record = os.read().snapshot!!.memories.first { it.id == proposed.recordId }
+            val record = os.read().snapshot!!.memories.first { it.id == createdId }
             byText[text] = record
             return record
         }

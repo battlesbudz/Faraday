@@ -8,13 +8,15 @@ import java.util.concurrent.CopyOnWriteArraySet
 class MemoryOs(
     private val store: MemoryPersistence,
     private val clock: () -> Long = { System.currentTimeMillis() },
-    /**
-     * Hybrid recall (memory RAG Unit 2), resolved lazily per packet so the Android
-     * edge can bind it after both process singletons exist. The default keeps the
-     * lexical-only behavior every existing construction and test relies on.
-     */
-    private val hybridRetrieval: () -> MemoryHybridRetrieval? = { null },
 ) {
+    /**
+     * Hybrid recall (memory RAG Unit 2), bound by the Android edge after both
+     * process singletons exist and resolved per packet. A property, not a
+     * constructor parameter, so every existing construction — including the
+     * trailing-lambda clock call sites — keeps its exact shape. The default
+     * keeps the lexical-only behavior.
+     */
+    internal var hybridRetrievalProvider: () -> MemoryHybridRetrieval? = { null }
     private val approvedStateObservers = CopyOnWriteArraySet<(String) -> Unit>()
 
     /** In-process fence notification after a durable approved-history mutation. Pending proposals never notify. */
@@ -160,7 +162,7 @@ class MemoryOs(
         // A zero budget builds no packet content (the delivery fence's state recheck
         // calls with one), so no candidate source runs and no query is embedded there:
         // the query embedding happens once per real context build.
-        val hybrid = if (maxChars > 0) hybridRetrieval() else null
+        val hybrid = if (maxChars > 0) hybridRetrievalProvider() else null
         if (hybrid == null) {
             val candidates = MemoryRetrieval.retrieve(snapshot.memories, query, limit, nowMs)
             return MemoryPacketResult(null, "ok", MemoryRetrieval.packetFromRetrieved(candidates, maxChars), stateToken, nextApprovedExpiryMs)

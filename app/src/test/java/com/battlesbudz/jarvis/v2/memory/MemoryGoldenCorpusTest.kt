@@ -33,7 +33,7 @@ class MemoryGoldenCorpusTest {
     private fun packetIds(os: MemoryOs, query: String, limit: Int = 5): List<String> {
         val result = os.contextPacket(query, PACKET_BUDGET, limit = limit, nowMs = now)
         assertEquals(null, result.outcome)
-        return result.packet!!.memories.map { it.id }
+        return result.packet!!.memories.map { it.memory.id }
     }
 
     private fun recallAt5(cases: List<PositiveCase>, ranking: (String) -> List<String>): Double {

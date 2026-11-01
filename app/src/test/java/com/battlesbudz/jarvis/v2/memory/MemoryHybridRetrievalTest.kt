@@ -156,8 +156,8 @@ class MemoryHybridRetrievalTest {
     private fun MemoryOs.addApproved(content: String, category: MemoryCategory): MemoryRecord {
         val proposed = propose(MemoryProposal(content, MemorySource("evt-${content.hashCode()}", "unit test", now), category))
         assertEquals(MemoryOutcome.CREATED, proposed.outcome)
-        assertEquals(MemoryOutcome.APPROVED, approve(proposed.recordId!!).outcome)
-        return read().snapshot!!.memories.first { it.id == proposed.recordId }
+        assertEquals(MemoryOutcome.APPROVED, approve(proposed.memory!!.id).outcome)
+        return read().snapshot!!.memories.first { it.id == proposed.memory.id }
     }
 
     @Test fun contextPacketWiresHybridDiagnosticsProfileAndZeroBudgetSkipsEmbedding() {
@@ -165,7 +165,7 @@ class MemoryHybridRetrievalTest {
         val service = MemoryEmbeddingService(engine)
         val vectors = MemoryGoldenCorpus.FakeVectorStore()
         val file: File = Files.createTempFile("memory-hybrid-os", ".json").toFile()
-        val os = MemoryOs(MemoryStore(file), { now }, { MemoryHybridRetrieval(service, vectors) })
+        val os = MemoryOs(MemoryStore(file), { now }).also { it.hybridRetrievalProvider = { MemoryHybridRetrieval(service, vectors) } }
         val tea = os.addApproved(MemoryGoldenCorpus.Text.TEA, MemoryCategory.PREFERENCE)
         val notebook = os.addApproved(MemoryGoldenCorpus.Text.NOTEBOOK, MemoryCategory.FACT)
         indexAll(service, vectors, tea, notebook)
@@ -176,7 +176,7 @@ class MemoryHybridRetrievalTest {
         assertEquals(1, engine.queryEmbedCalls - embedsBefore)
         assertTrue(result.diagnostics!!.startsWith("Memory retrieval: "))
         assertTrue(result.diagnostics!!.contains("semantic=available"))
-        assertEquals(listOf(tea.id), result.packet!!.memories.map { it.id })
+        assertEquals(listOf(tea.id), result.packet!!.memories.map { it.memory.id })
 
         // The delivery fence's zero-budget recheck must not embed or re-run sources.
         val recheck = os.contextPacket(MemoryGoldenCorpus.Queries.TEA_PARAPHRASE, 0, limit = 5, nowMs = now)
@@ -194,6 +194,6 @@ class MemoryHybridRetrievalTest {
         val result = os.contextPacket(MemoryGoldenCorpus.Queries.NOTEBOOK, 4_000, limit = 5, nowMs = now)
         assertNull(result.outcome)
         assertNull(result.diagnostics)
-        assertEquals(listOf(notebook.id), result.packet!!.memories.map { it.id })
+        assertEquals(listOf(notebook.id), result.packet!!.memories.map { it.memory.id })
     }
 }
