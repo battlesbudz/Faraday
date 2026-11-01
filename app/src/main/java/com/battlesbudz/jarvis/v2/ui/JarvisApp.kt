@@ -23,6 +23,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import com.battlesbudz.jarvis.v2.ai.ModelCatalog
 import com.battlesbudz.jarvis.v2.ai.ModelStore
+import com.battlesbudz.jarvis.v2.memory.AndroidMemoryEmbeddings
 import com.battlesbudz.jarvis.v2.memory.AndroidMemoryOs
 
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
@@ -89,6 +90,7 @@ fun JarvisApp(
 
         val phoneContext = androidx.compose.ui.platform.LocalContext.current
         val memoryOs = remember(phoneContext.applicationContext) { AndroidMemoryOs.get(phoneContext.applicationContext) }
+        val embeddingSetup = remember(phoneContext.applicationContext) { AndroidMemoryEmbeddings.setupController(phoneContext.applicationContext) }
         val activeVoiceCall by com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.armed.collectAsState()
         val activeVoiceStatus by com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.status.collectAsState()
         val modelSelector: @Composable (Boolean) -> Unit = { enabled ->
@@ -207,6 +209,7 @@ fun JarvisApp(
                                 onEndCall = onEndVoiceCall,
                                 onOpenChat = { memoryReturnToVoice = false; memoryReturnToChat = true; showingMemory = false },
                                 onOpenVoice = { memoryReturnToChat = false; memoryReturnToVoice = true; showingMemory = false },
+                                embeddingSetup = embeddingSetup,
                             )
                     } else if (showingMemory) {
                         MemoryScreen(
@@ -217,6 +220,7 @@ fun JarvisApp(
                             onEndCall = onEndVoiceCall,
                             onOpenChat = { memoryReturnToVoice = false; memoryReturnToChat = true; showingMemory = false },
                             onOpenVoice = { memoryReturnToChat = false; memoryReturnToVoice = true; showingMemory = false },
+                            embeddingSetup = embeddingSetup,
                         )
                     } else if (!setup.modelsReady && !showingFullSetup) {
                         // First run: no usable model on the device. One-tap install

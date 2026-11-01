@@ -424,6 +424,20 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         diagnosticRecorder.liveSection = {
             com.battlesbudz.jarvis.v2.memory.AndroidMemoryEmbeddings.diagnosticsLine(applicationContext)
         }
+        // Memory RAG Unit 2 projection syncs: background, coalesced, and idle-gated
+        // by the same idleness rule the automatic-memory evaluator uses, so a sync
+        // never competes with a conversation turn. Triggers: app start (below),
+        // every approved-state change (the observer registered here, on the same
+        // signal the delivery-fence observer below consumes), and immediately
+        // after a Settings install. Failures surface only as the
+        // diagnostics line's pending counts, never as fabricated vectors.
+        com.battlesbudz.jarvis.v2.memory.AndroidMemoryEmbeddings.installSyncIdleProbe {
+            !modelStore.isModelOperationActive() && ConversationWork.activeJobs.get() == 0
+        }
+        AndroidMemoryOs.get(applicationContext).addApprovedStateObserver {
+            com.battlesbudz.jarvis.v2.memory.AndroidMemoryEmbeddings.requestSync(applicationContext)
+        }
+        com.battlesbudz.jarvis.v2.memory.AndroidMemoryEmbeddings.requestSync(applicationContext)
         // Construction is the publication barrier: no cold alarm sees this runtime until
         // both durable recovery passes finish, and neither pass starts new task work.
         if (durableTaskRecovery.recover(phoneTaskCoordinator::recoverAfterRestart, workflowCoordinator::recoverAfterRestart)) {

@@ -40,6 +40,7 @@ internal fun MemoryScreen(
     onEndCall: (((String) -> Unit) -> Unit)? = null,
     onOpenChat: () -> Unit = onBack,
     onOpenVoice: () -> Unit = onBack,
+    embeddingSetup: MemoryEmbeddingSetupController? = null,
 ) {
     val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current
@@ -190,7 +191,7 @@ internal fun MemoryScreen(
                         Column(Modifier.fillMaxSize()) {
                             TabRow(selectedTabIndex = tab, modifier = Modifier.padding(horizontal = 16.dp)) { Tab(tab == 0, { tab = 0 }, text = { Text("Wiki") }, modifier = Modifier.testTag("memory_wiki_tab")); Tab(tab == 1, { tab = 1 }, text = { Text("Review ($pending)") }, modifier = Modifier.testTag("memory_review_tab")); Tab(tab == 2, { tab = 2 }, text = { Text("History") }, modifier = Modifier.testTag("memory_history_tab")) }
                             when (tab) {
-                                0 -> WikiHome(index, onOpenPage = { pageId = it }, onEraseAll = ::requestEraseAll)
+                                0 -> WikiHome(index, onOpenPage = { pageId = it }, onEraseAll = ::requestEraseAll, embeddingSetup = embeddingSetup)
                                 1 -> ReviewList(snapshot?.memories.orEmpty().filter { it.reviewStatus == MemoryReviewStatus.PENDING }, busy, onApprove = { mutate({ memoryOs.approve(it.id, it.revision) }) }, onReject = { mutate({ memoryOs.reject(it.id, it.revision) }) }, onCorrect = ::beginCorrection, onOrganize = ::beginOrganize, onDelete = ::requestDelete, onOpen = { detailId = it.id })
                                 else -> HistoryList(snapshot?.memories.orEmpty(), busy, onCorrect = ::beginCorrection, onOrganize = ::beginOrganize, onDelete = ::requestDelete, onOpen = { detailId = it.id }, onEraseAll = ::requestEraseAll)
                             }
@@ -254,7 +255,54 @@ private fun OrganizeDialog(record: MemoryRecord, category: WikiCategory, topic: 
     dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
 )
 
-@Composable private fun WikiHome(index: MemoryWikiIndex?, onOpenPage: (String) -> Unit, onEraseAll: () -> Unit) = LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { item { Column { Text("Your personal wiki", style = MaterialTheme.typography.headlineSmall); Text("Organized from approved memories", style = MaterialTheme.typography.bodySmall) } }; if (index == null) item { Text("Loading saved memories…") } else { items(index.categoryPages, key = { it.id }) { page -> Card(Modifier.fillMaxWidth().testTag("memory_category_row_${page.category.id}").clickable { onOpenPage(page.id) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) { Row(Modifier.padding(16.dp)) { Text(page.title.take(1), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 12.dp)); Text(page.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f)); Text("${page.records.size} ›") } } }; val recent = index.pages.filter { it.id.startsWith("topic:") && it.records.isNotEmpty() }.sortedByDescending { it.updatedAtMs }.take(6); if (recent.isNotEmpty()) { item { Text("Recently updated", style = MaterialTheme.typography.titleMedium) }; items(recent, key = { "recent:${it.id}" }) { page -> TextButton(onClick = { onOpenPage(page.id) }, modifier = Modifier.fillMaxWidth().testTag("memory_topic_row_${page.id}")) { Text(page.title, Modifier.weight(1f)); Text(dateLabel(page.updatedAtMs)) } } }; if (index.memories.isNotEmpty()) item { TextButton(onClick = onEraseAll, modifier = Modifier.testTag("memory_erase_all")) { Text("Erase all memories") } } } }
+/**
+ * Memory embeddings row (memory RAG Unit 2): the install surface for the semantic
+ * recall model. State comes from the setup controller, whose installed check is the
+ * store's pin verification — the row can only say "Installed" about a verified file,
+ * and failures show the acquisition layer's own message.
+ */
+@Composable
+private fun MemoryEmbeddingsCard(controller: MemoryEmbeddingSetupController) {
+    val scope = rememberCoroutineScope()
+    var state by remember(controller) { mutableStateOf<MemoryEmbeddingSetupState?>(null) }
+    LaunchedEffect(controller) { state = withContext(Dispatchers.IO) { controller.state() } }
+    fun install() {
+        state = MemoryEmbeddingSetupState.Downloading(0L, controller.spec.downloadBytes)
+        scope.launch {
+            state = withContext(Dispatchers.IO) {
+                controller.install { downloaded, total ->
+                    state = MemoryEmbeddingSetupState.Downloading(downloaded, total)
+                }
+            }
+        }
+    }
+    Card(Modifier.fillMaxWidth().testTag("memory_embeddings_card"), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Memory embeddings", style = MaterialTheme.typography.titleMedium)
+            when (val current = state) {
+                null -> Text("Checking the embedding model…", style = MaterialTheme.typography.bodySmall)
+                is MemoryEmbeddingSetupState.NotInstalled -> {
+                    Text("Semantic recall model (EmbeddingGemma 2) is not installed. With it, memory recall understands meaning, not just keywords.", style = MaterialTheme.typography.bodySmall)
+                    if (current.savedBytes > 0L) Text("A partial download (${formatMegabytes(current.savedBytes)}) is saved on this phone; installing resumes it.", style = MaterialTheme.typography.bodySmall)
+                    Button(onClick = ::install, modifier = Modifier.testTag("memory_embeddings_install")) { Text("Install (${formatMegabytes(current.downloadBytes)})") }
+                }
+                is MemoryEmbeddingSetupState.Downloading -> {
+                    LinearProgressIndicator(progress = { if (current.totalBytes > 0L) (current.downloadedBytes.toFloat() / current.totalBytes).coerceIn(0f, 1f) else 0f }, modifier = Modifier.fillMaxWidth().testTag("memory_embeddings_progress"))
+                    Text("Downloading… ${formatMegabytes(current.downloadedBytes)} of ${formatMegabytes(current.totalBytes)}", style = MaterialTheme.typography.bodySmall)
+                }
+                is MemoryEmbeddingSetupState.Installed -> Text("Installed (${formatMegabytes(current.sizeBytes)}) — semantic memory recall is on. New memories are indexed in the background.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("memory_embeddings_installed"))
+                is MemoryEmbeddingSetupState.Failed -> {
+                    Text(current.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("memory_embeddings_error"))
+                    Button(onClick = ::install, modifier = Modifier.testTag("memory_embeddings_retry")) { Text("Try again") }
+                }
+            }
+        }
+    }
+}
+
+private fun formatMegabytes(bytes: Long): String = "%.0f MB".format(bytes / 1_048_576.0)
+
+@Composable private fun WikiHome(index: MemoryWikiIndex?, onOpenPage: (String) -> Unit, onEraseAll: () -> Unit, embeddingSetup: MemoryEmbeddingSetupController? = null) = LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { if (embeddingSetup != null) item(key = "memory_embeddings") { MemoryEmbeddingsCard(embeddingSetup) }; item { Column { Text("Your personal wiki", style = MaterialTheme.typography.headlineSmall); Text("Organized from approved memories", style = MaterialTheme.typography.bodySmall) } }; if (index == null) item { Text("Loading saved memories…") } else { items(index.categoryPages, key = { it.id }) { page -> Card(Modifier.fillMaxWidth().testTag("memory_category_row_${page.category.id}").clickable { onOpenPage(page.id) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) { Row(Modifier.padding(16.dp)) { Text(page.title.take(1), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 12.dp)); Text(page.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f)); Text("${page.records.size} ›") } } }; val recent = index.pages.filter { it.id.startsWith("topic:") && it.records.isNotEmpty() }.sortedByDescending { it.updatedAtMs }.take(6); if (recent.isNotEmpty()) { item { Text("Recently updated", style = MaterialTheme.typography.titleMedium) }; items(recent, key = { "recent:${it.id}" }) { page -> TextButton(onClick = { onOpenPage(page.id) }, modifier = Modifier.fillMaxWidth().testTag("memory_topic_row_${page.id}")) { Text(page.title, Modifier.weight(1f)); Text(dateLabel(page.updatedAtMs)) } } }; if (index.memories.isNotEmpty()) item { TextButton(onClick = onEraseAll, modifier = Modifier.testTag("memory_erase_all")) { Text("Erase all memories") } } } }
 
 @Composable private fun SearchList(rows: List<MemoryRecord>, tab: Int, onClear: () -> Unit, onOpen: (MemoryRecord) -> Unit) = LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { item { TextButton(onClick = onClear, modifier = Modifier.testTag("memory_search")) { Text("Clear search") } }; if (rows.isEmpty()) item { Text(if (tab == 0) "No approved memories match that search." else "No memories match that search.") }; items(rows, key = { it.id }) { record -> MemorySearchCard(record, onClick = { onOpen(record) }) } }
 @Composable private fun MemorySearchCard(record: MemoryRecord, onClick: () -> Unit) = Card(Modifier.fillMaxWidth().clickable(onClick = onClick).testTag("memory_search_result_${record.id}")) { Column(Modifier.padding(14.dp)) { Text(record.content); Text(record.placement().second, style = MaterialTheme.typography.labelSmall); Text("Captured from ${record.source.screenSourceLabel()} · ${dateLabel(record.source.createdAtMs)}", style = MaterialTheme.typography.labelSmall) } }

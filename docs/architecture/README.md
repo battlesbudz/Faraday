@@ -39,7 +39,8 @@ for the decision to keep package/collaborator boundaries before adding build mod
 | `conversation/ConversationCoordinator` | Typed invocation admission, ordered stages and exact returned child-job cleanup; native resource release waits for this job |
 | `voice/JarvisModelSetupWorker` | Foreground WorkManager download/setup surviving activity recreation and backgrounding |
 | `memory/AndroidMemoryOs` | Process access to private SQLite memory/source storage and archive-expiry maintenance |
-| `memory/AndroidMemoryEmbeddings` | Process access to the rebuildable embedding projection (sibling vector store, embedding-model acquisition, ledger reconciliation) |
+| `memory/AndroidMemoryEmbeddings` | Process access to the rebuildable embedding projection (sibling vector store, embedding-model acquisition, ledger reconciliation), the hybrid-retrieval binding, coalesced idle-gated projection sync triggers, and the Memory settings embedding-model install controller |
+| `memory/MemoryHybridRetrieval` | Hybrid recall over one canonical snapshot: lexical, semantic (Unit 1 projection, stamp-checked) and wiki candidate sources, reciprocal-rank fusion, a separate relevance filter, and the profile-vs-collection split for context packets |
 
 The foreground service starts runtime voice work; an activity recreation must not
 create a second call or native engine. Accepted phone work has a process owner
@@ -142,7 +143,7 @@ playback evidence; unplayed generated text must not become heard conversation co
 | `voice/comparison/` | Explicit live comparison trial data; does not replace normal turn ownership | `LiveComparison` |
 | `actions/` | Strict action contracts, complete plans, authority/approval, Android effects and durable journals | `ActionTurnPlan`, `ActionTurnRunner`, `JournaledActionPipeline`, `AndroidMobileActionExecutor` |
 | `eval/` | Explicit local-model fixture checks through exclusive model admission and checked engine teardown; exact file/suite-bound reports; never Android side-effect dispatch | `ToolReliabilityBenchmark`, `LiteRtLmToolCallRunner`, `ToolReliabilityFixtures`, `ToolReliabilityScorer`, `ReliabilityReportStore` |
-| `memory/` | Memory policy, reviewed facts, source archives, SQLite/migration, retrieval and delivery validity; embedding projection (rebuildable vectors stamped by content fingerprint, model and dimension) reconciled from the canonical ledger | `ConversationMemory`, `MemoryOs`, `SQLiteMemoryStore`, `MemoryDeliveryFence`, `MemoryEmbeddingIndexer`, `SQLiteMemoryVectorStore` |
+| `memory/` | Memory policy, reviewed facts, source archives, SQLite/migration, retrieval and delivery validity; embedding projection (rebuildable vectors stamped by content fingerprint, model and dimension) reconciled from the canonical ledger; hybrid recall and embedding-model setup/sync | `ConversationMemory`, `MemoryOs`, `SQLiteMemoryStore`, `MemoryDeliveryFence`, `MemoryEmbeddingIndexer`, `SQLiteMemoryVectorStore`, `MemoryHybridRetrieval`, `MemoryEmbeddingSetupController`, `MemoryEmbeddingSyncScheduler` |
 | `diagnostics/` | Per-reply latency, production benchmark capture/journals/exports and bounded diagnostic evidence | `PipelineBenchmarks`, `ReplyCaptureBenchmark`, `PipelineBenchmarkCapture`, `AndroidPipelineBenchmarkStore`, `DiagnosticRecorder`, `ConversationMetricsExport`, `PipelineBenchmarkTextExport` |
 | `presentation/` | Model setup operations through a narrow session port; durable download work identity | `ModelSetupOperations`, `ModelSetupContract` |
 | `ui/` | Compose screens, model presentation, call overlay, attachments, task/memory panels and evidence exports | `JarvisApp`, `ModelSetupState`, `ModelSelectionSection`, `ConversationScreen`, `VoiceCallScreen`, `MemoryScreen`, `ConversationMetricsControls` |
