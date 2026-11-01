@@ -44,7 +44,13 @@ object AndroidMemoryOs {
                 // Current lock state, never merely "unlocked since boot". Missing service fails closed.
                 app.getSystemService(KeyguardManager::class.java)?.let { !it.isDeviceLocked && !it.isKeyguardLocked } == true
             })
-            Services(MemoryOs(sources), sources).also {
+            // Hybrid recall (memory RAG Unit 2) binds through a lazy provider: the
+            // embeddings services read this ledger for their indexer, so the
+            // retriever can only be resolved per packet, after both singletons
+            // exist. The provider touches nothing until a packet is built.
+            val memory = MemoryOs(sources)
+            memory.hybridRetrievalProvider = { AndroidMemoryEmbeddings.hybridRetrieval(app) }
+            Services(memory, sources).also {
                 // Android may delay background work; read/write paths also purge and filter expiry.
                 WorkManager.getInstance(app).enqueueUniquePeriodicWork("memory-source-expiry", ExistingPeriodicWorkPolicy.KEEP,
                     PeriodicWorkRequestBuilder<MemoryArchiveMaintenanceWorker>(24, TimeUnit.HOURS).build())
