@@ -1,5 +1,43 @@
 # Feature and acceptance map
 
+## No-vision honesty guard — 31 October 2026
+
+A voice call on build 1632 (a build with no vision input of any kind)
+answered "Can you tell me what you see?" with "I see a room with a window
+and a desk. This is the primary visual data I am currently processing." —
+a scene confabulated from nothing, stated as live perception; asked again,
+the model regenerated the identical text and the repetition guard shipped
+its generic fallback. The honesty guard mirrors the audio-access refusal
+guard's architecture. `VisionPerceptionClaim` holds two enumerated
+detectors: the user's turn is vision-directed (current-perception asks
+only; metaphorical "see" — "I see your point", "what do you see in this
+argument", "can you see why" — and follow-ups anchored to a photo the
+user supplied are pinned negatives), and the generated answer asserts
+perception (first-person/camera-subject perception claims, "visual data"
+processing claims, and bare scene-description openings; honest denials
+and references anchored to a supplied image never match). The guard acts
+only when the turn also had no visual input: no image attached to the
+turn's `ConversationInput` and no visual-context block injected
+(`ConversationAnswer.visualContextInjected`, the seam the video-call
+branch's live visual context will use unchanged). On a trip,
+`ConversationGeneration` regenerates once, tools off, with a correction
+naming the false claim; a second claim is replaced by the honest
+fallback "I can't see anything on this turn, sir — no camera image came
+through." `ConversationRecovery.discardVisionPerceptionClaim` is the
+publication backstop, running last with the same never-replace-accepted-
+sentences rule as the audio backstop, so a claim produced by a recovery
+regeneration cannot ship either. `VisionPerceptionClaimTest` pins both
+device sentences verbatim, the metaphorical and follow-up negatives,
+image-present and visual-context turns unguarded at both stages,
+regenerate-once-then-fallback, the direct-audio backstop resubmitting
+the retained audio, and consecutive vision questions both ending with
+the honest fallback; `VisionPerceptionClaimImageTurnTest` (Robolectric)
+pins the attached-image generation path. Device coverage is OPEN and
+owed: on the build carrying this guard, a voice call asking "Can you
+tell me what you see?" and then "Tell me what you see" again must answer
+honestly both times — no invented scene, no repetition-fallback dead
+end. No on-phone proof is claimed here.
+
 ## Faraday main integration and rename repairs — 12 October 2026
 
 [Integration evidence](faraday-integration-2026-10-12.md) retains Build 1295's
