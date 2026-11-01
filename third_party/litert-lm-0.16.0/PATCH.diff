@@ -2944,10 +2944,10 @@ index baa72f3..e0ac814 100644
 +}
 diff --git a/kotlin/java/com/google/ai/edge/litertlm/PreprocessedImage.kt b/kotlin/java/com/google/ai/edge/litertlm/PreprocessedImage.kt
 new file mode 100644
-index 0000000..f54deb7
+index 0000000..87c8a65
 --- /dev/null
 +++ b/kotlin/java/com/google/ai/edge/litertlm/PreprocessedImage.kt
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,66 @@
 +/*
 + * Copyright 2025 Google LLC
 + *
@@ -2973,10 +2973,12 @@ index 0000000..f54deb7
 + * marker) that the native Session gate accepts, built with the same model-derived image
 + * preprocessor the Conversation route uses internally for [InputData.Image].
 + *
-+ * Submission copies the payload natively, never moves it: one handle may be submitted more
-+ * than once and stays valid until [close]. The owner must not close the handle while a
-+ * Session operation submitting it is in flight; Session operations are serialized by the
-+ * Session's own lifecycle, so closing after the submitting call returns is always safe.
++ * Submission CONSUMES the payload: the native input sequence is move-only, so submitting a
++ * handle moves its elements into the Session and leaves the handle empty — submitting the
++ * same handle again fails natively rather than silently submitting no image. Preprocess a
++ * fresh handle per submission. The owner must not close the handle while a Session
++ * operation submitting it is in flight; Session operations are serialized by the Session's
++ * own lifecycle, so closing after the submitting call returns is always safe.
 + * [close] is idempotent.
 + */
 +class PreprocessedImage internal constructor(handle: Long) : AutoCloseable {
@@ -3013,10 +3015,10 @@ index 0000000..f54deb7
 +  }
 +}
 diff --git a/kotlin/java/com/google/ai/edge/litertlm/Session.kt b/kotlin/java/com/google/ai/edge/litertlm/Session.kt
-index a76d770..6248480 100644
+index a76d770..bebc915 100644
 --- a/kotlin/java/com/google/ai/edge/litertlm/Session.kt
 +++ b/kotlin/java/com/google/ai/edge/litertlm/Session.kt
-@@ -24,121 +24,227 @@ import java.util.concurrent.atomic.AtomicBoolean
+@@ -24,121 +24,228 @@ import java.util.concurrent.atomic.AtomicBoolean
   *
   * @param handle The pointer to the underlying native session object.
   */
@@ -3111,9 +3113,10 @@ index a76d770..6248480 100644
 -   * @return The generated content as a [String].
 -   * @throws IllegalStateException if the session is not alive.
 +   * Creating the payload does not mutate the session. The caller owns the returned
-+   * handle and closes it once no submission using it can be in flight. A native failure
-+   * poisons this session like any other failed operation: drain and close it before
-+   * creating a new one. Never call from a model callback.
++   * handle: submitting it (as [InputData.Preprocessed]) consumes the payload — see
++   * [PreprocessedImage] — and the caller closes it once no submission using it can be in
++   * flight. A native failure poisons this session like any other failed operation: drain
++   * and close it before creating a new one. Never call from a model callback.
     */
 -  fun runDecode(): String {
 -    checkIsAlive()
@@ -3327,7 +3330,7 @@ index a76d770..6248480 100644
    }
  }
  
-@@ -175,6 +281,17 @@ sealed class InputData {
+@@ -175,6 +282,17 @@ sealed class InputData {
     */
    // TODO(b/439003966): add Android-friendly methods to create image input data.
    data class Image(val bytes: ByteArray) : InputData()
@@ -3367,7 +3370,7 @@ index fb6e0e5..e717a62 100644
          "//runtime/engine:engine_interface",
          "//runtime/engine:engine_settings",
 diff --git a/kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc b/kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc
-index 9f27231..7846040 100644
+index 9f27231..b09b195 100644
 --- a/kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc
 +++ b/kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc
 @@ -16,6 +16,7 @@
@@ -3400,7 +3403,7 @@ index 9f27231..7846040 100644
  using litert::lm::InputText;
  using litert::lm::JsonPreface;
  using litert::lm::Message;
-@@ -198,64 +203,224 @@ jobject CreateBenchmarkInfoJni(
+@@ -198,64 +203,232 @@ jobject CreateBenchmarkInfoJni(
        last_decode_tokens_per_second);
  }
  
@@ -3632,13 +3635,21 @@ index 9f27231..7846040 100644
 +        if (payload_handle == 0) {
 +          ThrowLiteRtLmJniException(env, "Preprocessed image is closed"); return {};
 +        }
-+        // The payload is copied, never moved: the Kotlin owner keeps sole
-+        // ownership and may submit the same handle again or close it once no
-+        // submission is in flight. InputImage copies are TensorBuffer shallow
-+        // copies, the same duplication PreprocessContents performs.
-+        const auto* payload =
-+            reinterpret_cast<const std::vector<InputData>*>(payload_handle);
-+        contents.insert(contents.end(), payload->begin(), payload->end());
++        // Submission CONSUMES the payload: InputData is move-only (its
++        // InputImage alternative is not copy-constructible), so the elements
++        // are moved into the session contents exactly as PreprocessContents
++        // moves its own per-element copies, and the payload is left empty.
++        // An empty payload here therefore means the handle was already
++        // submitted; fail loudly instead of silently submitting no image.
++        auto* payload =
++            reinterpret_cast<std::vector<InputData>*>(payload_handle);
++        if (payload->empty()) {
++          ThrowLiteRtLmJniException(env, "Preprocessed image was already submitted"); return {};
++        }
++        for (auto& element : *payload) {
++          contents.emplace_back(std::move(element));
++        }
++        payload->clear();
 +      } else {
 +        const bool audio = env->IsInstanceOf(input, audio_class);
 +        if (!audio && !env->IsInstanceOf(input, image_class)) {
@@ -3680,7 +3691,7 @@ index 9f27231..7846040 100644
  }
  
  // Helper to get JNIEnv and attach to the current thread if necessary.
-@@ -287,54 +452,117 @@ JNIEnv* GetJniEnvAndAttach(JavaVM* jvm, bool* attached) {
+@@ -287,54 +460,117 @@ JNIEnv* GetJniEnvAndAttach(JavaVM* jvm, bool* attached) {
    }
  }
  
@@ -3826,7 +3837,7 @@ index 9f27231..7846040 100644
  
    env->DeleteLocalRef(thinking_config_cls);
  
-@@ -488,10 +716,113 @@ std::optional<litert::lm::DataProcessorArguments> GetDataProcessorArguments(
+@@ -488,10 +724,113 @@ std::optional<litert::lm::DataProcessorArguments> GetDataProcessorArguments(
    return std::nullopt;
  }
  
@@ -3940,7 +3951,7 @@ index 9f27231..7846040 100644
  LITERTLM_JNIEXPORT void JNICALL
  Java_com_google_ai_edge_litertlm_NativeLibraryLoader_nativeCheckLoaded(
      JNIEnv* env, jclass thiz) {}
-@@ -771,8 +1102,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateSession)(
+@@ -771,8 +1110,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateSession)(
    auto session_config = SessionConfig::CreateDefault();
  
    if (sampler_config_obj != nullptr) {
@@ -3952,7 +3963,7 @@ index 9f27231..7846040 100644
    }
  
    if (lora_path_str != nullptr) {
-@@ -824,6 +1156,95 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeDeleteSession)(
+@@ -824,6 +1164,95 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeDeleteSession)(
    delete reinterpret_cast<Engine::Session*>(session_pointer);
  }
  
@@ -4048,7 +4059,7 @@ index 9f27231..7846040 100644
  LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeRunPrefill)(
      JNIEnv* env, jclass thiz, jlong session_pointer, jobjectArray input_data) {
    Engine::Session* session =
-@@ -893,7 +1314,7 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeGenerateContent)(
+@@ -893,7 +1322,7 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeGenerateContent)(
    return NewStringStandardUTF(env, responses->GetTexts()[0]);
  }
  
@@ -4057,7 +4068,7 @@ index 9f27231..7846040 100644
      JNIEnv* env, jclass thiz, jlong session_pointer, jobjectArray input_data,
      jobject callback) {
    JavaVM* jvm = nullptr;
-@@ -901,93 +1322,129 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeGenerateContentStream)(
+@@ -901,93 +1330,129 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeGenerateContentStream)(
      ThrowLiteRtLmJniException(env, "Failed to get JavaVM");
      return;
    }
@@ -4263,7 +4274,7 @@ index 9f27231..7846040 100644
  LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeCancelProcess)(
      JNIEnv* env, jclass thiz, jlong session_pointer) {
    Engine::Session* session =
-@@ -1044,8 +1501,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
+@@ -1044,8 +1509,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
      session_config.SetMaxOutputTokens(max_output_token);
    }
    if (sampler_config_obj != nullptr) {
@@ -4275,7 +4286,7 @@ index 9f27231..7846040 100644
    }
  
    if (lora_path_str != nullptr) {
-@@ -1173,8 +1631,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
+@@ -1173,8 +1639,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
  
    // Set the thinking config, if provided.
    if (thinking_config_obj != nullptr) {
@@ -4287,7 +4298,7 @@ index 9f27231..7846040 100644
    }
  
    // Build the conversation
-@@ -1197,9 +1656,25 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
+@@ -1197,9 +1664,25 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
  
  LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeDeleteConversation)(
      JNIEnv* env, jclass thiz, jlong conversation_pointer) {
@@ -4313,7 +4324,7 @@ index 9f27231..7846040 100644
  LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
      JNIEnv* env, jclass thiz, jlong conversation_pointer,
      jstring messageJSONString, jstring extraContextJsonString, jobject callback,
-@@ -1253,8 +1728,11 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
+@@ -1253,8 +1736,11 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
    }
  
    if (thinking_config_obj != nullptr) {
@@ -4327,7 +4338,7 @@ index 9f27231..7846040 100644
    }
  
    if (constraint_type != 0) {
-@@ -1275,73 +1753,132 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
+@@ -1275,73 +1761,132 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
    }
  
    jobject callback_global = env->NewGlobalRef(callback);
@@ -4503,7 +4514,7 @@ index 9f27231..7846040 100644
          }
        };
  
-@@ -1349,6 +1886,8 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
+@@ -1349,6 +1894,8 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
        json_message, std::move(callback_fn), std::move(optional_args));
  
    if (!status.ok()) {
@@ -4512,7 +4523,7 @@ index 9f27231..7846040 100644
      ThrowLiteRtLmJniException(
          env, "Failed to start nativeSendMessageAsync: " + status.ToString());
    }
-@@ -1401,8 +1940,9 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeSendMessage)(
+@@ -1401,8 +1948,9 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeSendMessage)(
    }
  
    if (thinking_config_obj != nullptr) {
@@ -4524,7 +4535,7 @@ index 9f27231..7846040 100644
    }
  
    if (constraint_type != 0) {
-@@ -1440,6 +1980,17 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeConversationCancelProcess)(
+@@ -1440,6 +1988,17 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeConversationCancelProcess)(
    conversation->CancelProcess();
  }
  
