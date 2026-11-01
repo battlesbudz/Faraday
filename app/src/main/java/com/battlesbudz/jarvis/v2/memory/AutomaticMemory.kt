@@ -366,6 +366,7 @@ class AutomaticMemory(
             return when {
                 Regex("\\b(i like|i love|i prefer|i hate|i dislike|my favorit\\w*|i can't stand)\\b").containsMatchIn(lower) -> MemoryCategory.PREFERENCE
                 Regex("\\b(my (wife|husband|son|daughter|mom|dad|mother|father|brother|sister|friend|boss|partner))\\b").containsMatchIn(lower) -> MemoryCategory.PERSON
+                Regex("\\bmy (?:full )?name is\\b").containsMatchIn(lower) -> MemoryCategory.PERSON
                 Regex("\\b(my (goal|plan|resolution)|i want to|i need to)\\b").containsMatchIn(lower) -> MemoryCategory.GOAL
                 else -> MemoryCategory.FACT
             }

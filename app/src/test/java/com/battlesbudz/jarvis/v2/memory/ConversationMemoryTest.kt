@@ -59,6 +59,35 @@ class ConversationMemoryTest {
         assertEquals(1, os.read().snapshot!!.memories.size)
     }
 
+    @Test fun spokenPhrasingOfCoveredFactClassesIsProposedButStaysPending() {
+        // The four statements from Battles's 2026-10-31 device test (build 1632), which
+        // every one of returned IGNORED before the extractor widening. The receipt path
+        // stays PENDING-only; auto-commit is the AutomaticMemory path's job.
+        val (os, bridge) = bridge()
+        val name = bridge.capture(input("name", "So my full name is Justin Lee Battles.", ConversationMemorySource.VOICE))
+        assertEquals(ConversationMemoryOutcome.PROPOSED, name.outcome)
+        assertEquals(MemoryCategory.PERSON, name.memory!!.category)
+        val preference = bridge.capture(input("icecream", "I also love ice cream.", ConversationMemorySource.VOICE))
+        assertEquals(ConversationMemoryOutcome.PROPOSED, preference.outcome)
+        assertEquals(MemoryCategory.PREFERENCE, preference.memory!!.category)
+        val past = bridge.capture(input("skateboard", "I used to skateboard when I was a teenager.", ConversationMemorySource.VOICE))
+        assertEquals(ConversationMemoryOutcome.PROPOSED, past.outcome)
+        assertEquals(MemoryCategory.FACT, past.memory!!.category)
+        val travel = bridge.capture(input("countries", "Yeah, and I was an average traveler and I've been to 27 different countries.", ConversationMemorySource.VOICE))
+        assertEquals(ConversationMemoryOutcome.PROPOSED, travel.outcome)
+        assertEquals(MemoryCategory.FACT, travel.memory!!.category)
+        val stored = os.read().snapshot!!.memories
+        assertEquals(4, stored.size)
+        assertTrue(stored.all { it.reviewStatus == MemoryReviewStatus.PENDING })
+    }
+
+    @Test fun leadInsDoNotSmuggleQuestionsOrCommandsPastTheGate() {
+        val (os, bridge) = bridge()
+        assertEquals(ConversationMemoryOutcome.IGNORED, bridge.capture(input("question", "So what is my favorite drink?")).outcome)
+        assertEquals(ConversationMemoryOutcome.IGNORED, bridge.capture(input("command", "!remember tea")).outcome)
+        assertTrue(os.read().snapshot!!.memories.isEmpty())
+    }
+
     @Test fun rememberThatStripsDirectiveAndClassifiesPreference() {
         val (_, bridge) = bridge()
         val result = bridge.capture(input("remember", "Remember that I prefer oolong tea."))

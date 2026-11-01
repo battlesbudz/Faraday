@@ -56,11 +56,19 @@ class ConversationMemory(private val memoryOs: MemoryOs, private val sourceArchi
         val text = input.text.trim().replace(Regex("\\s+"), " ")
         if (text.endsWith("?") || text.startsWith("/") || text.startsWith("!")) return null
         explicitRemember(text)?.let { return it }
-        val lower = text.lowercase()
-        val preference = Regex("^i (?:really )?(?:like|love|prefer|enjoy|hate|dislike) (.{2,180})[.!]?$", RegexOption.IGNORE_CASE).matchEntire(text)
+        // Spoken turns often open with a discourse lead-in ("So …", "Yeah, and …").
+        // The patterns below match against the lead-in-stripped core so natural spoken
+        // phrasing of the covered fact classes is recognized; the candidate content
+        // stays the user's original finalized text, and the question/command gates
+        // above still apply to that original text first.
+        val core = text.replace(Regex("^(?:(?:so|yeah|well|okay|ok|right|actually|basically|and|now)[,\\s]+)+", RegexOption.IGNORE_CASE), "")
+        val preference = Regex("^i (?:(?:really|also|just|actually) )?(?:like|love|prefer|enjoy|hate|dislike) (.{2,180})[.!]?$", RegexOption.IGNORE_CASE).matchEntire(core)
         if (preference != null) return Candidate(text.trimEnd('.', '!'), MemoryCategory.PREFERENCE)
-        if (Regex("^my favorite .{2,80} is .{1,120}[.!]?$", RegexOption.IGNORE_CASE).matches(text)) return Candidate(text.trimEnd('.', '!'), MemoryCategory.PREFERENCE)
-        if (Regex("^(?:i live in|i'm based in|i work (?:at|as)|my name is) .{2,160}[.!]?$", RegexOption.IGNORE_CASE).matches(text)) return Candidate(text.trimEnd('.', '!'), if (lower.startsWith("my name")) MemoryCategory.PERSON else MemoryCategory.FACT)
+        if (Regex("^my favorite .{2,80} is .{1,120}[.!]?$", RegexOption.IGNORE_CASE).matches(core)) return Candidate(text.trimEnd('.', '!'), MemoryCategory.PREFERENCE)
+        if (Regex("^my (?:full )?name is .{2,160}[.!]?$", RegexOption.IGNORE_CASE).matches(core)) return Candidate(text.trimEnd('.', '!'), MemoryCategory.PERSON)
+        if (Regex("^(?:i live in|i'm based in|i work (?:at|as)) .{2,160}[.!]?$", RegexOption.IGNORE_CASE).matches(core)) return Candidate(text.trimEnd('.', '!'), MemoryCategory.FACT)
+        // Biography / past-activity forms ("I used to …", "I've been to …").
+        if (Regex("\\bi used to .{2,140}|\\bi(?:'ve| have) been to .{2,140}", RegexOption.IGNORE_CASE).containsMatchIn(core)) return Candidate(text.trimEnd('.', '!'), MemoryCategory.FACT)
         return null
     }
 

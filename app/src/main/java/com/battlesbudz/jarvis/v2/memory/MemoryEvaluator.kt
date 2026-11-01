@@ -31,7 +31,7 @@ interface MemoryEvaluator {
 
     companion object {
         /** Bump when the scoring logic changes; persisted on every evaluation. */
-        const val EVALUATOR_VERSION = 1
+        const val EVALUATOR_VERSION = 2
     }
 }
 
@@ -117,7 +117,11 @@ class HeuristicMemoryEvaluator : MemoryEvaluator {
 
     companion object {
         private val PREFERENCE_PATTERN = Regex("\\b(i like|i love|i prefer|i hate|i dislike|my favorit\\w*|i can't stand)\\b")
-        private val FACT_PATTERN = Regex("\\b(i live in|i work at|i work as|i am a|my name is|my birthday is|appointment|meeting)\\b")
+        // v2 (2026-10-31): pattern coverage only — the name class gains the "full name"
+        // form and biography/past-activity forms ("I used to …", "I've been to …") join
+        // the fact class, so voice-captured statements of those classes can reach the
+        // unchanged thresholds. Weights and thresholds are untouched.
+        private val FACT_PATTERN = Regex("\\b(i live in|i work at|i work as|i am a|my (?:full )?name is|my birthday is|appointment|meeting|i used to|i've been to|i have been to)\\b")
         private val PERSON_PATTERN = Regex("\\b(my (wife|husband|son|daughter|mom|dad|mother|father|brother|sister|friend|boss|partner))\\b")
         private val TEMPORAL_PATTERN = Regex("\\b(tomorrow|today|yesterday|every day|every week|birthday|appointment|meeting|at \\d)\\b")
         private val TRIVIAL_PATTERN = Regex("^(hi|hello|hey|thanks|thank you|ok|okay|yes|no|sure|lol|lmao)\\.?$")

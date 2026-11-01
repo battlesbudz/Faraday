@@ -303,7 +303,9 @@ class AutomaticMemoryTest {
     /**
      * Held-out fixtures used to tune [EvaluationThresholds]. Positive examples must score
      * at or above both thresholds; negative examples must fall below at least one.
-     * Measured with HeuristicMemoryEvaluator v1 on 2026-10-11.
+     * Measured with HeuristicMemoryEvaluator v1 on 2026-10-11; the voice-capture
+     * positives below were added with evaluator v2's pattern coverage on 2026-10-31
+     * (thresholds unchanged; the documented separation still holds).
      */
     @Test fun thresholdFixtures() {
         val positives = listOf(
@@ -312,6 +314,12 @@ class AutomaticMemoryTest {
             "My wife's name is Andrea" to AutoMemorySource.VOICE,
             "I have a dentist appointment tomorrow at 9am" to AutoMemorySource.CHAT,
             "My son's birthday is March 15th" to AutoMemorySource.CHAT,
+            // Voice capture fix (2026-10-31): the device statements whose classes the
+            // v1 patterns missed — full-name identity and biography/past-activity.
+            "So my full name is Justin Lee Battles." to AutoMemorySource.VOICE,
+            "I also love ice cream." to AutoMemorySource.VOICE,
+            "I used to skateboard when I was a teenager." to AutoMemorySource.VOICE,
+            "Yeah, and I was an average traveler and I've been to 27 different countries." to AutoMemorySource.VOICE,
         )
         val negatives = listOf(
             "ok thanks" to AutoMemorySource.CHAT,
@@ -348,6 +356,46 @@ class AutomaticMemoryTest {
             it.relevance >= EvaluationThresholds.SAVE_RELEVANCE &&
                 it.confidence >= EvaluationThresholds.SAVE_CONFIDENCE
         })
+    }
+
+    // ---------- Voice capture fix (2026-10-31): device statements end-to-end ----------
+
+    /**
+     * Battles's four statements from the 2026-10-31 device failure (build 1632, voice
+     * call 8b65b21b), in the exact candidate shape the voice wiring queues: finalized
+     * transcript + the answer actually given, source VOICE. Before the fix none of
+     * them produced any candidate; all four must now commit above the unchanged
+     * thresholds through the real pipeline (capture, self-review, idle evaluation).
+     */
+    @Test fun deviceVoiceStatementsCommitEndToEnd() {
+        val dir = tempDir()
+        val memoryOs = os(dir)
+        val auto = pipeline(memoryOs)
+        val statements = listOf(
+            "So my full name is Justin Lee Battles." to
+                "Your full name is Justin Lee Battles. That is noted, sir. I shall ensure that designation is correctly recorded for future reference.",
+            "I also love ice cream." to
+                "You enjoy ice cream. It is a popular treat for many people.",
+            "I used to skateboard when I was a teenager." to
+                "You enjoyed skateboarding during your teenage years. This activity involves riding a skateboard down streets or designated areas.",
+            "Yeah, and I was an average traveler and I've been to 27 different countries." to
+                "You have traveled to twenty-seven different countries. This indicates a considerable global exposure to diverse cultures and environments.",
+        )
+        statements.forEachIndexed { index, (transcript, answer) ->
+            val result = auto.capture(CandidateInput("voice-fix-$index", AutoMemorySource.VOICE, "$transcript\n$answer", now))
+            assertEquals("statement $index must pass self-review: ${result.review.reason}",
+                SelfReviewDecision.ACCEPT, result.review.decision)
+        }
+        assertEquals(4, auto.pendingCount)
+        assertEquals(4, auto.evaluatePending(evaluator, idle))
+        assertTrue(auto.evaluations.all { it.save })
+        val approved = memoryOs.read().snapshot!!.memories
+            .filter { it.reviewStatus == MemoryReviewStatus.APPROVED }
+        assertEquals(4, approved.size)
+        assertTrue(approved.any { it.content.contains("Justin Lee Battles") && it.category == MemoryCategory.PERSON })
+        assertTrue(approved.any { it.content.contains("ice cream") && it.category == MemoryCategory.PREFERENCE })
+        assertTrue(approved.any { it.content.contains("skateboard") && it.category == MemoryCategory.FACT })
+        assertTrue(approved.any { it.content.contains("27 different countries") && it.category == MemoryCategory.FACT })
     }
 
     // ---------- FileCandidateStore: queue survives restarts ----------
