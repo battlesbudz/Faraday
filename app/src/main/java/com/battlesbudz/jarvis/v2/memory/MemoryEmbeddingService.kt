@@ -19,6 +19,9 @@ class MemoryEmbeddingService(
 
     val isAvailable: Boolean get() = engine.available
 
+    /** The bound engine's reason for being unavailable, when it knows one. */
+    val unavailableReason: String? get() = engine.unavailableReason
+
     /** Stored-width, unit-normalized embedding of a memory's content (document side). */
     fun embedDocument(text: String): FloatArray = embed(text, EmbeddingRole.DOCUMENT)
 

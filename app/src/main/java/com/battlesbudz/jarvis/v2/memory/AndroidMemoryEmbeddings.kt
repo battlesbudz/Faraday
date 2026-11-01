@@ -24,6 +24,9 @@ object AndroidMemoryEmbeddings {
     fun vectorStore(context: Context): MemoryVectorStore = services(context).vectorStore
     fun indexer(context: Context): MemoryEmbeddingIndexer = services(context).indexer
 
+    /** Live, read-only diagnostics line for the standard Copy Diagnostics export. */
+    fun diagnosticsLine(context: Context): String = services(context).indexer.diagnosticsLine()
+
     private fun services(context: Context): Services = instance ?: synchronized(this) {
         instance ?: run {
             val app = context.applicationContext

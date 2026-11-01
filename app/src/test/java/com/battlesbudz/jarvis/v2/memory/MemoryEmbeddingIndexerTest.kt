@@ -10,7 +10,10 @@ class MemoryEmbeddingIndexerTest {
     private val spec = EmbeddingModelCatalog.default
 
     /** Deterministic stand-in for the real model: a stable, text-derived 768-wide vector. */
-    private class FakeEngine(override val available: Boolean = true) : MemoryEmbeddingEngine {
+    private class FakeEngine(
+        override val available: Boolean = true,
+        override val unavailableReason: String? = null,
+    ) : MemoryEmbeddingEngine {
         override val modelId: String = EmbeddingModelCatalog.default.id
         var embedCalls = 0
         var refuseOnEmbed = false
@@ -142,6 +145,36 @@ class MemoryEmbeddingIndexerTest {
             "Memory embeddings: model=embeddinggemma-2-text-270m dim=256 vectors=0 pending=2 engine=unavailable",
             report.diagnosticsLine(spec.id, spec.storedDimension, f.vectors.read(spec.id).entries!!.size),
         )
+    }
+
+    @Test fun diagnosticsLineReportsLiveStateWithoutTouchingTheProjection() {
+        val f = fixture(FakeEngine(available = false, unavailableReason = "Embedding model is not installed.")) { now }
+        approved(f.os, "Lives in Watertown", "a")
+        approved(f.os, "Likes black coffee", "b")
+        // A stale row for a record that no longer exists: a sync would remove it.
+        // The read-only line must report the store exactly as it stands and leave
+        // the row in place — removal is a sync's job, not a diagnostics probe's.
+        f.vectors.put(MemoryVectorEntry("ghost", "fp", spec.id, spec.storedDimension, FloatArray(spec.storedDimension), now))
+
+        assertEquals(
+            "Memory embeddings: model=embeddinggemma-2-text-270m dim=256 vectors=1 pending=2 engine=unavailable (Embedding model is not installed.)",
+            f.indexer.diagnosticsLine(),
+        )
+        assertEquals(0, f.engine.embedCalls)
+        assertTrue(f.vectors.rows.containsKey("ghost"))
+    }
+
+    @Test fun diagnosticsLineAfterSyncShowsAvailableAndCurrent() {
+        val f = fixture { now }
+        approved(f.os, "Lives in Watertown", "a")
+        approved(f.os, "Likes black coffee", "b")
+        f.indexer.sync()
+        val callsAfterSync = f.engine.embedCalls
+        assertEquals(
+            "Memory embeddings: model=embeddinggemma-2-text-270m dim=256 vectors=2 pending=0 engine=available",
+            f.indexer.diagnosticsLine(),
+        )
+        assertEquals(callsAfterSync, f.engine.embedCalls)
     }
 
     @Test fun engineThatRefusesMidSyncStopsAndReportsUnavailable() {

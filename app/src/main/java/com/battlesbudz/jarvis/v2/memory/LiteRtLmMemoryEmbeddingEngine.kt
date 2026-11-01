@@ -81,7 +81,7 @@ class LiteRtLmMemoryEmbeddingEngine internal constructor(
     @Volatile private var integrityVerified: Boolean = false
 
     /** Content-free reason the engine cannot embed right now, when one is known. */
-    val unavailableReason: String?
+    override val unavailableReason: String?
         get() = failureReason ?: if (!modelPresent()) MODEL_NOT_INSTALLED else null
 
     override val available: Boolean

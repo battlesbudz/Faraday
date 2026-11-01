@@ -19,6 +19,9 @@ interface MemoryEmbeddingEngine {
     /** True only when this binding can actually embed right now. */
     val available: Boolean
 
+    /** Content-free reason this binding cannot embed right now, when one is known. */
+    val unavailableReason: String? get() = null
+
     /** Raw model-width embedding. Throws [EmbeddingEngineUnavailable] when unbound. */
     fun embed(text: String, role: EmbeddingRole): FloatArray
 }
@@ -31,6 +34,7 @@ interface MemoryEmbeddingEngine {
 object UnavailableMemoryEmbeddingEngine : MemoryEmbeddingEngine {
     override val modelId: String = EmbeddingModelCatalog.default.id
     override val available: Boolean = false
+    override val unavailableReason: String = "No embedding runtime is bound yet."
     override fun embed(text: String, role: EmbeddingRole): FloatArray =
         throw EmbeddingEngineUnavailable("No embedding runtime is bound yet.")
 }

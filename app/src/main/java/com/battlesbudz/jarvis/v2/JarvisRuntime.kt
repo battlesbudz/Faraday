@@ -418,6 +418,12 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         pipelineBenchmarkStore = com.battlesbudz.jarvis.v2.diagnostics.AndroidPipelineBenchmarkStore(applicationContext)
         diagnosticRecorder.restore()
         diagnosticRecorder.recordPreviousProcessExit(applicationContext)
+        // Every standard Copy Diagnostics export carries the memory-embeddings line,
+        // probed read-only from the live services at copy time (both assembly sites
+        // build on the recorder snapshot, so both inherit it).
+        diagnosticRecorder.liveSection = {
+            com.battlesbudz.jarvis.v2.memory.AndroidMemoryEmbeddings.diagnosticsLine(applicationContext)
+        }
         // Construction is the publication barrier: no cold alarm sees this runtime until
         // both durable recovery passes finish, and neither pass starts new task work.
         if (durableTaskRecovery.recover(phoneTaskCoordinator::recoverAfterRestart, workflowCoordinator::recoverAfterRestart)) {

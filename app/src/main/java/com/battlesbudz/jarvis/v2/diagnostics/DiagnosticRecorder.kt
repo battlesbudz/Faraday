@@ -92,11 +92,23 @@ class DiagnosticRecorder(
         return restored
     }
 
+    /**
+     * Live section appended to every [snapshot], supplied by the composition root
+     * (JarvisRuntime binds the memory-embeddings probe). It is computed at snapshot
+     * time, so an export always carries current values instead of a state stamped
+     * when some earlier event happened to be recorded; both standard Copy
+     * Diagnostics assembly sites build on [snapshot], so both inherit it. A
+     * failing probe degrades to the plain snapshot rather than breaking the export.
+     */
+    @Volatile var liveSection: (() -> String?)? = null
+
     fun snapshot(): String {
-        return synchronized(entries) {
+        val body = synchronized(entries) {
             "Running build: $buildLabel\n$sessionLabel\n\nExact Gemma prompt submissions (latest 24; includes drafts and retries):\n${inferencePrompts.joinToString("\n\n")}\n\nRetained turn evidence (up to 12 turns):\n${turnEvidence.values.joinToString("\n\n")}\n\nTiming and recognition summaries:\n${summaries.joinToString("\n\n")}\n\nCall actions and turns:\n${important.joinToString("\n\n")}\n\nRecent audio events:\n" + entries.takeLast(100).joinToString("\n\n")
                 .ifBlank { "No runtime events in this session yet." }
         }
+        val section = runCatching { liveSection?.invoke() }.getOrNull()?.takeIf { it.isNotBlank() }
+        return if (section == null) body else "$body\n\n$section"
     }
 
     fun recordPreviousProcessExit(context: android.content.Context) {
