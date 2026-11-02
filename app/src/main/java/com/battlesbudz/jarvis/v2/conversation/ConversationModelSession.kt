@@ -116,6 +116,10 @@ internal class ConversationModelSession(
             promptHistory = emptyList()
             reset()
         }
-        return promptHistory
+        // M7 history budget: enforce the explicit message/token budget and
+        // heavy-payload windowing (HistoryBudget) on whatever history a
+        // (re)build would seed. A no-op instance-identical pass when the
+        // history is already inside the budget.
+        return HistoryBudget.window(promptHistory)
     }
 }
