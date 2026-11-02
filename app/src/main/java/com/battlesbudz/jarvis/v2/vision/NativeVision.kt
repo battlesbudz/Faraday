@@ -108,11 +108,11 @@ object NativeVision {
     private fun Box.scaled(scaleX: Float, scaleY: Float): Box =
         copy(x1 = x1 * scaleX, y1 = y1 * scaleY, x2 = x2 * scaleX, y2 = y2 * scaleY)
 
-    private fun List<Detection>.scaled(scaleX: Float, scaleY: Float): List<Detection> =
+    private fun List<Detection>.rescaleDetections(scaleX: Float, scaleY: Float): List<Detection> =
         if (scaleX == 1f && scaleY == 1f) this
         else map { it.copy(box = it.box.scaled(scaleX, scaleY)) }
 
-    private fun List<SegResult>.scaled(scaleX: Float, scaleY: Float): List<SegResult> =
+    private fun List<SegResult>.rescaleSegments(scaleX: Float, scaleY: Float): List<SegResult> =
         if (scaleX == 1f && scaleY == 1f) this
         else map { segment ->
             segment.copy(
@@ -123,7 +123,7 @@ object NativeVision {
             )
         }
 
-    private fun List<PoseResult>.scaled(scaleX: Float, scaleY: Float): List<PoseResult> =
+    private fun List<PoseResult>.rescalePoses(scaleX: Float, scaleY: Float): List<PoseResult> =
         if (scaleX == 1f && scaleY == 1f) this
         else map { pose ->
             pose.copy(
@@ -150,9 +150,9 @@ object NativeVision {
                 val (classes, clsMs) = eng.classifier.classify(bitmap)
                 val (scaleX, scaleY) = axisScales(decoded)
                 NativeVisionSnapshot(
-                    detections.scaled(scaleX, scaleY), detMs,
-                    segments.scaled(scaleX, scaleY), segMs,
-                    poses.scaled(scaleX, scaleY), poseMs,
+                    detections.rescaleDetections(scaleX, scaleY), detMs,
+                    segments.rescaleSegments(scaleX, scaleY), segMs,
+                    poses.rescalePoses(scaleX, scaleY), poseMs,
                     classes.take(3), clsMs,
                 )
             } finally {
@@ -180,7 +180,7 @@ object NativeVision {
                 val (classes, clsMs) = eng.classifier.classify(bitmap)
                 val (scaleX, scaleY) = axisScales(decoded)
                 DetectionClassificationSnapshot(
-                    detections.scaled(scaleX, scaleY), detMs, classes.take(3), clsMs
+                    detections.rescaleDetections(scaleX, scaleY), detMs, classes.take(3), clsMs
                 )
             } finally {
                 if (!bitmap.isRecycled) bitmap.recycle()
