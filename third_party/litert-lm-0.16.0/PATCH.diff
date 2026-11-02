@@ -3561,7 +3561,7 @@ index fb6e0e5..1d9065c 100644
          "//runtime/engine:engine_interface",
          "//runtime/engine:engine_settings",
 diff --git a/kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc b/kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc
-index 9f27231..44dd6d6 100644
+index 9f27231..0cd66a5 100644
 --- a/kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc
 +++ b/kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc
 @@ -16,6 +16,7 @@
@@ -3606,7 +3606,7 @@ index 9f27231..44dd6d6 100644
  using litert::lm::InputText;
  using litert::lm::JsonPreface;
  using litert::lm::Message;
-@@ -198,66 +206,326 @@ jobject CreateBenchmarkInfoJni(
+@@ -198,66 +206,330 @@ jobject CreateBenchmarkInfoJni(
        last_decode_tokens_per_second);
  }
  
@@ -3758,10 +3758,14 @@ index 9f27231..44dd6d6 100644
 +  }
 +  auto tensor_or = ::litert::support::CreateTensorBuffer<float>(
 +      ::litert::Dimensions({1, token_count, embedding_width}));
-+  if (!tensor_or.ok()) return tensor_or.status();
++  if (!tensor_or.HasValue()) {
++    return absl::InternalError(tensor_or.Error().Message());
++  }
 +  ::litert::TensorBuffer tensor = std::move(*tensor_or);
-+  auto write_status = tensor.Write<float>(absl::MakeConstSpan(rows));
-+  if (!write_status.ok()) return write_status;
++  auto write_result = tensor.Write<float>(absl::MakeConstSpan(rows));
++  if (!write_result.HasValue()) {
++    return absl::InternalError(write_result.Error().Message());
++  }
 +  InputAudio input(std::move(tensor), /*is_embeddings=*/true);
 +  auto validate_status = input.ValidateAudioEmbeddings();
 +  if (!validate_status.ok()) return validate_status;
@@ -3988,7 +3992,7 @@ index 9f27231..44dd6d6 100644
  // Helper to get JNIEnv and attach to the current thread if necessary.
  // Returns nullptr if an error occurs.
  JNIEnv* GetJniEnvAndAttach(JavaVM* jvm, bool* attached) {
-@@ -287,54 +555,117 @@ JNIEnv* GetJniEnvAndAttach(JavaVM* jvm, bool* attached) {
+@@ -287,54 +559,117 @@ JNIEnv* GetJniEnvAndAttach(JavaVM* jvm, bool* attached) {
    }
  }
  
@@ -4134,7 +4138,7 @@ index 9f27231..44dd6d6 100644
  
    env->DeleteLocalRef(thinking_config_cls);
  
-@@ -488,10 +819,113 @@ std::optional<litert::lm::DataProcessorArguments> GetDataProcessorArguments(
+@@ -488,10 +823,113 @@ std::optional<litert::lm::DataProcessorArguments> GetDataProcessorArguments(
    return std::nullopt;
  }
  
@@ -4248,7 +4252,7 @@ index 9f27231..44dd6d6 100644
  LITERTLM_JNIEXPORT void JNICALL
  Java_com_google_ai_edge_litertlm_NativeLibraryLoader_nativeCheckLoaded(
      JNIEnv* env, jclass thiz) {}
-@@ -771,8 +1205,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateSession)(
+@@ -771,8 +1209,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateSession)(
    auto session_config = SessionConfig::CreateDefault();
  
    if (sampler_config_obj != nullptr) {
@@ -4260,7 +4264,7 @@ index 9f27231..44dd6d6 100644
    }
  
    if (lora_path_str != nullptr) {
-@@ -824,6 +1259,154 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeDeleteSession)(
+@@ -824,6 +1263,154 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeDeleteSession)(
    delete reinterpret_cast<Engine::Session*>(session_pointer);
  }
  
@@ -4415,7 +4419,7 @@ index 9f27231..44dd6d6 100644
  LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeRunPrefill)(
      JNIEnv* env, jclass thiz, jlong session_pointer, jobjectArray input_data) {
    Engine::Session* session =
-@@ -893,7 +1476,7 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeGenerateContent)(
+@@ -893,7 +1480,7 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeGenerateContent)(
    return NewStringStandardUTF(env, responses->GetTexts()[0]);
  }
  
@@ -4424,7 +4428,7 @@ index 9f27231..44dd6d6 100644
      JNIEnv* env, jclass thiz, jlong session_pointer, jobjectArray input_data,
      jobject callback) {
    JavaVM* jvm = nullptr;
-@@ -901,93 +1484,129 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeGenerateContentStream)(
+@@ -901,93 +1488,129 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeGenerateContentStream)(
      ThrowLiteRtLmJniException(env, "Failed to get JavaVM");
      return;
    }
@@ -4630,7 +4634,7 @@ index 9f27231..44dd6d6 100644
  LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeCancelProcess)(
      JNIEnv* env, jclass thiz, jlong session_pointer) {
    Engine::Session* session =
-@@ -1044,8 +1663,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
+@@ -1044,8 +1667,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
      session_config.SetMaxOutputTokens(max_output_token);
    }
    if (sampler_config_obj != nullptr) {
@@ -4642,7 +4646,7 @@ index 9f27231..44dd6d6 100644
    }
  
    if (lora_path_str != nullptr) {
-@@ -1173,8 +1793,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
+@@ -1173,8 +1797,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
  
    // Set the thinking config, if provided.
    if (thinking_config_obj != nullptr) {
@@ -4654,7 +4658,7 @@ index 9f27231..44dd6d6 100644
    }
  
    // Build the conversation
-@@ -1197,9 +1818,25 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
+@@ -1197,9 +1822,25 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
  
  LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeDeleteConversation)(
      JNIEnv* env, jclass thiz, jlong conversation_pointer) {
@@ -4680,7 +4684,7 @@ index 9f27231..44dd6d6 100644
  LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
      JNIEnv* env, jclass thiz, jlong conversation_pointer,
      jstring messageJSONString, jstring extraContextJsonString, jobject callback,
-@@ -1253,8 +1890,11 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
+@@ -1253,8 +1894,11 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
    }
  
    if (thinking_config_obj != nullptr) {
@@ -4694,7 +4698,7 @@ index 9f27231..44dd6d6 100644
    }
  
    if (constraint_type != 0) {
-@@ -1275,73 +1915,132 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
+@@ -1275,73 +1919,132 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
    }
  
    jobject callback_global = env->NewGlobalRef(callback);
@@ -4870,7 +4874,7 @@ index 9f27231..44dd6d6 100644
          }
        };
  
-@@ -1349,6 +2048,8 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
+@@ -1349,6 +2052,8 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
        json_message, std::move(callback_fn), std::move(optional_args));
  
    if (!status.ok()) {
@@ -4879,7 +4883,7 @@ index 9f27231..44dd6d6 100644
      ThrowLiteRtLmJniException(
          env, "Failed to start nativeSendMessageAsync: " + status.ToString());
    }
-@@ -1401,8 +2102,9 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeSendMessage)(
+@@ -1401,8 +2106,9 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeSendMessage)(
    }
  
    if (thinking_config_obj != nullptr) {
@@ -4891,7 +4895,7 @@ index 9f27231..44dd6d6 100644
    }
  
    if (constraint_type != 0) {
-@@ -1440,6 +2142,17 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeConversationCancelProcess)(
+@@ -1440,6 +2146,17 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeConversationCancelProcess)(
    conversation->CancelProcess();
  }
  
