@@ -10,8 +10,12 @@ Upstream: https://github.com/google-ai-edge/LiteRT-LM
 `PATCH.diff` contains the frozen runtime projected-audio path, native PCM owner,
 normal owner JNI binding, observational timing, checked Session/Conversation lifecycle changes, the
 Session image-preprocess entry point (a native preprocess JNI mirroring ConversationImpl's
-model-derived image preprocessor, with its Kotlin handle type) and their
-focused source regression tests. It includes 51 source files. It does not contain
+model-derived image preprocessor, with its Kotlin handle type), the
+Session audio-preprocess entry point (a native preprocess JNI mirroring the
+Conversation route's sealed projected-audio construction — begin-of-audio
+marker, embeddings tensor, projected end-of-audio marker — with its Kotlin
+handle type) and their
+focused source regression tests. It includes 52 source files. It does not contain
 model weights, materialized Git-LFS objects, host binaries, compiled classes,
 experimental quality harnesses, audio/activations or research scratch logs.
 

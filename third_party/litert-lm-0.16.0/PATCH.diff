@@ -2738,7 +2738,7 @@ index 2a68916..27ea4e9 100644
    }
  
 diff --git a/kotlin/java/com/google/ai/edge/litertlm/LiteRtLmJni.kt b/kotlin/java/com/google/ai/edge/litertlm/LiteRtLmJni.kt
-index 797a5ab..c33033a 100644
+index 797a5ab..dc2f3ae 100644
 --- a/kotlin/java/com/google/ai/edge/litertlm/LiteRtLmJni.kt
 +++ b/kotlin/java/com/google/ai/edge/litertlm/LiteRtLmJni.kt
 @@ -22,6 +22,10 @@ internal object LiteRtLmJni {
@@ -2752,7 +2752,7 @@ index 797a5ab..c33033a 100644
    /**
     * Creates a new LiteRT-LM engine.
     *
-@@ -118,6 +122,36 @@ internal object LiteRtLmJni {
+@@ -118,6 +122,70 @@ internal object LiteRtLmJni {
     */
    external fun nativeDeleteSession(sessionPointer: Long)
  
@@ -2780,6 +2780,40 @@ index 797a5ab..c33033a 100644
 +   * @param handle A pointer to the native preprocessed-image payload.
 +   */
 +  external fun nativeDeletePreprocessedImage(handle: Long)
++
++  /**
++   * Builds the native preprocessed-audio payload for one chunk of already-projected audio
++   * soft tokens on the given session, using the same construction the Conversation route
++   * builds internally for a sealed projected-audio turn. The returned handle is owned by
++   * the caller and released with [nativeDeletePreprocessedAudio]. The float values are
++   * copied natively during this call.
++   *
++   * @param sessionPointer A pointer to the native session instance.
++   * @param rows [tokenCount] rows of [embeddingWidth] soft-token values, row-major,
++   *   excluding any end-of-audio row.
++   * @param includeBeginMarker Whether the payload starts with the model's begin-of-audio
++   *   marker text (the first chunk of a turn).
++   * @param includeEndMarker Whether the payload ends with the projected end-of-audio
++   *   marker (the last chunk of a turn).
++   * @return A pointer to the native preprocessed-audio payload.
++   * @throws LiteRtLmJniException if the payload fails native validation or the model type
++   *   is unsupported.
++   */
++  external fun nativeCreatePreprocessedAudio(
++    sessionPointer: Long,
++    rows: FloatArray,
++    tokenCount: Int,
++    embeddingWidth: Int,
++    includeBeginMarker: Boolean,
++    includeEndMarker: Boolean,
++  ): Long
++
++  /**
++   * Deletes a payload created by [nativeCreatePreprocessedAudio].
++   *
++   * @param handle A pointer to the native preprocessed-audio payload.
++   */
++  external fun nativeDeletePreprocessedAudio(handle: Long)
 +  external fun nativeGenerateContentStreamChecked(
 +    sessionPointer: Long,
 +    inputData: Array<InputData>,
@@ -2789,7 +2823,7 @@ index 797a5ab..c33033a 100644
    /**
     * Runs the prefill step for the given input data.
     *
-@@ -236,6 +270,9 @@ internal object LiteRtLmJni {
+@@ -236,6 +304,9 @@ internal object LiteRtLmJni {
     */
    external fun nativeDeleteConversation(conversationPointer: Long)
  
@@ -2799,7 +2833,7 @@ index 797a5ab..c33033a 100644
    /**
     * Send message from the given input data asynchronously.
     *
-@@ -306,6 +343,9 @@ internal object LiteRtLmJni {
+@@ -306,6 +377,9 @@ internal object LiteRtLmJni {
     */
    external fun nativeConversationCancelProcess(conversationPointer: Long)
  
@@ -2810,7 +2844,7 @@ index 797a5ab..c33033a 100644
     * Gets the benchmark info for the conversation.
     *
 diff --git a/kotlin/java/com/google/ai/edge/litertlm/Message.kt b/kotlin/java/com/google/ai/edge/litertlm/Message.kt
-index baa72f3..e0ac814 100644
+index baa72f3..785a69c 100644
 --- a/kotlin/java/com/google/ai/edge/litertlm/Message.kt
 +++ b/kotlin/java/com/google/ai/edge/litertlm/Message.kt
 @@ -17,6 +17,8 @@ package com.google.ai.edge.litertlm
@@ -2822,7 +2856,7 @@ index baa72f3..e0ac814 100644
  import kotlin.io.encoding.Base64
  import kotlin.io.encoding.ExperimentalEncodingApi
  
-@@ -203,6 +205,84 @@ sealed class Content {
+@@ -203,6 +205,100 @@ sealed class Content {
        }
    }
  
@@ -2866,6 +2900,22 @@ index baa72f3..e0ac814 100644
 +
 +    override fun toString() = "[SealedAudioEmbeddings]"
 +
++    /**
++     * Returns a copy of the projected soft-token rows this sealed content carries:
++     * [audioTokenCount] rows of [embeddingWidth] values in row-major order,
++     * excluding the end-of-audio row (the runtime supplies that marker). These
++     * are exactly the values the Conversation route submits for this content.
++     * Session-route consumers that build their own submissions from a sealed
++     * capture — for example a chunked-prefill harness feeding the same rows in
++     * slices — read them here instead of re-encoding the audio.
++     */
++    fun projectedRows(): FloatArray {
++      val rows = FloatArray(audioTokenCount * embeddingWidth)
++      ByteBuffer.wrap(encodedBytes).order(ByteOrder.LITTLE_ENDIAN)
++        .asFloatBuffer().get(rows)
++      return rows
++    }
++
 +    companion object {
 +      /** Copies finite, post-adapter values from a genuinely completed capture. */
 +      fun fromSealedAudio(
@@ -2907,7 +2957,7 @@ index baa72f3..e0ac814 100644
    /** Tool response provided by the user when automatic tool calling is disabled. */
    data class ToolResponse(val name: String, val response: Any?) : Content() {
      override fun toJson() =
-@@ -213,3 +293,34 @@ sealed class Content {
+@@ -213,3 +309,34 @@ sealed class Content {
        }
    }
  }
@@ -2941,6 +2991,79 @@ index baa72f3..e0ac814 100644
 +    throw IllegalStateException("Native sealed-audio bridge is unavailable", missing)
 +  }
 +  check(version == 1) { "Incompatible native sealed-audio protocol: $version" }
++}
+diff --git a/kotlin/java/com/google/ai/edge/litertlm/PreprocessedAudio.kt b/kotlin/java/com/google/ai/edge/litertlm/PreprocessedAudio.kt
+new file mode 100644
+index 0000000..0eeb4d0
+--- /dev/null
++++ b/kotlin/java/com/google/ai/edge/litertlm/PreprocessedAudio.kt
+@@ -0,0 +1,67 @@
++/*
++ * Copyright 2025 Google LLC
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package com.google.ai.edge.litertlm
++
++import kotlin.jvm.Volatile
++
++/**
++ * Owns one native preprocessed-audio payload created by [Session.preprocessAudioEmbeddings]:
++ * the session-ready input sequence for one chunk of already-projected audio soft tokens
++ * (optional begin-of-audio marker, the embeddings tensor the native Session gate accepts,
++ * optional projected end-of-audio marker), built with the same construction the Conversation
++ * route uses internally for a sealed projected-audio turn.
++ *
++ * Submission CONSUMES the payload: the native input sequence is move-only, so submitting a
++ * handle moves its elements into the Session and leaves the handle empty — submitting the
++ * same handle again fails natively rather than silently submitting no audio. Preprocess a
++ * fresh handle per submission (one per chunk). The owner must not close the handle while a
++ * Session operation submitting it is in flight; Session operations are serialized by the
++ * Session's own lifecycle, so closing after the submitting call returns is always safe.
++ * [close] is idempotent.
++ */
++class PreprocessedAudio(handle: Long) : AutoCloseable {
++  private val lock = Any()
++
++  @Volatile private var handle: Long = handle
++
++  // Preallocation mirrors Session: the unpublished holder exists before native creation, so
++  // adoption is a primitive assignment and a failed creation strands no native payload.
++  internal fun adoptNativeHandle(nativeHandle: Long) {
++    handle = nativeHandle
++  }
++
++  /** The native payload pointer, or zero once closed. Read by the JNI input bridge only. */
++  fun getNativeHandle(): Long = handle
++
++  /** Returns `true` once [close] has released the native payload. */
++  val isClosed: Boolean
++    get() = handle == 0L
++
++  /**
++   * Releases the native payload. Safe to call more than once; later calls do nothing.
++   * Never call from a model callback, and never while a submission of this handle is in
++   * flight on a Session.
++   */
++  override fun close() {
++    synchronized(lock) {
++      val nativeHandle = handle
++      if (nativeHandle == 0L) return
++      // Zero first: even if the native delete throws, this handle never double-frees.
++      handle = 0L
++      LiteRtLmJni.nativeDeletePreprocessedAudio(nativeHandle)
++    }
++  }
 +}
 diff --git a/kotlin/java/com/google/ai/edge/litertlm/PreprocessedImage.kt b/kotlin/java/com/google/ai/edge/litertlm/PreprocessedImage.kt
 new file mode 100644
@@ -3015,10 +3138,10 @@ index 0000000..61580d8
 +  }
 +}
 diff --git a/kotlin/java/com/google/ai/edge/litertlm/Session.kt b/kotlin/java/com/google/ai/edge/litertlm/Session.kt
-index a76d770..bebc915 100644
+index a76d770..719de45 100644
 --- a/kotlin/java/com/google/ai/edge/litertlm/Session.kt
 +++ b/kotlin/java/com/google/ai/edge/litertlm/Session.kt
-@@ -24,121 +24,228 @@ import java.util.concurrent.atomic.AtomicBoolean
+@@ -24,121 +24,278 @@ import java.util.concurrent.atomic.AtomicBoolean
   *
   * @param handle The pointer to the underlying native session object.
   */
@@ -3098,8 +3221,6 @@ index a76d770..bebc915 100644
    /**
 -   * Runs the decode step for the model to predict the response based on the input data added by
 -   * [runPrefill].
--   *
--   * This is a blocking call and the function will return when the decoding process is done.
 +   * Preprocesses one raw image into a [PreprocessedImage] this session can accept through
 +   * [runPrefill] as [InputData.Preprocessed]. The native Session gate admits only
 +   * preprocessed tensor images, so raw [InputData.Image] bytes are rejected there; the
@@ -3110,6 +3231,8 @@ index a76d770..bebc915 100644
 +   * the bridge does not mirror fail with [LiteRtLmJniException] instead of degrading the
 +   * image silently.
     *
+-   * This is a blocking call and the function will return when the decoding process is done.
+-   *
 -   * @return The generated content as a [String].
 -   * @throws IllegalStateException if the session is not alive.
 +   * Creating the payload does not mutate the session. The caller owns the returned
@@ -3129,6 +3252,66 @@ index a76d770..bebc915 100644
 +    val image = PreprocessedImage(0L)
 +    image.adoptNativeHandle(LiteRtLmJni.nativeCreatePreprocessedImage(handle, imageBytes))
 +    image
+   }
+ 
+   /**
+-   * Generates content from the provided [InputData] and any previous input data added by
+-   * [runPrefill].
++   * Wraps one chunk of already-projected audio soft tokens into a [PreprocessedAudio] this
++   * session can accept through [runPrefill] as [InputData.PreprocessedAudio]. The native
++   * Session gate admits only preprocessed tensor audio, so raw [InputData.Audio] bytes are
++   * rejected there; the Conversation route hides the equivalent construction internally for
++   * a sealed projected-audio turn, and this entry point performs the identical construction
++   * for one chunk of a Session-route turn: the embeddings tensor is built and validated
++   * exactly as the sealed route builds its one-shot tensor, the begin-of-audio marker text
++   * is included when [includeBeginMarker] is set (the first chunk of the turn), and the
++   * projected end-of-audio marker is included when [includeEndMarker] is set (the last
++   * chunk). Model types whose data processor the bridge does not mirror fail with
++   * [LiteRtLmJniException] instead of degrading the audio silently.
+    *
+-   * This handles both the prefilling and decoding steps.
++   * [rows] holds [tokenCount] rows of [embeddingWidth] post-adapter soft tokens in
++   * row-major order, excluding any end-of-audio row. The values are copied natively during
++   * this call; the caller keeps ownership of the array. A single chunk is bounded by the
++   * native projected-audio contract (at most 750 tokens of at most 8192 width), so a whole
++   * utterance is submitted as a sequence of chunks, never as one oversized payload.
+    *
+-   * @param inputData An array of [InputData] to be processed by the model. If the user wants to run
+-   *   the decode loop only, they can pass an empty array.
+-   * @return The generated content as a [String].
+-   * @throws IllegalStateException if the session is not alive.
++   * Creating the payload does not mutate the session. The caller owns the returned handle:
++   * submitting it (as [InputData.PreprocessedAudio]) consumes the payload — see
++   * [PreprocessedAudio] — and the caller closes it once no submission using it can be in
++   * flight. A native failure poisons this session like any other failed operation: drain
++   * and close it before creating a new one. Never call from a model callback.
+    */
+-  fun generateContent(inputData: List<InputData>): String {
+-    checkIsAlive()
+-    return LiteRtLmJni.nativeGenerateContent(handle, inputData.toTypedArray())
++  fun preprocessAudioEmbeddings(
++    rows: FloatArray,
++    tokenCount: Int,
++    embeddingWidth: Int,
++    includeBeginMarker: Boolean,
++    includeEndMarker: Boolean,
++  ): PreprocessedAudio = lifecycle.operation {
++    requireSessionLifecycleProtocol()
++    require(tokenCount in 1..750) { "Audio chunk token count must be in 1..750, but got $tokenCount." }
++    require(embeddingWidth in 1..8192) {
++      "Audio embedding width must be in 1..8192, but got $embeddingWidth."
++    }
++    require(rows.size.toLong() == tokenCount.toLong() * embeddingWidth) {
++      "Audio rows must hold exactly tokenCount * embeddingWidth values."
++    }
++    require(rows.all { it.isFinite() }) { "Audio embeddings must be finite." }
++    // Allocate the holder before native creation so a holder-allocation failure cannot
++    // strand an unpublished native payload.
++    val audio = PreprocessedAudio(0L)
++    audio.adoptNativeHandle(
++      LiteRtLmJni.nativeCreatePreprocessedAudio(
++        handle, rows, tokenCount, embeddingWidth, includeBeginMarker, includeEndMarker))
++    audio
 +  }
 +
 +  /** Decodes the previously prefilled input synchronously. Never call from a model callback. */
@@ -3144,32 +3327,6 @@ index a76d770..bebc915 100644
    }
  
    /**
--   * Generates content from the provided [InputData] and any previous input data added by
--   * [runPrefill].
--   *
--   * This handles both the prefilling and decoding steps.
--   *
--   * @param inputData An array of [InputData] to be processed by the model. If the user wants to run
--   *   the decode loop only, they can pass an empty array.
--   * @return The generated content as a [String].
--   * @throws IllegalStateException if the session is not alive.
-+   * Generates streaming responses. Serialize admission with other model operations, and await
-+   * native idle on a worker before releasing the session, Engine, or any model/capture lease.
-+   * Dispatch follow-on operations to a worker instead of calling them from a model callback.
-    */
--  fun generateContent(inputData: List<InputData>): String {
--    checkIsAlive()
--    return LiteRtLmJni.nativeGenerateContent(handle, inputData.toTypedArray())
--  }
-+  fun generateContentStream(inputData: List<InputData>, responseCallback: ResponseCallback) =
-+    lifecycle.operation {
-+      requireSessionLifecycleProtocol()
-+      LiteRtLmJni.nativeGenerateContentStreamChecked(
-+        handle, inputData.toTypedArray(), SessionCallbackAdapter(responseCallback, lifecycle),
-+      )
-+    }
- 
-   /**
 -   * Generates content from the provided [InputData] and previous input data added by [runPrefill].
 -   *
 -   * This handles both the prefilling and decoding steps.
@@ -3177,6 +3334,19 @@ index a76d770..bebc915 100644
 -   * @param inputData An array of [InputData] to be processed by the model.
 -   * @param responseCallback The callback to receive the streaming responses.
 -   * @throws IllegalStateException if the session is not alive.
++   * Generates streaming responses. Serialize admission with other model operations, and await
++   * native idle on a worker before releasing the session, Engine, or any model/capture lease.
++   * Dispatch follow-on operations to a worker instead of calling them from a model callback.
++   */
++  fun generateContentStream(inputData: List<InputData>, responseCallback: ResponseCallback) =
++    lifecycle.operation {
++      requireSessionLifecycleProtocol()
++      LiteRtLmJni.nativeGenerateContentStreamChecked(
++        handle, inputData.toTypedArray(), SessionCallbackAdapter(responseCallback, lifecycle),
++      )
++    }
++
++  /**
 +   * Requests cancellation without waiting behind an active synchronous prefill/decode or drain.
 +   * This permanently poisons the session, including when no work is currently running.
 +   * Cancellation is best effort and does not imply idle: await and checked-close from a worker.
@@ -3198,14 +3368,10 @@ index a76d770..bebc915 100644
 +    LiteRtLmJni.nativeSessionLifecycleProtocolVersion()
 +  } catch (error: UnsatisfiedLinkError) {
 +    throw IllegalStateException("Native library does not support checked Session lifecycle.", error)
-   }
++  }
 +  check(version == 1) { "Unsupported checked Session lifecycle protocol: $version" }
 +}
- 
--  private inner class JniInferenceCallbackImpl(private val callback: ResponseCallback) :
--    LiteRtLmJni.JniInferenceCallback {
--    override fun onNext(response: String) {
--      callback.onNext(response)
++
 +/**
 + * Pins the native handle across synchronous JNI entry and disposal. The operation gate is never
 + * acquired by cancellation, and the short handle gate is never held during the first drain.
@@ -3231,11 +3397,13 @@ index a76d770..bebc915 100644
 +      checkAlive()
 +      check(!isPoisoned) { "Session is poisoned; drain and close before creating a new session." }
 +      try { action() } catch (error: Throwable) { poison(); throw error }
-     }
-+  }
++    }
+   }
  
--    override fun onDone() {
--      callback.onDone()
+-  private inner class JniInferenceCallbackImpl(private val callback: ResponseCallback) :
+-    LiteRtLmJni.JniInferenceCallback {
+-    override fun onNext(response: String) {
+-      callback.onNext(response)
 +  fun cancel(action: () -> Unit) {
 +    callbackGuard.checkCanBlock()
 +    synchronized(handleLock) {
@@ -3245,19 +3413,21 @@ index a76d770..bebc915 100644
      }
 +  }
  
--    override fun onError(statusCode: Int, message: String) {
--      if (statusCode == 1) { // StatusCode::kCancelled
--        callback.onError(CancellationException(message))
--      } else {
--        callback.onError(LiteRtLmJniException("Status Code: $statusCode. Message: $message"))
+-    override fun onDone() {
+-      callback.onDone()
 +  fun awaitIdle(action: () -> Unit) {
 +    callbackGuard.checkCanBlock()
 +    synchronized(operationLock) {
 +      checkAlive()
 +      try { action() } catch (error: Throwable) { poison(); throw error }
-+    }
+     }
 +  }
-+
+ 
+-    override fun onError(statusCode: Int, message: String) {
+-      if (statusCode == 1) { // StatusCode::kCancelled
+-        callback.onError(CancellationException(message))
+-      } else {
+-        callback.onError(LiteRtLmJniException("Status Code: $statusCode. Message: $message"))
 +  fun close(awaitNative: () -> Unit, deleteNative: () -> Unit) {
 +    callbackGuard.checkCanBlock()
 +    synchronized(operationLock) {
@@ -3307,11 +3477,8 @@ index a76d770..bebc915 100644
 +        try { action() } catch (error: Throwable) { fail(error) }
 +      }
 +    }
-   }
- 
--  /** Throws [IllegalStateException] if the session is not alive. */
--  private fun checkIsAlive() {
--    check(isAlive) { "Session is not alive." }
++  }
++
 +  private fun fail(error: Throwable) {
 +    terminal = true
 +    lifecycle.poison()
@@ -3320,8 +3487,11 @@ index a76d770..bebc915 100644
 +    try { callback.onError(error) } catch (_: Throwable) {
 +      // Never recurse into onError or leak its exception onto the native worker.
 +    }
-+  }
-+
+   }
+ 
+-  /** Throws [IllegalStateException] if the session is not alive. */
+-  private fun checkIsAlive() {
+-    check(isAlive) { "Session is not alive." }
 +  override fun onNext(response: String) = dispatch { callback.onNext(response) }
 +  override fun onDone() = dispatch { terminal = true; callback.onDone() }
 +  override fun onError(statusCode: Int, message: String) = dispatch {
@@ -3330,7 +3500,7 @@ index a76d770..bebc915 100644
    }
  }
  
-@@ -175,6 +282,17 @@ sealed class InputData {
+@@ -175,6 +332,29 @@ sealed class InputData {
     */
    // TODO(b/439003966): add Android-friendly methods to create image input data.
    data class Image(val bytes: ByteArray) : InputData()
@@ -3345,23 +3515,44 @@ index a76d770..bebc915 100644
 +   * @param image The preprocessed image handle created for the submitting session.
 +   */
 +  class Preprocessed(val image: PreprocessedImage) : InputData()
++
++  /**
++   * Represents one chunk of audio already preprocessed for a Session by
++   * [Session.preprocessAudioEmbeddings].
++   *
++   * Raw [Audio] bytes are rejected by the native Session gate; only a preprocessed
++   * payload is admitted. Submitting this consumes the payload natively (the input
++   * sequence is move-only), so each chunk needs a fresh [PreprocessedAudio] handle.
++   *
++   * @param audio The preprocessed audio handle created for the submitting session.
++   */
++  class PreprocessedAudio(val audio: com.google.ai.edge.litertlm.PreprocessedAudio) : InputData()
  }
  
  /** An callback for receiving streaming responses. */
 diff --git a/kotlin/java/com/google/ai/edge/litertlm/jni/BUILD b/kotlin/java/com/google/ai/edge/litertlm/jni/BUILD
-index fb6e0e5..e717a62 100644
+index fb6e0e5..1d9065c 100644
 --- a/kotlin/java/com/google/ai/edge/litertlm/jni/BUILD
 +++ b/kotlin/java/com/google/ai/edge/litertlm/jni/BUILD
-@@ -24,6 +24,8 @@ cc_binary(
+@@ -24,6 +24,9 @@ cc_binary(
      srcs = ["litertlm.cc"],
      linkshared = 1,
      deps = [
 +        "//support/preprocessor:image_preprocessor",
++        "//support/util:convert_tensor_buffer",
 +        "//support/util:projected_audio_payload",
          "@com_google_absl//absl/base:log_severity",
          "@com_google_absl//absl/container:flat_hash_map",
          "@com_google_absl//absl/container:flat_hash_set",
-@@ -48,6 +50,7 @@ cc_binary(
+@@ -34,6 +37,7 @@ cc_binary(
+         "@com_google_absl//absl/status:statusor",
+         "@com_google_absl//absl/strings",
+         "@com_google_absl//absl/time",
++        "@com_google_absl//absl/types:span",
+         "@nlohmann_json//:json",
+         "@litert//litert/c/internal:litert_logging",
+         "@litert//litert/cc/internal:scoped_file",
+@@ -48,6 +52,7 @@ cc_binary(
          "//runtime/conversation:thinking_config",
          "//runtime/conversation/model_data_processor:config_registry",
          "//runtime/conversation/model_data_processor:gemma4_data_processor_config",
@@ -3370,7 +3561,7 @@ index fb6e0e5..e717a62 100644
          "//runtime/engine:engine_interface",
          "//runtime/engine:engine_settings",
 diff --git a/kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc b/kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc
-index 9f27231..b09b195 100644
+index 9f27231..44dd6d6 100644
 --- a/kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc
 +++ b/kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc
 @@ -16,6 +16,7 @@
@@ -3381,10 +3572,19 @@ index 9f27231..b09b195 100644
  #include <optional>
  #include <string>
  #include <utility>
-@@ -36,10 +37,13 @@
+@@ -29,6 +30,7 @@
+ #include "absl/status/statusor.h"  // from @com_google_absl
+ #include "absl/strings/str_cat.h"  // from @com_google_absl
+ #include "absl/time/time.h"  // from @com_google_absl
++#include "absl/types/span.h"  // from @com_google_absl
+ #include "nlohmann/json_fwd.hpp"  // from @nlohmann_json
+ #include "litert/cc/internal/scoped_file.h"  // from @litert
+ #include "runtime/components/logits_processor/constrained_decoding/llg_constraint_config.h"
+@@ -36,10 +38,14 @@
  #include "runtime/components/logits_processor/repetition_penalty_config.h"
  #include "runtime/components/logits_processor/suppress_tokens_config.h"
  #include "runtime/components/prompt_template.h"
++#include "support/util/convert_tensor_buffer.h"
 +#include "support/util/projected_audio_payload.h"
  #include "runtime/conversation/conversation.h"
  #include "runtime/conversation/io_types.h"
@@ -3395,15 +3595,18 @@ index 9f27231..b09b195 100644
  #include "runtime/conversation/thinking_config.h"
  #include "runtime/engine/engine.h"
  #include "runtime/engine/engine_factory.h"
-@@ -79,6 +83,7 @@ using litert::lm::FileExists;
+@@ -77,8 +83,10 @@ using litert::lm::EngineFactory;
+ using litert::lm::EngineSettings;
+ using litert::lm::FileExists;
  using litert::lm::InputAudio;
++using litert::lm::InputAudioEnd;
  using litert::lm::InputData;
  using litert::lm::InputImage;
 +using litert::lm::InputImageEnd;
  using litert::lm::InputText;
  using litert::lm::JsonPreface;
  using litert::lm::Message;
-@@ -198,64 +203,232 @@ jobject CreateBenchmarkInfoJni(
+@@ -198,66 +206,326 @@ jobject CreateBenchmarkInfoJni(
        last_decode_tokens_per_second);
  }
  
@@ -3514,13 +3717,66 @@ index 9f27231..b09b195 100644
 -      env->DeleteLocalRef(bytes_jarr);
 -    } else {
 -      ThrowLiteRtLmJniException(env, "Unsupported InputData type");
+-    }
+-    env->DeleteLocalRef(input_obj);
+-  }
+-
+-  env->DeleteLocalRef(text_class);
+-  env->DeleteLocalRef(audio_class);
+-  env->DeleteLocalRef(image_class);
 +  contents.reserve(3);
 +  contents.emplace_back(InputText(gemma4_config->boi_token));
 +  contents.emplace_back(std::move(*processed_or));
 +  contents.emplace_back(InputImageEnd());
 +  return contents;
 +}
-+
+ 
++// Builds the session-ready input sequence for one chunk of already-projected
++// audio soft tokens, mirroring how ProcessMultimodalPrompt constructs the
++// audio part of a sealed projected-audio turn: the begin-of-audio marker text
++// (only when include_begin_marker), the embeddings InputAudio, and the
++// projected end-of-audio marker (only when include_end_marker). The tensor is
++// built and validated exactly as MakeProjectedAudioInput builds the sealed
++// route's one tensor (::litert::support::CreateTensorBuffer plus
++// InputAudio::ValidateAudioEmbeddings), so the native Session gate sees a
++// payload indistinguishable from the one the Conversation route submits
++// internally. Model types the bridge does not mirror fail closed instead of
++// degrading the audio silently.
++absl::StatusOr<std::vector<InputData>> PreprocessAudioEmbeddingsForSession(
++    const litert::lm::proto::LlmModelType& model_type, std::vector<float> rows,
++    int token_count, int embedding_width, bool include_begin_marker,
++    bool include_end_marker) {
++  auto config_or =
++      litert::lm::CreateDataProcessorConfigFromLlmModelType(model_type);
++  if (!config_or.ok()) return config_or.status();
++  const auto* gemma4_config =
++      std::get_if<litert::lm::Gemma4DataProcessorConfig>(&*config_or);
++  if (gemma4_config == nullptr) {
++    return absl::UnimplementedError(
++        "Session audio preprocessing is implemented only for the Gemma 4 "
++        "data processor in this reviewed bridge.");
++  }
++  auto tensor_or = ::litert::support::CreateTensorBuffer<float>(
++      ::litert::Dimensions({1, token_count, embedding_width}));
++  if (!tensor_or.ok()) return tensor_or.status();
++  ::litert::TensorBuffer tensor = std::move(*tensor_or);
++  auto write_status = tensor.Write<float>(absl::MakeConstSpan(rows));
++  if (!write_status.ok()) return write_status;
++  InputAudio input(std::move(tensor), /*is_embeddings=*/true);
++  auto validate_status = input.ValidateAudioEmbeddings();
++  if (!validate_status.ok()) return validate_status;
++  std::vector<InputData> contents;
++  contents.reserve(3);
++  if (include_begin_marker) {
++    contents.emplace_back(InputText(gemma4_config->boa_token));
++  }
++  contents.emplace_back(std::move(input));
++  if (include_end_marker) {
++    contents.emplace_back(InputAudioEnd(/*projected_audio=*/true));
++  }
+   return contents;
+ }
+ 
 +// Converts Session InputData without continuing JNI calls under a pending Java exception.
 +// Local refs and pinned strings/arrays are released even on C++ allocation failure. A partial
 +// vector is never consumed: every failure preserves/raises an exception checked by the caller.
@@ -3577,8 +3833,7 @@ index 9f27231..b09b195 100644
 +    jmethodID image_get_bytes_mid = env->GetMethodID(image_class, "getBytes", "()[B");
 +    if (image_get_bytes_mid == nullptr || env->ExceptionCheck()) {
 +      failed_read("Failed to resolve image input getter"); return {};
-     }
--    env->DeleteLocalRef(input_obj);
++    }
 +    jclass preprocessed_class = env->FindClass("com/google/ai/edge/litertlm/InputData$Preprocessed");
 +    if (preprocessed_class == nullptr || env->ExceptionCheck()) {
 +      failed_read("Failed to resolve preprocessed input class"); return {};
@@ -3596,6 +3851,27 @@ index 9f27231..b09b195 100644
 +        preprocessed_image_class, "getNativeHandle", "()J");
 +    if (preprocessed_image_get_handle_mid == nullptr || env->ExceptionCheck()) {
 +      failed_read("Failed to resolve preprocessed image handle getter"); return {};
++    }
++    jclass preprocessed_audio_input_class = env->FindClass(
++        "com/google/ai/edge/litertlm/InputData$PreprocessedAudio");
++    if (preprocessed_audio_input_class == nullptr || env->ExceptionCheck()) {
++      failed_read("Failed to resolve preprocessed audio input class"); return {};
++    }
++    jclass preprocessed_audio_class = env->FindClass(
++        "com/google/ai/edge/litertlm/PreprocessedAudio");
++    if (preprocessed_audio_class == nullptr || env->ExceptionCheck()) {
++      failed_read("Failed to resolve preprocessed audio class"); return {};
++    }
++    jmethodID preprocessed_audio_get_audio_mid = env->GetMethodID(
++        preprocessed_audio_input_class, "getAudio",
++        "()Lcom/google/ai/edge/litertlm/PreprocessedAudio;");
++    if (preprocessed_audio_get_audio_mid == nullptr || env->ExceptionCheck()) {
++      failed_read("Failed to resolve preprocessed audio input getter"); return {};
++    }
++    jmethodID preprocessed_audio_get_handle_mid = env->GetMethodID(
++        preprocessed_audio_class, "getNativeHandle", "()J");
++    if (preprocessed_audio_get_handle_mid == nullptr || env->ExceptionCheck()) {
++      failed_read("Failed to resolve preprocessed audio handle getter"); return {};
 +    }
 +    const jsize count = env->GetArrayLength(input_data);
 +    if (env->ExceptionCheck()) return {};
@@ -3650,6 +3926,31 @@ index 9f27231..b09b195 100644
 +          contents.emplace_back(std::move(element));
 +        }
 +        payload->clear();
++      } else if (env->IsInstanceOf(input, preprocessed_audio_input_class)) {
++        jobject audio = env->CallObjectMethod(input, preprocessed_audio_get_audio_mid);
++        if (env->ExceptionCheck()) return {};
++        if (audio == nullptr) {
++          ThrowLiteRtLmJniException(env, "Preprocessed audio input getter returned null"); return {};
++        }
++        const jlong payload_handle = env->CallLongMethod(audio, preprocessed_audio_get_handle_mid);
++        env->DeleteLocalRef(audio);
++        if (env->ExceptionCheck()) return {};
++        if (payload_handle == 0) {
++          ThrowLiteRtLmJniException(env, "Preprocessed audio is closed"); return {};
++        }
++        // Submission CONSUMES the payload, exactly as for preprocessed images:
++        // the elements are moved into the session contents and the payload is
++        // left empty, so resubmitting the same handle fails loudly here
++        // instead of silently submitting no audio.
++        auto* payload =
++            reinterpret_cast<std::vector<InputData>*>(payload_handle);
++        if (payload->empty()) {
++          ThrowLiteRtLmJniException(env, "Preprocessed audio was already submitted"); return {};
++        }
++        for (auto& element : *payload) {
++          contents.emplace_back(std::move(element));
++        }
++        payload->clear();
 +      } else {
 +        const bool audio = env->IsInstanceOf(input, audio_class);
 +        if (!audio && !env->IsInstanceOf(input, image_class)) {
@@ -3681,17 +3982,13 @@ index 9f27231..b09b195 100644
 +  } catch (...) {
 +    failed_read("Failed to convert Session input data");
 +    return {};
-   }
--
--  env->DeleteLocalRef(text_class);
--  env->DeleteLocalRef(audio_class);
--  env->DeleteLocalRef(image_class);
--
--  return contents;
- }
- 
++  }
++}
++
  // Helper to get JNIEnv and attach to the current thread if necessary.
-@@ -287,54 +460,117 @@ JNIEnv* GetJniEnvAndAttach(JavaVM* jvm, bool* attached) {
+ // Returns nullptr if an error occurs.
+ JNIEnv* GetJniEnvAndAttach(JavaVM* jvm, bool* attached) {
+@@ -287,54 +555,117 @@ JNIEnv* GetJniEnvAndAttach(JavaVM* jvm, bool* attached) {
    }
  }
  
@@ -3837,7 +4134,7 @@ index 9f27231..b09b195 100644
  
    env->DeleteLocalRef(thinking_config_cls);
  
-@@ -488,10 +724,113 @@ std::optional<litert::lm::DataProcessorArguments> GetDataProcessorArguments(
+@@ -488,10 +819,113 @@ std::optional<litert::lm::DataProcessorArguments> GetDataProcessorArguments(
    return std::nullopt;
  }
  
@@ -3951,7 +4248,7 @@ index 9f27231..b09b195 100644
  LITERTLM_JNIEXPORT void JNICALL
  Java_com_google_ai_edge_litertlm_NativeLibraryLoader_nativeCheckLoaded(
      JNIEnv* env, jclass thiz) {}
-@@ -771,8 +1110,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateSession)(
+@@ -771,8 +1205,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateSession)(
    auto session_config = SessionConfig::CreateDefault();
  
    if (sampler_config_obj != nullptr) {
@@ -3963,7 +4260,7 @@ index 9f27231..b09b195 100644
    }
  
    if (lora_path_str != nullptr) {
-@@ -824,6 +1164,95 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeDeleteSession)(
+@@ -824,6 +1259,154 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeDeleteSession)(
    delete reinterpret_cast<Engine::Session*>(session_pointer);
  }
  
@@ -4056,10 +4353,69 @@ index 9f27231..b09b195 100644
 +  delete reinterpret_cast<std::vector<InputData>*>(handle);
 +}
 +
++// Builds one preprocessed-audio payload for a chunk of already-projected
++// audio soft tokens. The returned handle is owned by the Kotlin
++// PreprocessedAudio and must be released with nativeDeletePreprocessedAudio.
++// Submission CONSUMES the payload (see GetNativeInputData), so one handle
++// serves exactly one runPrefill call; creating it never mutates the session.
++// The native projected-audio bounds (750 tokens, 8192 width — see
++// InputAudio::ValidateAudioEmbeddings) are re-checked here so a malformed
++// shape fails before any tensor is built.
++LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreatePreprocessedAudio)(
++    JNIEnv* env, jclass thiz, jlong session_pointer, jfloatArray rows,
++    jint token_count, jint embedding_width, jboolean include_begin_marker,
++    jboolean include_end_marker) {
++  if (env->ExceptionCheck()) return 0;
++  if (session_pointer == 0) {
++    ThrowLiteRtLmJniException(env, "Session must not be null");
++    return 0;
++  }
++  if (rows == nullptr) {
++    ThrowLiteRtLmJniException(env, "Audio embedding rows must not be null");
++    return 0;
++  }
++  const jsize rows_length = env->GetArrayLength(rows);
++  if (env->ExceptionCheck()) return 0;
++  if (token_count < 1 || token_count > 750 || embedding_width < 1 ||
++      embedding_width > 8192 ||
++      static_cast<int64_t>(token_count) * embedding_width != rows_length) {
++    ThrowLiteRtLmJniException(
++        env, "Audio embedding shape does not match the row data");
++    return 0;
++  }
++  auto* session = reinterpret_cast<Engine::Session*>(session_pointer);
++  try {
++    std::vector<float> values(static_cast<size_t>(rows_length));
++    env->GetFloatArrayRegion(rows, 0, rows_length, values.data());
++    if (env->ExceptionCheck()) return 0;
++    auto payload_or = PreprocessAudioEmbeddingsForSession(
++        session->GetSessionConfig().GetLlmModelType(), std::move(values),
++        token_count, embedding_width, include_begin_marker == JNI_TRUE,
++        include_end_marker == JNI_TRUE);
++    if (!payload_or.ok()) {
++      ThrowLiteRtLmJniException(
++          env, "Failed to preprocess audio: " + payload_or.status().ToString());
++      return 0;
++    }
++    return reinterpret_cast<jlong>(
++        new std::vector<InputData>(std::move(*payload_or)));
++  } catch (...) {
++    if (!env->ExceptionCheck()) {
++      ThrowLiteRtLmJniException(env, "Failed to preprocess audio");
++    }
++    return 0;
++  }
++}
++
++LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeDeletePreprocessedAudio)(
++    JNIEnv* env, jclass thiz, jlong handle) {
++  delete reinterpret_cast<std::vector<InputData>*>(handle);
++}
++
  LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeRunPrefill)(
      JNIEnv* env, jclass thiz, jlong session_pointer, jobjectArray input_data) {
    Engine::Session* session =
-@@ -893,7 +1322,7 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeGenerateContent)(
+@@ -893,7 +1476,7 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeGenerateContent)(
    return NewStringStandardUTF(env, responses->GetTexts()[0]);
  }
  
@@ -4068,7 +4424,7 @@ index 9f27231..b09b195 100644
      JNIEnv* env, jclass thiz, jlong session_pointer, jobjectArray input_data,
      jobject callback) {
    JavaVM* jvm = nullptr;
-@@ -901,93 +1330,129 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeGenerateContentStream)(
+@@ -901,93 +1484,129 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeGenerateContentStream)(
      ThrowLiteRtLmJniException(env, "Failed to get JavaVM");
      return;
    }
@@ -4274,7 +4630,7 @@ index 9f27231..b09b195 100644
  LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeCancelProcess)(
      JNIEnv* env, jclass thiz, jlong session_pointer) {
    Engine::Session* session =
-@@ -1044,8 +1509,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
+@@ -1044,8 +1663,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
      session_config.SetMaxOutputTokens(max_output_token);
    }
    if (sampler_config_obj != nullptr) {
@@ -4286,7 +4642,7 @@ index 9f27231..b09b195 100644
    }
  
    if (lora_path_str != nullptr) {
-@@ -1173,8 +1639,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
+@@ -1173,8 +1793,9 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
  
    // Set the thinking config, if provided.
    if (thinking_config_obj != nullptr) {
@@ -4298,7 +4654,7 @@ index 9f27231..b09b195 100644
    }
  
    // Build the conversation
-@@ -1197,9 +1664,25 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
+@@ -1197,9 +1818,25 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
  
  LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeDeleteConversation)(
      JNIEnv* env, jclass thiz, jlong conversation_pointer) {
@@ -4324,7 +4680,7 @@ index 9f27231..b09b195 100644
  LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
      JNIEnv* env, jclass thiz, jlong conversation_pointer,
      jstring messageJSONString, jstring extraContextJsonString, jobject callback,
-@@ -1253,8 +1736,11 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
+@@ -1253,8 +1890,11 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
    }
  
    if (thinking_config_obj != nullptr) {
@@ -4338,7 +4694,7 @@ index 9f27231..b09b195 100644
    }
  
    if (constraint_type != 0) {
-@@ -1275,73 +1761,132 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
+@@ -1275,73 +1915,132 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
    }
  
    jobject callback_global = env->NewGlobalRef(callback);
@@ -4514,7 +4870,7 @@ index 9f27231..b09b195 100644
          }
        };
  
-@@ -1349,6 +1894,8 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
+@@ -1349,6 +2048,8 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
        json_message, std::move(callback_fn), std::move(optional_args));
  
    if (!status.ok()) {
@@ -4523,7 +4879,7 @@ index 9f27231..b09b195 100644
      ThrowLiteRtLmJniException(
          env, "Failed to start nativeSendMessageAsync: " + status.ToString());
    }
-@@ -1401,8 +1948,9 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeSendMessage)(
+@@ -1401,8 +2102,9 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeSendMessage)(
    }
  
    if (thinking_config_obj != nullptr) {
@@ -4535,7 +4891,7 @@ index 9f27231..b09b195 100644
    }
  
    if (constraint_type != 0) {
-@@ -1440,6 +1988,17 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeConversationCancelProcess)(
+@@ -1440,6 +2142,17 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeConversationCancelProcess)(
    conversation->CancelProcess();
  }
  

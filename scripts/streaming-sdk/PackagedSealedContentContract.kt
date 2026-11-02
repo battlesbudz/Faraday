@@ -38,6 +38,16 @@ fun main(args: Array<String>) {
     wire.addProperty("blob", "changed")
     verify(sealed.toJson().toString() == before)
     verify(sealed.toString() == "[SealedAudioEmbeddings]")
+    // projectedRows returns the same values as an independent copy: the spike
+    // harness slices these rows for chunked Session submissions.
+    val projected = sealed.projectedRows()
+    verify(projected.size == 2)
+    verify(projected[0] == 0.5f)
+    verify(projected[1].toRawBits() == Int.MIN_VALUE)
+    projected.fill(Float.NaN)
+    val projectedAgain = sealed.projectedRows()
+    verify(projectedAgain[0] == 0.5f)
+    verify(projectedAgain[1].toRawBits() == Int.MIN_VALUE)
     val receipt = JsonObject().apply {
         addProperty("passed", true)
         addProperty("checks", checks)

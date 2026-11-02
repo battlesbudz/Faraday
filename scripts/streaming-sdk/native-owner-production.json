@@ -14,13 +14,14 @@
     "experimental/native_audio_owner_jni_20261006/native_audio_owner_jni.cc": "f736fa9da2eee2cb962962b1d1c957625ef50bba9748b10cf2b955880ec4236a",
     "experimental/native_audio_owner_jni_20261006/NativeAudioOwner.kt": "2c7c82fb16f35b4bd4d454e6e76c2414d1da23302dfd123840a381ec6c9e2215",
     "experimental/native_audio_owner_jni_20261006/BUILD": "bba731936a74867e0e38b0d35438ab8b4465e15829634989c73e020b3695b495",
-    "kotlin/java/com/google/ai/edge/litertlm/Session.kt": "c95c7e45c4bad22338d200518fa908d63c9ad42002d04430f73d12c0553bcefc",
+    "kotlin/java/com/google/ai/edge/litertlm/Session.kt": "0dcf9050048d0f96e0843082ab87d0369f7dab57167a6a79645fac84e34d1250",
     "kotlin/java/com/google/ai/edge/litertlm/Conversation.kt": "c4da22296e96651d581b9871283aab90722058e3e218c3fc4ff445fd66ed5264",
     "kotlin/java/com/google/ai/edge/litertlm/Engine.kt": "09bc70edf899362d357500af479542d3fbf4ecc28eca716d2d25d1e210d46405",
-    "kotlin/java/com/google/ai/edge/litertlm/LiteRtLmJni.kt": "650ce981ed2273c04f1cc8d304db5968ccadb3e81d4b053fc3081f88a4a14bdd",
+    "kotlin/java/com/google/ai/edge/litertlm/LiteRtLmJni.kt": "6b31b9b22f781e372cefdd9e5ca33876f38c9029e78b6d365656e6ab418ed261",
     "kotlin/java/com/google/ai/edge/litertlm/PreprocessedImage.kt": "96947997a047a06363c6b148e0462c775fea03873ce99957ad53661e8344740f",
-    "kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc": "0fbd10c5fee57edda6e729744b51a5b49d6560f1e6f9171d6a5ce2ebb1b36d6a",
-    "experimental/native_audio_owner_jni_20261006/NativeAudioTiming.kt": "8c63317a814410b6a26fc87a31f203b57b52c60112272674f1c01663c62afbdf"
+    "kotlin/java/com/google/ai/edge/litertlm/jni/litertlm.cc": "12dec7f5866d6e2dd3517aea4494447bbb58dc0d08c0a84729f5b226b32f4cb4",
+    "experimental/native_audio_owner_jni_20261006/NativeAudioTiming.kt": "8c63317a814410b6a26fc87a31f203b57b52c60112272674f1c01663c62afbdf",
+    "kotlin/java/com/google/ai/edge/litertlm/PreprocessedAudio.kt": "9ce0301ede3604ef6c5cc8674dac0397c26e49df5b5a59d531c205f1076810c8"
   },
   "kotlin_sources": [
     "kotlin/java/com/google/ai/edge/litertlm/Benchmark.kt",
@@ -34,6 +35,7 @@
     "kotlin/java/com/google/ai/edge/litertlm/LiteRtLmJniException.kt",
     "kotlin/java/com/google/ai/edge/litertlm/Message.kt",
     "kotlin/java/com/google/ai/edge/litertlm/PreprocessedImage.kt",
+    "kotlin/java/com/google/ai/edge/litertlm/PreprocessedAudio.kt",
     "kotlin/java/com/google/ai/edge/litertlm/NativeLibraryLoader.kt",
     "kotlin/java/com/google/ai/edge/litertlm/ResponseFormat.kt",
     "kotlin/java/com/google/ai/edge/litertlm/Session.kt",
@@ -134,6 +136,7 @@
     "com/google/ai/edge/litertlm/InputData$Audio.class",
     "com/google/ai/edge/litertlm/InputData$Image.class",
     "com/google/ai/edge/litertlm/InputData$Preprocessed.class",
+    "com/google/ai/edge/litertlm/InputData$PreprocessedAudio.class",
     "com/google/ai/edge/litertlm/InputData$Text.class",
     "com/google/ai/edge/litertlm/InputData.class",
     "com/google/ai/edge/litertlm/InternalJsonTool.class",
@@ -151,6 +154,7 @@
     "com/google/ai/edge/litertlm/NativeLibraryLoader.class",
     "com/google/ai/edge/litertlm/NoRepeatNgramConfig.class",
     "com/google/ai/edge/litertlm/OpenApiTool.class",
+    "com/google/ai/edge/litertlm/PreprocessedAudio.class",
     "com/google/ai/edge/litertlm/PreprocessedImage.class",
     "com/google/ai/edge/litertlm/ReflectionTool$Companion.class",
     "com/google/ai/edge/litertlm/ReflectionTool.class",
@@ -213,7 +217,9 @@
     "nativeSetMinLogSeverity": "(I)V",
     "nativeCreateCapabilities": "(Ljava/lang/String;)J",
     "nativeDeleteCapabilities": "(J)V",
-    "nativeHasSpeculativeDecodingSupport": "(J)Z"
+    "nativeHasSpeculativeDecodingSupport": "(J)Z",
+    "nativeCreatePreprocessedAudio": "(J[FIIZZ)J",
+    "nativeDeletePreprocessedAudio": "(J)V"
   },
   "sdk_jni_exports": [
     "Java_com_google_ai_edge_litertlm_LiteRtLmJni_nativeCancelProcess",
@@ -248,6 +254,8 @@
     "Java_com_google_ai_edge_litertlm_LiteRtLmJni_nativeSessionAwaitIdle",
     "Java_com_google_ai_edge_litertlm_LiteRtLmJni_nativeSessionLifecycleProtocolVersion",
     "Java_com_google_ai_edge_litertlm_LiteRtLmJni_nativeSetMinLogSeverity",
-    "Java_com_google_ai_edge_litertlm_NativeLibraryLoader_nativeCheckLoaded"
+    "Java_com_google_ai_edge_litertlm_NativeLibraryLoader_nativeCheckLoaded",
+    "Java_com_google_ai_edge_litertlm_LiteRtLmJni_nativeCreatePreprocessedAudio",
+    "Java_com_google_ai_edge_litertlm_LiteRtLmJni_nativeDeletePreprocessedAudio"
   ]
 }
