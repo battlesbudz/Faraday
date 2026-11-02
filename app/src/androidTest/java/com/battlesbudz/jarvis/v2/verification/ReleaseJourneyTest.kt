@@ -1710,9 +1710,11 @@ class ReleaseJourneyTest {
         }
     }
 
-    @Test fun test25_finalizedTextAndVoiceMemoryNeedsApprovalBeforePromptUse() {
+    @Test fun test25_finalizedTextAndVoiceMemoryIsImmediatelyAvailableToPrompts() {
         // Controlled finalized-input fixtures exercise the production local bridge and prompt builder,
-        // not a microphone or model-generated response.
+        // not a microphone or model-generated response. Since 2026-11-01 capture
+        // commits immediately: no approval step stands between a finalized
+        // text/voice fact and prompt use.
         val file = File(context.cacheDir, "release-finalized-memory.json").apply { delete() }
         val now = System.currentTimeMillis()
         try {
@@ -1728,11 +1730,10 @@ class ReleaseJourneyTest {
             ))
             assertEquals(ConversationMemoryOutcome.PROPOSED, text.outcome)
             assertEquals(ConversationMemoryOutcome.PROPOSED, voice.outcome)
-            val pending = checkNotNull(os.read().snapshot).memories
-            assertEquals(setOf(MemoryReviewStatus.PENDING), pending.map { it.reviewStatus }.toSet())
-            assertTrue(bridge.approvedContext("tea", 600).packet!!.memories.isEmpty())
+            val captured = checkNotNull(os.read().snapshot).memories
+            assertEquals(setOf(MemoryReviewStatus.APPROVED), captured.map { it.reviewStatus }.toSet())
+            assertTrue(bridge.approvedContext("tea", 600).packet!!.text.contains("bergamot tea"))
 
-            pending.forEach { record -> assertEquals(MemoryOutcome.APPROVED, os.approve(record.id, record.revision).outcome) }
             val packet = checkNotNull(bridge.approvedContext("tea cobalt", 900).packet).text
             assertTrue(packet.contains("I prefer bergamot tea"))
             assertTrue(packet.contains("My favorite color is cobalt"))
@@ -1751,11 +1752,13 @@ class ReleaseJourneyTest {
         try {
             val os = MemoryOs(file) { now }
             val bridge = ConversationMemory(os)
-            val created = checkNotNull(bridge.capture(FinalMemoryInput(
+            // Capture commits immediately (2026-11-01), so the captured record
+            // is already the approved one the correction targets.
+            val approved = checkNotNull(bridge.capture(FinalMemoryInput(
                 "release-original-memory", "thread-release", null, ConversationMemorySource.TEXT,
                 "Remember I prefer blue mugs.", now
             )).memory)
-            val approved = checkNotNull(os.approve(created.id, created.revision).memory)
+            assertEquals(MemoryReviewStatus.APPROVED, approved.reviewStatus)
             val before = bridge.approvedContext("mugs", 600)
             assertTrue(checkNotNull(before.packet).text.contains("blue mugs"))
 

@@ -2,7 +2,7 @@ package com.battlesbudz.jarvis.v2.memory
 
 /** Only a finalized storage receipt may make a persistence claim. */
 object MemoryCaptureAcknowledgment {
-    fun explicitRequest(text: String): Boolean = Regex("(?i)^(?:please )?remember(?: that)?\s+").containsMatchIn(text.trim())
+    fun explicitRequest(text: String): Boolean = Regex("(?i)^(?:please )?remember(?: that)?\\s+").containsMatchIn(text.trim())
     fun reply(result: ConversationMemoryResult): String = when (result.outcome) {
         ConversationMemoryOutcome.PROPOSED -> when (result.memory?.reviewStatus) {
             // Capture commits immediately; there is no approval step to wait for.
