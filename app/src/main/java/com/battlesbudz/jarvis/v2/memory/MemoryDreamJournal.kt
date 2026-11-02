@@ -119,6 +119,10 @@ object DreamReasons {
     const val JUDGE_OUTPUT_INVALID = "judge_output_invalid"
     const val JUDGE_ERROR = "judge_error"
     const val DERIVED_SOLE_SOURCE = "derived_sole_source"
+    const val NO_OP = "no_op"
+    const val LINK_ONLY = "link_only"
+    const val STORAGE_FAILURE = "storage_failure"
+    const val VECTOR_STORE_UNAVAILABLE = "vector_store_unavailable"
     fun proposalRejected(outcome: MemoryOutcome): String = "proposal_rejected:${outcome.name}"
 }
 
@@ -128,6 +132,14 @@ data class DreamJournalState(
     val watermarkMs: Long = 0L,
     /** Night keys that counted as completed dream nights (OD-5 staging). */
     val completedNightKeys: Set<String> = emptySet(),
+    /**
+     * Groups fully processed by LIVE runs, across nights: a group whose exact
+     * source set was already judged is not re-judged on later nights (its key
+     * changes the moment a member joins, leaves, or is replaced). Dry-run
+     * nights never publish here — their would-commits are still owed a live
+     * commit, so their groups must stay eligible.
+     */
+    val processedGroupKeys: List<String> = emptyList(),
 ) {
     val completedNights: Int get() = completedNightKeys.size
     val lastEntry: DreamRunEntry? get() = entries.lastOrNull()
@@ -192,6 +204,8 @@ class MemoryDreamJournal(private val store: DreamJournalStore) {
                 entries = state.entries.takeLast(MAX_ENTRIES),
                 watermarkMs = maxOf(state.watermarkMs, current.watermarkMs),
                 completedNightKeys = state.completedNightKeys + current.completedNightKeys,
+                processedGroupKeys = (current.processedGroupKeys + state.processedGroupKeys)
+                    .distinct().takeLast(MAX_PROCESSED_GROUP_KEYS),
             )
         )
     }
@@ -227,6 +241,9 @@ class MemoryDreamJournal(private val store: DreamJournalStore) {
 
         /** OD-5: the first this-many counted nights run dry. */
         const val DRY_RUN_NIGHTS = 3
+
+        /** Bound on the cross-night processed-group registry. */
+        const val MAX_PROCESSED_GROUP_KEYS = 512
     }
 }
 
@@ -236,11 +253,14 @@ internal object DreamJournalJson {
         state.entries.forEach { entry -> entries.put(encodeEntry(entry)) }
         val nights = JSONArray()
         state.completedNightKeys.sorted().forEach { nights.put(it) }
+        val groupKeys = JSONArray()
+        state.processedGroupKeys.forEach { groupKeys.put(it) }
         return JSONObject()
             .put("version", 1)
             .put("entries", entries)
             .put("watermarkMs", state.watermarkMs)
             .put("completedNightKeys", nights)
+            .put("processedGroupKeys", groupKeys)
     }
 
     fun decode(json: JSONObject): DreamJournalState {
@@ -252,10 +272,14 @@ internal object DreamJournalJson {
         val nights = LinkedHashSet<String>()
         val rawNights = json.optJSONArray("completedNightKeys") ?: JSONArray()
         for (i in 0 until rawNights.length()) rawNights.optString(i).takeIf { it.isNotBlank() }?.let { nights += it }
+        val groupKeys = ArrayList<String>()
+        val rawKeys = json.optJSONArray("processedGroupKeys") ?: JSONArray()
+        for (i in 0 until rawKeys.length()) rawKeys.optString(i).takeIf { it.isNotBlank() }?.let { groupKeys += it }
         return DreamJournalState(
             entries = entries,
             watermarkMs = json.optLong("watermarkMs", 0L).coerceAtLeast(0L),
             completedNightKeys = nights,
+            processedGroupKeys = groupKeys.distinct().takeLast(MemoryDreamJournal.MAX_PROCESSED_GROUP_KEYS),
         )
     }
 
