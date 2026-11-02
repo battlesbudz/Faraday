@@ -153,7 +153,7 @@ internal fun VoiceCallScreen(
     onVoiceTurn: (Boolean, (String) -> Unit, (String, String, Boolean) -> Unit, (String) -> Unit) -> Unit,
     onEndVoiceCall: ((String) -> Unit) -> Unit,
     onCopyDiagnostics: (List<ChatEntry>) -> Unit,
-    onSaveDiagnostics: () -> Unit = {},
+    onSaveDiagnostics: ((String) -> Unit) -> Unit = {},
     // M1d explicit silent work (D21/T05): toggle plus observable posture.
     silentWork: kotlinx.coroutines.flow.StateFlow<Boolean>? = null,
     onSilentWork: (Boolean) -> Unit = {},
@@ -382,6 +382,7 @@ internal fun VoiceCallScreen(
         }) { Text(if (helperConnected) "Keyboard handoff settings" else "Enable keyboard microphone handoff") }
         if (keyboardSetupError.isNotBlank()) Text(keyboardSetupError, style = MaterialTheme.typography.bodySmall)
         var diagnosticsOpen by remember { mutableStateOf(false) }
+        var diagnosticsSaveMessage by remember { mutableStateOf("") }
         TextButton(onClick = { diagnosticsOpen = !diagnosticsOpen }) {
             Text(if (diagnosticsOpen) "Hide development diagnostics" else "Development diagnostics")
         }
@@ -394,10 +395,15 @@ internal fun VoiceCallScreen(
                 Text("Copy diagnostics")
             }
             TextButton(
-                onClick = onSaveDiagnostics,
+                onClick = { onSaveDiagnostics { diagnosticsSaveMessage = it } },
                 modifier = Modifier.padding(top = 4.dp)
             ) {
                 Text("Save diagnostics")
+            }
+            if (diagnosticsSaveMessage.isNotEmpty()) {
+                Text(diagnosticsSaveMessage,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 4.dp))
             }
         }
         } }

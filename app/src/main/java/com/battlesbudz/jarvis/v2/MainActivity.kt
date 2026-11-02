@@ -176,7 +176,7 @@ class MainActivity : ComponentActivity() {
                 onDiscardModelDownload = modelSetup::discardDownload,
                 onImportModel = modelSetup::importModel,
                 onCopyDiagnostics = { _ -> copyDiagnostics() },
-                onSaveDiagnostics = { saveDiagnostics() },
+                onSaveDiagnostics = { onResult -> saveDiagnostics(onResult) },
             )
         }
     }
@@ -233,18 +233,26 @@ class MainActivity : ComponentActivity() {
         clipboard.setPrimaryClip(ClipData.newPlainText("Jarvis diagnostics", diagnostics))
     }
 
-    private fun saveDiagnostics() {
-        // Same content as Copy diagnostics, as a structured JSON file the user
-        // can send instead of pasting the text export.
-        val payload = org.json.JSONObject().apply {
-            put("title", "Jarvis OS V2 — latest Voice Call diagnostics")
-            put("generatedAtMs", System.currentTimeMillis())
-            put("diagnostics", runtime.diagnosticRecorder.snapshotJson())
-            put("microphoneHandoff", com.battlesbudz.jarvis.v2.voice.MicrophoneHandoff.diagnostics())
-        }.toString(2)
-        val intent = com.battlesbudz.jarvis.v2.ui.BenchmarkExportFiles.share(
-            this, com.battlesbudz.jarvis.v2.ui.BenchmarkExportFormat.JSON, payload, "jarvis-diagnostics")
-        startActivity(android.content.Intent.createChooser(intent, "Save diagnostics"))
+    private fun saveDiagnostics(onResult: (String) -> Unit) {
+        // Same content as Copy diagnostics, as a structured JSON file — written
+        // to the phone's Downloads folder, not a share chooser (the chooser
+        // never saved anything; Battles's device report on build 1666). The
+        // diagnostics section shows the outcome line until the next action.
+        val payload = com.battlesbudz.jarvis.v2.diagnostics.DiagnosticsDownloadsSave.payload(
+            runtime.diagnosticRecorder,
+            com.battlesbudz.jarvis.v2.voice.MicrophoneHandoff.diagnostics(),
+            System.currentTimeMillis())
+        val buildNumber = runCatching {
+            packageManager.getPackageInfo(packageName, 0).longVersionCode.toString()
+        }.getOrDefault("unknown")
+        val destination = com.battlesbudz.jarvis.v2.diagnostics.DiagnosticsDownloadsSave.downloads(this)
+        lifecycleScope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                com.battlesbudz.jarvis.v2.diagnostics.DiagnosticsDownloadsSave.save(
+                    destination, buildNumber, payload, System.currentTimeMillis())
+            }
+            onResult(com.battlesbudz.jarvis.v2.diagnostics.DiagnosticsDownloadsSave.message(outcome))
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

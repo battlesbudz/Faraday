@@ -61,7 +61,7 @@ fun JarvisApp(
     onDiscardModelDownload: (com.battlesbudz.jarvis.v2.ai.LocalModelSpec, (String) -> Unit) -> Unit = { _, _ -> },
     onImportModel: (Uri, com.battlesbudz.jarvis.v2.ai.LocalModelSpec, (String) -> Unit) -> Unit,
     onCopyDiagnostics: (List<ChatEntry>) -> Unit,
-    onSaveDiagnostics: () -> Unit = {},
+    onSaveDiagnostics: ((String) -> Unit) -> Unit = {},
     agentActivity: kotlinx.coroutines.flow.StateFlow<com.battlesbudz.jarvis.v2.presentation.AgentActivitySnapshot?>? = null,
     phoneTasks: kotlinx.coroutines.flow.StateFlow<com.battlesbudz.jarvis.v2.actions.ToolTaskJournal?>? = null,
     phoneTaskError: kotlinx.coroutines.flow.StateFlow<String?>? = null,
