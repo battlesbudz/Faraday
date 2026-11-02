@@ -123,6 +123,33 @@ class AudioTurnCaptureTest {
         fixture.capture.stop()
     }
 
+    @Test fun sustainedWordlessFollowupSoundDiesSilentlyAndNextSpeechSurvives() = runBlocking<Unit> {
+        val noise = FakeTranscriber("", "")
+        val real = FakeTranscriber("Yes", "Yes")
+        var loads = 0
+        val fixture = CaptureFixture(this, factory = { if (loads++ == 0) noise else real },
+            allowAudioOnlyTurns = true, guardFollowupSpeech = true)
+        fixture.capture.start()
+        val completion = async(start = CoroutineStart.UNDISPATCHED) { fixture.capture.awaitTurnCompletion() }
+        // 800 ms of sustained strong audio with no partial words and no
+        // corroboration — the build 1669 specimen shape (704 ms on device).
+        repeat(8) { fixture.emit(100L + it * 100, 1500, speech = true, samples = 1600) }
+        fixture.emit(2200, 0, samples = 1600)
+        assertFalse(completion.isCompleted)
+        assertEquals(0, noise.finishes)
+        assertEquals(0, noise.recoveries)
+        assertTrue(fixture.events.any { it == "followup_speech_evidence accepted=false strongAudioMs=800 liveWords=false quietCorroborated=false" })
+        assertTrue(fixture.events.any { it.startsWith("followup_candidate_rejected") })
+        assertEquals("", fixture.capture.finalTranscript)
+        assertEquals(null, fixture.capture.recognitionIssue)
+        fixture.emit(2400, 2000, speech = true, samples = 1600)
+        fixture.emit(3700, 0, samples = 1600)
+        assertTrue(withTimeout(1000) { completion.await() })
+        assertEquals("Yes", fixture.capture.finalTranscript)
+        assertEquals(1, fixture.microphoneStarts)
+        fixture.capture.stop()
+    }
+
     @Test fun soundCaptionsCannotExtendTheInitialListeningDeadline() = runBlocking<Unit> {
         val fixture = CaptureFixture(this, factory = { FakeTranscriber("[music]", "[music]") }, allowAudioOnlyTurns = true)
         fixture.capture.start()

@@ -13,10 +13,31 @@ class FollowupSpeechEvidenceTest {
         assertFalse(e.accepts())
         assertEquals(0L, e.strongMs)
     }
-    @Test fun sustainedSpeechAllowsEmptyAsrFallback() {
+    @Test fun sustainedStrongAudioWithoutWordsOrCorroborationIsRejected() {
+        // Build 1669 device specimen: 704 ms of strong audio with no live
+        // words and no quiet corroboration was admitted as a follow-up turn
+        // and ended in a spoken clarify to an empty room. It must die silently.
         val e = FollowupSpeechEvidence()
-        e.observe(8000, 0.8f, null, false, true); assertTrue(e.accepts())
+        e.observe(22_528, 0.9f, null, false, true)
+        assertEquals(704L, e.strongMs)
+        assertEquals("strongAudioMs=704 liveWords=false quietCorroborated=false", e.diagnostic())
+        assertFalse(e.accepts())
         e.reset(); assertFalse(e.accepts())
+    }
+    @Test fun sustainedSpeechWithLiveWordsStillAdmits() {
+        val e = FollowupSpeechEvidence()
+        e.observe(8000, 0.8f, "what time is it", false, true); assertTrue(e.accepts())
+    }
+    @Test fun sustainedSpeechWithCorroborationStillAdmits() {
+        val e = FollowupSpeechEvidence()
+        e.observe(8000, 0.8f, null, true, true); assertTrue(e.accepts())
+    }
+    @Test fun liveWordsAdmitBeforeAnyAsrOutcome() {
+        // The gate reads live evidence only: speech whose partials produced
+        // words is admitted even if the final ASR later fails, and that
+        // failure still reaches the existing clarify path downstream.
+        val e = FollowupSpeechEvidence()
+        e.observe(3200, 0.9f, "mumbled request", false, true); assertTrue(e.accepts())
     }
     @Test fun shortLiveCommandAndCorroboratedWhisperSurvive() {
         val e = FollowupSpeechEvidence()
