@@ -69,11 +69,17 @@ class SandboxPhase2ToolTest {
             NativeActionDecoder.decodeStrict(ToolCall("run_in_sandbox", json))
         assertEquals(ActionRequest("run_in_sandbox", mapOf("command" to command)),
             strict("{\"command\":\"$command\"}"))
-        // Extra keys, blank commands, and non-string commands never decode.
+        // Extra keys and non-string commands never decode. (Strict decode
+        // trims string values; a whitespace-only command decodes to empty
+        // and is rejected by the validator before anything can dispatch —
+        // the same layering as the other free-text tools.)
         assertNull(strict("{\"command\":\"ls\",\"shell\":\"sh\"}"))
-        assertNull(strict("{\"command\":\"   \"}"))
         assertNull(strict("{\"command\":42}"))
         assertNull(strict("{}"))
+        val blankDecoded = strict("{\"command\":\"   \"}")
+        assertEquals("", blankDecoded?.arguments?.get("command"))
+        assertTrue(MobileActionValidator().validate(blankDecoded!!)
+            is ActionValidation.Rejected)
     }
 
     // -- Validator ----------------------------------------------------------
@@ -164,7 +170,11 @@ class SandboxPhase2ToolTest {
     }
 
     @Test fun ledgerAdmitsForApprovalParkingButClaimWithoutApprovalFails() {
-        val file = File.createTempFile("sandbox-ledger", ".json").apply { deleteOnExit() }
+        // The journal store owns its file: hand it a path that does not
+        // exist yet (a pre-created empty file is not a valid journal).
+        val dir = java.nio.file.Files.createTempDirectory("sandbox-ledger").toFile()
+            .apply { deleteOnExit() }
+        val file = File(dir, "journal.json")
         val ledger = ToolTaskLedger(FileToolTaskStore(file))
         val request = ActionRequest("run_in_sandbox", mapOf("command" to command))
         val group = ledger.admit(listOf(request), "conversation")
