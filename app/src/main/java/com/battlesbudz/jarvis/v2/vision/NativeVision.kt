@@ -1,8 +1,7 @@
 package com.battlesbudz.jarvis.v2.vision
 
 import android.content.res.AssetManager
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import com.battlesbudz.phoneinference.Box
 import com.battlesbudz.phoneinference.ClassPrediction
 import com.battlesbudz.phoneinference.Detection
 import com.battlesbudz.phoneinference.InferenceEngine
@@ -27,7 +26,10 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * Typed result of running all four native ONNX models over one image.
  * Coordinates are in original-image pixels, same contract as the
- * :phoneinference module.
+ * :phoneinference module. The decode is sampled (see [SampledImageDecode]),
+ * so the engine reports coordinates in the decoded bitmap's pixels and
+ * NativeVision rescales them back to original-image pixels before building
+ * this snapshot — the contract holds regardless of the source image's size.
  */
 data class NativeVisionSnapshot(
     val detections: List<Detection>,
@@ -90,9 +92,47 @@ object NativeVision {
         }
     }
 
-    private fun decodeOrThrow(imageBytes: ByteArray): Bitmap =
-        BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+    private fun decodeOrThrow(imageBytes: ByteArray): SampledImageDecode.Decoded =
+        SampledImageDecode.decode(imageBytes)
             ?: throw IllegalStateException("Could not decode the attached image.")
+
+    /**
+     * Axis ratios from decoded-bitmap pixels back to original-image
+     * pixels, computed from the decoded bitmap's ACTUAL size (the
+     * platform decoder's rounding is its own; the ratio absorbs it).
+     */
+    private fun axisScales(decoded: SampledImageDecode.Decoded): Pair<Float, Float> =
+        decoded.sourceWidth.toFloat() / decoded.bitmap.width to
+            decoded.sourceHeight.toFloat() / decoded.bitmap.height
+
+    private fun Box.scaled(scaleX: Float, scaleY: Float): Box =
+        copy(x1 = x1 * scaleX, y1 = y1 * scaleY, x2 = x2 * scaleX, y2 = y2 * scaleY)
+
+    private fun List<Detection>.scaled(scaleX: Float, scaleY: Float): List<Detection> =
+        if (scaleX == 1f && scaleY == 1f) this
+        else map { it.copy(box = it.box.scaled(scaleX, scaleY)) }
+
+    private fun List<SegResult>.scaled(scaleX: Float, scaleY: Float): List<SegResult> =
+        if (scaleX == 1f && scaleY == 1f) this
+        else map { segment ->
+            segment.copy(
+                box = segment.box.scaled(scaleX, scaleY),
+                points = segment.points.map { point ->
+                    point.copy(x = point.x * scaleX, y = point.y * scaleY)
+                },
+            )
+        }
+
+    private fun List<PoseResult>.scaled(scaleX: Float, scaleY: Float): List<PoseResult> =
+        if (scaleX == 1f && scaleY == 1f) this
+        else map { pose ->
+            pose.copy(
+                box = pose.box.scaled(scaleX, scaleY),
+                keypoints = pose.keypoints.map { keypoint ->
+                    keypoint.copy(x = keypoint.x * scaleX, y = keypoint.y * scaleY)
+                },
+            )
+        }
 
     /**
      * Runs detection, segmentation, pose and classification on [imageBytes]
@@ -100,17 +140,19 @@ object NativeVision {
      */
     suspend fun analyze(imageBytes: ByteArray, assets: AssetManager): NativeVisionSnapshot =
         withContext(visionDispatcher) {
-            val bitmap = decodeOrThrow(imageBytes)
+            val decoded = decodeOrThrow(imageBytes)
+            val bitmap = decoded.bitmap
             try {
                 val eng = engine(assets)
                 val (detections, detMs) = eng.detector.detect(bitmap, maxDetections = 5)
                 val (segments, segMs) = eng.segmenter.segment(bitmap, maxDetections = 3)
                 val (poses, poseMs) = eng.poseDetector.pose(bitmap, maxDetections = 3)
                 val (classes, clsMs) = eng.classifier.classify(bitmap)
+                val (scaleX, scaleY) = axisScales(decoded)
                 NativeVisionSnapshot(
-                    detections, detMs,
-                    segments, segMs,
-                    poses, poseMs,
+                    detections.scaled(scaleX, scaleY), detMs,
+                    segments.scaled(scaleX, scaleY), segMs,
+                    poses.scaled(scaleX, scaleY), poseMs,
                     classes.take(3), clsMs,
                 )
             } finally {
@@ -130,12 +172,16 @@ object NativeVision {
         assets: AssetManager
     ): DetectionClassificationSnapshot =
         withContext(visionDispatcher) {
-            val bitmap = decodeOrThrow(imageBytes)
+            val decoded = decodeOrThrow(imageBytes)
+            val bitmap = decoded.bitmap
             try {
                 val eng = engine(assets)
                 val (detections, detMs) = eng.detector.detect(bitmap, maxDetections = 5)
                 val (classes, clsMs) = eng.classifier.classify(bitmap)
-                DetectionClassificationSnapshot(detections, detMs, classes.take(3), clsMs)
+                val (scaleX, scaleY) = axisScales(decoded)
+                DetectionClassificationSnapshot(
+                    detections.scaled(scaleX, scaleY), detMs, classes.take(3), clsMs
+                )
             } finally {
                 if (!bitmap.isRecycled) bitmap.recycle()
             }

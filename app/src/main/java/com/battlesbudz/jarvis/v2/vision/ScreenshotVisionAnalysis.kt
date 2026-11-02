@@ -2,7 +2,6 @@ package com.battlesbudz.jarvis.v2.vision
 
 import android.content.res.AssetManager
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 
 /**
  * Result of analyzing one launch-verification screenshot with the existing
@@ -48,7 +47,11 @@ class NativeVisionScreenshotAnalyzer(private val assets: AssetManager) {
      * queue worker after the caller's timeout fired.
      */
     fun analyze(imageBytes: ByteArray): ScreenshotVisionEvidence {
-        val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+        // Sampled decode (SampledImageDecode): the blank check below only
+        // samples a coarse pixel grid, so decoding the screenshot at full
+        // resolution first was pure waste. The luminance-range rule works
+        // the same on the sampled bitmap.
+        val bitmap = SampledImageDecode.decode(imageBytes)?.bitmap
             ?: throw IllegalStateException("Could not decode the screenshot.")
         try {
             val nonBlank = isNonBlank(bitmap)
