@@ -76,7 +76,7 @@ class DiagnosticsDownloadsSaveMediaStoreTest {
     }
 
     @Test fun aFailedWriteDeletesThePartialRow() {
-        provider.failOpen = true
+        provider.failWrite = true
         val context = RuntimeEnvironment.getApplication()
         val outcome = DiagnosticsDownloadsSave.save(
             DiagnosticsDownloadsSave.downloads(context), "1667", "{}", nowMs)
@@ -88,7 +88,7 @@ class DiagnosticsDownloadsSaveMediaStoreTest {
 /** Minimal stand-in for the platform media provider's Downloads surface. */
 internal class FakeDownloadsProvider : ContentProvider() {
     var failInsert = false
-    var failOpen = false
+    var failWrite = false
     var insertUri: Uri? = null
     var insertedRow: Uri? = null
     val inserts = mutableListOf<ContentValues>()
@@ -108,9 +108,11 @@ internal class FakeDownloadsProvider : ContentProvider() {
     }
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
-        if (failOpen) throw FileNotFoundException("provider refuses the stream")
         val file = files[uri] ?: throw FileNotFoundException("unknown row $uri")
-        return ParcelFileDescriptor.open(file,
+        // failWrite hands back a read-only descriptor: the open succeeds and
+        // the write itself fails, the full-disk shape a real save can hit.
+        return if (failWrite) ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+        else ParcelFileDescriptor.open(file,
             ParcelFileDescriptor.MODE_WRITE_ONLY or ParcelFileDescriptor.MODE_TRUNCATE)
     }
 
