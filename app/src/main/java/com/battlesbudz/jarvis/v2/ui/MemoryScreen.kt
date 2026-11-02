@@ -126,10 +126,8 @@ internal fun MemoryScreen(
     val deleteTarget = snapshot?.memories?.firstOrNull { it.id == confirmDeleteId }
     val selectedPage = index?.pages?.firstOrNull { it.id == pageId }
     val selectedDetail = snapshot?.memories?.firstOrNull { it.id == detailId }
-    val pending = snapshot?.memories?.count { it.reviewStatus == MemoryReviewStatus.PENDING } ?: 0
     val searchRows = if (query.isBlank()) emptyList() else when (tab) {
         0 -> index?.search(query).orEmpty()
-        1 -> snapshot?.memories.orEmpty().filter { it.reviewStatus == MemoryReviewStatus.PENDING && it.matches(query) }
         else -> snapshot?.memories.orEmpty().filter { it.matches(query) }
     }
     fun beginAdd() {
@@ -175,7 +173,7 @@ internal fun MemoryScreen(
             notice?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp).testTag("memory_notice")) }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when {
-                    selectedDetail != null -> MemoryDetail(selectedDetail, snapshot?.memories.orEmpty(), onBack = { detailId = null }, onCorrect = ::beginCorrection, onOrganize = ::beginOrganize, onDelete = ::requestDelete, onApprove = { mutate({ memoryOs.approve(it.id, it.revision) }) }, onReject = { mutate({ memoryOs.reject(it.id, it.revision) }) })
+                    selectedDetail != null -> MemoryDetail(selectedDetail, snapshot?.memories.orEmpty(), onBack = { detailId = null }, onCorrect = ::beginCorrection, onOrganize = ::beginOrganize, onDelete = ::requestDelete)
                     selectedPage != null -> BoxWithConstraints(Modifier.fillMaxSize()) {
                         val openPage: (String) -> Unit = { pageId = it; detailId = null; highlightedId = null }
                         if (maxWidth >= 600.dp) Row(Modifier.fillMaxSize()) {
@@ -186,13 +184,15 @@ internal fun MemoryScreen(
                             Box(Modifier.weight(1f)) { MemoryArticle(selectedPage, index, snapshot?.memories.orEmpty(), onBack = { pageId = null; highlightedId = null }, onOpenPage = openPage, onOpenRecord = { detailId = it.id }, highlightedId = highlightedId) }
                         } else MemoryArticle(selectedPage, index, snapshot?.memories.orEmpty(), onBack = { pageId = null; highlightedId = null }, onOpenPage = openPage, onOpenRecord = { detailId = it.id }, highlightedId = highlightedId)
                     }
-                    query.isNotBlank() -> SearchList(searchRows, tab, onClear = { query = "" }, onOpen = { record -> if (record.reviewStatus == MemoryReviewStatus.APPROVED && index?.findMemory(record.id) != null) openRecord(record) else { detailId = record.id; query = ""; tab = if (record.reviewStatus == MemoryReviewStatus.PENDING) 1 else 2 } })
+                    query.isNotBlank() -> SearchList(searchRows, tab, onClear = { query = "" }, onOpen = { record -> if (record.reviewStatus == MemoryReviewStatus.APPROVED && index?.findMemory(record.id) != null) openRecord(record) else { detailId = record.id; query = ""; tab = 1 } })
                     else -> {
                         Column(Modifier.fillMaxSize()) {
-                            TabRow(selectedTabIndex = tab, modifier = Modifier.padding(horizontal = 16.dp)) { Tab(tab == 0, { tab = 0 }, text = { Text("Wiki") }, modifier = Modifier.testTag("memory_wiki_tab")); Tab(tab == 1, { tab = 1 }, text = { Text("Review ($pending)") }, modifier = Modifier.testTag("memory_review_tab")); Tab(tab == 2, { tab = 2 }, text = { Text("History") }, modifier = Modifier.testTag("memory_history_tab")) }
-                            when (tab) {
+                            // Two tabs since the review queue was removed (2026-11-01);
+                            // a persisted tab index from the three-tab layout coerces to History.
+                            val shownTab = if (tab == 0) 0 else 1
+                            TabRow(selectedTabIndex = shownTab, modifier = Modifier.padding(horizontal = 16.dp)) { Tab(shownTab == 0, { tab = 0 }, text = { Text("Wiki") }, modifier = Modifier.testTag("memory_wiki_tab")); Tab(shownTab == 1, { tab = 1 }, text = { Text("History") }, modifier = Modifier.testTag("memory_history_tab")) }
+                            when (shownTab) {
                                 0 -> WikiHome(index, onOpenPage = { pageId = it }, onEraseAll = ::requestEraseAll, embeddingSetup = embeddingSetup)
-                                1 -> ReviewList(snapshot?.memories.orEmpty().filter { it.reviewStatus == MemoryReviewStatus.PENDING }, busy, onApprove = { mutate({ memoryOs.approve(it.id, it.revision) }) }, onReject = { mutate({ memoryOs.reject(it.id, it.revision) }) }, onCorrect = ::beginCorrection, onOrganize = ::beginOrganize, onDelete = ::requestDelete, onOpen = { detailId = it.id })
                                 else -> HistoryList(snapshot?.memories.orEmpty(), busy, onCorrect = ::beginCorrection, onOrganize = ::beginOrganize, onDelete = ::requestDelete, onOpen = { detailId = it.id }, onEraseAll = ::requestEraseAll)
                             }
                         }
@@ -211,7 +211,17 @@ internal fun MemoryScreen(
         onDraft = { value -> draft = value; sourceEventId = UUID.randomUUID().toString(); sourceCreatedAtMs = System.currentTimeMillis(); if (!categoryOverridden || !topicOverridden) { val suggested = MemoryWiki.suggest(value); if (!categoryOverridden) categoryName = suggested.category.name; if (!topicOverridden) topic = suggested.topic } },
         onTopic = { topic = it; topicOverridden = true }, onCategory = { categoryName = it.name; categoryOverridden = true },
         onDismiss = { showEditor = false; correctionId = null; correctionRevision = null }, onSave = {
-            mutate({ memoryOs.propose(MemoryProposal(content = draft, source = MemorySource(sourceEventId, "manual entry", sourceCreatedAtMs), wikiAssignment = MemoryWikiAssignment(category, topic), correctsMemoryId = correctionId, expectedTargetRevision = correctionRevision)) }) { showEditor = false; correctionId = null; correctionRevision = null }
+            // No approval step (2026-11-01): a memory added or corrected here is
+            // committed on save, the same immediate propose+approve the capture
+            // paths use; approving a correction supersedes its target at once.
+            mutate({
+                val proposed = memoryOs.propose(MemoryProposal(content = draft, source = MemorySource(sourceEventId, "manual entry", sourceCreatedAtMs), wikiAssignment = MemoryWikiAssignment(category, topic), correctsMemoryId = correctionId, expectedTargetRevision = correctionRevision))
+                val record = proposed.memory
+                if (proposed.outcome == MemoryOutcome.CREATED && record != null) {
+                    val approved = memoryOs.approve(record.id)
+                    if (approved.outcome == MemoryOutcome.APPROVED) MemoryResult(MemoryOutcome.APPROVED, "Memory saved.", approved.memory) else approved
+                } else proposed
+            }) { showEditor = false; correctionId = null; correctionRevision = null }
         })
     organizeTarget?.let { record -> OrganizeDialog(record, organizeCategory, organizeTopic, actionError, busy, onCategory = { organizeCategoryName = it.name }, onTopic = { organizeTopic = it }, onDismiss = { organizeId = null; organizeRevision = null }, onSave = { mutate({ memoryOs.assignWiki(record.id, organizeRevision, MemoryWikiAssignment(organizeCategory, organizeTopic)) }) { organizeId = null; organizeRevision = null } }) }
     deleteTarget?.let { record -> AlertDialog(modifier = Modifier.semantics { testTagsAsResourceId = true }, onDismissRequest = { if (!busy) confirmDeleteId = null }, title = { Text("Erase this memory?") }, text = { Column { Text("This also erases linked corrections."); actionError?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("memory_error")) } } }, confirmButton = { TextButton(onClick = { mutate({ memoryOs.delete(record.id, confirmDeleteRevision) }) { confirmDeleteId = null } }, enabled = !busy, modifier = Modifier.testTag("memory_delete_confirm")) { Text("Erase") } }, dismissButton = { TextButton(onClick = { confirmDeleteId = null }, enabled = !busy, modifier = Modifier.testTag("memory_delete_cancel")) { Text("Cancel") } }) }
@@ -233,10 +243,10 @@ private fun MemoryEditorDialog(draft: String, topic: String, category: WikiCateg
         OutlinedTextField(topic, onTopic, label = { Text("Topic") }, modifier = Modifier.fillMaxWidth().testTag("memory_topic_input"))
         if (!categoryOverridden || !topicOverridden) Text("Category and topic are suggested from your wording; you can choose either.", style = MaterialTheme.typography.bodySmall)
         if (correction != null) Text("Replaces: ${correction.content}", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        else if (isCorrection) Text("The original memory will be checked when this correction is saved.", style = MaterialTheme.typography.bodySmall)
+        else if (isCorrection) Text("Saving applies this correction right away.", style = MaterialTheme.typography.bodySmall)
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("memory_error")) }
     } },
-    confirmButton = { TextButton(onClick = onSave, enabled = draft.isNotBlank() && topic.isNotBlank() && !busy, modifier = Modifier.semantics { testTagsAsResourceId = true }.testTag("memory_propose")) { Text(if (isCorrection) "Submit correction" else "Add for review") } },
+    confirmButton = { TextButton(onClick = onSave, enabled = draft.isNotBlank() && topic.isNotBlank() && !busy, modifier = Modifier.semantics { testTagsAsResourceId = true }.testTag("memory_propose")) { Text(if (isCorrection) "Submit correction" else "Add") } },
     dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
 )
 

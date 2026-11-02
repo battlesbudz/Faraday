@@ -1484,7 +1484,9 @@ class ReleaseJourneyTest {
         /*
          * This mounts the shipping MemoryScreen on a real, file-backed MemoryOs.  The two
          * ConversationMemory inputs are deliberately finalized fixtures: this proves the
-         * production capture boundary and review UI without claiming microphone/ASR/model work.
+         * production capture boundary and memory UI without claiming microphone/ASR/model work.
+         * Since 2026-11-01 capture commits immediately (no review step): captured and
+         * manually added memories are approved at once and searchable in the wiki.
          */
         val file = File(context.cacheDir, "release-memory-wiki-journey.db").apply { delete() }
         val store = SQLiteMemoryStore(file)
@@ -1512,15 +1514,9 @@ class ReleaseJourneyTest {
             clickHorizontalChip(By.res("memory_category_picker"), By.res("memory_category_$category"))
             enterText(By.res("memory_topic_input"), topic)
             clickEnabled(By.res("memory_propose"))
-            assertTrue("Add dialog did not close after its saved proposal", device.wait(
+            assertTrue("Add dialog did not close after its saved memory", device.wait(
                 Until.gone(By.res("memory_new_content")), 15_000
             ))
-        }
-        fun approveOnlyPending() {
-            clickFixedMemoryControl(By.res("memory_review_tab"))
-            assertNotNull(find(By.text("Review (1)")))
-            clickEnabled(By.res("memory_approve"))
-            assertNotNull(find(By.text("Review (0)")))
         }
 
         try {
@@ -1551,17 +1547,12 @@ class ReleaseJourneyTest {
                 "$cobalt.", now + 1
             )).outcome)
 
-            // Pending capture is reviewable but never part of Wiki search until a real Approve tap.
-            assertNotNull(find(By.text("Review (2)")))
-            searchMemory("sapphire notebooks", By.text("No approved memories match that search."))
+            // Captured memories commit immediately: there is no review tab, and
+            // both captures are part of Wiki search right away.
+            assertNull(device.findObject(By.res("memory_review_tab")))
+            searchMemory("sapphire notebooks", By.text(sapphire))
             enterFixedMemorySearchText("")
-            clickFixedMemoryControl(By.res("memory_review_tab"))
-            assertNotNull(scrollTo(By.text(sapphire)))
-            captureEvidence("memory_wiki_review_pending")
-            clickEnabled(By.res("memory_approve"))
-            assertNotNull(find(By.text("Review (1)")))
-            clickEnabled(By.res("memory_approve"))
-            assertNotNull(find(By.text("Review (0)")))
+            captureEvidence("memory_wiki_capture_immediate")
 
             // Exact wiki search opens the derived topic page; Sources exposes the capture provenance.
             clickEnabled(By.res("memory_wiki_tab"))
@@ -1575,12 +1566,6 @@ class ReleaseJourneyTest {
             // Explicit category/topic placement can be changed later and survives the store reload.
             addManual(atlas, "projects", "Atlas")
             addManual(cobaltNotes, "knowledge", "Cobalt")
-            clickFixedMemoryControl(By.res("memory_review_tab"))
-            assertNotNull(find(By.text("Review (2)")))
-            clickEnabled(By.res("memory_approve"))
-            assertNotNull(find(By.text("Review (1)")))
-            clickEnabled(By.res("memory_approve"))
-            assertNotNull(find(By.text("Review (0)")))
             clickEnabled(By.res("memory_wiki_tab"))
             searchMemory("atlas", By.text(atlas))
             clickEnabled(By.text(atlas))
@@ -1611,7 +1596,7 @@ class ReleaseJourneyTest {
             captureEvidence("memory_wiki_linked_article")
             clickEnabled(By.res("memory_article_back"))
 
-            // Corrections stay out of the index until reviewed, then supersede the old search hit.
+            // Corrections apply on save and supersede the old search hit at once.
             searchMemory("sapphire notebooks", By.text(sapphire))
             clickEnabled(By.text(sapphire))
             assertNotNull(find(By.res("memory_article_tab")))
@@ -1620,11 +1605,10 @@ class ReleaseJourneyTest {
             assertNotNull(find(By.text("Correct memory")))
             enterText(By.res("memory_new_content"), indigo)
             clickEnabled(By.res("memory_propose"))
-            assertTrue("Correction dialog did not close after its saved proposal", device.wait(
+            assertTrue("Correction dialog did not close after its saved memory", device.wait(
                 Until.gone(By.res("memory_new_content")), 15_000
             ))
             clickEnabled(By.res("memory_article_back"))
-            approveOnlyPending()
             clickEnabled(By.res("memory_wiki_tab"))
             searchMemory("sapphire notebooks", By.text("No approved memories match that search."))
             searchMemory("indigo notebooks", By.text(indigo))
@@ -1657,11 +1641,15 @@ class ReleaseJourneyTest {
             searchMemory("sapphire notebooks", By.text("No approved memories match that search."))
             enterFixedMemorySearchText("")
 
-            // Rejected pending records are retained only in History, never in the wiki index.
-            addManual("Rejected private note for verification.", "knowledge", "Rejected")
-            clickFixedMemoryControl(By.res("memory_review_tab"))
-            clickEnabled(By.res("memory_reject"))
-            assertNotNull(find(By.text("Review (0)")))
+            // Rejected records are retained only in History, never in the wiki
+            // index. There is no review UI anymore, so the rejection is driven
+            // through the MemoryOs lifecycle directly (the same shape as the
+            // ledger-only fixtures at the end of this journey).
+            val rejectedNote = checkNotNull(memoryOs.propose(MemoryProposal(
+                "Rejected private note for verification.",
+                MemorySource("release-rejected-note", "manual", now + 2),
+                wikiAssignment = MemoryWikiAssignment(WikiCategory.KNOWLEDGE, "Rejected"))).memory)
+            assertEquals(MemoryOutcome.REJECTED, memoryOs.reject(rejectedNote.id, rejectedNote.revision).outcome)
             clickEnabled(By.res("memory_wiki_tab"))
             searchMemory("rejected private note", By.text("No approved memories match that search."))
             enterFixedMemorySearchText("")
@@ -1672,7 +1660,6 @@ class ReleaseJourneyTest {
 
             // A fresh approved record survives Activity recreation using the same real store.
             addManual(persistent, "preferences", "Tea")
-            approveOnlyPending()
             activity.recreate()
             val reloaded = SQLiteMemoryStore(file).use { checkNotNull(it.read().snapshot) }
             assertTrue("A separately opened store must retain the approved record after recreation",
@@ -2577,7 +2564,7 @@ class ReleaseJourneyTest {
         } finally { root.deleteRecursively() }
     }
 
-    @Test fun test39_referencePdfExtractionAndPendingAcknowledgmentUseReleaseCode() {
+    @Test fun test39_referencePdfExtractionAndSavedAcknowledgmentUseReleaseCode() {
         val bytes = instrumentation.context.assets.open("reference-fixture.pdf").use { it.readBytes() }
         val text = com.battlesbudz.jarvis.v2.ai.ReferencePdfText.read(context, bytes)
         assertTrue(text.contains("Fermented plant juice (FPJ)"))
@@ -2591,9 +2578,11 @@ class ReleaseJourneyTest {
             val os = MemoryOs(File(root, "memory.json"))
             val receipt = ConversationMemory(os).capture(FinalMemoryInput("ack", "conversation", source = ConversationMemorySource.TEXT,
                 text = "Remember I like apricots", capturedAtMs = System.currentTimeMillis()))
-            assertEquals(MemoryReviewStatus.PENDING, receipt.memory!!.reviewStatus)
-            assertEquals("I've added a pending memory for your review. It isn't approved yet.", MemoryCaptureAcknowledgment.reply(receipt))
-            assertTrue(os.contextPacket("what fruit do I like?", 1200).packet!!.memories.isEmpty())
+            // No approval step (2026-11-01): the capture is approved at once,
+            // the receipt says so, and the fact is recallable immediately.
+            assertEquals(MemoryReviewStatus.APPROVED, receipt.memory!!.reviewStatus)
+            assertEquals("Saved to memory.", MemoryCaptureAcknowledgment.reply(receipt))
+            assertTrue(os.contextPacket("what fruit do I like?", 1200).packet!!.text.contains("apricots"))
         } finally { root.deleteRecursively() }
     }
 

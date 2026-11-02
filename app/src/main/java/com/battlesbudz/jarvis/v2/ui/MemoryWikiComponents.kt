@@ -94,7 +94,7 @@ internal fun MemoryArticle(
 }
 
 @Composable
-internal fun MemoryDetail(record: MemoryRecord, allRecords: List<MemoryRecord>, onBack: () -> Unit, onCorrect: (MemoryRecord) -> Unit, onOrganize: (MemoryRecord) -> Unit, onDelete: (MemoryRecord) -> Unit, onApprove: (MemoryRecord) -> Unit = {}, onReject: (MemoryRecord) -> Unit = {}) {
+internal fun MemoryDetail(record: MemoryRecord, allRecords: List<MemoryRecord>, onBack: () -> Unit, onCorrect: (MemoryRecord) -> Unit, onOrganize: (MemoryRecord) -> Unit, onDelete: (MemoryRecord) -> Unit) {
     val placement = record.placement()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { TextButton(onClick = onBack, modifier = Modifier.testTag("memory_detail_back")) { Text("Back to memory") } }
@@ -105,30 +105,27 @@ internal fun MemoryDetail(record: MemoryRecord, allRecords: List<MemoryRecord>, 
         if (record.source.provenance.isNotEmpty()) item { record.source.provenance.forEach { source -> Text("${source.label ?: source.kind} · ${source.id}", style = MaterialTheme.typography.bodySmall) } }
         item { Text("History", style = MaterialTheme.typography.titleMedium) }
         item { Text("Created ${dateLabel(record.createdAtMs)} · updated ${dateLabel(record.updatedAtMs)}", style = MaterialTheme.typography.bodySmall); if (record.correctsMemoryId != null) Text("This is a correction of an earlier saved fact.", style = MaterialTheme.typography.bodySmall); if (allRecords.any { it.correctsMemoryId == record.id }) Text("This fact has a later correction in memory history.", style = MaterialTheme.typography.bodySmall) }
-        item { DetailActions(record, onCorrect, onOrganize, onDelete, onApprove, onReject) }
+        item { DetailActions(record, onCorrect, onOrganize, onDelete) }
     }
 }
 
-@Composable private fun DetailActions(record: MemoryRecord, onCorrect: (MemoryRecord) -> Unit, onOrganize: (MemoryRecord) -> Unit, onDelete: (MemoryRecord) -> Unit, onApprove: (MemoryRecord) -> Unit, onReject: (MemoryRecord) -> Unit) = Column(verticalArrangement = Arrangement.spacedBy(4.dp)) { if (record.reviewStatus == MemoryReviewStatus.PENDING) { Row { TextButton(onClick = { onApprove(record) }, modifier = Modifier.testTag("memory_approve")) { Text("Approve") }; TextButton(onClick = { onReject(record) }, modifier = Modifier.testTag("memory_reject")) { Text("Reject") } } }; if (record.reviewStatus == MemoryReviewStatus.APPROVED) TextButton(onClick = { onCorrect(record) }, modifier = Modifier.testTag("memory_correct")) { Text("Correct") }; if (record.reviewStatus in setOf(MemoryReviewStatus.PENDING, MemoryReviewStatus.APPROVED)) TextButton(onClick = { onOrganize(record) }, modifier = Modifier.testTag("memory_organize")) { Text("Organize") }; TextButton(onClick = { onDelete(record) }, modifier = Modifier.testTag("memory_delete")) { Text("Erase") } }
+@Composable private fun DetailActions(record: MemoryRecord, onCorrect: (MemoryRecord) -> Unit, onOrganize: (MemoryRecord) -> Unit, onDelete: (MemoryRecord) -> Unit) = Column(verticalArrangement = Arrangement.spacedBy(4.dp)) { if (record.reviewStatus == MemoryReviewStatus.APPROVED) TextButton(onClick = { onCorrect(record) }, modifier = Modifier.testTag("memory_correct")) { Text("Correct") }; if (record.reviewStatus in setOf(MemoryReviewStatus.PENDING, MemoryReviewStatus.APPROVED)) TextButton(onClick = { onOrganize(record) }, modifier = Modifier.testTag("memory_organize")) { Text("Organize") }; TextButton(onClick = { onDelete(record) }, modifier = Modifier.testTag("memory_delete")) { Text("Erase") } }
 
 @Composable
-internal fun ReviewList(rows: List<MemoryRecord>, busy: Boolean, onApprove: (MemoryRecord) -> Unit, onReject: (MemoryRecord) -> Unit, onCorrect: (MemoryRecord) -> Unit, onOrganize: (MemoryRecord) -> Unit, onDelete: (MemoryRecord) -> Unit, onOpen: (MemoryRecord) -> Unit) = LedgerList(rows, "Nothing is waiting for review.\n\nTell Jarvis “Remember that …” in Chat or Voice, or add a memory here. New memories appear for review before entering the wiki.", busy, onApprove, onReject, onCorrect, onOrganize, onDelete, onOpen, review = true)
-@Composable
-internal fun HistoryList(rows: List<MemoryRecord>, busy: Boolean, onCorrect: (MemoryRecord) -> Unit, onOrganize: (MemoryRecord) -> Unit, onDelete: (MemoryRecord) -> Unit, onOpen: (MemoryRecord) -> Unit, onEraseAll: () -> Unit) = LedgerList(rows.sortedByDescending { it.updatedAtMs }, "No memory history yet.", busy, {}, {}, onCorrect, onOrganize, onDelete, onOpen, review = false, onEraseAll = onEraseAll)
+internal fun HistoryList(rows: List<MemoryRecord>, busy: Boolean, onCorrect: (MemoryRecord) -> Unit, onOrganize: (MemoryRecord) -> Unit, onDelete: (MemoryRecord) -> Unit, onOpen: (MemoryRecord) -> Unit, onEraseAll: () -> Unit) = LedgerList(rows.sortedByDescending { it.updatedAtMs }, "No memory history yet.", busy, onCorrect, onOrganize, onDelete, onOpen, onEraseAll = onEraseAll)
 
 @Composable
 private fun LedgerList(
     rows: List<MemoryRecord>, empty: String, busy: Boolean,
-    onApprove: (MemoryRecord) -> Unit, onReject: (MemoryRecord) -> Unit,
     onCorrect: (MemoryRecord) -> Unit, onOrganize: (MemoryRecord) -> Unit,
     onDelete: (MemoryRecord) -> Unit, onOpen: (MemoryRecord) -> Unit,
-    review: Boolean, onEraseAll: () -> Unit = {},
+    onEraseAll: () -> Unit = {},
 ) = LazyColumn(
     modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
     verticalArrangement = Arrangement.spacedBy(10.dp),
 ) {
     if (rows.isEmpty()) item { Text(empty) }
-    else if (!review) item {
+    else item {
         TextButton(onClick = onEraseAll, enabled = !busy, modifier = Modifier.testTag("memory_erase_all")) {
             Text("Erase all memories")
         }
@@ -140,12 +137,6 @@ private fun LedgerList(
                 val placement = record.placement()
                 Text("${record.reviewStatus.name.lowercase().replaceFirstChar { it.titlecase() }} · ${placement.first.title} · ${placement.second}", style = MaterialTheme.typography.labelSmall)
                 Text("Captured from ${record.source.sourceLabel()} · ${dateLabel(record.source.createdAtMs)}", style = MaterialTheme.typography.labelSmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    if (review) {
-                        TextButton(onClick = { onApprove(record) }, enabled = !busy, modifier = Modifier.testTag("memory_approve")) { Text("Approve") }
-                        TextButton(onClick = { onReject(record) }, enabled = !busy, modifier = Modifier.testTag("memory_reject")) { Text("Reject") }
-                    }
-                }
                 if (record.reviewStatus == MemoryReviewStatus.APPROVED)
                     TextButton(onClick = { onCorrect(record) }, enabled = !busy, modifier = Modifier.testTag("memory_correct")) { Text("Correct") }
                 if (record.reviewStatus in setOf(MemoryReviewStatus.PENDING, MemoryReviewStatus.APPROVED))
