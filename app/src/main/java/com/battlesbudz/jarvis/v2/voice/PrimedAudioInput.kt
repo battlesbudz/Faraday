@@ -61,11 +61,11 @@ internal class PrimedAudioInput(
     fun prime() {
         if (priming != null || closed) return
         priming = scope.launch(Dispatchers.Default) {
-            if (!canPrime()) {
-                log("route_b_priming_skipped reason=scheduler_or_state")
-                return@launch
-            }
             try {
+                if (!canPrime()) {
+                    log("route_b_priming_skipped reason=scheduler_or_state")
+                    return@launch
+                }
                 val began = nowNanos()
                 val native = create()
                 session = native
