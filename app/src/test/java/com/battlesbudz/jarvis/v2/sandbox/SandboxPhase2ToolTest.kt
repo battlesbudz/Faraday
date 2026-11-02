@@ -214,6 +214,104 @@ class SandboxPhase2ToolTest {
         assertFalse(ActionRequestText.sandboxRunRequest("run a mile for me"))
     }
 
+    // -- Command fidelity: dictated commands are extracted verbatim ---------
+
+    @Test fun literalExtractionReturnsDictatedCommandsVerbatim() {
+        assertEquals("echo phase2-ok",
+            ActionRequestText.sandboxLiteralCommand("Run echo phase2-ok in the sandbox"))
+        assertEquals("touch /workspace/denied-proof.txt",
+            ActionRequestText.sandboxLiteralCommand(
+                "Run touch /workspace/denied-proof.txt in the sandbox."))
+        // Case and internal punctuation are the user's own and survive.
+        assertEquals("ls -la /Workspace",
+            ActionRequestText.sandboxLiteralCommand(
+                "Please run ls -la /Workspace in the sandbox"))
+        assertEquals("echo Phase2-OK",
+            ActionRequestText.sandboxLiteralCommand("execute echo Phase2-OK in the sandbox"))
+    }
+
+    @Test fun literalExtractionStripsOneLayerOfUserQuotes() {
+        assertEquals("echo hello world",
+            ActionRequestText.sandboxLiteralCommand("Run \"echo hello world\" in the sandbox"))
+        assertEquals("echo hello world",
+            ActionRequestText.sandboxLiteralCommand("Run 'echo hello world' in the sandbox"))
+    }
+
+    @Test fun literalExtractionLeavesDescriptionsAndMentionsToTheModel() {
+        // Description-style requests dictate no literal command: the model
+        // keeps composing those proposals under the same approval gate.
+        assertNull(ActionRequestText.sandboxLiteralCommand("Use the sandbox to add 2 and 3"))
+        assertNull(ActionRequestText.sandboxLiteralCommand(
+            "Run something that lists the files in the sandbox"))
+        assertNull(ActionRequestText.sandboxLiteralCommand("Run this in the sandbox"))
+        // Talk about the sandbox never extracts (and never arms).
+        assertNull(ActionRequestText.sandboxLiteralCommand("what is the sandbox?"))
+        assertNull(ActionRequestText.sandboxLiteralCommand("is the sandbox installed?"))
+        // Negated requests never extract.
+        assertNull(ActionRequestText.sandboxLiteralCommand("don't run echo hi in the sandbox"))
+    }
+
+    @Test fun validateBatchParksTheDictatedCommandNotTheComposedOne() {
+        // Build 1668 device defect: Battles dictated "Run echo phase2-ok in
+        // the sandbox" and the model proposed `echo "phase-ok" > phase2ok`.
+        // The parked proposal must carry his span verbatim.
+        val plan = ActionTurnPlan.Ready(listOf(
+            ActionTurnPlan.Step(ActionRequest("run_in_sandbox", mapOf("command" to "")),
+                "Run echo phase2-ok in the sandbox")))
+        val batch = ActionTurnRunner(
+            com.battlesbudz.jarvis.v2.actions.MobileActionExecutor {
+                error("proposals must not reach the executor") })
+            .validateBatch(plan, emptyList(),
+                listOf(ToolCall("run_in_sandbox",
+                    "{\"command\":\"echo \\\"phase-ok\\\" > phase2ok\"}")))
+        assertTrue(batch is ActionTurnRunner.Batch.NeedsApproval)
+        batch as ActionTurnRunner.Batch.NeedsApproval
+        assertEquals(
+            listOf(ActionRequest("run_in_sandbox", mapOf("command" to "echo phase2-ok"))),
+            batch.proposed)
+    }
+
+    @Test fun runNativeParksTheDictatedCommandVerbatim() = runBlocking {
+        val parked = mutableListOf<ActionRequest>()
+        val plan = ActionTurnPlan.Ready(listOf(
+            ActionTurnPlan.Step(ActionRequest("run_in_sandbox", mapOf("command" to "")),
+                "Run touch /workspace/denied-proof.txt in the sandbox.")))
+        val outcome = ActionTurnRunner(
+            com.battlesbudz.jarvis.v2.actions.MobileActionExecutor {
+                error("proposals must not reach the executor") })
+            .runNative(
+                plan,
+                listOf(ToolCall("run_in_sandbox",
+                    "{\"command\":\"rm /workspace/denied-proof.txt\"}")),
+                dispatch = { ExecutionResult(true, "must not dispatch") },
+                nextCalls = { emptyList() },
+                onNeedsApproval = { request ->
+                    parked += request
+                    ExecutionResult(false, "I need your approval before I run that command.")
+                })
+        assertEquals(listOf(ActionRequest("run_in_sandbox",
+            mapOf("command" to "touch /workspace/denied-proof.txt"))), parked)
+        assertTrue(outcome.stopped)
+        assertFalse(outcome.completed)
+    }
+
+    @Test fun validateBatchKeepsTheComposedCommandWhenNothingWasDictated() {
+        // Description-style arming (no literal span): the model's composed
+        // proposal parks unchanged, exactly as before this fix.
+        val plan = ActionTurnPlan.Ready(listOf(
+            ActionTurnPlan.Step(ActionRequest("run_in_sandbox", mapOf("command" to "")),
+                "Use the sandbox to add 2 and 3")))
+        val batch = ActionTurnRunner(
+            com.battlesbudz.jarvis.v2.actions.MobileActionExecutor {
+                error("proposals must not reach the executor") })
+            .validateBatch(plan, emptyList(),
+                listOf(ToolCall("run_in_sandbox", "{\"command\":\"echo 5\"}")))
+        assertTrue(batch is ActionTurnRunner.Batch.NeedsApproval)
+        batch as ActionTurnRunner.Batch.NeedsApproval
+        assertEquals(listOf(ActionRequest("run_in_sandbox", mapOf("command" to "echo 5"))),
+            batch.proposed)
+    }
+
     // -- Receipt shaping ------------------------------------------------------
 
     private fun runResult(output: String = "", exitCode: Int? = 0, timedOut: Boolean = false,

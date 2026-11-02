@@ -40,8 +40,29 @@ class ActionTurnRunner(
         // (Sandbox Phase 2) proposed by the model never auto-dispatch: they
         // are parked for the user's explicit approval while the other calls
         // validate exactly as before.
-        val proposed = requests.filter { it.name in SCREEN_MUTATION_TOOLS || it.name == "browse_submit" ||
+        val rawProposed = requests.filter { it.name in SCREEN_MUTATION_TOOLS || it.name == "browse_submit" ||
             it.name in SANDBOX_APPROVAL_TOOLS }
+        // Sandbox command fidelity: when this turn's intent marker was armed
+        // by a request that dictates the command literally ("run <command>
+        // in the sandbox"), the parked proposal carries the user's span
+        // verbatim — never the model's recomposition of it (build 1668
+        // proposed `echo "phase-ok" > phase2ok` for a dictated
+        // "echo phase2-ok"). One dictated command parks once, however many
+        // times the model re-emits the call inside a single batch.
+        // Description-style requests dictate no span and keep the composed
+        // proposal unchanged.
+        val dictated = dictatedSandboxCommand(plan)
+        val proposed = if (dictated == null) rawProposed else {
+            var substituted = false
+            rawProposed.mapNotNull { request ->
+                if (request.name !in SANDBOX_APPROVAL_TOOLS) request
+                else if (substituted) null
+                else {
+                    substituted = true
+                    request.copy(arguments = mapOf("command" to dictated))
+                }
+            }
+        }
         val rest = requests.filter { it.name !in SCREEN_MUTATION_TOOLS && it.name != "browse_submit" &&
             it.name !in SANDBOX_APPROVAL_TOOLS }
         val accepted: Batch.Accepted? = if (rest.isEmpty()) {
@@ -58,6 +79,17 @@ class ActionTurnRunner(
         return if (proposed.isNotEmpty()) Batch.NeedsApproval(proposed, accepted)
         else accepted ?: Batch.Rejected()
     }
+
+    /**
+     * The verbatim command dictated by the request that armed this plan's
+     * sandbox intent marker, or null when the plan carries no marker or the
+     * request dictated no literal command. Only the marker can put a
+     * run_in_sandbox step in a plan (the deterministic parser never emits
+     * one), and the marker step's source clause is the user's own text.
+     */
+    private fun dictatedSandboxCommand(plan: ActionTurnPlan.Ready): String? =
+        plan.steps.firstOrNull { it.request.name in SANDBOX_APPROVAL_TOOLS }
+            ?.let { ActionRequestText.sandboxLiteralCommand(it.sourceClause) }
 
     private fun validateRest(remaining: List<ActionTurnPlan.Step>, completed: List<Receipt>, requests: List<ActionRequest>): Batch {
         val accepted = mutableListOf<ActionRequest>()

@@ -4544,3 +4544,39 @@ end-to-end approval-to-output behavior, and physical-device timing. Those
 require Battles's Fold 6 proof on the published build (one approved run
 whose output is reported back; one denied run verified through the
 diagnostics counters).
+
+## Sandbox command fidelity — November 2, 2026
+
+Follow-up to the Phase 2 tool binding, from Battles's build 1668 device
+proof: the approval machinery worked exactly as specified (counters
+proposed=2 approved=1 denied=1 runs=1 lastExit=0; the denied command never
+ran), but the model recomposed a literally dictated command — "Run echo
+phase2-ok in the sandbox" was proposed as `echo "phase-ok" > phase2ok`
+(different text, redirected into a file) and the approved run exited 0
+with no output. A dictated command is now extracted deterministically:
+when the request that arms the intent marker carries a literal span
+between the run/execute verb and the "in the sandbox" anchor,
+`ActionRequestText.sandboxLiteralCommand` returns that span verbatim
+(case and internal punctuation preserved, surrounding whitespace trimmed,
+one layer of user-typed quotes stripped), and `ActionTurnRunner`
+substitutes it for the model's recomposition before the proposal parks —
+one dictated command parks once per batch. Description-style requests
+("use the sandbox to add these numbers", "run something that lists the
+files") and mere mentions dictate no span and keep the model-composition
+path unchanged, under the same exact-approval gate; the marker, the
+eligibility ladder, the counters and the Phase 1 runner are untouched.
+Routing diagnostics record the extracted span when one is found.
+
+`SandboxPhase2ToolTest` additionally pins verbatim extraction (including
+the two build 1668 proof commands), one-layer quote stripping, fallback
+for descriptions, mentions and negations, batch-level substitution of the
+dictated command for the mangled composed one, runNative parking of the
+dictated command, and unchanged composed parking when nothing was
+dictated.
+
+Not established by this entry: on-device behavior of the substitution.
+That requires Battles's Fold 6 proof on the published build — dictate
+"Run echo phase2-ok in the sandbox" and confirm the approval card shows
+exactly `echo phase2-ok`, then approve and hear exit 0 with output
+`phase2-ok`. The direct-audio path is unchanged: it has no pre-model
+text, so nothing is extracted there.

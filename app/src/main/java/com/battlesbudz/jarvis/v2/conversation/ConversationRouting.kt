@@ -149,12 +149,20 @@ internal class ConversationRouting(
         // actual run_in_sandbox calls validate as proposals and park for
         // Battles's exact approval of the command text; the result of this
         // turn is the parked receipt, exactly like a proposed screen tap.
+        // When the request dictates the command literally, ActionTurnRunner
+        // substitutes the user's verbatim span for the model's recomposition
+        // before parking (ActionRequestText.sandboxLiteralCommand).
         val actionPlan = if (requestedActionPlan is ActionTurnPlan.NotAction &&
             !request.directVoiceAudio && !request.comparisonActive &&
             !request.imageAttached && !request.audioAttached &&
             com.battlesbudz.jarvis.v2.actions.ActionRequestText.sandboxRunRequest(prompt)) {
             diagnostics.record("Sandbox tool channel armed by explicit sandbox request: " +
                 "the model may propose run_in_sandbox; proposals park for exact approval.")
+            com.battlesbudz.jarvis.v2.actions.ActionRequestText.sandboxLiteralCommand(prompt)
+                ?.let { literal ->
+                    diagnostics.record("Sandbox dictated command extracted verbatim: " +
+                        "the parked proposal will carry exactly: $literal")
+                }
             ActionTurnPlan.Ready(listOf(ActionTurnPlan.Step(
                 com.battlesbudz.jarvis.v2.actions.ActionRequest(
                     "run_in_sandbox", mapOf("command" to "")), prompt)))
