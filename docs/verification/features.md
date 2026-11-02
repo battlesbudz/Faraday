@@ -1,5 +1,102 @@
 # Feature and acceptance map
 
+## Memory RAG Unit 3 — nightly dream synthesis — 2 November 2026
+
+Ships on `feature/memory-rag` over Units 1/2 and the memory-disregard fix.
+Design: `UNIT3_SCOPE.md` in the epic workspace, with Battles's six decisions
+(OD-1..OD-6) binding; OD-4 is the load-bearing one — the dream may
+autonomously CREATE records that pass the gates, but it NEVER autonomously
+supersedes an existing record, so merge/supersede proposals are journaled
+like other refused outputs and commit nothing.
+
+Pipeline. `MemoryDreamWorker` is a 24 h periodic WorkManager job (unique
+name `memory-dream-synthesis`, KEEP, 6 h flex, constraints charging +
+device idle + battery-not-low + storage-not-low), enqueued beside the
+archive-expiry job in `AndroidMemoryOs`. The pass
+(`AndroidMemoryDream.runScheduledPass`) prefers Gemma-4-E4B-it as judge
+when its file is installed and falls back to the selected model (OD-1);
+with no model file it journals `skipped_no_model`. It holds the shared
+model gate for the whole pass and yields to conversation: contention
+journals `skipped_contention` and retries. Every exit path — completed,
+skipped, contended, failed — writes a journal entry and updates the Copy
+Diagnostics line: `Memory dream: runs=N last=<runId|none> lastOutcome=<…>
+merged=A superseded=B synthesized=C noop=D vetoed=E watermark=<ms>`
+(composed into the existing live-section hook beside the embeddings line).
+
+The pass itself (`MemoryDreamPass`) reads canonical records only —
+APPROVED, non-expired, NORMAL — never the 90-day source archive. Records
+changed since the journal watermark seed similarity groups over the
+Unit 1 vector projection (current-stamp rows only; bands >0.92
+merge-candidate / 0.85–0.92 judge-only / <0.85 link-only; groups capped
+at 7, the provenance ceiling). Dream-derived records never seed and can
+never be the sole basis of a derivation; settings-entered records
+(`manual entry`) may be cited as evidence but are never rewritten. One
+judge call per group (`GemmaDreamJudge` over the resident engine) emits
+merge / supersede / synthesize / no-op as strict JSON; the parser enforces
+the batch ID allowlist — any out-of-group ID, malformed output, a merge
+outside the top band, or a synthesis under 3 sources voids the proposal.
+Episodic extraction clusters recent (7-day) EPISODIC records by category
+(≥3, one changed seed required) and distills at most 3 facts per cluster
+through the same gate.
+
+The gate (`MemoryDreamGate`) is deterministic: the anti-resurrection
+fence is consulted first (content + source fingerprints, fail-closed);
+OD-4 refuses merge/supersede; evidence floor ≥3 sources; confidence
+floor 90 (95 for PERSON/PREFERENCE groups, which also no-op on any
+contradiction signal in the evidence); Vessel's veto pattern sets
+(restricted content, sensitive/private, contradiction, hedging) refuse
+the rest; and at the 500-record cap the pass journals `cap_headroom`
+and evicts nothing. Commits go through `MemoryOs.propose` + immediate
+approve with provenance `[{dream_cycle, <runId>, "Nightly dream
+synthesis"}, {source_memory, <id>} × N]` and a fence registration per
+commit. Sources are never edited, superseded, or deleted by the pass.
+
+Rollout and idempotency (OD-5): the first 3 counted nights are dry-run —
+full grouping/judging/gating, journal shows WOULD_COMMIT outputs, the
+ledger is untouched and the watermark does not advance, so live night 4
+sees the same changed set and commits it. Runs are resumable: the
+journal entry is written in-progress before the first group and re-saved
+after each group with the processed-group set and frontier watermark;
+deterministic per-output event ids make a replayed commit resolve to
+ALREADY_RECORDED. A global processed-group registry (live runs only)
+stops later nights re-judging an unchanged group. The journal is
+read-only in Memory settings (Wiki tab, "Dream journal" card): recent
+runs with per-output verb, action, gate reason, and content.
+
+Tests: MemoryDreamJournalTest (persistence/reopen, watermark
+monotonicity, exact diagnostics format incl. the virgin `last=none`
+state, bounded history, corrupt-file fail-closed),
+MemoryDreamGroupingTest (eligibility, determinism, band boundaries,
+DerivedNotSoleSourceTest, SettingsEnteredEvidenceOnlyTest, cap),
+MemoryDreamJudgeTest (AmbiguityNoopTest, HallucinatedIdRejectedTest,
+merge band/shape rules, extraction allowlist), MemoryDreamPassTest
+(live commit + provenance + watermark, dry-run purity of the ledger,
+dry groups stay eligible for their live commit, repeat-firing no-op,
+killed-run resume without duplicates, judge failure isolation, group
+cap), MemoryDreamCountermeasuresTest (ProvenanceCompletenessTest,
+SynthesisReadsCanonicalOnlyTest, FenceSupremacyTest across a simulated
+restart, InvalidateDontDeleteTest in its OD-4 form — a merge proposal
+changes nothing, VetoGateTest, CapHeadroomTest, IdempotentRerunTest,
+DryRunPurityTest, GoldenSpotCheckTest — golden-corpus Recall@5 does not
+degrade across a pass over a duplicate-heavy store),
+MemoryDreamExtractionTest (cluster shape/window/seed rules, extraction
+through the gate with full provenance, single-observation refusal,
+below-cluster silence), MemoryDreamWorkerTest (unique name/period/flex/
+constraints pinning; no-model journals skipped_no_model; contention
+journals skipped_contention, retries, and runs no pass).
+
+Device proof (Battles, on this build): state the same fact two ways in
+two calls (two near-duplicate records) and one pattern three times;
+leave the phone charging overnight. Dry-run nights 1–3: Memory settings
+→ Dream journal shows the runs and the would-be creations, and nothing
+in the ledger changes. Night 4 (first live night): the journal shows
+the pattern committed as a new record with its source ids; Copy
+Diagnostics carries the `Memory dream:` line with `synthesized=1`.
+Ask Jarvis about the pattern — one clean answer from the records.
+Not provable without real nights: the dry-run→live transition itself,
+E4B judge quality on real memories, and WorkManager cadence on the
+Fold 6 (the watermark design tolerates multi-day gaps).
+
 ## Memory RAG Unit 2 — hybrid recall wired into conversation + embedding-model install/sync — 1 November 2026
 
 Ships on `feature/memory-rag` over the Unit 1 foundation, the 0.18

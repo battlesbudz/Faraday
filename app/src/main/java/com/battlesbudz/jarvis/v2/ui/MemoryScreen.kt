@@ -41,6 +41,7 @@ internal fun MemoryScreen(
     onOpenChat: () -> Unit = onBack,
     onOpenVoice: () -> Unit = onBack,
     embeddingSetup: MemoryEmbeddingSetupController? = null,
+    dreamJournalProvider: () -> List<DreamRunEntry> = { emptyList() },
 ) {
     val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current
@@ -74,10 +75,12 @@ internal fun MemoryScreen(
     var confirmDeleteRevision by rememberSaveable { mutableStateOf<Long?>(null) }
     var confirmDeleteAll by rememberSaveable { mutableStateOf(false) }
     var eraseGeneration by rememberSaveable { mutableStateOf<Long?>(null) }
+    var dreamEntries by remember { mutableStateOf<List<DreamRunEntry>>(emptyList()) }
 
     fun passiveRead() {
         scope.launch {
             try {
+                dreamEntries = withContext(Dispatchers.IO) { runCatching { dreamJournalProvider() }.getOrDefault(emptyList()) }
                 val read = withContext(Dispatchers.IO) { memoryOs.read() }
                 val incoming = read.snapshot
                 val currentGeneration = snapshot?.generation
@@ -192,7 +195,7 @@ internal fun MemoryScreen(
                             val shownTab = if (tab == 0) 0 else 1
                             TabRow(selectedTabIndex = shownTab, modifier = Modifier.padding(horizontal = 16.dp)) { Tab(shownTab == 0, { tab = 0 }, text = { Text("Wiki") }, modifier = Modifier.testTag("memory_wiki_tab")); Tab(shownTab == 1, { tab = 1 }, text = { Text("History") }, modifier = Modifier.testTag("memory_history_tab")) }
                             when (shownTab) {
-                                0 -> WikiHome(index, onOpenPage = { pageId = it }, onEraseAll = ::requestEraseAll, embeddingSetup = embeddingSetup)
+                                0 -> WikiHome(index, onOpenPage = { pageId = it }, onEraseAll = ::requestEraseAll, embeddingSetup = embeddingSetup, dreamJournal = dreamEntries)
                                 else -> HistoryList(snapshot?.memories.orEmpty(), busy, onCorrect = ::beginCorrection, onOrganize = ::beginOrganize, onDelete = ::requestDelete, onOpen = { detailId = it.id }, onEraseAll = ::requestEraseAll)
                             }
                         }
@@ -310,9 +313,57 @@ private fun MemoryEmbeddingsCard(controller: MemoryEmbeddingSetupController) {
     }
 }
 
+/**
+ * Dream journal (memory RAG Unit 3, OD-6): the read-only run history of the
+ * nightly synthesis pass — every run, what it committed or would have
+ * committed on a dry-run night, and what the gates refused, with reasons.
+ * There is no approval affordance here by design (D-6/OD-3): refused outputs
+ * were dropped, and this section is the audit trail, not a queue.
+ */
+@Composable
+private fun MemoryDreamJournalCard(entries: List<DreamRunEntry>) {
+    Card(Modifier.fillMaxWidth().testTag("memory_dream_journal"), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Dream journal", style = MaterialTheme.typography.titleMedium)
+            if (entries.isEmpty()) {
+                Text("No dream runs yet. The nightly synthesis pass journals every run here, including skipped and dry-run nights.", style = MaterialTheme.typography.bodySmall)
+            } else {
+                entries.takeLast(10).asReversed().forEach { entry ->
+                    val outcomeLabel = when {
+                        !entry.isComplete -> "in progress"
+                        entry.outcome == DreamRunOutcome.COMPLETED && entry.dryRun -> "dry run"
+                        else -> entry.outcome?.name?.lowercase()?.replace('_', ' ') ?: "unknown"
+                    }
+                    Text("${dateLabel(entry.startedAtMs)} · $outcomeLabel", style = MaterialTheme.typography.labelLarge, modifier = Modifier.testTag("memory_dream_run_${entry.runId}"))
+                    val synthesized = entry.committedOf(DreamVerb.SYNTHESIZE) + entry.committedOf(DreamVerb.CREATE)
+                    Text(
+                        "merged=${entry.committedOf(DreamVerb.MERGE)} superseded=${entry.committedOf(DreamVerb.SUPERSEDE)} synthesized=$synthesized noop=${entry.noopCount} vetoed=${entry.vetoedCount}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    entry.outputs.forEach { output ->
+                        val actionLabel = when (output.action) {
+                            DreamOutputAction.COMMITTED -> "committed"
+                            DreamOutputAction.WOULD_COMMIT -> "would commit (dry run)"
+                            DreamOutputAction.JOURNALED -> "dropped"
+                            DreamOutputAction.NONE -> "no-op"
+                        }
+                        val detail = output.content?.let { " — $it" } ?: ""
+                        Text(
+                            "${output.verb.name.lowercase()} · $actionLabel · ${output.reason}$detail",
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 private fun formatMegabytes(bytes: Long): String = "%.0f MB".format(bytes / 1_048_576.0)
 
-@Composable private fun WikiHome(index: MemoryWikiIndex?, onOpenPage: (String) -> Unit, onEraseAll: () -> Unit, embeddingSetup: MemoryEmbeddingSetupController? = null) = LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { if (embeddingSetup != null) item(key = "memory_embeddings") { MemoryEmbeddingsCard(embeddingSetup) }; item { Column { Text("Your personal wiki", style = MaterialTheme.typography.headlineSmall); Text("Organized from approved memories", style = MaterialTheme.typography.bodySmall) } }; if (index == null) item { Text("Loading saved memories…") } else { items(index.categoryPages, key = { it.id }) { page -> Card(Modifier.fillMaxWidth().testTag("memory_category_row_${page.category.id}").clickable { onOpenPage(page.id) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) { Row(Modifier.padding(16.dp)) { Text(page.title.take(1), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 12.dp)); Text(page.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f)); Text("${page.records.size} ›") } } }; val recent = index.pages.filter { it.id.startsWith("topic:") && it.records.isNotEmpty() }.sortedByDescending { it.updatedAtMs }.take(6); if (recent.isNotEmpty()) { item { Text("Recently updated", style = MaterialTheme.typography.titleMedium) }; items(recent, key = { "recent:${it.id}" }) { page -> TextButton(onClick = { onOpenPage(page.id) }, modifier = Modifier.fillMaxWidth().testTag("memory_topic_row_${page.id}")) { Text(page.title, Modifier.weight(1f)); Text(dateLabel(page.updatedAtMs)) } } }; if (index.memories.isNotEmpty()) item { TextButton(onClick = onEraseAll, modifier = Modifier.testTag("memory_erase_all")) { Text("Erase all memories") } } } }
+@Composable private fun WikiHome(index: MemoryWikiIndex?, onOpenPage: (String) -> Unit, onEraseAll: () -> Unit, embeddingSetup: MemoryEmbeddingSetupController? = null, dreamJournal: List<DreamRunEntry> = emptyList()) = LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { if (embeddingSetup != null) item(key = "memory_embeddings") { MemoryEmbeddingsCard(embeddingSetup) }; item(key = "memory_dream_journal") { MemoryDreamJournalCard(dreamJournal) }; item { Column { Text("Your personal wiki", style = MaterialTheme.typography.headlineSmall); Text("Organized from approved memories", style = MaterialTheme.typography.bodySmall) } }; if (index == null) item { Text("Loading saved memories…") } else { items(index.categoryPages, key = { it.id }) { page -> Card(Modifier.fillMaxWidth().testTag("memory_category_row_${page.category.id}").clickable { onOpenPage(page.id) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) { Row(Modifier.padding(16.dp)) { Text(page.title.take(1), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 12.dp)); Text(page.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f)); Text("${page.records.size} ›") } } }; val recent = index.pages.filter { it.id.startsWith("topic:") && it.records.isNotEmpty() }.sortedByDescending { it.updatedAtMs }.take(6); if (recent.isNotEmpty()) { item { Text("Recently updated", style = MaterialTheme.typography.titleMedium) }; items(recent, key = { "recent:${it.id}" }) { page -> TextButton(onClick = { onOpenPage(page.id) }, modifier = Modifier.fillMaxWidth().testTag("memory_topic_row_${page.id}")) { Text(page.title, Modifier.weight(1f)); Text(dateLabel(page.updatedAtMs)) } } }; if (index.memories.isNotEmpty()) item { TextButton(onClick = onEraseAll, modifier = Modifier.testTag("memory_erase_all")) { Text("Erase all memories") } } } }
 
 @Composable private fun SearchList(rows: List<MemoryRecord>, tab: Int, onClear: () -> Unit, onOpen: (MemoryRecord) -> Unit) = LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { item { TextButton(onClick = onClear, modifier = Modifier.testTag("memory_search")) { Text("Clear search") } }; if (rows.isEmpty()) item { Text(if (tab == 0) "No approved memories match that search." else "No memories match that search.") }; items(rows, key = { it.id }) { record -> MemorySearchCard(record, onClick = { onOpen(record) }) } }
 @Composable private fun MemorySearchCard(record: MemoryRecord, onClick: () -> Unit) = Card(Modifier.fillMaxWidth().clickable(onClick = onClick).testTag("memory_search_result_${record.id}")) { Column(Modifier.padding(14.dp)) { Text(record.content); Text(record.placement().second, style = MaterialTheme.typography.labelSmall); Text("Captured from ${record.source.screenSourceLabel()} · ${dateLabel(record.source.createdAtMs)}", style = MaterialTheme.typography.labelSmall) } }

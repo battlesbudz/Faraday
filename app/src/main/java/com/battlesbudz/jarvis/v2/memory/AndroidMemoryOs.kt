@@ -54,6 +54,11 @@ object AndroidMemoryOs {
                 // Android may delay background work; read/write paths also purge and filter expiry.
                 WorkManager.getInstance(app).enqueueUniquePeriodicWork("memory-source-expiry", ExistingPeriodicWorkPolicy.KEEP,
                     PeriodicWorkRequestBuilder<MemoryArchiveMaintenanceWorker>(24, TimeUnit.HOURS).build())
+                // Memory RAG Unit 3: the nightly dream-synthesis pass, on the
+                // same KEEP discipline; its constraints (charging + idle +
+                // battery/storage not low) live on the request itself.
+                WorkManager.getInstance(app).enqueueUniquePeriodicWork(MemoryDreamWorker.UNIQUE_WORK_NAME,
+                    ExistingPeriodicWorkPolicy.KEEP, MemoryDreamWorker.buildRequest())
                 instance = it
             }
         }

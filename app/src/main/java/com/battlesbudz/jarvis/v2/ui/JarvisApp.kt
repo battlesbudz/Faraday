@@ -23,6 +23,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import com.battlesbudz.jarvis.v2.ai.ModelCatalog
 import com.battlesbudz.jarvis.v2.ai.ModelStore
+import com.battlesbudz.jarvis.v2.memory.AndroidMemoryDream
 import com.battlesbudz.jarvis.v2.memory.AndroidMemoryEmbeddings
 import com.battlesbudz.jarvis.v2.memory.AndroidMemoryOs
 
@@ -212,6 +213,7 @@ fun JarvisApp(
                                 onOpenChat = { memoryReturnToVoice = false; memoryReturnToChat = true; showingMemory = false },
                                 onOpenVoice = { memoryReturnToChat = false; memoryReturnToVoice = true; showingMemory = false },
                                 embeddingSetup = embeddingSetup,
+                                dreamJournalProvider = { AndroidMemoryDream.journalState(phoneContext).entries },
                             )
                     } else if (showingMemory) {
                         MemoryScreen(
@@ -223,6 +225,7 @@ fun JarvisApp(
                             onOpenChat = { memoryReturnToVoice = false; memoryReturnToChat = true; showingMemory = false },
                             onOpenVoice = { memoryReturnToChat = false; memoryReturnToVoice = true; showingMemory = false },
                             embeddingSetup = embeddingSetup,
+                            dreamJournalProvider = { AndroidMemoryDream.journalState(phoneContext).entries },
                         )
                     } else if (!setup.modelsReady && !showingFullSetup) {
                         // First run: no usable model on the device. One-tap install
