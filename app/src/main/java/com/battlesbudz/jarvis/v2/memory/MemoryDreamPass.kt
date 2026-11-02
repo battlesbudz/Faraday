@@ -320,6 +320,65 @@ class MemoryDreamPass(
                 advanceFrontier()
                 persist()
             }
+
+            // Extraction stage (U3.5): episodic clusters through the same
+            // judge port and the same gate — there is no side door. A cluster
+            // is discharged (key + seeds) once its facts are journaled or
+            // committed; episodic seeds in below-threshold categories were
+            // deterministically evaluated and are discharged too.
+            val clusters = MemoryDreamExtraction.clusters(grouping.eligible, entry.watermarkBeforeMs, clock())
+            for (cluster in clusters) {
+                if (cluster.key in processedKeys || cluster.key in globalProcessedKeys) {
+                    processedSeedIds += MemoryDreamExtraction.seedIds(cluster, entry.watermarkBeforeMs)
+                    continue
+                }
+                var extractFailed = false
+                val facts = try {
+                    judge.extractFacts(cluster)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    extractFailed = true
+                    emptyList()
+                }
+                if (extractFailed) {
+                    outputs += DreamOutputEntry(
+                        DreamVerb.NO_OP, DreamOutputAction.NONE, null,
+                        cluster.records.map { it.id }, null, null, DreamReasons.JUDGE_ERROR)
+                } else if (facts.isEmpty()) {
+                    outputs += DreamOutputEntry(
+                        DreamVerb.NO_OP, DreamOutputAction.NONE, null,
+                        cluster.records.map { it.id }, null, null, DreamReasons.NO_OP)
+                } else {
+                    val byId = cluster.records.associateBy { it.id }
+                    for (fact in facts) {
+                        val sources = fact.sourceRecordIds.mapNotNull { byId[it] }
+                        outputs += applyProposal(
+                            verb = DreamVerb.CREATE,
+                            content = fact.content,
+                            type = fact.type,
+                            category = cluster.category,
+                            sources = sources,
+                            confidence = fact.confidence,
+                            groupKey = cluster.key,
+                        )
+                    }
+                }
+                processedKeys += cluster.key
+                processedSeedIds += MemoryDreamExtraction.seedIds(cluster, entry.watermarkBeforeMs)
+                advanceFrontier()
+                persist()
+            }
+            // Below-threshold episodic seeds were deterministically evaluated
+            // by this stage and are discharged — except any whose similarity
+            // group is still unprocessed (the group cap), which must stay
+            // changed so the group re-forms on a later night.
+            val unprocessedGroupSeeds = grouping.groups
+                .filter { it.key !in processedKeys && it.key !in globalProcessedKeys }
+                .flatMapTo(HashSet()) { it.seedIds }
+            grouping.changed.filter { it.type == MemoryType.EPISODIC && it.id !in unprocessedGroupSeeds }
+                .forEach { processedSeedIds += it.id }
+            advanceFrontier()
             persist(finished = true, outcome = DreamRunOutcome.COMPLETED)
             return entry
         } catch (cancelled: CancellationException) {

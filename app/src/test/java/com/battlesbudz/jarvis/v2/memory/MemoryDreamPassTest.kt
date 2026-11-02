@@ -13,13 +13,14 @@ class MemoryDreamPassTest {
     class FakeJudge(var handler: (DreamGroup) -> DreamJudgment?) : DreamJudge {
         var groupCalls = 0
         var extractCalls = 0
+        var extractHandler: (DreamExtractionCluster) -> List<DreamExtractedFact> = { emptyList() }
         override suspend fun judgeGroup(group: DreamGroup): DreamJudgment? {
             groupCalls++
             return handler(group)
         }
         override suspend fun extractFacts(cluster: DreamExtractionCluster): List<DreamExtractedFact> {
             extractCalls++
-            return emptyList()
+            return extractHandler(cluster)
         }
     }
 
