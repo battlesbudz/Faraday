@@ -1,5 +1,51 @@
 # Feature and acceptance map
 
+## Route B incremental audio prefill spike — 1 November 2026
+
+A diagnostics-only spike (Battles's Decision 1) answering one question with
+evidence: does feeding a sealed utterance's encoder rows into a Session in
+~3 s chunks through the new bridge audio-preprocess entry produce the same
+result as the sealed one-shot submission of the same rows? The reviewed
+bridge gains `Session.preprocessAudioEmbeddings` plus its Kotlin handle type
+(mirroring the image preprocess entry): each chunk payload is built natively
+exactly as the Conversation route builds its sealed projected-audio payload
+(factory-derived begin-of-audio marker, `CreateTensorBuffer` embeddings
+tensor validated by `InputAudio::ValidateAudioEmbeddings`, projected
+end-of-audio marker), and submission consumes the payload, so the harness
+preprocesses fresh per chunk. `Content.SealedAudioEmbeddings.projectedRows()`
+exposes an independent copy of the sealed rows; the production
+`NativeAudioOwner`/`CompletedNativeAudio` contracts are unchanged. The
+harness lives behind a button in the call screen's development diagnostics:
+it encodes the bundled synthetic fixture through the production
+capture/encoder once (one stateful pass — chunked prefill slices that pass's
+rows, never re-encodes), then runs both arms on throwaway greedy sessions
+(topK=1, temperature 0, seed 0) with the production session turn shape.
+
+Acceptance checks:
+- JVM logic: `RouteBPrefillSpikeTest` pins chunk planning (72-row,
+  step-aligned chunks; markers only on first/last; a single chunk carries
+  both), exact slice/reassembly equality, per-arm event order (question
+  prefill, audio payloads, generation boundary), per-arm failure capture,
+  and the report's PASS rule (exact 0.0 row tolerance — slicing is
+  bookkeeping — plus identical greedy answers). The SDK packaged contract
+  additionally pins `projectedRows()` value/copy semantics against the real
+  classes.jar.
+- Failure case: a native rejection of any chunk (or of the one-shot payload)
+  fails that arm and the parity verdict, with the native error in the
+  report; nothing falls back to a labels-only or text-only answer.
+- Existing behavior that must remain intact: the sealed Conversation route
+  and every production voice path are untouched — the spike is reachable
+  only from the diagnostics button, uses throwaway sessions, and holds the
+  model lease under the runtime's idle guards.
+- Real model/device (device-owed, NOT CI-proven): Battles runs the harness
+  on the Fold 6 with stock Gemma 4 E2B selected; the pasted report's PARITY
+  line is the verdict. CI proves payload construction, packaging
+  inventories and harness logic only — it does not prove native gate
+  acceptance with a real model or answer parity. Scope limits: pinned E2B
+  only (the sealed encoder is E2B-only), a synthetic-tone fixture (not a
+  human recording, no just-recorded-utterance mode), and running the spike
+  resets the current conversation like starting a voice call does.
+
 ## Faraday main integration and rename repairs — 12 October 2026
 
 [Integration evidence](faraday-integration-2026-10-12.md) retains Build 1295's

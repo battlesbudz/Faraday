@@ -197,6 +197,9 @@ internal fun VoiceCallScreen(
     onWorkflowSetEnabled: (String, Boolean) -> Unit = { _, _ -> },
     // M3 guided MCP setup (D07): custom server URL from the settings dialog.
     onConnectMcpServer: (String, String, String, (String) -> Unit) -> Unit = { _, _, _, done -> done("MCP setup is unavailable right now.") },
+    // Route B spike: incremental-prefill parity harness (development diagnostics).
+    routeBSpikeReport: kotlinx.coroutines.flow.StateFlow<String?>? = null,
+    onRunRouteBParitySpike: () -> Unit = {},
     // M7 external agents (D06): grant list with authorize/revoke/enable.
     callEvidenceActions: CallEvidenceActions,
 ) {
@@ -454,6 +457,17 @@ internal fun VoiceCallScreen(
                 modifier = Modifier.padding(top = 4.dp)
             ) {
                 Text("Copy diagnostics")
+            }
+            TextButton(
+                onClick = onRunRouteBParitySpike,
+                enabled = !chatSending && !runtimeArmed && !turnInFlight,
+                modifier = Modifier.padding(top = 4.dp)
+            ) {
+                Text("Run Route B prefill parity spike")
+            }
+            val spikeReport = routeBSpikeReport?.collectAsState()?.value
+            if (!spikeReport.isNullOrBlank()) {
+                Text(spikeReport, style = MaterialTheme.typography.bodySmall)
             }
         }
         } }

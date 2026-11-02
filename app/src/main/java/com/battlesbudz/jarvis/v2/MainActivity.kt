@@ -176,6 +176,9 @@ class MainActivity : ComponentActivity() {
                 onDiscardModelDownload = modelSetup::discardDownload,
                 onImportModel = modelSetup::importModel,
                 onCopyDiagnostics = { _ -> copyDiagnostics() },
+                // Route B spike: incremental-prefill parity harness.
+                routeBSpikeReport = runtime.routeBSpikeReport,
+                onRunRouteBParitySpike = runtime::runRouteBPrefillParitySpike,
             )
         }
     }

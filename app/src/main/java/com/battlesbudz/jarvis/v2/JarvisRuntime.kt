@@ -361,6 +361,9 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     internal val conversationHistory = com.battlesbudz.jarvis.v2.chat.ConversationHistory(
         getSharedPreferences("conversations", MODE_PRIVATE))
     internal val chatBusy = kotlinx.coroutines.flow.MutableStateFlow(false)
+    /** Route B spike: latest parity report for the call screen's diagnostics section. */
+    internal val routeBSpikeReport = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    private val routeBSpikeRunning = java.util.concurrent.atomic.AtomicBoolean(false)
     internal lateinit var voiceCallStore: com.battlesbudz.jarvis.v2.voice.VoiceCallStore
     internal lateinit var voiceSessionController: VoiceSessionController
     internal lateinit var ttsComparisonStore: com.battlesbudz.jarvis.v2.voice.TtsComparisonStore
@@ -384,6 +387,104 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     internal var activeVoiceOutput: PiperVoiceOutput?
         get() = voiceCallState.output
         set(value) { voiceCallState.output = value }
+
+    /**
+     * Route B spike entry point (development diagnostics on the call screen):
+     * encodes the bundled fixture through the production capture/encoder once,
+     * then runs the sealed one-shot and chunked-incremental prefill arms on
+     * throwaway greedy sessions and publishes the parity report to
+     * [routeBSpikeReport] and the diagnostics recorder. Running it resets the
+     * current conversation, like starting a voice call does. It never runs
+     * during a call or turn: the guards below refuse while the model is busy.
+     */
+    internal fun runRouteBPrefillParitySpike() {
+        if (!routeBSpikeRunning.compareAndSet(false, true)) return
+        routeBSpikeReport.value = "Route B spike: running (encoding fixture, then both prefill arms)…"
+        runtimeScope.launch {
+            try {
+                val report = runRouteBSpikeNow()
+                routeBSpikeReport.value = report
+                // The recorder caps entries at 1,200 chars; the full report is
+                // on screen and in the summary line, so record it in slices.
+                report.chunked(1_100).forEach { diagnosticRecorder.record(it) }
+                diagnosticRecorder.recordImportant(report.lineSequence().last())
+            } catch (error: Throwable) {
+                val text = "Route B spike: FAILED to run: ${error.message ?: error.javaClass.simpleName}"
+                routeBSpikeReport.value = text
+                diagnosticRecorder.recordImportant(text)
+            } finally {
+                routeBSpikeRunning.set(false)
+            }
+        }
+    }
+
+    private suspend fun runRouteBSpikeNow(): String {
+        val spec = modelStore.selectedModel()
+        if (spec != com.battlesbudz.jarvis.v2.ai.ModelCatalog.gemma4E2b) {
+            return "Route B spike: NOT RUN — the sealed native-audio encoder is pinned to " +
+                "Gemma 4 E2B, but the selected model is ${spec.id}. Select Gemma 4 E2B and retry."
+        }
+        val engine = conversationEngine
+            ?: return "Route B spike: NOT RUN — the model engine is not loaded yet. " +
+                "Send any chat message first so the model loads, then retry."
+        if (ConversationWork.activeJobs.get() != 0 || modelStore.isModelOperationActive()) {
+            return "Route B spike: NOT RUN — the model is busy. End any call or turn and retry."
+        }
+        if (!modelStore.tryBeginModelOperation()) {
+            return "Route B spike: NOT RUN — could not take the model lease. Retry when idle."
+        }
+        try {
+            val wav = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                assets.open(com.battlesbudz.jarvis.v2.ai.RouteBPrefillSpike.FIXTURE_ASSET).use { it.readBytes() }
+            }
+            val artifact = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.battlesbudz.jarvis.v2.ai.audio.GemmaStreamingArtifactStore.acquire(
+                    modelStore.fileFor(spec), modelStore.compiledCacheDirectory(spec),
+                    readAsset = assets::open,
+                    exactSourceVerified = { modelStore.matchesVerifiedArtifact(spec,
+                        com.battlesbudz.jarvis.v2.ai.audio.WeightlessEncoderRecipe.SOURCE_SHA256) },
+                    modelLeaseHeld = { modelStore.isModelOperationActive() },
+                    cancelled = { false })
+            }
+            var capture: com.battlesbudz.jarvis.v2.voice.GemmaStreamingAudioCapture? = null
+            try {
+                val cap = com.battlesbudz.jarvis.v2.voice.GemmaStreamingAudioCapture(
+                    artifact, "routeb-spike", turnIsCurrent = { true })
+                capture = cap
+                val encodeStartedNs = System.nanoTime()
+                val pcm = wav.copyOfRange(44, wav.size)
+                var offset = 0
+                while (offset < pcm.size) {
+                    val count = minOf(32_000, pcm.size - offset)
+                    cap.onPcm(pcm.copyOfRange(offset, offset + count))
+                    offset += count
+                }
+                val sealed = cap.sealAfterCaptureJoined(wav)
+                val encodeMs = (System.nanoTime() - encodeStartedNs) / 1_000_000
+                val rows = sealed.projectedRows()
+                val spike = com.battlesbudz.jarvis.v2.ai.RouteBPrefillSpike
+                val sealedArm = engine.withRouteBSpikeSession { session ->
+                    spike.runArmCatching(com.battlesbudz.jarvis.v2.ai.SdkRouteBSpikeSession(session),
+                        rows, sealed.audioTokenCount, sealed.embeddingWidth, chunked = false)
+                }
+                val chunkedArm = engine.withRouteBSpikeSession { session ->
+                    spike.runArmCatching(com.battlesbudz.jarvis.v2.ai.SdkRouteBSpikeSession(session),
+                        rows, sealed.audioTokenCount, sealed.embeddingWidth, chunked = true)
+                }
+                return spike.buildReport(encodeMs, sealed.audioTokenCount, sealed.embeddingWidth,
+                    sealedArm, chunkedArm)
+            } finally {
+                // Mirror production cleanup: the artifact lease closes only
+                // after a checked encoder drain; a failed drain quarantines it.
+                try {
+                    val cap = capture
+                    if (cap != null && cap.drainFrozenWorker()) artifact.close()
+                } catch (_: Throwable) { }
+            }
+        } finally {
+            modelStore.endModelOperation()
+        }
+    }
     init {
         // M4: the browser runtime gate opens exactly when the production
         // runtime path (decorator + session owner + approval UI) is installed

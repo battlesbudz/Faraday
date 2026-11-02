@@ -162,6 +162,32 @@ class LiteRtLmEngine(
         )
     }
 
+    /**
+     * Route B spike only: runs [block] on one throwaway Session created with a
+     * greedy sampler (topK=1, temperature 0, fixed seed) so the parity harness
+     * compares prefill shapes, not sampling luck. The current Conversation is
+     * reset first, exactly as when a voice call allocates its Session, and the
+     * child is drained and closed on success or quarantined on any failure —
+     * a failed spike session is never reused. Production turns never call
+     * this; the sealed Conversation route is untouched.
+     */
+    internal suspend fun <T> withRouteBSpikeSession(block: suspend (Session) -> T): T {
+        checkNativeWorkerThread()
+        lifecycle.resetForConfirmedHistory()
+        val child = lifecycle.createChild({
+            engine.createSession(SessionConfig(SamplerConfig(
+                topK = 1, topP = 1.0, temperature = 0.0, seed = 0)))
+        }) { it.awaitIdle(); it.close() }
+        return try {
+            val result = block(child.child)
+            lifecycle.closeChild(child)
+            result
+        } catch (error: Throwable) {
+            try { lifecycle.quarantineChild(child, error) } catch (_: Throwable) { }
+            throw error
+        }
+    }
+
     private var fixedVoicePreface = false
     internal val hasFixedVoicePreface: Boolean get() = fixedVoicePreface
     private var toolsEnabled = false
