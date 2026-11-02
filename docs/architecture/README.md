@@ -76,6 +76,15 @@ and `CheckedConversationLifecycle` serialize fixed-preface preparation before
 encoder/model work while microphone PCM is retained. See the [combined contract](../verification/whisper-qnn-2026-10-11.md)
 and linked component verification notes for measured versus pending coverage.
 
+`RouteBPrimingPolicy` gates Route B (Option B) priming: `voice/PrimedAudioInput`
+prefills a native-audio turn's text prefix on a Session during capture and
+chunk-feeds the sealed encoder rows into it at finalization, only for turn
+shapes whose Session decomposition provably equals the Conversation one.
+Every other shape — including all current catalog audio turns, which
+generate with tools enabled, a decomposition a raw Session cannot carry —
+stays on the sealed Conversation route, which is also the priming owner's
+fallback for any pre-output failure.
+
 `NativeInferenceMeasurement` retains per-submission app edges; `PipelineBenchmarkCapture`
 aligns only an unambiguous completed answer to the turn. `PiperFirstPcmTiming`
 latches the first nonempty validated PCM. [Measurement scopes and clocks](../verification/gemma-processing-measurements-2026-10-11.md)

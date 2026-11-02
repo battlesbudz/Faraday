@@ -46,6 +46,66 @@ Acceptance checks:
   human recording, no just-recorded-utterance mode), and running the spike
   resets the current conversation like starting a voice call does.
 
+## Route B Option B: Session-path text-prefix priming — 2 November 2026
+
+Production follow-on to the spike above (Battles's "Both — B now, A next"):
+for an eligible native-audio turn, the turn's text prefix (voice
+instructions, seeded confirmed history/context) is prefilled on a Session
+during capture (`voice/PrimedAudioInput`, armed by
+`runtime/turn/VoiceTurnPreparation`), the sealed encoder rows are chunk-fed
+into that session at finalization through the spike-proven bridge entry
+(`LiteRtVoicePrefillSession.appendAudio`, 72-row chunks, markers on the
+edges only), and decoding happens on the session — hiding the text prefill
+under the user's speech. The audio prefill itself still happens after the
+seal; hiding that is Option A's provisional-rows bridge work, not this
+change.
+
+Eligibility is an explicit gate (`ai/RouteBPrimingPolicy`) because a raw
+Session cannot be given what the Conversation route gives the model: the
+parity unit is the app-level decomposition (system slot, user text, tool
+declarations, audio payload), and the gate admits only decompositions that
+are Session-equal. Measured against production, NO current catalog shape
+qualifies: generation enables tools for every direct-audio turn on a
+tool-capable model (and every catalog audio model is tool-capable), and
+the fixed-voice-preface decomposition parks the instructions in the
+native system slot. Those shapes stay on the sealed Conversation route,
+so this change is behavior-preserving on the current catalog: preparation
+records `route_b_priming_armed=false:tools_enabled_for_turn` for ordinary
+direct-audio turns. The machinery arms unchanged the day a tools-disabled,
+preface-free audio configuration exists; `RouteBPromptParityTest` pins the
+boundary against the real prompt builder, preface stripper and tool
+catalog, and its catalog test fails first if the catalog changes.
+
+Acceptance checks:
+- JVM logic: `RouteBPrimingPolicyTest` (every exclusion reason, the one
+  eligible shape, reason precedence); `RouteBPromptParityTest` (above);
+  `PrimedAudioInputTest` (prefix prefilled during capture; remainder +
+  chunk feed + decode at finalization; prefix drift, priming failure and
+  audio rejection all fall back to the sealed route with the session
+  already closed; a failure after visible output never falls back);
+  `LiteRtVoicePrefillSessionTest` / `LiteRtNativeVoiceSessionTest`
+  (chunk order/sizes/markers, typed submission failures, one audio
+  payload per turn, image/audio mutual exclusion, poisoned-session
+  semantics); `ConversationSealedAudioInputTest` (a primed answer skips
+  the backend and does not mark the native conversation as containing
+  the turn; fallback and retry stay sealed; retry never reuses a spent
+  prefill).
+- Failure behavior: any priming failure before user-visible output
+  degrades silently to the sealed Conversation route — never to a failed
+  turn. The primed session is always closed before the sealed route runs
+  (the checked native lifecycle admits one child at a time), and on every
+  other exit — promoted speculation, a rejected turn, a generation
+  failure — the owner is closed by the generation, runtime, recognition
+  or finalizer owner respectively.
+- Real model/device (device-owed, NOT CI-proven): on this build's
+  successor, an ordinary voice-call turn's Copy Diagnostics shows
+  `route_b_priming_armed=false:tools_enabled_for_turn` and the turn
+  answers exactly as before — that IS the device check for this change,
+  since no catalog shape is eligible. A live primed turn (diagnostics
+  line `Route B priming: outcome=used`, gap to first audio shorter by
+  the text prefill) requires the future tools-disabled configuration
+  described above.
+
 ## Faraday main integration and rename repairs — 12 October 2026
 
 [Integration evidence](faraday-integration-2026-10-12.md) retains Build 1295's
