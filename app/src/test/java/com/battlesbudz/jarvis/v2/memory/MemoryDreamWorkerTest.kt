@@ -35,10 +35,16 @@ class MemoryDreamWorkerTest {
     }
 
     @Test fun noModelInstalledJournalsSkippedNoModel() {
+        // App storage persists across methods in this class; make sure the
+        // contention test's dummy model file cannot leak into this test.
+        val store = ModelStore(context)
+        store.fileFor(ModelCatalog.gemma4E2b).delete()
+        store.fileFor(ModelCatalog.gemma4E4b).delete()
         val result = runBlocking { AndroidMemoryDream.runScheduledPass(context) }
         assertTrue(result is ListenableWorker.Result.Success)
-        val entry = AndroidMemoryDream.journalState(context).entries.single()
-        assertEquals(DreamRunOutcome.SKIPPED_NO_MODEL, entry.outcome)
+        // Select by outcome: the journal file is app storage and Robolectric
+        // does not reset it between methods of this class.
+        val entry = AndroidMemoryDream.journalState(context).entries.single { it.outcome == DreamRunOutcome.SKIPPED_NO_MODEL }
         assertEquals("no_model_installed", entry.note)
     }
 
@@ -50,8 +56,7 @@ class MemoryDreamWorkerTest {
         try {
             val result = runBlocking { AndroidMemoryDream.runScheduledPass(context) }
             assertTrue(result is ListenableWorker.Result.Retry)
-            val entry = AndroidMemoryDream.journalState(context).entries.single()
-            assertEquals(DreamRunOutcome.SKIPPED_CONTENTION, entry.outcome)
+            val entry = AndroidMemoryDream.journalState(context).entries.single { it.outcome == DreamRunOutcome.SKIPPED_CONTENTION }
             assertEquals("model_busy", entry.note)
             assertTrue(entry.outputs.isEmpty())
         } finally {
