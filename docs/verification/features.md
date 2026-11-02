@@ -4589,38 +4589,48 @@ accepted=true strongAudioMs=704 liveWords=false quietCorroborated=false` —
 Whisper recognized zero words, the ASR recovery attempts were rejected, and
 the clarify fallback ("I couldn't retain that whole request reliably.
 Please repeat it in shorter parts, sir.") was spoken to an empty room.
-`FollowupSpeechEvidence.accepts()` no longer admits on sustained strong
-audio alone (the removed `strongMs >= 240` clause). Admission now requires
-evidence of words: at least 96 ms of confirmed strong audio with live
-partial words, or quiet-speech corroboration — the two paths that already
-admitted real speech. A wordless, uncorroborated candidate is rejected by
-the existing silent discard in `AudioTurnCapture`: microphone kept open,
-no transcript artifact, no recognition issue, no ASR recovery loop, no
-clarify reply.
+Where the transcript is the request, `FollowupSpeechEvidence.accepts()` no
+longer admits on sustained strong audio alone (the removed
+`strongMs >= 240` clause). Admission requires evidence of words: at least
+96 ms of confirmed strong audio with live partial words, or quiet-speech
+corroboration — the two paths that already admitted real speech. A
+wordless, uncorroborated candidate is rejected by the existing silent
+discard in `AudioTurnCapture`: microphone kept open, no transcript
+artifact, no recognition issue, no ASR recovery loop, no clarify reply.
 
-Boundary: `accepts()` is consulted only when the capture plan sets
+Boundary: the evidence gate is consulted only when the capture plan sets
 `guardFollowupSpeech` — reply listening (`ReplyVoiceCapture`), capture-first
 follow-ups, and turns prepared from a follow-up boundary
 (`VoiceTurnPreparation`). A call's first turn is prepared with the guard
-off and is unchanged. Speech whose live partials produced words is admitted
-exactly as before, so a final-ASR failure on real speech still reaches the
-existing clarify path; the gate reads live evidence, never the ASR outcome.
-Deliberate tradeoff: a direct-audio follow-up whose side transcriber yields
-no partial words and no corroboration is no longer admitted on VAD duration
-alone.
+off and is unchanged. Inside the guard, the word-evidence rule binds only
+where the transcript is the request (`captionOnly=false`, the
+"authoritative_asr" path). Where the retained audio itself is the request
+(`captionOnly=true` — direct-audio turns whose recognition is Gemma
+hearing the audio, with at most a display-only caption alongside),
+`acceptsAudioOnly()` keeps the historical sustained-audio admission: there
+may be no transcriber to produce live words at all, and a caption's ASR
+issue is suppressed downstream when the retained audio is complete
+(`GemmaAudioInputPolicy.retainedAudioIssue`), so the ASR recovery /
+clarify chain never sees those turns. Speech whose live partials produced
+words is admitted exactly as before on both paths, so a final-ASR failure
+on real speech still reaches the existing clarify path; the gate reads
+live evidence, never the ASR outcome.
 
 `FollowupSpeechEvidenceTest` pins the exact 704 ms specimen (diagnostic
-string included), sustained speech with live words, sustained speech with
-corroboration, and live-words admission ahead of any ASR outcome, alongside
-the pre-existing short-command and corroborated-whisper cases.
-`AudioTurnCaptureTest` gains
-`sustainedWordlessFollowupSoundDiesSilentlyAndNextSpeechSurvives`: 800 ms of
-wordless strong audio under the follow-up guard logs
-`followup_speech_evidence accepted=false strongAudioMs=800 liveWords=false
-quietCorroborated=false` and `followup_candidate_rejected`, the transcriber
-is never finished or recovered, no transcript or recognition issue is
-produced, and the next real utterance is captured on the same open
-microphone.
+string included) against both rules — rejected for ASR-authoritative
+turns, admitted for audio-only turns — plus sustained speech with live
+words, sustained speech with corroboration, and live-words admission ahead
+of any ASR outcome, alongside the pre-existing short-command and
+corroborated-whisper cases. `AudioTurnCaptureTest` gains
+`sustainedWordlessFollowupSoundDiesSilentlyAndNextSpeechSurvives` (800 ms
+of wordless strong audio under the follow-up guard on an ASR-authoritative
+capture logs `followup_speech_evidence accepted=false strongAudioMs=800
+liveWords=false quietCorroborated=false` and `followup_candidate_rejected`,
+the transcriber is never finished or recovered, no transcript or
+recognition issue is produced, and the next real utterance is captured on
+the same open microphone) and
+`sustainedWordlessAudioOnlyFollowupStillReachesGemma` (the same audio on a
+captionOnly capture is admitted as a complete audio-only turn).
 
 Not established by this entry: on-device behavior. That requires Battles's
 Fold 6 proof on the first published main build containing the fix — during

@@ -150,6 +150,25 @@ class AudioTurnCaptureTest {
         fixture.capture.stop()
     }
 
+    @Test fun sustainedWordlessAudioOnlyFollowupStillReachesGemma() = runBlocking<Unit> {
+        // The boundary of the silence fix: on a captionOnly (direct-audio)
+        // follow-up the retained audio is the request and Gemma judges it, so
+        // sustained strong audio without any caption words still admits.
+        val fixture = CaptureFixture(this, factory = null, allowAudioOnlyTurns = true,
+            guardFollowupSpeech = true, captionOnly = true)
+        fixture.capture.start()
+        try {
+            val completion = async(start = CoroutineStart.UNDISPATCHED) { fixture.capture.awaitTurnCompletion() }
+            repeat(8) { fixture.emit(100L + it * 100, 1500, speech = true, samples = 1600) }
+            fixture.emit(2200, 0, samples = 1600)
+            assertTrue(withTimeout(1000) { completion.await() })
+            assertTrue(fixture.events.any { it == "followup_speech_evidence accepted=true strongAudioMs=800 liveWords=false quietCorroborated=false" })
+            assertEquals("", fixture.capture.finalTranscript)
+            assertTrue(fixture.capture.audioIsComplete)
+            assertEquals(null, fixture.capture.recognitionIssue)
+        } finally { fixture.capture.stop() }
+    }
+
     @Test fun soundCaptionsCannotExtendTheInitialListeningDeadline() = runBlocking<Unit> {
         val fixture = CaptureFixture(this, factory = { FakeTranscriber("[music]", "[music]") }, allowAudioOnlyTurns = true)
         fixture.capture.start()

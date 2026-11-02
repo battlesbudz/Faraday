@@ -15,14 +15,23 @@ internal class FollowupSpeechEvidence {
         }
         quietCorroborated = quietCorroborated || corroborated
     }
-    // Admission requires evidence of words: live partial words over at least
-    // 96 ms of confirmed strong audio, or the existing stable corroborated
-    // whisper path. Sustained strong audio alone no longer admits: on build
-    // 1669, 704 ms of wordless, uncorroborated sound became a follow-up turn,
-    // burned the ASR recovery loop and ended in a spoken clarify to an empty
-    // room. A wordless, uncorroborated candidate dies silently at the
-    // endpoint instead; no phrase blacklist is used.
+    // Where the transcript is the request, admission requires evidence of
+    // words: live partial words over at least 96 ms of confirmed strong
+    // audio, or the existing stable corroborated whisper path. Sustained
+    // strong audio alone no longer admits there: on build 1669, 704 ms of
+    // wordless, uncorroborated sound became a follow-up turn, burned the ASR
+    // recovery loop and ended in a spoken clarify to an empty room. A
+    // wordless, uncorroborated candidate dies silently at the endpoint
+    // instead; no phrase blacklist is used.
     fun accepts() = (strongMs >= 96 && liveWords) || quietCorroborated
+    // Where the retained audio itself is the request (captionOnly captures),
+    // Gemma is the recognizer: there are no live words to require when no
+    // caption transcriber runs, and a caption's ASR issue is suppressed
+    // downstream when the retained audio is complete
+    // (GemmaAudioInputPolicy.retainedAudioIssue), so the ASR recovery /
+    // clarify chain never sees these turns. Sustained strong audio keeps
+    // its historical admission on that path.
+    fun acceptsAudioOnly() = strongMs >= 240 || (strongMs >= 96 && liveWords) || quietCorroborated
     fun reset() { strongMs = 0; strongBytes = 0; liveWords = false; quietCorroborated = false }
     fun diagnostic() = "strongAudioMs=$strongMs liveWords=$liveWords quietCorroborated=$quietCorroborated"
 }

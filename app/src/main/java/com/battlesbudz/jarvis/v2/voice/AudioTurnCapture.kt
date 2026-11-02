@@ -477,7 +477,12 @@ class AudioTurnCapture(
                         // final recognition. Publish it only with the accepted candidate.
                         val proposedEndpointAtNs = nowNs()
                         val finalizeStartedAt = nowMs()
-                        val acousticAccepted = !guardFollowupSpeech || !hasSpeech || followupEvidence.accepts()
+                        // The word-evidence rule binds only where the transcript is the
+                        // request. On captionOnly captures the retained audio is the
+                        // request and Gemma judges it, so sustained strong audio still
+                        // admits (see FollowupSpeechEvidence.acceptsAudioOnly).
+                        val acousticAccepted = !guardFollowupSpeech || !hasSpeech ||
+                            if (captionOnly) followupEvidence.acceptsAudioOnly() else followupEvidence.accepts()
                         if (guardFollowupSpeech && hasSpeech && !pendingEndpoint) {
                             log("followup_speech_evidence accepted=$acousticAccepted ${followupEvidence.diagnostic()}")
                         }
