@@ -38,6 +38,11 @@ internal object SmartTurnNativeJourneyProbe {
         val closed = AtomicBoolean(false)
         val failed = AtomicBoolean(false)
         val observations = AtomicReference<Map<String, Any>>(emptyMap())
+        // TEMP DIAGNOSTIC (Smart Turn probe investigation; revert after one CI run):
+        // the production probe publishes fixed scalars only, which makes the failing
+        // check unobservable. These two refs exist solely to name that check once.
+        val probeStage = AtomicReference("copy_model")
+        val probeFailure = AtomicReference<Throwable?>(null)
         val caller = Thread.currentThread()
         val thread = Thread({
             var owner: NativeSmartTurnBackend? = null
@@ -65,28 +70,36 @@ internal object SmartTurnNativeJourneyProbe {
                     check(count == MODEL_BYTES) { "Incomplete Smart Turn input" }
                 } }
                 check(!cancelled.get())
+                probeStage.set("create_backend")
                 owner = NativeSmartTurnBackend(input)
                 verified.set(true) // Production constructor verified immutable model size/hash.
+                probeStage.set("fixtures")
                 val silence = fixture(instrumentation, "silence_8s", 128_000,
                     "24a046dc04fefdb652e4077b41162490b344a4dd45f918505477f84c592f3070")
                 val tone = fixture(instrumentation, "tone_440hz_1s", 16_000,
                     "97baea0a56c5b48504ea4b65b41148c6d55dc494d22652b3db7cedb295876efe")
+                probeStage.set("infer_silence")
                 val complete = owner.infer(silence, 1, cancelled)
+                probeStage.set("checks_silence")
                 check(complete.probability.isFinite() && complete.probability > 0.5f && complete.probability <= 1f)
                 check(complete.frontendNanos >= 0 && complete.inferenceNanos >= 0)
                 check(SmartTurnEndpointPolicy.modelState(complete.probability) == CaptureEndpointState.COMPLETE)
 
                 // Exercise prepare/cancel/infer and then reuse that same native session.
+                probeStage.set("cancel_test")
                 var cancellationRejected = false
                 try { owner.infer(tone, 2, AtomicBoolean(true)) }
                 catch (_: IllegalStateException) { cancellationRejected = true }
                 check(cancellationRejected) { "Pre-cancelled inference published a result" }
                 check(!cancelled.get())
+                probeStage.set("infer_tone")
                 val continuing = owner.infer(tone, 3, cancelled)
+                probeStage.set("checks_tone")
                 check(continuing.probability.isFinite() && continuing.probability in 0f..0.5f)
                 check(continuing.frontendNanos >= 0 && continuing.inferenceNanos >= 0)
                 check(SmartTurnEndpointPolicy.modelState(continuing.probability) == CaptureEndpointState.CONTINUE)
 
+                probeStage.set("policy_decisions")
                 val fallback = AdaptiveTurnEnd.Decision(1500L, "uncertain")
                 val raw = RawVadCoverage(256_000L, 128_000L, 112_000L, 250)
                 fun eligibility(hasSpeech: Boolean) = NativePauseEndpointPolicy.eligibility(
@@ -99,6 +112,7 @@ internal object SmartTurnNativeJourneyProbe {
                 // Silence's high score is not speech evidence and cannot authorize capture end.
                 val noSpeech = decide(complete.probability, false)
                 check(noSpeech.silenceMs == fallback.silenceMs && noSpeech.cue == fallback.cue)
+                probeStage.set("observations")
                 observations.set(linkedMapOf(
                     "silence_probability" to complete.probability,
                     "tone_probability" to continuing.probability,
@@ -113,8 +127,11 @@ internal object SmartTurnNativeJourneyProbe {
                     "control_input_compatible" to true,
                     "no_speech_complete_ignored" to true,
                 ))
-            } catch (_: Throwable) {
-                // Fixed scalar failure only: never publish model, PCM, tensors or exception text.
+            } catch (t: Throwable) {
+                // TEMP DIAGNOSTIC: retain the failure so the receipt can name the
+                // stage and exception. Production behavior (fixed scalars only)
+                // returns when this diagnostic commit is reverted.
+                probeFailure.set(t)
                 failed.set(true)
             } finally {
                 try {
@@ -162,7 +179,14 @@ internal object SmartTurnNativeJourneyProbe {
             "cleanup_timeout_ms" to CLEANUP_TIMEOUT_MS,
             "coverage" to "Real Android JNI, production hash-bound wrapper, synthetic control input compatibility",
             "not_covered" to "Natural-language endpoint accuracy; physical microphone/audio; Fold latency",
-        ).apply { putAll(observations.get()) })
+        ).apply {
+            putAll(observations.get())
+            probeFailure.get()?.let { failure ->
+                put("failure_stage", probeStage.get())
+                put("failure_class", failure.javaClass.name)
+                put("failure_message", (failure.message ?: "").take(240))
+            }
+        })
     }
 
     private fun fixture(instrumentation: Instrumentation, name: String, samples: Int, expectedHash: String): FloatArray {
