@@ -19,6 +19,12 @@ internal class ConversationRecovery(
     private val diagnostics: ConversationDiagnostics
 ) {
     suspend fun recover(draft: ConversationDraft) {
+        // M7 turn guard: every stage below can reset the shared native
+        // conversation (resetNative) or regenerate into it. Each stage
+        // re-checks ownership at entry, so a turn superseded mid-recovery
+        // aborts silently before its next reset instead of tearing down
+        // its replacement's session.
+        draft.answer.turnOwnership?.checkCurrent()
         recoverLocalFactuality(draft)
         discardControlContext(draft)
         recoverReferenceGap(draft)
@@ -28,6 +34,7 @@ internal class ConversationRecovery(
     }
 
     private suspend fun recoverLocalFactuality(draft: ConversationDraft) {
+        draft.answer.turnOwnership?.checkCurrent()
         val answer = draft.answer
         val prompt = answer.invocation.prompt
         val engine = answer.engine
@@ -116,6 +123,7 @@ internal class ConversationRecovery(
     }
 
     private suspend fun discardControlContext(draft: ConversationDraft) {
+        draft.answer.turnOwnership?.checkCurrent()
         draft.rawControlOutput = draft.generated.toolCalls.isNotEmpty() || draft.generated.text.contains("tool_call>") ||
             draft.generated.text.contains("start_function_call")
         if (draft.rawControlOutput) {
@@ -126,6 +134,7 @@ internal class ConversationRecovery(
     }
 
     private suspend fun recoverReferenceGap(draft: ConversationDraft) {
+        draft.answer.turnOwnership?.checkCurrent()
         val answer = draft.answer
         val prompt = answer.invocation.prompt
         val engine = answer.engine
@@ -255,6 +264,7 @@ internal class ConversationRecovery(
     }
 
     private suspend fun recoverRepetition(draft: ConversationDraft) {
+        draft.answer.turnOwnership?.checkCurrent()
         val answer = draft.answer
         val prompt = answer.invocation.prompt
         val engine = answer.engine
@@ -336,6 +346,7 @@ internal class ConversationRecovery(
      * reply whose sentences were already accepted for publication.
      */
     private suspend fun discardAudioAccessRefusal(draft: ConversationDraft) {
+        draft.answer.turnOwnership?.checkCurrent()
         val answer = draft.answer
         val voiceAudio = answer.invocation.voiceAudio
         if (!answer.directAudio || voiceAudio == null || draft.actionResultMessage != null) return
@@ -385,6 +396,7 @@ internal class ConversationRecovery(
      * cannot reach here because the presence check returns first.
      */
     private suspend fun discardVisionPerceptionClaim(draft: ConversationDraft) {
+        draft.answer.turnOwnership?.checkCurrent()
         val answer = draft.answer
         if (draft.actionResultMessage != null) return
         if (answer.imageBytes != null || answer.visualContextInjected) return

@@ -605,6 +605,14 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
                             if (tokensPerSecond != null && tokensPerSecond.isFinite()) updated = updated.copy(estimatedTokensPerSecond = tokensPerSecond)
                             updated
                         }
+                    },
+                    // Discarded-turn signal (M7): the turn persisted
+                    // nothing, so close out its in-flight reply row
+                    // instead of leaving a permanently incomplete entry.
+                    onTurnDiscarded = {
+                        conversationHistory.updateReply(threadId, replyId,
+                            synchronized(response) { response.toString() }
+                                .ifBlank { "The response was interrupted. Please try again." }, true)
                     })
                 conversationJob?.join()
             } catch (error: Exception) {
@@ -889,7 +897,9 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         callOwned: Boolean = false,
         /** Binds an ordinary answer's exact voice output to its mutation/expiry delivery ticket. */
         onMemoryBound: (com.battlesbudz.jarvis.v2.memory.MemoryDeliveryFence.Ticket, MemoryTurnContext) -> Unit = { _, _ -> },
-        benchmarkCapture: com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkCapture? = null
+        benchmarkCapture: com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkCapture? = null,
+        /** Discarded-turn signal (M7): the turn ended with nothing persisted. */
+        onTurnDiscarded: () -> Unit = {}
     ): Job? {
         // M6: automatic memory capture, fire-and-forget. Comparison trials are
         // not real user turns and are never captured.
@@ -921,7 +931,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             ConversationInvocation(prompt, history, imageUri, incrementalVoice, voiceAudio, voiceAudioIsComplete,
                 directVoiceAudio, replyIdentity, conversationIdentity, callIdentity, comparison, audioUri,
                 frozenActionPlan, frozenVoiceFinal, callOwned, benchmarkCapture),
-            ConversationCallbacks(onToken, autoMemoryOnComplete, onLatency, onLiveInference, onActionResult, onPhonePlanFinished, onMemoryBound))
+            ConversationCallbacks(onToken, autoMemoryOnComplete, onLatency, onLiveInference, onActionResult, onPhonePlanFinished, onMemoryBound,
+                onTurnDiscarded = onTurnDiscarded))
     }
 
     /**

@@ -22,6 +22,8 @@ import com.battlesbudz.jarvis.v2.voice.AudioToolGuard
 import com.battlesbudz.jarvis.v2.voice.FinalVoiceToolGuard
 import com.battlesbudz.jarvis.v2.voice.VoiceRepetitionGuard
 import com.battlesbudz.jarvis.v2.voice.comparison.LiveComparison
+import com.battlesbudz.jarvis.v2.work.TurnOwnership
+import com.battlesbudz.jarvis.v2.work.TurnSupersededException
 import java.io.InputStream
 import org.json.JSONObject
 
@@ -55,7 +57,11 @@ internal class ConversationGeneration(
                          promptHistory: List<ChatEntry>, turnPrompt: ConversationPrompt,
                          engine: ConversationBackend, reply: ConversationReply,
                          phoneActions: ConversationActions,
-                         telemetry: ConversationInferenceTelemetry): ConversationDraft {
+                         telemetry: ConversationInferenceTelemetry,
+                         turnOwnership: TurnOwnership? = null): ConversationDraft {
+        // M7 turn guard: a turn superseded before generation starts must
+        // not touch shared session state at all.
+        turnOwnership?.checkCurrent()
         telemetry.attach(engine, prepared.history, prepared.captureReceipt)
         val allowTools = invocation.comparison == null && modelSession.selectedModel().supportsTools &&
             (routed.actionPlan is ActionTurnPlan.Ready || invocation.directVoiceAudio)
@@ -66,7 +72,10 @@ internal class ConversationGeneration(
         // whose reset would mutate the conversation under an in-flight
         // speculative draft — is deferred to the generation step below, after
         // the speculative owner has drained via promote/settle.
-        if (engine.toolsEnabled != allowTools) modelSession.clearContextAccounting()
+        if (engine.toolsEnabled != allowTools) {
+            turnOwnership?.checkCurrent()
+            modelSession.clearContextAccounting()
+        }
         val groundedVoice = invocation.voiceAudio != null && !prepared.referenceContext.isNullOrBlank()
         val guard = repetitionGuard(invocation, routed, prepared, reply, groundedVoice)
         if (invocation.voiceAudio != null) diagnostics.record("Voice sentence streaming: " +
@@ -160,6 +169,9 @@ internal class ConversationGeneration(
             val promoted = if (directAudio) input.tryPromote(submission.text, onToken,
                 ordinaryReplyAccepted = !allowTools) else null
             if (promoted == null && !directAudio) invocation.nativeSpeculation?.beforeNativeMutation()
+            // Last fence before the native policy transition mutates the
+            // shared conversation: a superseded turn aborts here instead.
+            turnOwnership?.checkCurrent()
             if (engine.setToolsEnabled(allowTools)) modelSession.clearContextAccounting()
             diagnostics.record("Generation tool policy allowed=$allowTools source=current_action_intent")
             promoted ?: try {
@@ -174,7 +186,8 @@ internal class ConversationGeneration(
                 // are owned, instead of surfacing a generation failure.
                 if (!com.battlesbudz.jarvis.v2.ai.ToolCallParseFailure.isFailure(error)) throw error
                 recoverFromToolCallParseFailure(engine, input, submission.text, onToken, error,
-                    routedPlanSteps = (routed.actionPlan as? ActionTurnPlan.Ready)?.steps?.size ?: 0)
+                    routedPlanSteps = (routed.actionPlan as? ActionTurnPlan.Ready)?.steps?.size ?: 0,
+                    turnOwnership = turnOwnership)
             }
         } catch (loop: VoiceRepetitionGuard.RunawayLoop) {
             // Native cancellation/join completes before this boundary; retain only accepted opening.
@@ -182,14 +195,30 @@ internal class ConversationGeneration(
             reply.benchmark.configuration("generation_recovery_reason", "runaway_repetition")
             diagnostics.important("Runaway repetition cancelled before speech publication; preserving valid opening.")
             GenerationResult(guard?.text.orEmpty(), -1L, null)
+        } catch (superseded: TurnSupersededException) {
+            throw superseded
+        } catch (error: Throwable) {
+            // M7: a failure that lands after this turn was superseded is
+            // dropped silently (as a supersession abort) instead of
+            // surfacing over the replacement turn. Real failures of the
+            // current turn propagate unchanged. Cancellation keeps its own
+            // type so the coordinator can tell a user cancel from an error.
+            if (error !is kotlinx.coroutines.CancellationException &&
+                turnOwnership != null && !turnOwnership.isCurrent()) {
+                throw TurnSupersededException(turnOwnership.sequence)
+            }
+            throw error
         }
         if (!stoppedLoop) telemetry.record("answer", generated, submission.text.length)
         telemetry.terminal(generated)
         val answer = ConversationAnswer(invocation, routed, prepared, promptHistory, turnPrompt,
             engine, reply, submission.text, attachments.image, directAudio, stream, guard, telemetry,
-            visualContextInjected = visionContext != null)
+            visualContextInjected = visionContext != null, turnOwnership = turnOwnership)
         val draft = ConversationDraft(answer, generated, input.nativeConversationContainsTurn,
             runawayLoopStopped = stoppedLoop)
+        // M7: a superseded turn dispatches no actions and runs no
+        // reset-and-retry guard against its replacement's session.
+        turnOwnership?.checkCurrent()
         executeNativeActions(draft, phoneActions)
         retryInvalidToolDraft(draft, input)
         guardAudioAccessRefusal(draft, input)
@@ -324,7 +353,11 @@ internal class ConversationGeneration(
      */
     private suspend fun recoverFromToolCallParseFailure(engine: ConversationBackend, input: ConversationInput,
                                                         prompt: String, onToken: (String) -> Unit,
-                                                        error: Throwable, routedPlanSteps: Int): GenerationResult {
+                                                        error: Throwable, routedPlanSteps: Int,
+                                                        turnOwnership: TurnOwnership? = null): GenerationResult {
+        // M7: recovery resets the shared native conversation; a superseded
+        // turn must never run it against its replacement's session.
+        turnOwnership?.checkCurrent()
         val salvaged = com.battlesbudz.jarvis.v2.ai.MalformedToolCallSalvage.salvage(error)
         val request = salvaged?.let { NativeActionDecoder.decodeStrict(it) }
         if (salvaged != null && request != null && AudioToolGuard.allows(request)) {
@@ -357,6 +390,7 @@ internal class ConversationGeneration(
     }
 
     private suspend fun retryInvalidToolDraft(draft: ConversationDraft, input: ConversationInput) {
+        draft.answer.turnOwnership?.checkCurrent()
         if (draft.generated.toolCalls.isEmpty() || draft.actionResultMessage != null ||
             AssistantText.forDisplay(draft.generated.text).isNotBlank()) return
         val answer = draft.answer
@@ -384,6 +418,7 @@ internal class ConversationGeneration(
      * honest fallback rather than let the turn be answered with the claim.
      */
     private suspend fun guardAudioAccessRefusal(draft: ConversationDraft, input: ConversationInput) {
+        draft.answer.turnOwnership?.checkCurrent()
         if (!input.carriesAudioInput || draft.actionResultMessage != null) return
         if (!AudioAccessRefusal.isRefusal(AssistantText.forDisplay(draft.generated.text))) return
         val answer = draft.answer
@@ -424,6 +459,7 @@ internal class ConversationGeneration(
         input: ConversationInput,
         hasVisualInput: Boolean
     ) {
+        draft.answer.turnOwnership?.checkCurrent()
         if (hasVisualInput || draft.actionResultMessage != null) return
         if (!VisionPerceptionClaim.isVisionDirectedQuestion(draft.answer.invocation.prompt)) return
         if (!VisionPerceptionClaim.assertsPerception(AssistantText.forDisplay(draft.generated.text))) return

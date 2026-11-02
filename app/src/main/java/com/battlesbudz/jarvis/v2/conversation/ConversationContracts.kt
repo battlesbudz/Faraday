@@ -43,7 +43,15 @@ internal data class ConversationCallbacks(
     val onLiveInference: (Long?, Long?, Double?, Boolean) -> Unit = { _, _, _, _ -> },
     val onActionResult: (String, String, Boolean) -> Unit = { _, _, _ -> },
     val onPhonePlanFinished: (ActionTurnRunner.Outcome) -> Unit = {},
-    val onMemoryBound: (MemoryDeliveryFence.Ticket, MemoryTurnContext) -> Unit = { _, _ -> }
+    val onMemoryBound: (MemoryDeliveryFence.Ticket, MemoryTurnContext) -> Unit = { _, _ -> },
+    /**
+     * Discarded-turn signal (M7): fired exactly once when an admitted turn
+     * ends with nothing persisted (cancelled, or superseded before it could
+     * publish), so listeners on this existing callback channel can clear
+     * any in-flight presentation state for the turn. Never fired for a turn
+     * that published a reply or a failure message.
+     */
+    val onTurnDiscarded: () -> Unit = {}
 )
 
 /** Approved-memory authority only; no tools, Android state or model leases are exposed here. */
