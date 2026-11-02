@@ -418,11 +418,14 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         pipelineBenchmarkStore = com.battlesbudz.jarvis.v2.diagnostics.AndroidPipelineBenchmarkStore(applicationContext)
         diagnosticRecorder.restore()
         diagnosticRecorder.recordPreviousProcessExit(applicationContext)
-        // Every standard Copy Diagnostics export carries the memory-embeddings line,
-        // probed read-only from the live services at copy time (both assembly sites
-        // build on the recorder snapshot, so both inherit it).
+        // Every standard Copy Diagnostics export carries the memory-embeddings and
+        // dream-journal lines, probed read-only from the live services at copy time
+        // (both assembly sites build on the recorder snapshot, so both inherit them).
         diagnosticRecorder.liveSection = {
-            com.battlesbudz.jarvis.v2.memory.AndroidMemoryEmbeddings.diagnosticsLine(applicationContext)
+            listOf(
+                com.battlesbudz.jarvis.v2.memory.AndroidMemoryEmbeddings.diagnosticsLine(applicationContext),
+                com.battlesbudz.jarvis.v2.memory.AndroidMemoryDream.diagnosticsLine(applicationContext),
+            ).joinToString("\n")
         }
         // Memory RAG Unit 2 projection syncs: background, coalesced, and idle-gated
         // by the same idleness rule the automatic-memory evaluator uses, so a sync
