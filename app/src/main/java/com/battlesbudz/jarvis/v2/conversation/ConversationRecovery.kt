@@ -24,6 +24,7 @@ internal class ConversationRecovery(
         recoverReferenceGap(draft)
         recoverRepetition(draft)
         discardAudioAccessRefusal(draft)
+        discardMemoryDisregard(draft)
     }
 
     private suspend fun recoverLocalFactuality(draft: ConversationDraft) {
@@ -363,5 +364,29 @@ internal class ConversationRecovery(
             diagnostics.record("Audio access refusal guard outcome=regenerated stage=recovery")
             cleaned
         }
+    }
+
+    /**
+     * Publication backstop for memory turns, mirroring the generation
+     * stage's guard in [ConversationGeneration]: a cleaned response that
+     * disregards records this turn actually injected (see [MemoryDisregard])
+     * is always false, so it must never be published. Recovery cannot
+     * resubmit the turn's input the way the generation stage can — the
+     * generation guard already had its one regeneration — so substitute the
+     * honest fallback rendered from the injected records. Runs last, so it
+     * also catches a disregard produced by one of the recovery regenerations
+     * above. Like the reference stages, it never replaces a reply whose
+     * sentences were already accepted for publication.
+     */
+    private fun discardMemoryDisregard(draft: ConversationDraft) {
+        val answer = draft.answer
+        if (draft.actionResultMessage != null) return
+        val contents = answer.turnPrompt.injectedMemoryContents()
+        if (contents.isEmpty()) return
+        if ((answer.repetitionGuard?.acceptedSentences ?: 0) > 0) return
+        if (!MemoryDisregard.isDisregard(draft.cleanedResponse, answer.invocation.prompt)) return
+        draft.cleanedResponse = MemoryDisregard.fallback(contents)
+        diagnostics.record("Memory disregard guard outcome=fallback stage=recovery " +
+            "reason=publication_backstop")
     }
 }

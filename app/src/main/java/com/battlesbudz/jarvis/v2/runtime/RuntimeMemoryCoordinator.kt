@@ -68,7 +68,8 @@ internal class RuntimeMemoryCoordinator(
             // Core supplies the earliest approved expiry from this same coherent snapshot,
             // including facts absent from this packet but retained by history/native context.
             return MemoryTurnContext(packet.text, result.stateToken, query, result.nextApprovedExpiryMs, before,
-                hasApprovedMemories = packet.memories.isNotEmpty()) {
+                hasApprovedMemories = packet.memories.isNotEmpty(),
+                injectedContents = packet.memories.map { it.memory.content }) {
                 if (boundaryPending.get()) Long.MIN_VALUE else epoch.get()
             }
         }

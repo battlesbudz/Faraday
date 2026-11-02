@@ -187,6 +187,7 @@ internal class ConversationGeneration(
         executeNativeActions(draft, phoneActions)
         retryInvalidToolDraft(draft, input)
         guardAudioAccessRefusal(draft, input)
+        guardMemoryDisregard(draft, input, turnPrompt)
         return draft
     }
 
@@ -392,6 +393,44 @@ internal class ConversationGeneration(
             GenerationResult(AudioAccessRefusal.FALLBACK, -1L, null)
         } else {
             diagnostics.summary("Audio access refusal guard outcome=regenerated stage=generation")
+            regenerated
+        }
+    }
+
+    /**
+     * Final generation-stage check on a turn whose prompt carried memory
+     * records. The draft may still disregard them — claiming no access to
+     * the user's history, or deflecting a question about the user with a
+     * model-identity statement — even though the records were included with
+     * the submission (see [MemoryDisregard]). That claim is always false on
+     * such a turn, so regenerate once, mirroring [guardAudioAccessRefusal]'s
+     * reset and tool policy, with a correction that names the disregard; the
+     * regeneration resubmits the same prompt, records included. If the model
+     * disregards again, substitute the honest fallback rendered from the
+     * injected records rather than let the turn be answered with the claim.
+     * A turn that injected no records never reaches the check: claiming no
+     * access is honest there.
+     */
+    private suspend fun guardMemoryDisregard(draft: ConversationDraft, input: ConversationInput,
+                                             turnPrompt: ConversationPrompt) {
+        if (draft.actionResultMessage != null) return
+        val contents = turnPrompt.injectedMemoryContents()
+        if (contents.isEmpty()) return
+        val userPrompt = draft.answer.invocation.prompt
+        if (!MemoryDisregard.isDisregard(AssistantText.forDisplay(draft.generated.text), userPrompt)) return
+        val answer = draft.answer
+        modelSession.reset()
+        answer.engine.setToolsEnabled(false)
+        answer.engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
+        val prompt = answer.submittedPrompt + MemoryDisregard.CORRECTION
+        val regenerated = input.retry(answer.engine, prompt, answer.streamFilter::accept)
+        answer.telemetry.record("memory disregard retry", regenerated, answer.submittedPrompt.length)
+        draft.generated = if (MemoryDisregard.isDisregard(AssistantText.forDisplay(regenerated.text), userPrompt)) {
+            diagnostics.summary("Memory disregard guard outcome=fallback stage=generation " +
+                "reason=regeneration_disregarded_again")
+            GenerationResult(MemoryDisregard.fallback(contents), -1L, null)
+        } else {
+            diagnostics.summary("Memory disregard guard outcome=regenerated stage=generation")
             regenerated
         }
     }

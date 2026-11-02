@@ -8,6 +8,8 @@ class MemoryTurnContext(
     val expiresAtMs: Long?,
     val observedEpoch: Long,
     val hasApprovedMemories: Boolean = false,
+    /** Raw contents of the records this packet actually injected, in packet order. */
+    val injectedContents: List<String> = emptyList(),
     private val currentEpoch: () -> Long,
 ) {
     fun promptSection(): String = packetText
