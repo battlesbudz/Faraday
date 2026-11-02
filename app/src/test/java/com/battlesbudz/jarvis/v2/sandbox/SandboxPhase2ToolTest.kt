@@ -7,6 +7,10 @@ import com.battlesbudz.jarvis.v2.actions.ActionTurnRunner
 import com.battlesbudz.jarvis.v2.actions.ExecutionResult
 import com.battlesbudz.jarvis.v2.actions.FileToolTaskStore
 import com.battlesbudz.jarvis.v2.actions.ActionValidation
+import com.battlesbudz.jarvis.v2.actions.describeForOverlay
+import com.battlesbudz.jarvis.v2.actions.isDispatchEligible
+import com.battlesbudz.jarvis.v2.actions.isRoutineEligible
+import com.battlesbudz.jarvis.v2.actions.runNative
 import com.battlesbudz.jarvis.v2.actions.MobileAction
 import com.battlesbudz.jarvis.v2.actions.MobileActionToolDefinitions
 import com.battlesbudz.jarvis.v2.actions.MobileActionValidator
@@ -174,13 +178,14 @@ class SandboxPhase2ToolTest {
     // -- Voice guards ---------------------------------------------------------
 
     @Test fun audioGuardAdmitsOnlySaneCommands() {
-        assertTrue(AudioToolGuard.allows(ToolCall("run_in_sandbox",
-            "{\"command\":\"$command\"}")))
-        assertFalse(AudioToolGuard.allows(ToolCall("run_in_sandbox", "{\"command\":\"\"}")))
-        assertFalse(AudioToolGuard.allows(ToolCall("run_in_sandbox",
-            "{\"command\":\"${"x".repeat(8_001)}\"}")))
+        assertTrue(AudioToolGuard.allows(
+            ActionRequest("run_in_sandbox", mapOf("command" to command))))
+        assertFalse(AudioToolGuard.allows(
+            ActionRequest("run_in_sandbox", mapOf("command" to ""))))
+        assertFalse(AudioToolGuard.allows(ActionRequest(
+            "run_in_sandbox", mapOf("command" to "x".repeat(8_001)))))
         // A non-sandbox tool stays rejected by the guard's allowlist rules.
-        assertFalse(AudioToolGuard.allows(ToolCall("definitely_not_a_tool", "{}")))
+        assertFalse(AudioToolGuard.allows(ActionRequest("definitely_not_a_tool")))
     }
 
     @Test fun finalVoiceGuardAdmitsOnlyTheEmptyCommandMarker() {
