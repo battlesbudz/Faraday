@@ -73,7 +73,9 @@ class MemoryDreamGroupingTest {
         }
         assertEquals(DreamBand.MERGE_CANDIDATE, bandFor(0.95))
         assertEquals(DreamBand.JUDGE_ONLY, bandFor(0.90))
-        assertEquals(DreamBand.JUDGE_ONLY, bandFor(0.85))
+        // Just above the link floor (an exactly-0.85 float vector normalizes
+        // to a hair under 0.85, so the boundary case uses 0.86).
+        assertEquals(DreamBand.JUDGE_ONLY, bandFor(0.86))
     }
 
     @Test fun belowTheLinkFloorNoGroupFormsAndTheSeedIsASingleton() {
