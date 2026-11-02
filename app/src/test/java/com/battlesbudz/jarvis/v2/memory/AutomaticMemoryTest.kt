@@ -320,6 +320,9 @@ class AutomaticMemoryTest {
             "I also love ice cream." to AutoMemorySource.VOICE,
             "I used to skateboard when I was a teenager." to AutoMemorySource.VOICE,
             "Yeah, and I was an average traveler and I've been to 27 different countries." to AutoMemorySource.VOICE,
+            // Evaluator v3 (2026-11-01): the "traveled to" biography form, scored
+            // here as the standalone segment a multi-fact message splits into.
+            "I have traveled to 27 countries" to AutoMemorySource.VOICE,
         )
         val negatives = listOf(
             "ok thanks" to AutoMemorySource.CHAT,
@@ -386,9 +389,14 @@ class AutomaticMemoryTest {
             assertEquals("statement $index must pass self-review: ${result.review.reason}",
                 SelfReviewDecision.ACCEPT, result.review.decision)
         }
-        assertEquals(4, auto.pendingCount)
-        assertEquals(4, auto.evaluatePending(evaluator, idle))
-        assertTrue(auto.evaluations.all { it.save })
+        // The fourth statement segments into two capturable statements since
+        // the 2026-11-01 multi-fact split ("Yeah" is below the minimum length;
+        // "I was an average traveler" queues but scores below the save
+        // thresholds), so the queue holds 5 candidates of which exactly the
+        // four real facts save.
+        assertEquals(5, auto.pendingCount)
+        assertEquals(5, auto.evaluatePending(evaluator, idle))
+        assertEquals(4, auto.evaluations.count { it.save })
         val approved = memoryOs.read().snapshot!!.memories
             .filter { it.reviewStatus == MemoryReviewStatus.APPROVED }
         assertEquals(4, approved.size)
@@ -396,6 +404,80 @@ class AutomaticMemoryTest {
         assertTrue(approved.any { it.content.contains("ice cream") && it.category == MemoryCategory.PREFERENCE })
         assertTrue(approved.any { it.content.contains("skateboard") && it.category == MemoryCategory.FACT })
         assertTrue(approved.any { it.content.contains("27 different countries") && it.category == MemoryCategory.FACT })
+    }
+
+    // ---------- Multi-fact messages (2026-11-01): one record per fact ----------
+
+    /**
+     * Battles's 2026-11-01 device message spoken as ONE voice turn, in the
+     * production candidate shape (transcript + answer). It used to save as a
+     * single blob record holding the whole raw message; it must now land as
+     * exactly three APPROVED records, each holding only its own fact.
+     */
+    @Test fun multiFactVoiceMessageCommitsOneRecordPerFact() {
+        val dir = tempDir()
+        val memoryOs = os(dir)
+        val auto = pipeline(memoryOs)
+        val message = "My name is Justin Lee Battles and I have traveled to 27 countries and I like ice cream"
+        val result = auto.capture(CandidateInput("voice-multi", AutoMemorySource.VOICE,
+            "$message\nYour name is Justin Lee Battles, you have traveled to 27 countries, and you like ice cream.", now))
+        assertEquals(SelfReviewDecision.ACCEPT, result.review.decision)
+        assertEquals(3, auto.pendingCount)
+        assertEquals(3, auto.evaluatePending(evaluator, idle))
+        assertTrue(auto.evaluations.all { it.save })
+        val approved = memoryOs.read().snapshot!!.memories
+            .filter { it.reviewStatus == MemoryReviewStatus.APPROVED }
+        assertEquals(3, approved.size)
+        val byCategory = approved.associateBy { it.category }
+        assertEquals("My name is Justin Lee Battles", byCategory[MemoryCategory.PERSON]!!.content)
+        assertEquals("I have traveled to 27 countries", byCategory[MemoryCategory.FACT]!!.content)
+        assertEquals("I like ice cream", byCategory[MemoryCategory.PREFERENCE]!!.content)
+    }
+
+    /** Same acceptance through the chat shape (typed message + answer). */
+    @Test fun multiFactChatMessageCommitsOneRecordPerFact() {
+        val dir = tempDir()
+        val memoryOs = os(dir)
+        val auto = pipeline(memoryOs)
+        val message = "My name is Justin Lee Battles and I have traveled to 27 countries and I like ice cream"
+        auto.capture(CandidateInput("chat-multi", AutoMemorySource.CHAT, "$message\nNoted, sir.", now))
+        auto.evaluatePending(evaluator, idle)
+        val approved = memoryOs.read().snapshot!!.memories
+            .filter { it.reviewStatus == MemoryReviewStatus.APPROVED }
+        assertEquals(3, approved.size)
+        assertEquals(setOf(MemoryCategory.PERSON, MemoryCategory.FACT, MemoryCategory.PREFERENCE),
+            approved.map { it.category }.toSet())
+        assertTrue(approved.none { it.content.contains(" and I ") })
+    }
+
+    /** A fact stated beside a question saves only the fact. */
+    @Test fun mixedFactAndQuestionMessageSavesOnlyTheFact() {
+        val dir = tempDir()
+        val memoryOs = os(dir)
+        val auto = pipeline(memoryOs)
+        auto.capture(CandidateInput("voice-mixed", AutoMemorySource.VOICE,
+            "I like ice cream. What is the weather today?\nYou like ice cream. The weather is not something I can check.", now))
+        auto.evaluatePending(evaluator, idle)
+        val approved = memoryOs.read().snapshot!!.memories
+            .filter { it.reviewStatus == MemoryReviewStatus.APPROVED }
+        assertEquals(1, approved.size)
+        assertEquals("I like ice cream.", approved.single().content)
+        assertEquals(MemoryCategory.PREFERENCE, approved.single().category)
+    }
+
+    /** Single-fact messages keep the exact pre-segmentation candidate shape. */
+    @Test fun singleFactMessageKeepsBlobCandidateShape() {
+        val dir = tempDir()
+        val memoryOs = os(dir)
+        val auto = pipeline(memoryOs)
+        val blob = "I also love ice cream.\nYou enjoy ice cream."
+        auto.capture(CandidateInput("voice-single", AutoMemorySource.VOICE, blob, now))
+        assertEquals(1, auto.pendingCount)
+        auto.evaluatePending(evaluator, idle)
+        val approved = memoryOs.read().snapshot!!.memories
+            .filter { it.reviewStatus == MemoryReviewStatus.APPROVED }
+        assertEquals(1, approved.size)
+        assertEquals(blob, approved.single().content)
     }
 
     // ---------- FileCandidateStore: queue survives restarts ----------

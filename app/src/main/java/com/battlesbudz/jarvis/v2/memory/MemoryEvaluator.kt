@@ -31,7 +31,7 @@ interface MemoryEvaluator {
 
     companion object {
         /** Bump when the scoring logic changes; persisted on every evaluation. */
-        const val EVALUATOR_VERSION = 2
+        const val EVALUATOR_VERSION = 3
     }
 }
 
@@ -123,7 +123,11 @@ class HeuristicMemoryEvaluator : MemoryEvaluator {
         // form and biography/past-activity forms ("I used to …", "I've been to …") join
         // the fact class, so voice-captured statements of those classes can reach the
         // unchanged thresholds. Weights and thresholds are untouched.
-        private val FACT_PATTERN = Regex("\\b(i live in|i work at|i work as|i am a|my (?:full )?name is|my birthday is|appointment|meeting|i used to|i've been to|i have been to)\\b")
+        // v3 (2026-11-01): pattern coverage only — the "traveled to" biography form
+        // joins the fact class, so a fact segment split out of a multi-fact message
+        // ("…and I have traveled to 27 countries") reaches the unchanged thresholds
+        // on its own text. Weights and thresholds are untouched.
+        private val FACT_PATTERN = Regex("\\b(i live in|i work at|i work as|i am a|my (?:full )?name is|my birthday is|appointment|meeting|i used to|i've been to|i have been to|i (?:have |'ve )?travel(?:ed|led) to)\\b")
         private val PERSON_PATTERN = Regex("\\b(my (wife|husband|son|daughter|mom|dad|mother|father|brother|sister|friend|boss|partner))\\b")
         private val TEMPORAL_PATTERN = Regex("\\b(tomorrow|today|yesterday|every day|every week|birthday|appointment|meeting|at \\d)\\b")
         private val TRIVIAL_PATTERN = Regex("^(hi|hello|hey|thanks|thank you|ok|okay|yes|no|sure|lol|lmao)\\.?$")

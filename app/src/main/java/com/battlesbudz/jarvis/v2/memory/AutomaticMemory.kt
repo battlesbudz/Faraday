@@ -244,6 +244,15 @@ class AutomaticMemory(
         if (content.length > MemoryPolicy.MAX_CONTENT_CHARS) {
             return CaptureResult(SelfReview(SelfReviewDecision.REJECT, "Content exceeds maximum length."))
         }
+        // Multi-fact messages: the production candidate shape is the user's
+        // message plus the assistant's answer on later lines. Segment the
+        // message (the first line) into individual fact statements and queue
+        // one candidate per fact, so each is evaluated, classified and stored
+        // on its own text instead of one blob record holding the whole turn.
+        // A message that stays a single segment takes the exact pre-existing
+        // path below, byte for byte.
+        val segments = MemoryFactSegmenter.segment(content.substringBefore('\n'))
+        if (segments.size > 1) return captureSegments(input, segments)
         val fingerprint = contentFingerprint(content)
         // Anti-resurrection: never re-capture content this pipeline committed and the user deleted.
         if (fence.isFenced(fingerprint, memoryOs.read().snapshot)) {
@@ -266,6 +275,47 @@ class AutomaticMemory(
         pending.addLast(candidate)
         persistQueue()
         return CaptureResult(SelfReview(SelfReviewDecision.ACCEPT, "Candidate queued for evaluation."), candidate)
+    }
+
+    /**
+     * Queues one candidate per fact statement segmented from a multi-fact
+     * message. Every per-candidate guard from the single-candidate path
+     * applies per segment: minimum length, the anti-resurrection fence, and
+     * duplicate suppression against live approved memories (and against
+     * segments already queued from this same message). Segment event ids are
+     * derived from the turn's event id by position, so re-capturing the same
+     * message replays onto the same records instead of duplicating them.
+     */
+    private fun captureSegments(input: CandidateInput, segments: List<String>): CaptureResult {
+        val snapshot = memoryOs.read().snapshot
+        val queued = mutableListOf<MemoryCandidate>()
+        val queuedFingerprints = mutableSetOf<String>()
+        segments.forEachIndexed { index, segment ->
+            if (segment.length < MIN_CANDIDATE_CHARS) return@forEachIndexed
+            if (MemoryPolicy.containsRawRestrictedContent(segment)) return@forEachIndexed
+            val fingerprint = contentFingerprint(segment)
+            if (!queuedFingerprints.add(fingerprint)) return@forEachIndexed
+            if (fence.isFenced(fingerprint, snapshot)) return@forEachIndexed
+            if (snapshot != null && snapshot.memories.any {
+                    it.reviewStatus == MemoryReviewStatus.APPROVED && contentFingerprint(it.content) == fingerprint
+                }
+            ) return@forEachIndexed
+            queued += MemoryCandidate(
+                id = UUID.randomUUID().toString(),
+                content = segment,
+                category = classify(segment),
+                source = input.source,
+                eventId = "${input.eventId}#fact${index + 1}",
+                capturedAtMs = input.capturedAtMs,
+                contentFingerprint = fingerprint,
+            )
+        }
+        if (queued.isEmpty()) {
+            return CaptureResult(SelfReview(SelfReviewDecision.REJECT, "No new fact statements to capture."))
+        }
+        queued.forEach { pending.addLast(it) }
+        persistQueue()
+        return CaptureResult(SelfReview(SelfReviewDecision.ACCEPT, "Candidates queued for evaluation."), queued.first())
     }
 
     /**
