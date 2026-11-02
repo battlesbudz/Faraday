@@ -40,7 +40,7 @@ class RouteBPromptParityTest {
         val conversation = RouteBConversationShape(
             systemInstruction = null,
             userText = text,
-            toolNames = MobileActionToolDefinitions.all().map { it.name },
+            toolNames = MobileActionToolDefinitions.all().map { it.getToolDescriptionJsonString() },
             audioTokenRows = audioRows
         )
         assertTrue(conversation.toolNames.isNotEmpty())
@@ -84,7 +84,7 @@ class RouteBPromptParityTest {
         // The fact that keeps the gate closed today: if a future catalog
         // adds a tools-disabled audio model, this test fails first and the
         // priming policy gets revisited deliberately, not by accident.
-        val audioModels = ModelCatalog.all.filter { it.supportsNativeAudioUnderstanding }
+        val audioModels = ModelCatalog.all.filter { it.supportsAudio }
         assertTrue(audioModels.isNotEmpty())
         assertTrue(audioModels.all { it.supportsTools && it.incrementalGemmaInput })
         assertEquals(audioModels.size, audioModels.count { it.supportsTools })
