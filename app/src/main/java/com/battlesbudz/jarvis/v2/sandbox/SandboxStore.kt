@@ -195,7 +195,7 @@ class SandboxStore(private val context: Context) {
     }
 
     /** The persisted Phase 2 counters for the diagnostics block. */
-    fun agentCountersSnapshot(): SandboxAgentCounters.Snapshot = agentCounters.snapshot()
+    internal fun agentCountersSnapshot(): SandboxAgentCounters.Snapshot = agentCounters.snapshot()
 
     /** The last recorded run's outcome lines, or null when none ran yet. */
     fun lastRunSummary(): String? = try {
