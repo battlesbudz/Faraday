@@ -25,11 +25,15 @@ internal class ConversationInput(
     val imageBytes: ByteArray?,
     val attachedAudio: ByteArray?,
     private val sealedVoiceAudio: com.google.ai.edge.litertlm.Content.SealedAudioEmbeddings? = null,
-    private val nativeSpeculation: com.battlesbudz.jarvis.v2.voice.NativeVoiceSpeculation? = null
+    private val nativeSpeculation: com.battlesbudz.jarvis.v2.voice.NativeVoiceSpeculation? = null,
+    private val primedAudio: com.battlesbudz.jarvis.v2.voice.PrimedAudioInput? = null
 ) {
     init {
         require(sealedVoiceAudio == null || directAudio && voiceAudio != null && textInput == null) {
             "Sealed native audio requires one complete direct-audio request"
+        }
+        require(primedAudio == null || sealedVoiceAudio != null) {
+            "Primed audio requires the turn's sealed native audio"
         }
     }
     /** True when this turn carries audio the model is expected to hear:
@@ -51,7 +55,13 @@ internal class ConversationInput(
     var snapshotImageSubmitError: String? = null
         private set
     private var speculativeResultUsed = false
-    val nativeConversationContainsTurn: Boolean get() = !speculativeResultUsed && (textInput == null || incrementalFallbackUsed)
+    /** Route B: true when the primed Session produced this turn's answer. */
+    var primedUsed: Boolean = false
+        private set
+    /** Route B outcome for diagnostics: "used", or "fallback:<reason>" when the sealed route answered. */
+    var routeBPrimingOutcome: String? = null
+        private set
+    val nativeConversationContainsTurn: Boolean get() = !speculativeResultUsed && !primedUsed && (textInput == null || incrementalFallbackUsed)
 
     /**
      * Attempts the speculative promotion on its own, without any ordinary
@@ -90,8 +100,25 @@ internal class ConversationInput(
      * exists. The direct-audio branch uses the full ordinary audio input,
      * never a spent prefill.
      */
+    /** Releases a primed session this generation will not use (e.g. a promoted speculative answer). */
+    suspend fun closePrimedAudio() { primedAudio?.close() }
+
     suspend fun generateFallback(engine: ConversationBackend, prompt: String, onToken: (String) -> Unit,
                          onIncrementalFallback: (Throwable) -> Unit): GenerationResult = when {
+        directAudio && primedAudio != null && sealedVoiceAudio != null -> {
+            // Route B: the primed Session answers when it provably holds
+            // this exact turn; its own fallback is the ordinary sealed
+            // submission below, so a priming failure degrades silently to
+            // the sealed route instead of failing the turn. Retry never
+            // re-enters here — a spent prefill is not authoritative input.
+            val result = primedAudio.answerWithSealedFallback(prompt, sealedVoiceAudio, onToken) {
+                engine.generateSealedAudio(prompt, sealedVoiceAudio, onToken)
+            }
+            primedUsed = primedAudio.usedPriming
+            routeBPrimingOutcome = if (primedUsed) "used"
+                else "fallback:${primedAudio.fallbackReason ?: "unknown"}"
+            result
+        }
         directAudio -> {
             if (sealedVoiceAudio != null) engine.generateSealedAudio(prompt, sealedVoiceAudio, onToken)
             else engine.generateAudio(prompt, requireNotNull(voiceAudio), onToken)

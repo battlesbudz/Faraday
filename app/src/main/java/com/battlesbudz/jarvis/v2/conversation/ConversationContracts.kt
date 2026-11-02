@@ -33,7 +33,9 @@ internal data class ConversationInvocation(
     /** Immutable, complete native encoder result; never provisional action authority. */
     val sealedVoiceAudio: com.google.ai.edge.litertlm.Content.SealedAudioEmbeddings? = null,
     /** Candidate output is still held until exact final prompt/input and ordinary routing match. */
-    val nativeSpeculation: com.battlesbudz.jarvis.v2.voice.NativeVoiceSpeculation? = null
+    val nativeSpeculation: com.battlesbudz.jarvis.v2.voice.NativeVoiceSpeculation? = null,
+    /** Route B: primed-audio owner for this turn, armed only for parity-eligible shapes. */
+    val primedVoiceAudio: com.battlesbudz.jarvis.v2.voice.PrimedAudioInput? = null
 )
 
 internal data class ConversationCallbacks(

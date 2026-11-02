@@ -240,6 +240,11 @@ internal class VoiceTurnRecognition(
         val initialActionPlan = if (!prepared.directAudioTurn && recognitionIssue == null)
             turnOrchestrator.plan(transcript, prepared.voiceHistory.map { it.role to it.text }).actionPlan
             else ActionTurnPlan.NotAction
+        // Route B: a rejected direct-audio turn may still run the Gemma
+        // transcription fallback on the Conversation route; a held primed
+        // Session would make that route's lifecycle admission fail, so the
+        // priming is released here and never reaches the reply stage.
+        if (prepared.primedAudio != null && recognitionIssue != null) prepared.primedAudio.close()
         val sealedNativeAudio = if (prepared.directAudioTurn && recognitionIssue == null &&
             lifetime.nativeSpeculation?.consumedEncoder != true) {
             lifetime.nativeAudioCapture?.sealAfterCaptureJoined(audioBytes,
@@ -249,6 +254,7 @@ internal class VoiceTurnRecognition(
         return VoiceStageResult.Ready(FinalizedVoiceTurn(transcript, asrTranscript, audioBytes, audioIsComplete,
             recognitionIssue, preparedText, endpointAt, initialActionPlan, sealedNativeAudio?.content,
             sealedNativeAudio?.timing,
-            lifetime.nativeSpeculation?.takeIf { it.consumedEncoder }))
+            lifetime.nativeSpeculation?.takeIf { it.consumedEncoder },
+            primedAudio = prepared.primedAudio?.takeIf { sealedNativeAudio != null }))
     }
 }

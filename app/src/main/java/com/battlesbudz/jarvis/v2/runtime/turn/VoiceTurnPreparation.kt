@@ -354,6 +354,59 @@ internal class VoiceTurnPreparation(
             observation.benchmark.configuration("native_speculation", "frozen_pause_exact_prompt_v1")
             observation.benchmark.configuration("native_speculation_budget", "attempts=1,draft_ms=1500,held_chars=4096,held_utf8_bytes=16384,estimated_tokens=1024,callbacks=64,tts_pcm_bytes=0")
         } else observation.benchmark.configuration("native_speculation", "ineligible_no_native_capture_or_current_context")
+        // Route B (Option B): arm text-prefix priming for eligible
+        // native-audio turns — the turn's prefix is prefilled on a Session
+        // during capture and the sealed rows are chunk-fed at finalization.
+        // The gate reads only facts known now. On the current catalog every
+        // direct-audio turn generates with tools enabled (allowTools always
+        // admits direct audio on a tool-capable model), which a raw Session
+        // cannot mirror, so today this records the ineligibility verdict
+        // and arms nothing; the verdict line keeps Copy Diagnostics honest
+        // about which shape kept the turn on the sealed route.
+        if (directAudioTurn) {
+            val thermal = if (android.os.Build.VERSION.SDK_INT >= 29)
+                context.getSystemService(android.os.PowerManager::class.java)?.currentThermalStatus ?: 0 else 0
+            val verdict = com.battlesbudz.jarvis.v2.ai.RouteBPrimingPolicy.evaluate(
+                com.battlesbudz.jarvis.v2.ai.RouteBPrimingPolicy.Shape(
+                    directAudioTurn = true,
+                    sealedAudioAvailable = lifetime.nativeAudioCapture != null,
+                    comparisonActive = request.comparison != null,
+                    incrementalGemmaInput = selectedSpec.incrementalGemmaInput,
+                    // Generation's allowTools for a direct-audio turn reduces
+                    // to exactly this on every catalog model.
+                    toolsEnabledForTurn = selectedSpec.supportsTools,
+                    // A tools-off turn on a still-tools-enabled engine makes
+                    // generation reset the native conversation, which cannot
+                    // run while a primed Session is held.
+                    toolPolicyTransitionPending = engine.toolsEnabledState,
+                    snapshotImageAttached = false,
+                    speculationLanePresent = lifetime.nativeSpeculation != null,
+                    sessionAvailable = true,
+                    schedulerAdmitted = selectedSpec.incrementalGemmaInput &&
+                        models.workScheduler.admitPrefill(input.bufferedAudioMs, thermal)))
+            when (verdict) {
+                com.battlesbudz.jarvis.v2.ai.RouteBPrimingPolicy.Verdict.Eligible -> {
+                    observation.benchmark.configuration("route_b_priming_armed", "true")
+                    val primed = com.battlesbudz.jarvis.v2.voice.PrimedAudioInput(
+                        lifetime.scope,
+                        promptBuilder.voiceInputPrefix(voiceHistory, (selectedSpec.contextTokens ?: 4096) < 2048),
+                        engine::createVoicePrefillSession,
+                        canPrime = {
+                            val currentThermal = if (android.os.Build.VERSION.SDK_INT >= 29)
+                                context.getSystemService(android.os.PowerManager::class.java)?.currentThermalStatus ?: 0 else 0
+                            lifetime.modelLease.owned && call.controller.currentCallId() == expectedCallId &&
+                                call.state.armed &&
+                                models.workScheduler.admitPrefill(input.bufferedAudioMs, currentThermal)
+                        },
+                        log = { diagnosticRecorder.recordSummary("Voice route B turn=${request.asrTurnId} $it") })
+                    lifetime.routeBPriming = primed
+                    primed.prime()
+                }
+                is com.battlesbudz.jarvis.v2.ai.RouteBPrimingPolicy.Verdict.Ineligible ->
+                    observation.benchmark.configuration("route_b_priming_armed",
+                        "false:${verdict.reason.name.lowercase()}")
+            }
+        }
         val exactShadowTurnJob = lifetime.scope.coroutineContext[kotlinx.coroutines.Job]
         val shadowTelemetry = com.battlesbudz.jarvis.v2.diagnostics.SmartTurnBenchmarkTelemetry(observation.benchmark) { category, evidence ->
             diagnosticRecorder.recordTurnEvidence(request.asrTurnId, category, evidence)
@@ -412,7 +465,15 @@ internal class VoiceTurnPreparation(
             observation.turnTrace.mark(com.battlesbudz.jarvis.v2.voice.VoiceTurnTrace.Stage.MICROPHONE_READY)
             observation.benchmark.mark("microphone_ready")
         }
-        if (earlyGemma != null) {
+        if (earlyGemma != null && lifetime.routeBPriming != null) {
+            // A primed Session occupies the checked native lifecycle for
+            // this turn, so the early Conversation preface preparation can
+            // neither run beside it nor is it needed — the session already
+            // holds the turn's text prefix. Release the gate so encoder
+            // creation proceeds without waiting for it.
+            earlyGemma.complete()
+            observation.benchmark.configuration("early_gemma_preface_policy", "superseded_by_route_b_priming")
+        } else if (earlyGemma != null) {
             val started = System.nanoTime()
             observation.benchmark.mark("early_gemma_session_prepare_started")
             observation.benchmark.configuration("early_gemma_preface_policy", com.battlesbudz.jarvis.v2.ai.GemmaVoicePreface.POLICY)
@@ -457,6 +518,6 @@ internal class VoiceTurnPreparation(
                 log = { diagnosticRecorder.recordImportant(it) })
             diagnosticRecorder.recordImportant("Wake acknowledged; command microphone ready.")
         }
-        return PreparedVoiceTurn(engine, selectedSpec, asrDirectory, ttsDirectory, input, expectedCallId, models, voiceHistory, output, incremental, activeCapture, correction, directAudioTurn, replyAsrEnabled, request.replyProbeEnabled)
+        return PreparedVoiceTurn(engine, selectedSpec, asrDirectory, ttsDirectory, input, expectedCallId, models, voiceHistory, output, incremental, activeCapture, correction, directAudioTurn, replyAsrEnabled, request.replyProbeEnabled, primedAudio = lifetime.routeBPriming)
     }
 }

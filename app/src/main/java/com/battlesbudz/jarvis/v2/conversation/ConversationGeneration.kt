@@ -166,7 +166,8 @@ internal class ConversationGeneration(
         // A call turn never carries a chat attachment, so the image slot
         // is free for the snapshot; an explicit chat image always wins.
         val input = ConversationInput(invocation.voiceAudio, directAudio, prepared.textInput,
-            attachments.image ?: snapshotAttachment?.bytes, attachments.audio, invocation.sealedVoiceAudio, invocation.nativeSpeculation)
+            attachments.image ?: snapshotAttachment?.bytes, attachments.audio, invocation.sealedVoiceAudio, invocation.nativeSpeculation,
+            invocation.primedVoiceAudio)
         var snapshotOutcomeRecorded = false
         fun recordSnapshotOutcome() {
             if (snapshotAttachment == null || snapshotOutcomeRecorded) return
@@ -206,6 +207,12 @@ internal class ConversationGeneration(
             val onToken: (String) -> Unit = { token -> telemetry.token(token); stream.accept(token) }
             val promoted = if (directAudio) input.tryPromote(submission.text, onToken,
                 ordinaryReplyAccepted = !allowTools) else null
+            // A promoted speculative answer ends the turn without the
+            // ordinary pass; a held primed Session must be released before
+            // the tool-policy transition below touches the native lifecycle.
+            // (Policy-unreachable today — priming excludes the speculation
+            // lane — but a held Session must never outlive its turn.)
+            if (promoted != null) input.closePrimedAudio()
             if (promoted == null && !directAudio) invocation.nativeSpeculation?.beforeNativeMutation()
             if (engine.setToolsEnabled(allowTools)) modelSession.clearContextAccounting()
             diagnostics.record("Generation tool policy allowed=$allowTools source=current_action_intent")
@@ -243,6 +250,9 @@ internal class ConversationGeneration(
             throw error
         }
         recordSnapshotOutcome()
+        input.routeBPrimingOutcome?.let { outcome ->
+            diagnostics.summary("Route B priming: outcome=$outcome audioTokens=${invocation.sealedVoiceAudio?.audioTokenCount ?: 0}")
+        }
         if (!stoppedLoop) telemetry.record("answer", generated, submission.text.length)
         telemetry.terminal(generated)
         val answer = ConversationAnswer(invocation, routed, prepared, promptHistory, turnPrompt,

@@ -174,6 +174,9 @@ internal class ConversationCoordinator(
                 runCatching { input.incrementalVoice?.close() }.exceptionOrNull()?.let {
                     if (it !== error) error.addSuppressed(it)
                 }
+                runCatching { input.primedVoiceAudio?.close() }.exceptionOrNull()?.let {
+                    if (it !== error) error.addSuppressed(it)
+                }
                 runCatching { modelSession.close() }.exceptionOrNull()?.let {
                     if (it !== error) error.addSuppressed(it)
                 }
@@ -190,6 +193,7 @@ internal class ConversationCoordinator(
                     modelSession.residentBackend?.onInferenceProgress = {}
                     if (input.voiceAudio == null && !input.callOwned) modelSession.residentBackend?.onPromptSubmitted = { _, _ -> }
                     input.incrementalVoice?.close()
+                    input.primedVoiceAudio?.close()
                 } finally {
                     modelSession.beforeNativeMutation = {}
                     runCatching { activity?.close() }

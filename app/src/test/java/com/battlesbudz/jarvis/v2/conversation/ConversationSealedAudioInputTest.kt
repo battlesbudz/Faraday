@@ -6,6 +6,8 @@ import com.battlesbudz.jarvis.v2.ai.ToolCall
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkPurpose
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkSubmission
 import com.battlesbudz.jarvis.v2.voice.IncrementalVoiceInput
+import com.battlesbudz.jarvis.v2.voice.PrimedAudioInput
+import com.battlesbudz.jarvis.v2.voice.VoicePrefillSession
 import com.google.ai.edge.litertlm.Content
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -57,6 +59,73 @@ class ConversationSealedAudioInputTest {
     private fun metadata(content: Content.SealedAudioEmbeddings) = listOf(
         content.pcmSampleCount, content.audioTokenCount, content.embeddingWidth,
         content.sealToken, content.producerSha256)
+
+    private class PrimedFakeSession(private val answer: String = "primed answer") : VoicePrefillSession {
+        val appends = mutableListOf<String>()
+        var audioTokens = 0
+        var closed = false
+        override fun append(text: String) { appends += text }
+        override fun appendImage(imageBytes: ByteArray) { error("unused") }
+        override fun appendAudio(rows: FloatArray, tokenCount: Int, embeddingWidth: Int) { audioTokens = tokenCount }
+        override suspend fun decode(onToken: (String) -> Unit): GenerationResult {
+            onToken(answer)
+            return GenerationResult(answer, 3, null)
+        }
+        override fun close() { closed = true }
+    }
+
+    @Test fun primedInputAnswersOnTheSessionAndSkipsTheBackend() = runBlocking {
+        val backend = Backend()
+        val session = PrimedFakeSession()
+        val owner = PrimedAudioInput(this, "audio prompt", { session })
+        owner.prime()
+        val input = ConversationInput(ByteArray(4), true, null, null, null, sealed(), primedAudio = owner)
+        val result = input.generateFallback(backend, "audio prompt", {}, {})
+        assertEquals("primed answer", result.text)
+        assertTrue(backend.modes.isEmpty())
+        assertTrue(input.primedUsed)
+        assertEquals("used", input.routeBPrimingOutcome)
+        assertFalse(input.nativeConversationContainsTurn)
+        assertEquals(1, session.audioTokens)
+        assertTrue(session.closed)
+    }
+
+    @Test fun primedInputFallsBackToSealedBackendWhenThePromptDrifted() = runBlocking {
+        val backend = Backend()
+        val session = PrimedFakeSession()
+        val owner = PrimedAudioInput(this, "audio prompt", { session })
+        owner.prime()
+        val input = ConversationInput(ByteArray(4), true, null, null, null, sealed(), primedAudio = owner)
+        val result = input.generateFallback(backend, "a different final prompt", {}, {})
+        assertEquals("ok", result.text)
+        assertEquals(listOf("sealed"), backend.modes)
+        assertFalse(input.primedUsed)
+        assertEquals("fallback:prompt_prefix_changed", input.routeBPrimingOutcome)
+        assertTrue(input.nativeConversationContainsTurn)
+    }
+
+    @Test fun retryNeverUsesThePrimedSession() = runBlocking {
+        val backend = Backend()
+        val session = PrimedFakeSession()
+        val owner = PrimedAudioInput(this, "audio prompt", { session })
+        owner.prime()
+        val input = ConversationInput(ByteArray(4), true, null, null, null, sealed(), primedAudio = owner)
+        input.generateFallback(backend, "audio prompt", {}, {})
+        val retried = input.retry(backend, "audio prompt") {}
+        assertEquals("ok", retried.text)
+        // Only the retry reached the backend; the first pass was the primed session's.
+        assertEquals(listOf("sealed"), backend.modes)
+    }
+
+    @Test fun primedInputWithoutSealedAudioIsRejected() {
+        val owner = PrimedAudioInput(
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default),
+            "prompt", { PrimedFakeSession() })
+        try {
+            ConversationInput(ByteArray(4), true, null, null, null, null, primedAudio = owner)
+            fail("primed audio without sealed content must be rejected")
+        } catch (_: IllegalArgumentException) { }
+    }
 
     @Test fun directAudioAndRetryUseTheSameImmutableSealedInputWithoutRawFallback() = runBlocking<Unit> {
         val rows = FloatArray(1536) { it / 1536f }
