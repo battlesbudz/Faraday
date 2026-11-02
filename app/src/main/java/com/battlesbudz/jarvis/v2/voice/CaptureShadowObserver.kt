@@ -19,7 +19,13 @@ interface CaptureEndpointObserver : CaptureShadowObserver {
 }
 
 enum class CaptureEndpointState { FALLBACK, PENDING, COMPLETE, CONTINUE }
-data class CaptureEndpointDecision(val state: CaptureEndpointState, val modelThroughSample: Long? = null)
+data class CaptureEndpointDecision(
+    val state: CaptureEndpointState,
+    val modelThroughSample: Long? = null,
+    /** Model probability behind a COMPLETE/CONTINUE verdict, when the analyzer
+     * reported one. Diagnostics only; arbitration never reads it. */
+    val probability: Float? = null
+)
 
 data class CaptureShadowFrame(
     val captureSampleBoundary: Long,

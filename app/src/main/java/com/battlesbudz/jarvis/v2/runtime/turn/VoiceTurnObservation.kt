@@ -41,7 +41,7 @@ internal class VoiceTurnObservation(
     val replyLatency = AtomicReference<TurnLatency?>(null)
     val telemetry = VoiceTurnTelemetry(request.asrTurnId, conversationId, request.asrEngine,
         request.ttsEngine, request.captionAsrEnabled, benchmark, turnTrace, request.comparison,
-        recorder, asrStore, ttsStore)
+        recorder, asrStore, ttsStore, request.directAudioTurn)
 
     init {
         benchmark.configuration("voice_input_mode", if (request.directAudioTurn) "gemma_audio" else "transcribed_text")
@@ -77,6 +77,23 @@ internal class VoiceTurnObservation(
         if (!acceptedWorkUnfinished()) engine?.onBenchmarkSubmission = {}
         val stages = JSONObject(turnTrace.snapshot())
         asrStore.update(request.asrTurnId, "pipeline_stage_ms", stages)
+        // The turn's closing diagnostics entry: the plain-language Endpointing
+        // block, rendered from the measurements this turn already recorded.
+        val delivery = lifetime.finalSpeechDelivery.get()
+        val interrupted = when (delivery?.state) {
+            SpeechDeliveryState.INTERRUPTED -> true
+            SpeechDeliveryState.COMPLETED -> false
+            else -> null
+        }
+        val playedMsBeforeStop = if (delivery?.state == SpeechDeliveryState.INTERRUPTED) {
+            val rate = delivery.spans.firstOrNull()?.sampleRate
+            if (rate != null && rate > 0 && delivery.playedFrames > 0)
+                delivery.playedFrames * 1000L / rate else null
+        } else null
+        telemetry.endpointingSummary(interrupted, playedMsBeforeStop)?.let { summary ->
+            recorder.recordSummary(summary.render())
+            recorder.recordTurnEvidence(request.asrTurnId, "endpointing", summary.render())
+        }
         recorder.recordSummary("Voice pipeline turn=${request.asrTurnId} stageOffsetsMs=$stages clock=monotonic fillerExcluded=true")
         recorder.recordTurnEvidence(request.asrTurnId, "pipeline", "stageOffsetsMs=$stages")
         (callStore as? CoalescingVoiceCallStore)?.metrics()?.let {

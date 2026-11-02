@@ -109,6 +109,7 @@ internal class OrdinaryVoiceReplyStage(
                                     System.nanoTime() / 1_000_000 - observation.telemetry.speechEndedAt.get())
                             }
                             diagnosticRecorder.recordSummary("Voice latency: endpoint_to_first_text_ms=$elapsedMs turn=${request.asrTurnId}")
+                            observation.telemetry.recordEndpointToFirstText(elapsedMs)
                         }
                     }
                     val interruptionTest = com.battlesbudz.jarvis.v2.voice.VoiceInterruptionTest.requested(finalized.transcript)
@@ -389,6 +390,8 @@ internal class OrdinaryVoiceReplyStage(
                     }, log = {
                     request.comparison?.log("barge $it")
                     diagnosticRecorder.recordImportant("Voice interruption: $it")
+                    if (it.startsWith("barge_keyword_summary")) observation.telemetry.recordBargeSource("keyword")
+                    else if (it.startsWith("barge_natural_summary")) observation.telemetry.recordBargeSource("natural")
                     if (it.startsWith("barge_natural_summary") || it.startsWith("barge_keyword_summary") || it.startsWith("barge_evidence_"))
                         diagnosticRecorder.recordTurnEvidence(request.asrTurnId, it.substringBefore(" "), it)
                 })

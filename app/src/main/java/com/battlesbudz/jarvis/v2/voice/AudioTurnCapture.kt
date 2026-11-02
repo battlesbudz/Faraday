@@ -160,6 +160,9 @@ class AudioTurnCapture(
         var decodeMs = 0L
         var maxDecodeChunkMs = 0L
         var emptyCandidates = 0
+        // Presentation-only record for the diagnostics Endpointing block: every
+        // proposed endpoint this turn that was deferred or invalidated, in order.
+        val endpointDeferrals = mutableListOf<String>()
         var deferredPartialChunks = 0
         var finalDecodeMs = 0L
         val recognitionBudget = CaptureRecognitionBudget()
@@ -225,6 +228,7 @@ class AudioTurnCapture(
                             retiredCaptionAtPendingEndpoint = false
                             resumedAudio = pendingAudio.snapshot(); pendingAudio.clear()
                             onSpeechResumed()
+                            endpointDeferrals += "resumed_speech"
                             log("turn_endpoint_invalidated reason=resumed_speech")
                         }
                         var retainedAudio: ByteArray? = null
@@ -583,6 +587,7 @@ class AudioTurnCapture(
                                     finalNativeEndpointGuard = finalCue
                                     completedCues.reset(); completedCueEnd.reset()
                                     pendingEndpoint = true; pendingAudio.clear()
+                                    endpointDeferrals += "final_caption_${finalCue.cue}"
                                     log("native_endpoint_deferred reason=final_caption_${finalCue.cue} targetSilenceMs=${finalCue.silenceMs}")
                                     return@collect
                                 }
@@ -616,6 +621,7 @@ class AudioTurnCapture(
                             if (needsFinalizationDrain()) {
                                 if (!pendingEndpoint) {
                                     pendingAudio.clear()
+                                    endpointDeferrals += "audio_arrived_during_finalization"
                                     log("turn_endpoint_deferred reason=audio_arrived_during_finalization")
                                 }
                                 pendingEndpoint = true
@@ -658,6 +664,7 @@ class AudioTurnCapture(
                             if (recoveryAttempted && needsFinalizationDrain()) {
                                 if (!pendingEndpoint) pendingAudio.clear()
                                 pendingEndpoint = true
+                                endpointDeferrals += "audio_arrived_during_recovery"
                                 log("turn_endpoint_deferred reason=audio_arrived_during_recovery")
                                 return@collect
                             }
@@ -755,7 +762,11 @@ class AudioTurnCapture(
                             endpoint.silenceMs, endpoint.cue, acousticMetrics.snapshot(),
                             maxRecognitionBacklogMs, recognitionBudget.largestWorkMs, finalDecodeMs,
                             recognitionWork.withActive(transcriber?.recognitionWorkMetrics, transcriber != null),
-                            endpointAuthority = endpointAuthority), finalTranscript)
+                            endpointAuthority = endpointAuthority,
+                            silenceWaitedMs = endpointSilenceMs,
+                            smartTurnState = if (endpointObserver != null) smartState.name else null,
+                            smartTurnProbability = smartDecision.probability,
+                            endpointDeferrals = endpointDeferrals.toList()), finalTranscript)
                         log("capture_endpoint_timing reason=$reason " +
                             "speechEndToFinalMs=${lastSpeechAtMs?.let { (nowMs() - it).coerceAtLeast(0) }} " +
                             "silenceDetectedToFinalMs=${speechQueue.latestSilenceDetectedAtMs?.takeIf { it >= lastSpeechAt }?.let { (nowMs() - it).coerceAtLeast(0) }} " +
