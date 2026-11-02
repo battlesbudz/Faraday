@@ -77,6 +77,42 @@ class DiagnosticRecorderTest {
         assertFalse(recorder.snapshot().contains("Memory embeddings:"))
     }
 
+    @Test fun snapshotJsonParsesAndMirrorsTheTextExportSections() {
+        val recorder = DiagnosticRecorder(preferences(), "build-json-test")
+        recorder.startSession("Voice Call json-session")
+        recorder.recordInferencePrompt("prompt-alpha")
+        recorder.recordTurnEvidence("turn-1", "pipeline", "evidence-beta")
+        recorder.recordSummary("summary-gamma")
+        recorder.recordImportant("important-delta")
+        recorder.record("audio-epsilon")
+        recorder.liveSection = { "Memory embeddings: model=test dim=256 vectors=1 pending=0 engine=available" }
+
+        val json = org.json.JSONObject(recorder.snapshotJson().toString())
+        assertEquals("build-json-test", json.getString("build"))
+        assertTrue(json.getLong("generatedAtMs") > 0)
+        assertTrue(json.getString("session").contains("json-session"))
+        assertEquals("prompt-alpha", json.getJSONArray("inferencePrompts").getString(0).substringAfter("\n"))
+        assertTrue(json.getJSONArray("turnEvidence").getString(0).contains("evidence-beta"))
+        assertTrue(json.getJSONArray("summaries").getString(0).contains("summary-gamma"))
+        assertTrue(json.getJSONArray("callActionsAndTurns").getString(0).contains("important-delta"))
+        assertTrue(json.getJSONArray("recentAudioEvents").getString(0).contains("audio-epsilon"))
+        assertTrue(json.getString("liveSection").contains("Memory embeddings:"))
+
+        // The JSON export carries the same sections as the text export: every
+        // recorded entry string appears in snapshot() as well.
+        val text = recorder.snapshot()
+        listOf("prompt-alpha", "evidence-beta", "summary-gamma", "important-delta", "audio-epsilon", "Memory embeddings:")
+            .forEach { assertTrue("text export missing $it", text.contains(it)) }
+    }
+
+    @Test fun snapshotJsonWithoutLiveSectionIsNullNotMissing() {
+        val recorder = DiagnosticRecorder(preferences(), "build-json-test")
+        recorder.startSession("Voice Call plain")
+        val json = recorder.snapshotJson()
+        assertTrue(json.has("liveSection"))
+        assertTrue(json.isNull("liveSection"))
+    }
+
     private fun preferences(): SharedPreferences {
         val values = mutableMapOf<String, Any?>()
         lateinit var editor: SharedPreferences.Editor

@@ -176,6 +176,7 @@ class MainActivity : ComponentActivity() {
                 onDiscardModelDownload = modelSetup::discardDownload,
                 onImportModel = modelSetup::importModel,
                 onCopyDiagnostics = { _ -> copyDiagnostics() },
+                onSaveDiagnostics = { saveDiagnostics() },
             )
         }
     }
@@ -230,6 +231,20 @@ class MainActivity : ComponentActivity() {
         val diagnostics = "Jarvis OS V2 — latest Voice Call diagnostics\n\n${runtime.diagnosticRecorder.snapshot()}\n\n${com.battlesbudz.jarvis.v2.voice.MicrophoneHandoff.diagnostics()}"
         val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("Jarvis diagnostics", diagnostics))
+    }
+
+    private fun saveDiagnostics() {
+        // Same content as Copy diagnostics, as a structured JSON file the user
+        // can send instead of pasting the text export.
+        val payload = org.json.JSONObject().apply {
+            put("title", "Jarvis OS V2 — latest Voice Call diagnostics")
+            put("generatedAtMs", System.currentTimeMillis())
+            put("diagnostics", runtime.diagnosticRecorder.snapshotJson())
+            put("microphoneHandoff", com.battlesbudz.jarvis.v2.voice.MicrophoneHandoff.diagnostics())
+        }.toString(2)
+        val intent = com.battlesbudz.jarvis.v2.ui.BenchmarkExportFiles.share(
+            this, com.battlesbudz.jarvis.v2.ui.BenchmarkExportFormat.JSON, payload, "jarvis-diagnostics")
+        startActivity(android.content.Intent.createChooser(intent, "Save diagnostics"))
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

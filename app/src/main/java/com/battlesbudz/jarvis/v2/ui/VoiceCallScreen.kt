@@ -153,6 +153,7 @@ internal fun VoiceCallScreen(
     onVoiceTurn: (Boolean, (String) -> Unit, (String, String, Boolean) -> Unit, (String) -> Unit) -> Unit,
     onEndVoiceCall: ((String) -> Unit) -> Unit,
     onCopyDiagnostics: (List<ChatEntry>) -> Unit,
+    onSaveDiagnostics: () -> Unit = {},
     // M1d explicit silent work (D21/T05): toggle plus observable posture.
     silentWork: kotlinx.coroutines.flow.StateFlow<Boolean>? = null,
     onSilentWork: (Boolean) -> Unit = {},
@@ -391,6 +392,12 @@ internal fun VoiceCallScreen(
                 modifier = Modifier.padding(top = 4.dp)
             ) {
                 Text("Copy diagnostics")
+            }
+            TextButton(
+                onClick = onSaveDiagnostics,
+                modifier = Modifier.padding(top = 4.dp)
+            ) {
+                Text("Save diagnostics")
             }
         }
         } }

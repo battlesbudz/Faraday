@@ -111,6 +111,30 @@ class DiagnosticRecorder(
         return if (section == null) body else "$body\n\n$section"
     }
 
+    /**
+     * Structured twin of [snapshot] for the Save diagnostics export: the same
+     * sections and the same entry strings, as genuine JSON (build, generation
+     * time, session, and one array per snapshot section) instead of flattened
+     * text. The live section rides as its own field, exactly as the text
+     * export appends it.
+     */
+    fun snapshotJson(): org.json.JSONObject {
+        val section = runCatching { liveSection?.invoke() }.getOrNull()?.takeIf { it.isNotBlank() }
+        return synchronized(entries) {
+            org.json.JSONObject().apply {
+                put("build", buildLabel)
+                put("generatedAtMs", System.currentTimeMillis())
+                put("session", sessionLabel)
+                put("inferencePrompts", JSONArray().also { array -> inferencePrompts.forEach(array::put) })
+                put("turnEvidence", JSONArray().also { array -> turnEvidence.values.forEach(array::put) })
+                put("summaries", JSONArray().also { array -> summaries.forEach(array::put) })
+                put("callActionsAndTurns", JSONArray().also { array -> important.forEach(array::put) })
+                put("recentAudioEvents", JSONArray().also { array -> entries.takeLast(100).forEach(array::put) })
+                put("liveSection", section ?: org.json.JSONObject.NULL)
+            }
+        }
+    }
+
     fun recordPreviousProcessExit(context: android.content.Context) {
         if (android.os.Build.VERSION.SDK_INT < 30) return
         runCatching {
