@@ -51,6 +51,15 @@ class LiteRtVoicePrefillSessionTest {
             if (failImage) error("image prefill failed")
             images += imageBytes
         }
+        data class AudioChunk(val rows: FloatArray, val tokenCount: Int, val embeddingWidth: Int,
+                              val includeBeginMarker: Boolean, val includeEndMarker: Boolean)
+        val audioChunks = mutableListOf<AudioChunk>()
+        var failAudio = false
+        override fun runPrefillAudio(rows: FloatArray, tokenCount: Int, embeddingWidth: Int,
+                                     includeBeginMarker: Boolean, includeEndMarker: Boolean) {
+            if (failAudio) error("audio prefill failed")
+            audioChunks += AudioChunk(rows, tokenCount, embeddingWidth, includeBeginMarker, includeEndMarker)
+        }
         override fun generateContentStream(input: List<String>, callback: VoiceNativeCallback) {
             submitted.append(text(input)); calls++
             this.callback = callback
@@ -298,6 +307,85 @@ class LiteRtVoicePrefillSessionTest {
         session.append("Hello")
         try { session.appendImage(byteArrayOf(1)); fail("expected image failure") }
         catch (expected: IllegalStateException) { assertEquals("image prefill failed", expected.message) }
+        try { session.decode {}; fail("failed Session decoded") } catch (_: IllegalStateException) { }
+        assertEquals(0, native.calls)
+        session.close()
+    }
+
+    @Test fun appendedAudioIsChunkFedInSpikeShapeAndDecodeStillWorks() = runBlocking {
+        val native = Native()
+        val records = mutableListOf<PipelineBenchmarkSubmission>()
+        val session = LiteRtVoicePrefillSession(native, benchmarkSink = { records += it })
+        session.append("Respond to the spoken request")
+        val width = 4
+        val rows = FloatArray(200 * width) { it.toFloat() }
+        session.appendAudio(rows, 200, width)
+        // The spike's plan for 200 rows: 72 + 72 + 56, markers on the edges only.
+        assertEquals(listOf(72, 72, 56), native.audioChunks.map { it.tokenCount })
+        assertEquals(listOf(true, false, false), native.audioChunks.map { it.includeBeginMarker })
+        assertEquals(listOf(false, false, true), native.audioChunks.map { it.includeEndMarker })
+        native.audioChunks.forEachIndexed { index, chunk ->
+            val startRow = listOf(0, 72, 144)[index]
+            assertTrue(chunk.rows.contentEquals(
+                rows.copyOfRange(startRow * width, (startRow + chunk.tokenCount) * width)))
+        }
+        val result = session.decode {}
+        assertEquals("Certainly, sir.", result.text)
+        assertEquals("incremental_audio_text", records.single().metadata["input_mode"])
+        session.close()
+    }
+
+    @Test fun audioBeforeAnyTextIsRejected() = runBlocking {
+        val session = LiteRtVoicePrefillSession(Native())
+        try {
+            session.appendAudio(FloatArray(8), 2, 4)
+            fail("audio without a started turn must be rejected")
+        } catch (_: IllegalStateException) { }
+        session.close()
+    }
+
+    @Test fun secondAudioPayloadInOneTurnIsRejected() = runBlocking {
+        val native = Native()
+        val session = LiteRtVoicePrefillSession(native)
+        session.append("Hello")
+        session.appendAudio(FloatArray(8), 2, 4)
+        try {
+            session.appendAudio(FloatArray(8), 2, 4)
+            fail("a second audio payload in one turn must be rejected")
+        } catch (_: IllegalStateException) { }
+        assertEquals(2, native.audioChunks.sumOf { it.tokenCount })
+        session.close()
+    }
+
+    @Test fun audioAndImageNeverShareATurn() = runBlocking {
+        val session = LiteRtVoicePrefillSession(Native())
+        session.append("Hello")
+        session.appendImage(byteArrayOf(1))
+        try {
+            session.appendAudio(FloatArray(8), 2, 4)
+            fail("audio on an image turn must be rejected")
+        } catch (_: IllegalStateException) { }
+        session.close()
+    }
+
+    @Test fun malformedAudioMatrixIsRejectedBeforeAnyNativeCall() = runBlocking {
+        val native = Native()
+        val session = LiteRtVoicePrefillSession(native)
+        session.append("Hello")
+        try {
+            session.appendAudio(FloatArray(7), 2, 4)
+            fail("a rows/tokenCount/width mismatch must be rejected")
+        } catch (_: IllegalArgumentException) { }
+        assertTrue(native.audioChunks.isEmpty())
+        session.close()
+    }
+
+    @Test fun failedAudioPrefillPoisonsTheSessionLikeAFailedTextPrefill() = runBlocking {
+        val native = Native().apply { failAudio = true }
+        val session = LiteRtVoicePrefillSession(native)
+        session.append("Hello")
+        try { session.appendAudio(FloatArray(8), 2, 4); fail("expected audio failure") }
+        catch (expected: IllegalStateException) { assertEquals("audio prefill failed", expected.message) }
         try { session.decode {}; fail("failed Session decoded") } catch (_: IllegalStateException) { }
         assertEquals(0, native.calls)
         session.close()

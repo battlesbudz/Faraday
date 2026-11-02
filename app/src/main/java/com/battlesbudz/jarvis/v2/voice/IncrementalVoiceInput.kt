@@ -17,6 +17,20 @@ interface VoicePrefillSession : AutoCloseable {
      * instead of silently dropping it.
      */
     fun appendImage(imageBytes: ByteArray)
+
+    /**
+     * Route B (Option B): append the turn's sealed native-audio embeddings,
+     * after the final text and before [decode] — the audio lands inside the
+     * user turn, exactly once per turn, only at finalization. [rows] is the
+     * sealed content's full row matrix (tokenCount x embeddingWidth). Only
+     * sessions backed by the reviewed bridge's preprocessed-audio entry can
+     * accept it; any other session throws, and the caller's fallback then
+     * regenerates on the sealed Conversation route instead of dropping the
+     * audio or answering from text alone.
+     */
+    fun appendAudio(rows: FloatArray, tokenCount: Int, embeddingWidth: Int) {
+        throw UnsupportedOperationException("This session cannot accept preprocessed audio embeddings")
+    }
     suspend fun decode(onToken: (String) -> Unit): GenerationResult
 }
 

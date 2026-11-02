@@ -1,5 +1,6 @@
 package com.battlesbudz.jarvis.v2.ai
 
+import com.google.ai.edge.litertlm.PreprocessedAudio
 import com.google.ai.edge.litertlm.PreprocessedImage
 import com.google.ai.edge.litertlm.Session
 import org.junit.Assert.assertEquals
@@ -57,6 +58,57 @@ class LiteRtNativeVoiceSessionTest {
             fail("expected the submission failure to be typed")
         } catch (expected: SnapshotImageSubmissionException) {
             assertEquals("native rejected the tensor", expected.cause?.message)
+        }
+    }
+
+    @Test fun audioChunkIsPreprocessedBeforeItIsSubmitted() {
+        val order = mutableListOf<String>()
+        val payload = PreprocessedAudio(0L)
+        var submitted: PreprocessedAudio? = null
+        var markers: Pair<Boolean, Boolean>? = null
+        val rows = floatArrayOf(1f, 2f, 3f, 4f)
+        val native = LiteRtNativeVoiceSession(Session(0L),
+            preprocessAudio = { chunkRows, tokenCount, embeddingWidth, begin, end ->
+                order += "preprocess"
+                assertTrue(chunkRows.contentEquals(rows))
+                assertEquals(2, tokenCount)
+                assertEquals(2, embeddingWidth)
+                markers = begin to end
+                payload
+            },
+            submitPreprocessedAudio = { audio ->
+                order += "submit"
+                submitted = audio
+            })
+        native.runPrefillAudio(rows, 2, 2, includeBeginMarker = true, includeEndMarker = false)
+        assertEquals(listOf("preprocess", "submit"), order)
+        assertSame(payload, submitted)
+        assertEquals(true to false, markers)
+    }
+
+    @Test fun audioPreprocessFailureIsTypedAsSubmissionFailure() {
+        val failure = IllegalStateException("preprocess unavailable")
+        val native = LiteRtNativeVoiceSession(Session(0L),
+            preprocessAudio = { _, _, _, _, _ -> throw failure },
+            submitPreprocessedAudio = { fail("a failed preprocess must submit nothing") })
+        try {
+            native.runPrefillAudio(FloatArray(4), 2, 2, includeBeginMarker = true, includeEndMarker = true)
+            fail("audio prefill must report its failure")
+        } catch (error: AudioPrefillSubmissionException) {
+            assertSame(failure, error.cause)
+        }
+    }
+
+    @Test fun audioSubmitFailureIsTypedAsSubmissionFailure() {
+        val failure = IllegalStateException("prefill rejected")
+        val native = LiteRtNativeVoiceSession(Session(0L),
+            preprocessAudio = { _, _, _, _, _ -> PreprocessedAudio(0L) },
+            submitPreprocessedAudio = { throw failure })
+        try {
+            native.runPrefillAudio(FloatArray(4), 2, 2, includeBeginMarker = false, includeEndMarker = true)
+            fail("audio prefill must report its failure")
+        } catch (error: AudioPrefillSubmissionException) {
+            assertSame(failure, error.cause)
         }
     }
 }
