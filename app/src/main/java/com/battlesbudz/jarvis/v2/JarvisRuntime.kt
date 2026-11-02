@@ -224,7 +224,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             isDeviceLocked = { getSystemService(android.app.KeyguardManager::class.java)?.isDeviceLocked == true },
             createExecutor = {
                 browserRuntime.decorate(AndroidMobileActionExecutor(this, canLaunchDirectly = { activityVisible },
-                    onDiagnostic = diagnosticRecorder::recordImportant))
+                    onDiagnostic = diagnosticRecorder::recordImportant,
+                    sandboxRun = ::runSandboxToolCommand))
             },
             conversationExists = { id -> conversationHistory.list().any { it.id == id } },
             projectReply = { conversationId, replyId, text, receipts ->
@@ -308,6 +309,42 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     internal fun parkBrowseSubmitForApproval(request: com.battlesbudz.jarvis.v2.actions.ActionRequest,
         conversationId: String): com.battlesbudz.jarvis.v2.actions.ExecutionResult =
         phoneTaskCoordinator.parkBrowseSubmitForApproval(request, conversationId)
+    /**
+     * Sandbox Phase 2: a model-proposed run_in_sandbox command never
+     * auto-dispatches. Park it in the ledger awaiting the user's explicit
+     * approval of the exact command text.
+     */
+    internal fun parkSandboxRunForApproval(request: com.battlesbudz.jarvis.v2.actions.ActionRequest,
+        conversationId: String): com.battlesbudz.jarvis.v2.actions.ExecutionResult =
+        phoneTaskCoordinator.parkSandboxRunForApproval(request, conversationId)
+
+    // -- Sandbox Phase 2: the executor bridge behind run_in_sandbox --------
+    // A dedicated manager/runner pair on the application context, the same
+    // shape the settings section composes for its proof console; all state
+    // is file-backed in the store, so instances agree on install state and
+    // counters. The bridge blocks for the run's duration — the action
+    // pipeline always invokes the executor off the main thread.
+    private val sandboxToolManager by lazy {
+        com.battlesbudz.jarvis.v2.sandbox.SandboxManager(applicationContext)
+    }
+    private val sandboxToolRunner by lazy {
+        com.battlesbudz.jarvis.v2.sandbox.SandboxRunner(applicationContext, sandboxToolManager)
+    }
+
+    /**
+     * Runs one Battles-approved sandbox command through the Phase 1 runner
+     * (D4 limits, M-1..M-7 mitigations, settings-only networking) and
+     * returns the shaped receipt. Never installs the sandbox: installation
+     * stays a settings action, and the runner's own typed error says so.
+     */
+    internal fun runSandboxToolCommand(command: String):
+        com.battlesbudz.jarvis.v2.actions.ExecutionResult {
+        val result = sandboxToolRunner.runShellCommand(command)
+        val receipt = com.battlesbudz.jarvis.v2.sandbox.SandboxRunReceipt.format(result)
+        sandboxToolManager.store.recordAgentRun(
+            exitCode = result.exitCode, timedOut = result.timedOut, failed = !receipt.succeeded)
+        return com.battlesbudz.jarvis.v2.actions.ExecutionResult(receipt.succeeded, receipt.message)
+    }
     // -- M2 reusable workflows / M3 ecosystem providers / reminders --------
     private val workflowCoordinator by lazy {
         WorkflowCoordinator(
@@ -738,8 +775,11 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
                 onNeedsApproval = { request ->
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                         val conversationId = conversationHistory.current.value.id
-                        if (request.name == "browse_submit") parkBrowseSubmitForApproval(request, conversationId)
-                        else parkScreenTaskForApproval(request)
+                        when {
+                            request.name == "browse_submit" -> parkBrowseSubmitForApproval(request, conversationId)
+                            request.name == "run_in_sandbox" -> parkSandboxRunForApproval(request, conversationId)
+                            else -> parkScreenTaskForApproval(request)
+                        }
                     }
                 }),
             ConversationRecovery(models::reset, references, factualityVerifier, turnOrchestrator::automaticFallbackQuery, diagnostics),
@@ -747,7 +787,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             turnOrchestrator::recordResponse,
             createActions = { id, onResult -> ConversationActions(
                 executor = { browserRuntime.decorate(AndroidMobileActionExecutor(this, canLaunchDirectly = { activityVisible },
-                    onDiagnostic = diagnosticRecorder::recordImportant)) },
+                    onDiagnostic = diagnosticRecorder::recordImportant,
+                    sandboxRun = ::runSandboxToolCommand)) },
                 admit = ::admitPhoneTask, execute = ::executePhoneAction, cancelUnfinished = ::cancelPhoneTask,
                 conversationId = id, onActionResult = onResult) },
             createBenchmark = { id, channel -> pipelineBenchmarks.create(id, channel) },

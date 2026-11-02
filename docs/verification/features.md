@@ -4507,3 +4507,40 @@ They do not establish actual Android input delivery, Compose rendering,
 accessibility overlay behavior, R8 compatibility or a verified APK. Build 1256
 remains failed evidence; a fresh full release gate for the exact repaired
 revision is required.
+
+## Linux sandbox tool binding (Sandbox Phase 2) — November 1, 2026
+
+`run_in_sandbox` joins the native catalog as a fifteenth tool (after
+post_notification). Gemma proposes one shell command per call in voice
+(direct-audio guard) and chat/Whisper turns (explicit sandbox-request
+intent arms the channel; the plan step is an empty-command marker that can
+never dispatch). Every proposal parks in the durable task ledger and runs
+only after the user's exact approval of the verbatim command text in the
+phone tasks panel; denial cancels the attempt with nothing executed. The
+tool is never routine-eligible, is dispatch-eligible only under an exact
+approval, is hard-denied to external agents, and cannot appear in workflow
+definitions. Execution goes through the Phase 1 SandboxRunner unchanged
+(chroot-ng, D4 limits: 120 s default / 600 s ceiling, 64 KB capture ring,
+8,000-char surfaced output with the truncation marker; stdin is EOF —
+runs are non-interactive; networking follows the settings toggle only and
+the tool can never enable it). The receipt reports the real exit code,
+timed-out state, or the runner's typed start error (for example not
+installed — installation stays a settings action; nothing auto-installs).
+
+`SandboxPhase2ToolTest` pins registration and the voice+chat declaration
+source, strict decoding, verbatim/8,000-char/NUL validation, batch parking,
+runNative parking with and without an approval handler, the eligibility
+ladder, ledger admission with claim refusal before approval, both voice
+guards, the intent detector (including the negation screen), receipt
+shaping (exit code, truncation, timeout, not-installed), and the agent
+counters. The diagnostics `Sandbox (chroot-ng, Alpine 3.24.3):` block gains
+an `agent runs:` line (proposed/approved/denied/runs/failed/timedOut/
+lastExit) persisted in the sandbox state dir, so a copied diagnostics
+paste proves the gate from the device: a denied command increments denied
+with no matching run.
+
+Not established by this entry: real-model command quality, on-device
+end-to-end approval-to-output behavior, and physical-device timing. Those
+require Battles's Fold 6 proof on the published build (one approved run
+whose output is reported back; one denied run verified through the
+diagnostics counters).

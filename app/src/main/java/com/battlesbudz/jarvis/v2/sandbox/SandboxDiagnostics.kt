@@ -33,6 +33,10 @@ internal object SandboxDiagnostics {
             appendLine("  networking: $network (default off; settings-only toggle)")
             appendLine("  storage: ${"%.1f".format(storageMb)} MB under files/sandbox")
             appendLine("  runs: ${store.runCount()}, last: ${store.lastRunSummary() ?: "none"}")
+            val agent = store.agentCountersSnapshot()
+            appendLine("  agent runs: proposed=${agent.proposed} approved=${agent.approved} " +
+                "denied=${agent.denied} runs=${agent.runs} failed=${agent.failed} " +
+                "timedOut=${agent.timedOut} lastExit=${agent.lastExitCode?.toString() ?: "none"}")
             appendLine("  resets: ${store.resetsCount()}")
             appendLine("  sessions lost to process death: ${sessionsLost(store)}")
             val probe = probeOutput(store)

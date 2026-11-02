@@ -126,6 +126,24 @@ internal object ActionRequestText {
                 .matchEntire(text)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
     }
 
+    /**
+     * Sandbox Phase 2 intent: the user explicitly asks for sandbox work
+     * ("run this in the sandbox", "use the sandbox to add these numbers").
+     * Deliberately narrow — the word "sandbox" plus an execution verb — so
+     * talk *about* the sandbox ("what is the sandbox?", "is the sandbox
+     * installed?") never arms the model-proposal channel. The command itself
+     * is never extracted here: Gemma composes it and Battles approves the
+     * exact text before anything runs.
+     */
+    fun sandboxRunRequest(text: String): Boolean {
+        val normalized = text.lowercase()
+        if (!normalized.contains("sandbox")) return false
+        // Same negation screen as ActionTurnPlan.parse: negated speech must
+        // never become an action channel.
+        if (Regex("""\b(?:don't|do not|never)\b""").containsMatchIn(normalized)) return false
+        return Regex("""\b(?:run|execute|running|use|using)\b""").containsMatchIn(normalized)
+    }
+
     /** Bounded natural-language forms for observing the phone screen. Mutations stay model-path only: targets must come from a fresh observation. */
     fun screenObserveRequest(clause: String): Boolean {
         val text = clause.lowercase().trim()

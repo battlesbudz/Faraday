@@ -104,6 +104,12 @@ class SandboxRunner(
         manager.onSessionOpened(session)
         // The tap hands over a reused buffer; the ring copies synchronously.
         session.setRawOutputListener { buf, n -> ring.append(buf, 0, n) }
+        // Exec runs are non-interactive by design (Phase 2 makes this the
+        // tool contract): deliver end-of-file on stdin immediately, so a
+        // command that reads stdin sees EOF instead of blocking until the
+        // watchdog. VEOF (Ctrl-D) is consumed by the PTY line discipline,
+        // never echoed into the captured output.
+        runCatching { session.writeBytes(byteArrayOf(0x04)) }
         val finished = try {
             exited.await(timeout, TimeUnit.MILLISECONDS)
         } catch (e: InterruptedException) {

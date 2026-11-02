@@ -36,11 +36,14 @@ class ActionTurnRunner(
         val decoded = calls.map { NativeActionDecoder.decodeStrict(it) }
         if (decoded.any { it == null }) return Batch.Rejected()
         val requests = decoded.filterNotNull()
-        // Screen mutations (D23) and browse_submit (D11) proposed by the model
-        // never auto-dispatch: they are parked for the user's explicit
-        // approval while the other calls validate exactly as before.
-        val proposed = requests.filter { it.name in SCREEN_MUTATION_TOOLS || it.name == "browse_submit" }
-        val rest = requests.filter { it.name !in SCREEN_MUTATION_TOOLS && it.name != "browse_submit" }
+        // Screen mutations (D23), browse_submit (D11) and run_in_sandbox
+        // (Sandbox Phase 2) proposed by the model never auto-dispatch: they
+        // are parked for the user's explicit approval while the other calls
+        // validate exactly as before.
+        val proposed = requests.filter { it.name in SCREEN_MUTATION_TOOLS || it.name == "browse_submit" ||
+            it.name in SANDBOX_APPROVAL_TOOLS }
+        val rest = requests.filter { it.name !in SCREEN_MUTATION_TOOLS && it.name != "browse_submit" &&
+            it.name !in SANDBOX_APPROVAL_TOOLS }
         val accepted: Batch.Accepted? = if (rest.isEmpty()) {
             if (proposed.isEmpty()) return Batch.Rejected()
             null

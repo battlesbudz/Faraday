@@ -172,6 +172,31 @@ class SandboxStore(private val context: Context) {
         0
     }
 
+    // -- Phase 2 agent-run counters (see SandboxAgentCounters) -------------
+
+    private val agentCounters by lazy { SandboxAgentCounters(File(stateDir, "agent-counters.txt")) }
+
+    /** A Gemma-proposed sandbox command was parked for Battles's approval. */
+    fun recordAgentProposal() {
+        ensureLayout()
+        agentCounters.recordProposal()
+    }
+
+    /** Battles approved or denied a parked sandbox command in the panel. */
+    fun recordAgentDecision(approved: Boolean) {
+        ensureLayout()
+        agentCounters.recordDecision(approved)
+    }
+
+    /** An approved sandbox command finished (or failed to start). */
+    fun recordAgentRun(exitCode: Int?, timedOut: Boolean, failed: Boolean) {
+        ensureLayout()
+        agentCounters.recordRun(exitCode, timedOut, failed)
+    }
+
+    /** The persisted Phase 2 counters for the diagnostics block. */
+    fun agentCountersSnapshot(): SandboxAgentCounters.Snapshot = agentCounters.snapshot()
+
     /** The last recorded run's outcome lines, or null when none ran yet. */
     fun lastRunSummary(): String? = try {
         File(stateDir, "last-run.txt").readText().trim().replace("\n", ", ")

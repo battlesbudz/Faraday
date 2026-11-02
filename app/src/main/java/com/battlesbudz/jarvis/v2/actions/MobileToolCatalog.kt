@@ -355,6 +355,22 @@ object MobileToolCatalog {
                     minLength = 1
                 )
             )
+        ),
+        // Sandbox Phase 2: Gemma proposes ONE command per call; it never runs
+        // without Battles's exact approval of the command text (see
+        // SANDBOX_APPROVAL_TOOLS). Script-shaped by design: write a script
+        // into /workspace (e.g. with a heredoc) in one call, run it in the
+        // next. Runs are non-interactive: stdin is at end-of-file, the run
+        // stops at 120 seconds, and output comes back capped at 8,000 chars.
+        Tool(
+            name = "run_in_sandbox",
+            description = "Run one shell command in the on-phone Linux sandbox (Alpine) and get its exit code and output back. The user must approve the exact command before anything runs; a denied command never executes. Use this for computation, file work, text processing, or anything a shell script does better than a guess. Rules: one command per call; runs are non-interactive (no stdin, no prompts — pass every input as an argument or a file); prefer writing a script file under /workspace first (for example with a heredoc) and then running it; put every deliverable file in /workspace, which persists across runs; each run is capped at 120 seconds and the returned output at 8,000 characters; sandbox networking follows the user's settings toggle and may be off, in which case network commands fail and that failure is the result.",
+            parameters = listOf(Parameter(
+                name = "command",
+                type = ParameterType.STRING,
+                description = "The exact shell command to run as /bin/sh -c in the sandbox, 1 to 8000 characters. It is shown to the user verbatim for approval.",
+                minLength = 1
+            ))
         )
     )
 
