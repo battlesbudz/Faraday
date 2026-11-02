@@ -106,7 +106,7 @@ class ConversationMemory(private val memoryOs: MemoryOs, private val sourceArchi
         if (Regex("^my (?:full )?name is .{2,160}[.!]?$", RegexOption.IGNORE_CASE).matches(core)) return Candidate(content, MemoryCategory.PERSON)
         if (Regex("^(?:i live in|i'm based in|i work (?:at|as)) .{2,160}[.!]?$", RegexOption.IGNORE_CASE).matches(core)) return Candidate(content, MemoryCategory.FACT)
         // Biography / past-activity forms ("I used to …", "I've been to …", "I have traveled to …").
-        if (Regex("\\bi used to .{2,140}|\\bi(?:'ve| have) been to .{2,140}|\\bi(?:'ve |have )?travel(?:ed|led) to .{2,140}", RegexOption.IGNORE_CASE).containsMatchIn(core)) return Candidate(content, MemoryCategory.FACT)
+        if (Regex("\\bi used to .{2,140}|\\bi(?:'ve| have) been to .{2,140}|\\bi(?:'ve | have | )travel(?:ed|led) to .{2,140}", RegexOption.IGNORE_CASE).containsMatchIn(core)) return Candidate(content, MemoryCategory.FACT)
         return null
     }
 

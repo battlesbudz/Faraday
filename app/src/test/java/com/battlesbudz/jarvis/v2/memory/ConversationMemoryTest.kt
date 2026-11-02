@@ -85,6 +85,17 @@ class ConversationMemoryTest {
         assertTrue(stored.all { it.reviewStatus == MemoryReviewStatus.APPROVED })
     }
 
+    @Test fun traveledToFormIsCapturedStandalone() {
+        // Pins the extractor's biography branch for the exact spoken form the
+        // multi-fact acceptance message carries as its middle segment.
+        val (os, bridge) = bridge()
+        val result = bridge.capture(input("travel", "I have traveled to 27 countries", ConversationMemorySource.VOICE))
+        assertEquals(ConversationMemoryOutcome.PROPOSED, result.outcome)
+        assertEquals(MemoryCategory.FACT, result.memory!!.category)
+        assertEquals(MemoryReviewStatus.APPROVED, result.memory!!.reviewStatus)
+        assertEquals(1, os.read().snapshot!!.memories.size)
+    }
+
     @Test fun multiFactMessageBecomesOneApprovedRecordPerFact() {
         // Battles's 2026-11-01 device message, spoken as ONE message: three
         // facts used to land as a single blob record holding the raw message.
