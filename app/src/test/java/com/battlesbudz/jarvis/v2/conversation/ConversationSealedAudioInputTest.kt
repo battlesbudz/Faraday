@@ -97,8 +97,8 @@ class ConversationSealedAudioInputTest {
         owner.prime()
         val input = ConversationInput(ByteArray(4), true, null, null, null, sealed(), primedAudio = owner)
         val result = input.generateFallback(backend, "a different final prompt", {}, {})
-        assertEquals("ok", result.text)
-        assertEquals(listOf("sealed"), backend.modes)
+        assertEquals("reply", result.text)
+        assertEquals(listOf("sealed-audio"), backend.modes)
         assertFalse(input.primedUsed)
         assertEquals("fallback:prompt_prefix_changed", input.routeBPrimingOutcome)
         assertTrue(input.nativeConversationContainsTurn)
@@ -112,9 +112,9 @@ class ConversationSealedAudioInputTest {
         val input = ConversationInput(ByteArray(4), true, null, null, null, sealed(), primedAudio = owner)
         input.generateFallback(backend, "audio prompt", {}, {})
         val retried = input.retry(backend, "audio prompt") {}
-        assertEquals("ok", retried.text)
+        assertEquals("reply", retried.text)
         // Only the retry reached the backend; the first pass was the primed session's.
-        assertEquals(listOf("sealed"), backend.modes)
+        assertEquals(listOf("sealed-audio"), backend.modes)
     }
 
     @Test fun primedInputWithoutSealedAudioIsRejected() {

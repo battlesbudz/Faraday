@@ -58,7 +58,7 @@ class PrimedAudioInputTest {
 
     private fun sealed(rows: Int = 200, width: Int = 4): Content.SealedAudioEmbeddings =
         Content.SealedAudioEmbeddings.fromSealedAudio(
-            FloatArray(rows * width), pcmSampleCount = 3_200, embeddingWidth = width,
+            FloatArray(rows * width), pcmSampleCount = 128_000, embeddingWidth = width,
             sealToken = "primed-test", producerSha256 = "a".repeat(64)
         )
 
