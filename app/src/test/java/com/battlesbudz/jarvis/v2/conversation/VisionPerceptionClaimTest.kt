@@ -18,6 +18,7 @@ import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkProvenance
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkPurpose
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkSubmission
 import com.battlesbudz.jarvis.v2.memory.MemoryDeliveryFence
+import com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -33,6 +34,13 @@ import org.junit.Test
  * recovery backstop discards a claim that reaches it — while turns with
  * an image, non-vision questions, honest answers and references to a
  * photo the user actually sent all pass untouched.
+ *
+ * The build-1697 specimens (call 443f75e8) pin the direct-audio gap that
+ * call exposed: in native-audio mode the invocation prompt is the fixed
+ * audio boilerplate, so the question side of the guard had no question
+ * to read and both fabricated answers shipped with no guard line in the
+ * export at all. On those turns the concrete-claim side admits the
+ * guard instead, and every evaluation leaves a diagnostics line.
  */
 class VisionPerceptionClaimTest {
     private companion object {
@@ -41,6 +49,11 @@ class VisionPerceptionClaimTest {
             "This is the primary visual data I am currently processing."
         const val HONEST_REGEN = "I can't see on this turn, sir — no image came through."
         const val VISION_QUESTION = "Can you tell me what you see?"
+        /** Verbatim fabricated answer, build 1697 call 443f75e8 turn 1. */
+        const val SPECIMEN_ONE = "I see a picture of a very large, brightly coloured, " +
+            "somewhat abstract shape. It appears to be a complex, interwoven structure."
+        /** Verbatim fabricated answer, same call, turn 2. */
+        const val SPECIMEN_TWO = "I see a large, abstract shape. It is complex and interwoven."
     }
 
     // ---- question detector ----
@@ -290,7 +303,8 @@ class VisionPerceptionClaimTest {
     ) {
         val backend = ScriptedRecoveryBackend()
         var resets = 0
-        val diagnostics = ConversationDiagnostics({}, {}, {}, {})
+        val diagnosticLines = mutableListOf<String>()
+        val diagnostics = ConversationDiagnostics({ diagnosticLines += it }, {}, {}, {})
         val invocation = ConversationInvocation(prompt, emptyList(), voiceAudio = voiceAudio)
         val callbacks = ConversationCallbacks({}, {})
         val reply = ConversationReply("recovery", PipelineBenchmarkCapture("recovery", "text", 0,
@@ -421,5 +435,232 @@ class VisionPerceptionClaimTest {
         f.recovery.recover(draft)
         assertTrue(f.backend.requests.isEmpty())
         assertEquals(DEVICE_CLAIM, draft.cleanedResponse)
+    }
+
+    // ---- direct-audio turns: the build-1697 specimens ----
+    //
+    // On a direct-audio turn the invocation prompt is the fixed audio
+    // boilerplate (GemmaAudioInputPolicy.REQUEST): the user's words
+    // exist only as audio, Whisper produced no transcript, and the Gemma
+    // caption finalizes after the answer. The old question-only gate
+    // read the boilerplate, matched nothing, and released both specimen
+    // claims below without a single diagnostics line. These tests replay
+    // that call (443f75e8) through the production wiring: the claim side
+    // must admit the guard, and the evaluation must be observable.
+
+    @Test fun concreteDetectorCatchesBothDeviceSpecimensVerbatim() {
+        assertTrue(VisionPerceptionClaim.assertsConcretePerception(SPECIMEN_ONE))
+        assertTrue(VisionPerceptionClaim.assertsConcretePerception(SPECIMEN_TWO))
+        assertTrue(VisionPerceptionClaim.assertsConcretePerception(DEVICE_CLAIM))
+        assertTrue(VisionPerceptionClaim.assertsConcretePerception(
+            "The camera shows a hallway."))
+        assertTrue(VisionPerceptionClaim.assertsConcretePerception(
+            "A room with a window and a desk."))
+    }
+
+    @Test fun concreteDetectorLeavesMetaphoricalSeeAlone() {
+        val negatives = listOf(
+            // Metaphorical seeing carries no visual content noun.
+            "I see what you mean.",
+            "I see your point about the budget.",
+            "I see the point.",
+            // A perception claim with no pictured/shaped/scened thing:
+            // the question-side gate still guards it when the question is
+            // known (see answerDetectorCatchesPerceptionVariants), but
+            // the claim side alone does not admit the guard.
+            "I see you, sir.",
+            VisionPerceptionClaim.FALLBACK,
+            HONEST_REGEN,
+            // Anchored to an image the user actually supplied.
+            "In the photo you sent, I can see a desk by the window.",
+            ""
+        )
+        for (answer in negatives) {
+            assertFalse("expected no concrete perception claim: $answer",
+                VisionPerceptionClaim.assertsConcretePerception(answer))
+        }
+    }
+
+    @Test fun triggerForAdmitsQuestionThenConcreteClaim() {
+        assertEquals(VisionPerceptionClaim.Trigger.QUESTION,
+            VisionPerceptionClaim.triggerFor(VISION_QUESTION, false, DEVICE_CLAIM))
+        assertEquals(VisionPerceptionClaim.Trigger.DIRECT_AUDIO_CLAIM,
+            VisionPerceptionClaim.triggerFor(GemmaAudioInputPolicy.REQUEST, true, SPECIMEN_ONE))
+        assertEquals(VisionPerceptionClaim.Trigger.DIRECT_AUDIO_CLAIM,
+            VisionPerceptionClaim.triggerFor(GemmaAudioInputPolicy.REQUEST, true, SPECIMEN_TWO))
+        // The boilerplate prompt is not a question the detector can read;
+        // without the direct-audio claim side both specimens walk through.
+        assertFalse(VisionPerceptionClaim.isVisionDirectedQuestion(GemmaAudioInputPolicy.REQUEST))
+        // A known, non-vision question is never admitted by the claim side.
+        assertNull(VisionPerceptionClaim.triggerFor("What's the capital of France?", false, DEVICE_CLAIM))
+        // The claim side requires the direct-audio turn shape.
+        assertNull(VisionPerceptionClaim.triggerFor(GemmaAudioInputPolicy.REQUEST, false, SPECIMEN_ONE))
+        assertNull(VisionPerceptionClaim.triggerFor(GemmaAudioInputPolicy.REQUEST, true,
+            "I see what you mean."))
+    }
+
+    /** Direct-audio generation fixture, modeled on AudioAccessRefusalTest's. */
+    private suspend fun generateDirectAudio(
+        backend: ScriptedBackend,
+        history: List<ChatEntry> = emptyList(),
+        summaryLines: MutableList<String> = mutableListOf()
+    ): ConversationDraft {
+        val diagnostics = ConversationDiagnostics({}, {}, { summaryLines += it }, {})
+        val memory = MemoryDeliveryFence()
+        val audio = byteArrayOf(9, 8, 7)
+        val input = ConversationInvocation(GemmaAudioInputPolicy.REQUEST, history,
+            voiceAudio = audio, directVoiceAudio = true)
+        val callbacks = ConversationCallbacks({}, {})
+        val reply = ConversationReply("generation", PipelineBenchmarkCapture("generation", "text", 0,
+            PipelineBenchmarkProvenance("test", 1)), true, memory, { it() }, {}, {}, {}, {}, { _, _, _ -> })
+        val shortTerm = ShortTermConversationContext()
+        val builder = ConversationPromptBuilder(shortTerm)
+        val state = object : ConversationSessionState {
+            override var engine: LiteRtLmEngine? = null
+            override var hasContext = false
+            override var characters = 0
+        }
+        val model = LocalModelSpec("test", "test.litertlm", recommendedGpu = false, supportsTools = true)
+        val session = ConversationModelSession(state, { model }, { true }, { }, { true }, { "unused" },
+            "unused", shortTerm, {})
+        val references = object : ConversationReferences {
+            override suspend fun fetch(query: String): String? = error("Generation must not fetch")
+            override fun isInsufficientAnswer(answer: String) = false
+        }
+        val actions = ConversationActions({ error("No Android executor") }, { _, _ -> error("No action admission") },
+            { _, _, _, _ -> error("No action dispatch") }, {}, "conversation", { _, _, _ -> })
+        val generation = ConversationGeneration(session, references, builder, { error("No attachment") }, diagnostics)
+        return generation.generate(input, 10_000,
+            RoutedConversation(emptyList(), TurnPlan(TurnKind.NORMAL_CHAT), ActionTurnPlan.NotAction, null),
+            PreparedConversation(history, null, null, null, false, false, null), history,
+            ConversationPrompt(builder, true, { null }, { null }), backend, reply, actions,
+            ConversationInferenceTelemetry(input, callbacks, reply, diagnostics))
+    }
+
+    @Test fun directAudioSpecimenOneIsRegeneratedWithTheClaimNamed() = runBlocking {
+        val lines = mutableListOf<String>()
+        val backend = ScriptedBackend(listOf(
+            GenerationResult(SPECIMEN_ONE, 1, null),
+            GenerationResult(HONEST_REGEN, 1, null)))
+        val draft = generateDirectAudio(backend, summaryLines = lines)
+        assertEquals(2, backend.requests.size)
+        assertTrue(backend.requests.last().prompt.contains("cannot see anything right now"))
+        assertEquals(listOf(true, false), backend.tools)
+        assertEquals(HONEST_REGEN, draft.generated.text)
+        assertTrue(lines.any { it.contains("outcome=regenerated stage=generation " +
+            "trigger=direct_audio_claim") })
+    }
+
+    @Test fun directAudioSpecimenOneRepeatedClaimFallsBack() = runBlocking {
+        val lines = mutableListOf<String>()
+        val backend = ScriptedBackend(listOf(
+            GenerationResult(SPECIMEN_ONE, 1, null),
+            GenerationResult(SPECIMEN_ONE, 1, null)))
+        val draft = generateDirectAudio(backend, summaryLines = lines)
+        assertEquals(2, backend.requests.size)
+        assertEquals(VisionPerceptionClaim.FALLBACK, draft.generated.text)
+        assertTrue(lines.any { it.contains("outcome=fallback stage=generation " +
+            "trigger=direct_audio_claim") })
+    }
+
+    @Test fun directAudioSpecimenTwoAfterFabricatedHistoryIsRegenerated() = runBlocking {
+        // The second turn of the device call: the fabricated turn-1
+        // exchange sits in the dialogue, the spoken question is again
+        // only audio, and the model repeats the fabrication, shortened.
+        val history = listOf(
+            ChatEntry("You", "Can you tell me what you see?"),
+            ChatEntry("Jarvis", SPECIMEN_ONE))
+        val backend = ScriptedBackend(listOf(
+            GenerationResult(SPECIMEN_TWO, 1, null),
+            GenerationResult(HONEST_REGEN, 1, null)))
+        val draft = generateDirectAudio(backend, history = history)
+        assertEquals(2, backend.requests.size)
+        assertEquals(HONEST_REGEN, draft.generated.text)
+        assertFalse(VisionPerceptionClaim.assertsPerception(draft.generated.text))
+    }
+
+    @Test fun directAudioToolRetryClaimIsCheckedAndRegenerated() = runBlocking {
+        // The device turn 1 shape: the first generation is a tool call
+        // that does not match the spoken intent, and the claim arrives
+        // in the tool-less retry's draft. The guard runs after the retry,
+        // on the draft that would be published.
+        val lines = mutableListOf<String>()
+        val backend = ScriptedBackend(listOf(
+            GenerationResult("", 1, null, toolCalls = listOf(ToolCall("open_app", "{}"))),
+            GenerationResult(SPECIMEN_ONE, 1, null),
+            GenerationResult(HONEST_REGEN, 1, null)))
+        val draft = generateDirectAudio(backend, summaryLines = lines)
+        assertEquals(3, backend.requests.size)
+        assertEquals(listOf(true, false, false), backend.tools)
+        assertTrue(lines.any { it.contains("does_not_match_current_intent") })
+        assertEquals(HONEST_REGEN, draft.generated.text)
+        assertTrue(lines.any { it.contains("outcome=regenerated stage=generation " +
+            "trigger=direct_audio_claim") })
+    }
+
+    @Test fun directAudioMetaphoricalSeePassesUntouched() = runBlocking {
+        val backend = ScriptedBackend(listOf(
+            GenerationResult("I see what you mean, sir.", 1, null)))
+        val draft = generateDirectAudio(backend)
+        assertEquals(1, backend.requests.size)
+        assertEquals("I see what you mean, sir.", draft.generated.text)
+    }
+
+    @Test fun directAudioNonConcreteClaimIsRecordedNotFired() = runBlocking {
+        // A perception claim with no visual content: the claim side does
+        // not admit the guard, but the evaluation is on the record —
+        // the build-1697 export's total silence is part of the defect.
+        val lines = mutableListOf<String>()
+        val backend = ScriptedBackend(listOf(GenerationResult("I see you, sir.", 1, null)))
+        val draft = generateDirectAudio(backend, summaryLines = lines)
+        assertEquals(1, backend.requests.size)
+        assertEquals("I see you, sir.", draft.generated.text)
+        assertTrue(lines.any { it.contains("outcome=not_fired stage=generation " +
+            "reason=claim_not_concrete") })
+    }
+
+    @Test fun recoveryBackstopFiresOnDirectAudioSpecimen() = runBlocking {
+        val audio = byteArrayOf(3, 2, 1)
+        val f = RecoveryFixture(GemmaAudioInputPolicy.REQUEST, directAudio = true, voiceAudio = audio)
+        f.backend.outputs += GenerationResult(HONEST_REGEN, 1L, null)
+        val draft = f.draft(SPECIMEN_ONE)
+        f.recovery.recover(draft)
+        assertEquals(1, f.backend.requests.size)
+        assertSame(audio, f.backend.requests.single().audio)
+        assertEquals(HONEST_REGEN, draft.cleanedResponse)
+        assertTrue(f.diagnosticLines.any { it.contains("outcome=regenerated stage=recovery " +
+            "trigger=direct_audio_claim") })
+    }
+
+    @Test fun recoveryBackstopFallsBackOnDirectAudioSpecimen() = runBlocking {
+        val audio = byteArrayOf(3, 2, 1)
+        val f = RecoveryFixture(GemmaAudioInputPolicy.REQUEST, directAudio = true, voiceAudio = audio)
+        f.backend.outputs += GenerationResult(SPECIMEN_TWO, 1L, null)
+        val draft = f.draft(SPECIMEN_ONE)
+        f.recovery.recover(draft)
+        assertEquals(1, f.backend.requests.size)
+        assertEquals(VisionPerceptionClaim.FALLBACK, draft.cleanedResponse)
+        assertTrue(f.diagnosticLines.any { it.contains("outcome=fallback stage=recovery " +
+            "trigger=direct_audio_claim") })
+    }
+
+    @Test fun recoveryBackstopLeavesDirectAudioMetaphorAlone() = runBlocking {
+        val f = RecoveryFixture(GemmaAudioInputPolicy.REQUEST, directAudio = true,
+            voiceAudio = byteArrayOf(1))
+        val draft = f.draft("I see what you mean, sir.")
+        f.recovery.recover(draft)
+        assertTrue(f.backend.requests.isEmpty())
+        assertEquals("I see what you mean, sir.", draft.cleanedResponse)
+    }
+
+    @Test fun recoveryBackstopRecordsNonConcreteClaimOnDirectAudio() = runBlocking {
+        val f = RecoveryFixture(GemmaAudioInputPolicy.REQUEST, directAudio = true,
+            voiceAudio = byteArrayOf(1))
+        val draft = f.draft("I see you, sir.")
+        f.recovery.recover(draft)
+        assertTrue(f.backend.requests.isEmpty())
+        assertEquals("I see you, sir.", draft.cleanedResponse)
+        assertTrue(f.diagnosticLines.any { it.contains("outcome=not_fired stage=recovery " +
+            "reason=claim_not_concrete") })
     }
 }
