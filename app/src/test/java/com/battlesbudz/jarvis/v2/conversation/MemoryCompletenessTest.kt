@@ -41,7 +41,10 @@ import org.junit.Test
  * The check is deterministic string work; these tests pin the specimen,
  * the narrow-question relevance line, the guard ordering against
  * [MemoryDisregard], and the publish-as-is outcome when a regeneration is
- * still partial.
+ * still partial. The large-packet bound (Battles, same day): on a broad
+ * question with more than ten records, wholeness is the top of the packet
+ * — at least five of the top ten covered, the top-ranked record among
+ * them — never a recital of everything.
  */
 class MemoryCompletenessTest {
     private companion object {
@@ -184,10 +187,82 @@ class MemoryCompletenessTest {
         assertTrue(packet.text.contains(
             "These records are the user's own history, saved by this app. Answer questions about the user " +
                 "from them; never claim no access to the user's history when records are listed here."))
-        // The completeness sentence.
+        // The completeness sentence: wholeness is the most important facts,
+        // at most five to ten, woven in — never a recital of every record.
         assertTrue(packet.text.contains(
-            "When you answer from these records, answer whole: cover everything the records hold that the " +
-                "question touches, and do not stop after the first fact or two."))
+            "When you answer from these records, answer whole: cover the most important facts the records " +
+                "hold on the subject, at most five to ten of them, chosen for importance and woven in " +
+                "naturally rather than recited."))
+    }
+
+    // ---- large packets on broad questions: the top-facts window ----
+
+    /** Fifteen records in packet order; the top ten are the coverage window. */
+    private val largeContents = listOf(
+        "I have traveled to 27 countries",
+        "My favorite food is ice cream",
+        "I've also been wakeboarding in Dubai",
+        "I enjoy skateboarding on weekends",
+        "I live in Watertown",
+        "I grow cannabis plants",
+        "I served in the army",
+        "I have three children",
+        "I run a microgreens business",
+        "I drive a pickup truck",
+        "I keep bees in the yard",
+        "I play guitar in a band",
+        "I collect vinyl records",
+        "I train at the gym daily",
+        "I fish on the lake")
+
+    @Test fun largePacketDraftCoveringFiveOfTopTenIncludingTheTopPasses() {
+        // Five of the top ten, the top-ranked record among them; the five
+        // records beyond the window are not covered and do not matter.
+        val draft = "You have traveled to twenty-seven countries, your favorite food is ice cream, " +
+            "you have been wakeboarding in Dubai, you skateboard on weekends, and you live in Watertown."
+        assertEquals(emptyList<String>(),
+            MemoryCompleteness.uncoveredRecords(SPECIMEN_QUESTION, largeContents, draft))
+        assertEquals(5, MemoryCompleteness.assess(SPECIMEN_QUESTION, largeContents, draft).topFactsCovered)
+    }
+
+    @Test fun largePacketDraftCoveringFourOfTopTenFails() {
+        val draft = "You have traveled to twenty-seven countries, your favorite food is ice cream, " +
+            "you have been wakeboarding in Dubai, and you skateboard on weekends."
+        val uncovered = MemoryCompleteness.uncoveredRecords(SPECIMEN_QUESTION, largeContents, draft)
+        // The six uncovered records are the rest of the top ten; nothing
+        // beyond the window is ever named.
+        assertEquals(largeContents.subList(4, 10), uncovered)
+    }
+
+    @Test fun largePacketDraftCoveringSixButMissingTheTopRankedFails() {
+        val draft = "Your favorite food is ice cream, you have been wakeboarding in Dubai, " +
+            "you skateboard on weekends, you live in Watertown, you grow cannabis plants, " +
+            "and you served in the army."
+        val assessment = MemoryCompleteness.assess(SPECIMEN_QUESTION, largeContents, draft)
+        assertEquals(6, assessment.topFactsCovered)
+        assertTrue(assessment.uncovered.isNotEmpty())
+        // The top-ranked record heads the uncovered list, so the correction
+        // names it first.
+        assertEquals(largeContents[0], assessment.uncovered.first())
+    }
+
+    @Test fun largePacketCorrectionCapsNamedAdditionsWithinTenFacts() {
+        // The draft covered exactly the top two of the window, so eight
+        // uncovered remain; the correction names all eight — covered plus
+        // named stays within ten facts.
+        val draft = "You have traveled to twenty-seven countries and your favorite food is ice cream."
+        val assessment = MemoryCompleteness.assess(SPECIMEN_QUESTION, largeContents, draft)
+        assertEquals(2, assessment.topFactsCovered)
+        assertEquals(8, assessment.uncovered.size)
+        val correction = MemoryCompleteness.topFactsCorrection(assessment.uncovered, assessment.topFactsCovered)
+        assertTrue(correction.contains("at most ten facts in total"))
+        assertTrue(correction.contains("woven naturally"))
+        val named = largeContents.subList(2, 10).count { correction.contains(it) }
+        assertEquals(8, named)
+        assertTrue(assessment.topFactsCovered + named <= 10)
+        // And with nothing covered, the cap still holds: ten named, never more.
+        val fromScratch = MemoryCompleteness.topFactsCorrection(largeContents.take(10), 0)
+        assertEquals(10, largeContents.take(10).count { fromScratch.contains(it) })
     }
 
     // ---- latency: the check itself is cheap string work ----
@@ -283,6 +358,22 @@ class MemoryCompletenessTest {
         assertEquals(PipelineBenchmarkPurpose.RETRY, backend.requests.last().purpose)
         assertEquals(SPECIMEN_WHOLE, draft.generated.text)
         assertNull(draft.actionResultMessage)
+    }
+
+    @Test fun largePacketPartialIsRegeneratedWithTheTopFactsCorrection() = runBlocking {
+        val failing = "You have traveled to twenty-seven countries and your favorite food is ice cream."
+        val whole = "You have traveled to twenty-seven countries, your favorite food is ice cream, " +
+            "you have been wakeboarding in Dubai, you skateboard on weekends, and you live in Watertown."
+        val backend = ScriptedBackend(listOf(
+            GenerationResult(failing, 1, null),
+            GenerationResult(whole, 1, null)))
+        val draft = generate(backend, SPECIMEN_QUESTION, context(largeContents))
+        assertEquals(2, backend.requests.size)
+        // The correction names uncovered top-window records and instructs
+        // toward the most important facts, not a recital.
+        assertTrue(backend.requests.last().prompt.contains("at most ten facts in total"))
+        assertTrue(backend.requests.last().prompt.contains("wakeboarding in Dubai"))
+        assertEquals(whole, draft.generated.text)
     }
 
     @Test fun stillPartialRegenerationIsPublishedAsIs() = runBlocking {
