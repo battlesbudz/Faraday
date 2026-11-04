@@ -1129,15 +1129,31 @@ class AudioTurnCaptureTest {
         fixture.emit(500, 0, samples = 1600)
         // One more strong chunk on the replacement engine, then silence.
         fixture.emit(600, 2000, speech = true, samples = 1600)
+        fixture.emit(700, 0, samples = 1600)
+        fixture.emit(1500, 0, samples = 1600)
+        // Arm the drain only now. Segment commits also call the engine's
+        // finish(), and arming earlier would raise the input's buffered audio
+        // during streaming, which blocks the trailing-silence proposal itself
+        // (the proposal requires bufferedAudioMs == 0). Armed here, the hook
+        // fires only at the finalization finish() inside the endpoint pass,
+        // where the drain check reads it in the same pass.
         shared.finishHook = { fixture.bufferedMs = 100 }
         // Silence past the 5 s turn-stop backstop: the endpoint proposes and
         // finalization drain-defers because finish() left audio buffered.
-        fixture.emit(700, 0, samples = 1600)
-        fixture.emit(1500, 0, samples = 1600)
         fixture.emit(2500, 0, samples = 1600)
         fixture.emit(3500, 0, samples = 1600)
         fixture.emit(4500, 0, samples = 1600)
         fixture.emit(5700, 0, samples = 1600)
+        fixture.emit(6200, 0, samples = 1600)
+        fixture.emit(6700, 0, samples = 1600)
+        // The queue pipeline is asynchronous: wait for the collector to run
+        // the finalization pass instead of checking on the test thread's
+        // schedule.
+        val deadline = System.currentTimeMillis() + 5_000
+        while (fixture.events.none { it.startsWith("turn_endpoint_deferred") } &&
+            System.currentTimeMillis() < deadline) {
+            kotlinx.coroutines.delay(10)
+        }
         check(fixture.events.any { it.startsWith("turn_endpoint_deferred") }) {
             "specimen setup must reach a drain-deferred finalization: ${fixture.events}"
         }
@@ -1151,10 +1167,10 @@ class AudioTurnCaptureTest {
             // Weak noise the raw VAD scores at 0.3 while the confirmed decision
             // reports non-speech (build 1697, call ee63fa69: raw 0.17-0.44 frames
             // invalidated the pending endpoint over and over).
-            fixture.emit(5800, 0, probability = 0.3f, samples = 1600)
-            fixture.emit(5900, 0, probability = 0.3f, samples = 1600)
+            fixture.emit(6800, 0, probability = 0.3f, samples = 1600)
+            fixture.emit(6900, 0, probability = 0.3f, samples = 1600)
             fixture.bufferedMs = 0
-            fixture.emit(6000, 0, samples = 1600)
+            fixture.emit(7000, 0, samples = 1600)
             assertTrue(withTimeout(1000) { fixture.capture.awaitTurnCompletion() })
             assertTrue(fixture.capture.hasSpeech)
             assertEquals("unrecognized_segment", fixture.capture.recognitionIssue)
@@ -1173,15 +1189,15 @@ class AudioTurnCaptureTest {
             // drain-defers and a later pass would retry forever without a budget.
             shared.recoverHook = { fixture.bufferedMs = 100 }
             fixture.bufferedMs = 0
-            fixture.emit(5800, 0, samples = 1600)
+            fixture.emit(6800, 0, samples = 1600)
             assertEquals(1, shared.recoveries)
-            fixture.emit(5900, 0, probability = 0.3f, samples = 1600)
+            fixture.emit(6900, 0, probability = 0.3f, samples = 1600)
             fixture.bufferedMs = 0
-            fixture.emit(6000, 0, samples = 1600)
+            fixture.emit(7000, 0, samples = 1600)
             assertEquals(2, shared.recoveries)
-            fixture.emit(6100, 0, probability = 0.3f, samples = 1600)
+            fixture.emit(7100, 0, probability = 0.3f, samples = 1600)
             fixture.bufferedMs = 0
-            fixture.emit(6200, 0, samples = 1600)
+            fixture.emit(7200, 0, samples = 1600)
             assertTrue(withTimeout(1000) { fixture.capture.awaitTurnCompletion() })
             assertEquals(2, shared.recoveries)
             assertTrue(fixture.events.any { it.startsWith("asr_recovery_skipped") && "reason=attempt_budget" in it })
@@ -1196,18 +1212,18 @@ class AudioTurnCaptureTest {
         val fixture = specimenCapture(this, shared)
         try {
             // Genuine resumption: a confirmed speech frame reopens the endpoint.
-            fixture.emit(5800, 2000, speech = true, samples = 1600)
+            fixture.emit(6800, 2000, speech = true, samples = 1600)
             assertTrue(fixture.events.any { "turn_endpoint_invalidated" in it })
             assertEquals(1, fixture.events.count { "turn_endpoint_invalidated" in it })
             // The enlarged candidate then endpoints on its own silence and the
             // (fresh-budget) recovery runs exactly once before completion.
             shared.finishHook = {}
             fixture.bufferedMs = 0
-            fixture.emit(5900, 0, samples = 1600)
             fixture.emit(6900, 0, samples = 1600)
             fixture.emit(7900, 0, samples = 1600)
             fixture.emit(8900, 0, samples = 1600)
-            fixture.emit(10900, 0, samples = 1600)
+            fixture.emit(9900, 0, samples = 1600)
+            fixture.emit(11900, 0, samples = 1600)
             assertTrue(withTimeout(1000) { fixture.capture.awaitTurnCompletion() })
             assertEquals(1, shared.recoveries)
             assertEquals("unrecognized_segment", fixture.capture.recognitionIssue)
