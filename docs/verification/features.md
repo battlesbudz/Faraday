@@ -76,6 +76,51 @@ owed on the next main build: the same two spoken questions in
 native-audio mode must end honest, and the diagnostics must show the
 guard's `trigger=direct_audio_claim` outcome line.
 
+## Follow-up capture recovery loop — 4 November 2026
+
+On build 1697 (voice call ee63fa69) a follow-up capture ran 26,864 ms
+and never produced a Gemma submission. The finalization kept deferring
+on the recognition frontier drain; while the endpoint was pending, any
+frame whose RAW VAD probability reached 0.15 (or whose raw coverage
+was unclassified) invalidated it as `resumed_speech` even when the
+confirmed decision reported non-speech, so weak noise (raw 0.17-0.44,
+rms 0) discarded the sealed finalization over and over. Each new pass
+re-ran ASR recovery, a full re-decode of the whole retained recording
+(AsyncWhisperSession.recover, growing 6.9 s to 23.2 s of audio, eight
+attempts, 18,861 ms of final-decode time), and each invalidation closed
+and recreated the Whisper engine (model ownership uses 9 to 19). Two
+qualified 5,000 ms silence detections proposed the endpoint but could
+not seal it; the 28 s audio input limit was the only exit. The fix, in
+`AudioTurnCapture`: a pending endpoint is invalidated only by confirmed
+speech (`decision.isSpeech`); raw-risk or unclassified audio still
+holds the seal through the existing finalization drain
+(`requiresNativeEndpointDrain`) but no longer discards finalization
+work. ASR recovery attempts are bounded per candidate
+(`MAX_ASR_RECOVERY_ATTEMPTS` = 2, shared by the complete-turn and
+empty-stream sites, reset when a candidate is discarded or genuinely
+resumed speech reopens the endpoint); past the budget the turn
+completes with its recognition issue recorded, which downstream turns
+into the retained-audio submission on the caption route (the issue is
+suppressed for complete audio by `GemmaAudioInputPolicy`) or the
+existing clarify path on the ASR route. `capture_endpoint_timing` now
+carries `asrRecoveryAttempts`, and a spent budget logs
+`asr_recovery_skipped reason=attempt_budget`. Three JVM tests in
+`AudioTurnCaptureTest` pin the shape with the specimen's arbitration
+state (REFERENCE, non-binding endpoint observer, caption-only
+follow-up, segmented recognizer failing on speech): weak noise during
+finalization cannot invalidate and recovery runs once;
+`recoveryAttemptsAreBoundedPerCandidateAndTurnStillCompletes` proves
+the budget terminates the turn; and
+`confirmedSpeechDuringFinalizationStillInvalidatesWithEndpointObserver`
+proves genuine resumption still reopens the endpoint. Status: READY
+TO LAND on top of a0c6587b (developed in a snapshot while that head's
+CI was in flight; the JVM suite has not run yet). Device coverage
+owed on the next main build: repeat the ee63 pattern (ask, challenge
+the answer, keep talking past a reply, then go quiet) and confirm the
+follow-up turn submits instead of looping; the diagnostics must show
+at most 2 `asr_recovery_started` lines for the turn and no
+`turn_endpoint_invalidated` lines while the room is quiet.
+
 ## Faraday main integration and rename repairs — 12 October 2026
 
 [Integration evidence](faraday-integration-2026-10-12.md) retains Build 1295's
