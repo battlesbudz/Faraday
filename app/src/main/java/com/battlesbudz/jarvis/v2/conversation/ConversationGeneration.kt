@@ -497,7 +497,7 @@ internal class ConversationGeneration(
         draft.generated = if (VisionPerceptionClaim.assertsPerception(
                 AssistantText.forDisplay(regenerated.text))) {
             diagnostics.summary("Vision perception claim guard outcome=fallback stage=generation " +
-                "reason=regeneration_claimed_again trigger=$triggerName")
+                "trigger=$triggerName reason=regeneration_claimed_again")
             GenerationResult(VisionPerceptionClaim.FALLBACK, -1L, null)
         } else {
             diagnostics.summary("Vision perception claim guard outcome=regenerated stage=generation " +

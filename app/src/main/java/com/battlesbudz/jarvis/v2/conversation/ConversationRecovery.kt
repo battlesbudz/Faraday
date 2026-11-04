@@ -445,7 +445,7 @@ internal class ConversationRecovery(
         val cleaned = AssistantText.forDisplay(regenerated.text)
         draft.cleanedResponse = if (VisionPerceptionClaim.assertsPerception(cleaned)) {
             diagnostics.record("Vision perception claim guard outcome=fallback stage=recovery " +
-                "reason=regeneration_claimed_again trigger=$triggerName")
+                "trigger=$triggerName reason=regeneration_claimed_again")
             VisionPerceptionClaim.FALLBACK
         } else {
             diagnostics.record("Vision perception claim guard outcome=regenerated stage=recovery " +
