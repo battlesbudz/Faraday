@@ -383,8 +383,12 @@ internal class ConversationRecovery(
      * perception on a vision-directed turn whose inputs carried no image
      * and no injected visual-context block is always false, so regenerate
      * once with the correction before the finalizer can publish the
-     * claim. Runs last, so it also catches a claim produced by one of the
-     * recovery regenerations above. Like the reference stages, it never
+     * claim. Admission is the generation stage's shared test
+     * ([VisionPerceptionClaim.triggerFor]), so a direct-audio turn —
+     * whose spoken question exists only as audio — is admitted by a
+     * concrete visual claim in the response instead. Runs last, so it
+     * also catches a claim produced by one of the recovery regenerations
+     * above. Like the reference stages, it never
      * replaces a reply whose sentences were already accepted for
      * publication; that ordering is also what keeps the honest fallback
      * from becoming a repetition-guard casualty — a substituted fallback
@@ -400,9 +404,28 @@ internal class ConversationRecovery(
         val answer = draft.answer
         if (draft.actionResultMessage != null) return
         if (answer.imageBytes != null || answer.visualContextInjected) return
-        if (!VisionPerceptionClaim.isVisionDirectedQuestion(answer.invocation.prompt)) return
-        if (!VisionPerceptionClaim.assertsPerception(draft.cleanedResponse)) return
-        if ((answer.repetitionGuard?.acceptedSentences ?: 0) > 0) return
+        // Same shared admission as the generation stage: a vision-directed
+        // question with a perception-claiming response, or a direct-audio
+        // turn — whose invocation prompt is the audio boilerplate, so the
+        // spoken question can never be read here — whose response asserts
+        // a concrete visual perception. A claim this stage declines to
+        // act on is still recorded, so the evaluation is visible in a
+        // diagnostics export instead of the old silence.
+        val trigger = VisionPerceptionClaim.triggerFor(
+            answer.invocation.prompt, answer.directAudio, draft.cleanedResponse)
+        if (trigger == null) {
+            if (VisionPerceptionClaim.assertsPerception(draft.cleanedResponse)) {
+                diagnostics.record("Vision perception claim guard outcome=not_fired stage=recovery " +
+                    "reason=${if (answer.directAudio) "claim_not_concrete" else "question_not_vision_directed"}")
+            }
+            return
+        }
+        val triggerName = VisionPerceptionClaim.triggerName(trigger)
+        if ((answer.repetitionGuard?.acceptedSentences ?: 0) > 0) {
+            diagnostics.record("Vision perception claim guard outcome=not_fired stage=recovery " +
+                "reason=sentences_already_accepted trigger=$triggerName")
+            return
+        }
         val engine = answer.engine
         resetNative()
         answer.repetitionGuard?.discardPending()
@@ -422,10 +445,11 @@ internal class ConversationRecovery(
         val cleaned = AssistantText.forDisplay(regenerated.text)
         draft.cleanedResponse = if (VisionPerceptionClaim.assertsPerception(cleaned)) {
             diagnostics.record("Vision perception claim guard outcome=fallback stage=recovery " +
-                "reason=regeneration_claimed_again")
+                "reason=regeneration_claimed_again trigger=$triggerName")
             VisionPerceptionClaim.FALLBACK
         } else {
-            diagnostics.record("Vision perception claim guard outcome=regenerated stage=recovery")
+            diagnostics.record("Vision perception claim guard outcome=regenerated stage=recovery " +
+                "trigger=$triggerName")
             cleaned
         }
     }

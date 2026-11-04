@@ -452,7 +452,13 @@ internal class ConversationGeneration(
      * fallback rather than let the turn be answered with the claim. A turn
      * with an image or an injected visual-context block is never guarded —
      * bad recognition is a different problem — and an answer that is
-     * honest about not seeing passes untouched.
+     * honest about not seeing passes untouched. Admission is
+     * [VisionPerceptionClaim.triggerFor]: on a direct-audio turn the
+     * spoken question is not text the guard can read, so a concrete
+     * visual claim in the draft admits the guard on its own (the
+     * build-1697 failure mode); this stage runs after
+     * [retryInvalidToolDraft], so a claim produced by the tool-failure
+     * regeneration is checked here exactly like a first-generation one.
      */
     private suspend fun guardVisionPerceptionClaim(
         draft: ConversationDraft,
@@ -461,9 +467,27 @@ internal class ConversationGeneration(
     ) {
         draft.answer.turnOwnership?.checkCurrent()
         if (hasVisualInput || draft.actionResultMessage != null) return
-        if (!VisionPerceptionClaim.isVisionDirectedQuestion(draft.answer.invocation.prompt)) return
-        if (!VisionPerceptionClaim.assertsPerception(AssistantText.forDisplay(draft.generated.text))) return
         val answer = draft.answer
+        val displayText = AssistantText.forDisplay(draft.generated.text)
+        // Admission is the detector's shared test: a vision-directed
+        // question whose draft asserts perception, or — on a direct-audio
+        // turn, where the invocation prompt is the audio boilerplate and
+        // the spoken question can never be read as text — a draft that
+        // asserts a concrete visual perception. The build-1697 call
+        // 443f75e8 slipped both specimen claims past the old question-only
+        // gate on exactly that boilerplate. A claim this stage declines
+        // to act on is still recorded, so a diagnostics export shows the
+        // evaluation instead of the old silence.
+        val trigger = VisionPerceptionClaim.triggerFor(
+            answer.invocation.prompt, answer.directAudio, displayText)
+        if (trigger == null) {
+            if (VisionPerceptionClaim.assertsPerception(displayText)) {
+                diagnostics.summary("Vision perception claim guard outcome=not_fired stage=generation " +
+                    "reason=${if (answer.directAudio) "claim_not_concrete" else "question_not_vision_directed"}")
+            }
+            return
+        }
+        val triggerName = VisionPerceptionClaim.triggerName(trigger)
         modelSession.reset()
         answer.engine.setToolsEnabled(false)
         answer.engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
@@ -473,10 +497,11 @@ internal class ConversationGeneration(
         draft.generated = if (VisionPerceptionClaim.assertsPerception(
                 AssistantText.forDisplay(regenerated.text))) {
             diagnostics.summary("Vision perception claim guard outcome=fallback stage=generation " +
-                "reason=regeneration_claimed_again")
+                "reason=regeneration_claimed_again trigger=$triggerName")
             GenerationResult(VisionPerceptionClaim.FALLBACK, -1L, null)
         } else {
-            diagnostics.summary("Vision perception claim guard outcome=regenerated stage=generation")
+            diagnostics.summary("Vision perception claim guard outcome=regenerated stage=generation " +
+                "trigger=$triggerName")
             regenerated
         }
     }

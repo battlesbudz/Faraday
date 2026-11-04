@@ -31,6 +31,24 @@ package com.battlesbudz.jarvis.v2.conversation
  * image the user actually supplied ("in the photo you sent, I can see…")
  * is a legitimate reference to an earlier turn, not a fresh perception
  * claim.
+ *
+ * Direct-audio turns are the one place the question detector cannot
+ * run: the invocation prompt on those turns is the fixed audio
+ * instruction boilerplate (the user's words exist only as audio, and
+ * the Gemma caption is produced by the call layer afterwards, for the
+ * history — it is never the invocation text and it finalizes after the
+ * answer is generated). A build-1697 device call (443f75e8) proved the
+ * gap: asked aloud "Can you tell me what you see?" with no visual
+ * input, the model answered "I see a picture of a very large, brightly
+ * coloured, somewhat abstract shape…" and the guard never fired,
+ * because the only question text it could read was the boilerplate.
+ * So on a direct-audio turn the claim side carries the guard instead:
+ * a concrete visual claim — a pictured, shaped or scened thing stated
+ * as seen — is sufficient on its own, because on a turn with no visual
+ * input such a claim is false whatever the spoken question was. The
+ * concrete-claim detector is narrower than the general claim detector
+ * on purpose: metaphorical seeing ("I see what you mean", "I see the
+ * point") carries no visual content noun and never fires it.
  */
 internal object VisionPerceptionClaim {
     const val FALLBACK = "I can't see anything on this turn, sir — no camera image came through."
@@ -167,18 +185,76 @@ internal object VisionPerceptionClaim {
         val display = text.trim()
         if (display.isEmpty()) return false
         val sentences = display.split(sentenceSplit).map { it.trim() }.filter { it.isNotEmpty() }
-        // A bare scene description as the answer's opening ("A room with
-        // a window and a desk.") asserts perception without ever saying
-        // "I see"; only the first sentence can open the answer this way.
-        val opening = sentences.firstOrNull()
-        if (opening != null && !isHonestOrAnchored(opening) &&
-            sceneOpening.containsMatchIn(opening) && sceneContinuation.containsMatchIn(opening)
-        ) {
-            return true
-        }
+        if (opensWithBareSceneDescription(sentences)) return true
         return sentences.any { sentence ->
             !isHonestOrAnchored(sentence) && claimPatterns.any { it.containsMatchIn(sentence) }
         }
+    }
+
+    // A bare scene description as the answer's opening ("A room with
+    // a window and a desk.") asserts perception without ever saying
+    // "I see"; only the first sentence can open the answer this way.
+    private fun opensWithBareSceneDescription(sentences: List<String>): Boolean {
+        val opening = sentences.firstOrNull() ?: return false
+        return !isHonestOrAnchored(opening) &&
+            sceneOpening.containsMatchIn(opening) && sceneContinuation.containsMatchIn(opening)
+    }
+
+    /** Concrete visual content a claimed perception can be about. */
+    private val visualContent = Regex(
+        "(?i)\\b(picture|image|photo|photograph|scene|shape|silhouette|landscape|" +
+            "painting|drawing|camera|hallway|corridor|view|$sceneNoun)\\b"
+    )
+
+    /**
+     * True when [text] asserts perception of a concrete visual thing: a
+     * pictured, shaped or scened object stated as seen, or a bare scene
+     * description opening the answer. This is the claim-side trigger for
+     * direct-audio turns, where the spoken question is not available as
+     * text: it is deliberately narrower than [assertsPerception], so a
+     * metaphorical "I see the point" or a bare "I see you" — claims with
+     * no visual content — never fire it, while the build-1697 specimen
+     * ("I see a picture of a very large, brightly coloured, somewhat
+     * abstract shape") always does. Honest denials and references
+     * anchored to a supplied image are excluded exactly as in
+     * [assertsPerception].
+     */
+    fun assertsConcretePerception(text: String): Boolean {
+        val display = text.trim()
+        if (display.isEmpty()) return false
+        val sentences = display.split(sentenceSplit).map { it.trim() }.filter { it.isNotEmpty() }
+        if (opensWithBareSceneDescription(sentences)) return true
+        return sentences.any { sentence ->
+            !isHonestOrAnchored(sentence) &&
+                claimPatterns.any { it.containsMatchIn(sentence) } &&
+                visualContent.containsMatchIn(sentence)
+        }
+    }
+
+    /** Which evidence admitted the guard on a no-visual-input turn. */
+    enum class Trigger { QUESTION, DIRECT_AUDIO_CLAIM }
+
+    /**
+     * The guard's admission test, shared by the generation stage and the
+     * recovery backstop so the two can never drift apart. Returns the
+     * trigger when the turn must not be answered with [draftText] as-is:
+     * either the question text is vision-directed and the draft asserts
+     * perception, or the turn is direct audio — where the question
+     * exists only as sound, so the boilerplate prompt can never be
+     * vision-directed — and the draft asserts a concrete visual
+     * perception. A turn whose question is known and not vision-directed
+     * is never admitted by the claim side; that boundary is pinned.
+     */
+    fun triggerFor(prompt: String, directAudio: Boolean, draftText: String): Trigger? = when {
+        isVisionDirectedQuestion(prompt) && assertsPerception(draftText) -> Trigger.QUESTION
+        directAudio && assertsConcretePerception(draftText) -> Trigger.DIRECT_AUDIO_CLAIM
+        else -> null
+    }
+
+    /** Diagnostics spelling of a [Trigger], for the guard outcome lines. */
+    fun triggerName(trigger: Trigger): String = when (trigger) {
+        Trigger.QUESTION -> "question"
+        Trigger.DIRECT_AUDIO_CLAIM -> "direct_audio_claim"
     }
 
     private fun isHonestOrAnchored(sentence: String): Boolean {
