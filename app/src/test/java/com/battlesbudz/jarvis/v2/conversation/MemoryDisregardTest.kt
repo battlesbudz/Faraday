@@ -47,7 +47,11 @@ class MemoryDisregardTest {
             "I have traveled to 27 countries",
             "I've also been wakeboarding in Dubai and I enjoy skateboarding")
         const val HISTORY_QUESTION = "hey what are some things I have done?"
-        const val RECORD_ANSWER = "You have traveled to 27 countries, and you've been wakeboarding in Dubai."
+        // Whole against CONTENTS, not merely disregard-free: the
+        // completeness guard (MemoryCompletenessTest) also runs on this
+        // path, and an answer that omits the name record is partial.
+        const val RECORD_ANSWER = "Your name is Justin Lee Battles. You have traveled to 27 countries, " +
+            "and you've been wakeboarding in Dubai."
     }
 
     private fun context(contents: List<String>): MemoryTurnContext =
