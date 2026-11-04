@@ -1086,7 +1086,12 @@ class SmartTurnAudioEndpointTest {
             assertTrue(r.logs.any { it.contains("asr_recovery_started reason=unrecognized_segment source=complete_turn attempt=1") })
             assertTrue(r.logs.any { it.contains("capture_endpoint_timing") && it.contains("asrRecoveryAttempts=1") })
             assertEquals("unrecognized_segment", r.capture.recognitionIssue)
-        } finally { r.close() }
+        } catch (e: Throwable) { dumpLogs(r, "weakNoise"); throw e } finally { r.close() }
+    }
+
+    private fun dumpLogs(r: Rig, label: String) {
+        println("DUMP $label segRecoveries=${r.segRecoveries} issue=${r.capture.recognitionIssue} finalAsr=${r.capture.finalAsrStatus}")
+        r.logs.forEachIndexed { i, line -> println("DUMP[$i] $line") }
     }
 
     @Test fun recoveryAttemptsAreBoundedPerCandidateAndTurnStillCompletes() = runBlocking<Unit> {
@@ -1110,7 +1115,7 @@ class SmartTurnAudioEndpointTest {
             assertEquals(2, r.logs.count { it.contains("asr_recovery_started") })
             assertTrue(r.logs.any { it.contains("asr_recovery_skipped reason=attempt_budget") })
             assertEquals("unrecognized_segment", r.capture.recognitionIssue)
-        } finally { r.close() }
+        } catch (e: Throwable) { dumpLogs(r, "budget"); throw e } finally { r.close() }
     }
 
     @Test fun confirmedSpeechDuringFinalizationStillInvalidatesWithEndpointObserver() = runBlocking<Unit> {
