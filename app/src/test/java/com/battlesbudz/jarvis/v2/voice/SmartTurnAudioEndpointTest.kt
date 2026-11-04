@@ -69,16 +69,19 @@ class SmartTurnAudioEndpointTest {
             guardFollowupSpeech = guardFollowup, rejectAtAudioLimit = rejectAtLimit,
             maxAudioDurationMs = maxDurationMs,
             turnStopPolicy = if (reference) TurnStopPolicy.REFERENCE else TurnStopPolicy.LEGACY,
-            createTranscriber = if (!captions) null else if (failingSegmented) { { SegmentedTranscriber(
-                create = { object : StreamingTranscriber {
-                    override fun accept(pcm: ByteArray) = ""
-                    override fun finish() = ""
-                    override fun recover(pcm: ByteArray): String {
-                        segRecoveries++; segRecoverHook?.invoke(); return ""
-                    }
-                    override fun close() = Unit
-                    override val segmentSoftLimitMs = 100L
-                } }, log = { logs.add(it) }) } } else { { object : StreamingTranscriber {
+            createTranscriber = if (!captions) null else if (failingSegmented) { { object : StreamingTranscriber {
+                // The capture wraps this in its own SegmentedTranscriber; the
+                // 100ms soft limit makes that wrapper seam blank segments
+                // during streaming, raising the specimen's recognition issue.
+                override val segmentSoftLimitMs = 100L
+                override val segmentHardLimitMs = 22_000L
+                override fun accept(pcm: ByteArray) = ""
+                override fun finish() = ""
+                override fun recover(pcm: ByteArray): String {
+                    segRecoveries++; segRecoverHook?.invoke(); return ""
+                }
+                override fun close() = Unit
+            } } } else { { object : StreamingTranscriber {
                 override val segmentSoftLimitMs = segmentSoftMs
                 override val segmentHardLimitMs = segmentHardMs
                 override fun accept(pcm: ByteArray) = caption
@@ -1086,12 +1089,7 @@ class SmartTurnAudioEndpointTest {
             assertTrue(r.logs.any { it.contains("asr_recovery_started reason=unrecognized_segment source=complete_turn attempt=1") })
             assertTrue(r.logs.any { it.contains("capture_endpoint_timing") && it.contains("asrRecoveryAttempts=1") })
             assertEquals("unrecognized_segment", r.capture.recognitionIssue)
-        } catch (e: Throwable) { dumpLogs(r, "weakNoise"); throw e } finally { r.close() }
-    }
-
-    private fun dumpLogs(r: Rig, label: String) {
-        println("DUMP $label segRecoveries=${r.segRecoveries} issue=${r.capture.recognitionIssue} finalAsr=${r.capture.finalAsrStatus}")
-        r.logs.forEachIndexed { i, line -> println("DUMP[$i] $line") }
+        } finally { r.close() }
     }
 
     @Test fun recoveryAttemptsAreBoundedPerCandidateAndTurnStillCompletes() = runBlocking<Unit> {
@@ -1115,7 +1113,7 @@ class SmartTurnAudioEndpointTest {
             assertEquals(2, r.logs.count { it.contains("asr_recovery_started") })
             assertTrue(r.logs.any { it.contains("asr_recovery_skipped reason=attempt_budget") })
             assertEquals("unrecognized_segment", r.capture.recognitionIssue)
-        } catch (e: Throwable) { dumpLogs(r, "budget"); throw e } finally { r.close() }
+        } finally { r.close() }
     }
 
     @Test fun confirmedSpeechDuringFinalizationStillInvalidatesWithEndpointObserver() = runBlocking<Unit> {
