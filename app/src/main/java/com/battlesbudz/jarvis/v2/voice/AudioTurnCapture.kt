@@ -160,6 +160,10 @@ class AudioTurnCapture(
         var decodeMs = 0L
         var maxDecodeChunkMs = 0L
         var emptyCandidates = 0
+        // Full re-decodes of this candidate's retained audio (complete-turn and
+        // empty-stream recovery share the budget). Reset when the candidate is
+        // discarded or genuinely resumed speech reopens the endpoint.
+        var asrRecoveryAttempts = 0
         // Presentation-only record for the diagnostics Endpointing block: every
         // proposed endpoint this turn that was deferred or invalidated, in order.
         val endpointDeferrals = mutableListOf<String>()
@@ -219,11 +223,19 @@ class AudioTurnCapture(
                         awaitingConfirmation = unconfirmedOnsetAt?.let { audioAt - it < 96 } == true
                         var resumedAudio: ByteArray? = null
                         if (pendingEndpoint) pendingAudio.append(chunk)
-                        if (pendingEndpoint && (decision.isSpeech || ((nativePause != null || endpointObserver != null) &&
-                            (frame.rawDecision.probability >= .15f || frame.rawDecision.rawCoverage == null)))) {
+                        // Only confirmed speech invalidates a pending endpoint. Raw VAD
+                        // risk or unclassified coverage on a frame the confirmed decision
+                        // calls non-speech must not throw away a finalization: that audio
+                        // already holds the seal through the finalization drain below
+                        // (requiresNativeEndpointDrain), and invalidating on it let weak
+                        // noise cycle defer/invalidate/recovery for a whole turn
+                        // (build 1697, call ee63fa69). A genuine onset still invalidates
+                        // once the detector confirms it (96 ms confirmation window).
+                        if (pendingEndpoint && decision.isSpeech) {
                             if (!skippedSmartCaptionAtPendingEndpoint) (transcriber as? SegmentedTranscriber)?.resumeAfterEndpoint()
                             skippedSmartCaptionAtPendingEndpoint = false
                             pendingEndpoint = false
+                            asrRecoveryAttempts = 0
                             finalNativeEndpointGuard = null
                             retiredCaptionAtPendingEndpoint = false
                             resumedAudio = pendingAudio.snapshot(); pendingAudio.clear()
@@ -498,7 +510,7 @@ class AudioTurnCapture(
                             nativePause?.invalidate(NativePauseInvalidation.CANDIDATE_DISCARDED)
                             if (nativePause?.encoderFrozen != true) retainedPcmObserver?.onCandidateDiscarded()
                             retainedPreRollSampleCount = null
-                            followupEvidence.reset(); initialEvidenceAvailable = false; recoveryAudio.clear()
+                            followupEvidence.reset(); initialEvidenceAvailable = false; recoveryAudio.clear(); asrRecoveryAttempts = 0
                             pendingEndpoint = false; finalNativeEndpointGuard = null; retiredCaptionAtPendingEndpoint = false; skippedSmartCaptionAtPendingEndpoint = false
                             pendingAudio.clear(); recognitionIssue = null
                             firstSpeechCaptureAtMs = null; firstSpeechAt = null; firstPartialAfterSpeechMs = null; lastPartial = ""
@@ -634,9 +646,11 @@ class AudioTurnCapture(
                             }
                             var resolvedFinal = rawFinal
                             var recoveryAttempted = false
-                            if (audioIsComplete && recognitionIssue in setOf("unrecognized_segment", "segment_boundary_uncertain")) {
+                            if (audioIsComplete && recognitionIssue in setOf("unrecognized_segment", "segment_boundary_uncertain") &&
+                                asrRecoveryAttempts < MAX_ASR_RECOVERY_ATTEMPTS) {
                                 val completePcm = synchronized(pcm) { pcm.snapshot() }
-                                log("asr_recovery_started reason=$recognitionIssue source=complete_turn audioMs=${completePcm.size / 32}")
+                                asrRecoveryAttempts++
+                                log("asr_recovery_started reason=$recognitionIssue source=complete_turn attempt=$asrRecoveryAttempts audioMs=${completePcm.size / 32}")
                                 val recoveryStarted = nowMs()
                                 recoveryAttempted = true
                                 val recovered = transcriber?.recover(completePcm).orEmpty().trim()
@@ -647,14 +661,24 @@ class AudioTurnCapture(
                                     recognitionIssue = null
                                     log("asr_recovery_finished source=complete_turn accepted=true chars=${recovered.length}")
                                 } else log("asr_recovery_finished source=complete_turn accepted=false")
+                            } else if (audioIsComplete && recognitionIssue in setOf("unrecognized_segment", "segment_boundary_uncertain")) {
+                                // The per-candidate budget is spent: another full re-decode
+                                // of the same retained audio cannot change the outcome, and
+                                // an unbounded retry loop is what ate the build-1697
+                                // follow-up turn. The turn completes below with its issue
+                                // recorded; downstream decides from the retained audio
+                                // (caption route) or the clarify path (ASR route).
+                                log("asr_recovery_skipped reason=attempt_budget attempts=$asrRecoveryAttempts issue=$recognitionIssue")
                             }
                             val nonverbal = TranscriptContent.isSoundOnly(resolvedFinal)
                             finalTranscript = if (nonverbal) "" else TranscriptContent.speech(resolvedFinal)
                             if (nonverbal) log(if (captionOnly) "nonverbal_caption ignored=true original_audio_retained=true" else "nonverbal_candidate ignored=true destination=none microphone=kept_open")
-                            if (transcriber != null && finalTranscript.isBlank() && !allowAudioOnlyTurns && !nonverbal && recognitionIssue == null) {
+                            if (transcriber != null && finalTranscript.isBlank() && !allowAudioOnlyTurns && !nonverbal && recognitionIssue == null &&
+                                asrRecoveryAttempts < MAX_ASR_RECOVERY_ATTEMPTS) {
                                 val candidate = recoveryAudio.snapshot()
                                 val recoveryAt = nowMs()
-                                log("asr_recovery_started candidateAudioMs=${candidate.size / 32} reason=empty_stream source=full_capture_window nativeVad=bypassed")
+                                asrRecoveryAttempts++
+                                log("asr_recovery_started candidateAudioMs=${candidate.size / 32} reason=empty_stream source=full_capture_window nativeVad=bypassed attempt=$asrRecoveryAttempts")
                                 onRecognitionRecovery(true)
                                 try {
                                     recoveryAttempted = true
@@ -719,6 +743,7 @@ class AudioTurnCapture(
                                 finalNativeEndpointGuard = null
                                 retiredCaptionAtPendingEndpoint = false
                                 skippedSmartCaptionAtPendingEndpoint = false
+                                asrRecoveryAttempts = 0
                                 turnEnd.reset()
                                 followupEvidence.reset()
                                 initialEvidenceAvailable = false
@@ -777,7 +802,7 @@ class AudioTurnCapture(
                             "silenceDetectedToFinalMs=${speechQueue.latestSilenceDetectedAtMs?.takeIf { it >= lastSpeechAt }?.let { (nowMs() - it).coerceAtLeast(0) }} " +
                             "finalDecodeMs=$finalDecodeMs deferredPartialChunks=$deferredPartialChunks " +
                             "maxRecognitionWorkMs=${recognitionBudget.largestWorkMs} maxRecognitionBacklogMs=$maxRecognitionBacklogMs " +
-                            "recognitionBacklogMs=${speechQueue.bufferedAudioMs}")
+                            "recognitionBacklogMs=${speechQueue.bufferedAudioMs} asrRecoveryAttempts=$asrRecoveryAttempts")
                         if (nativePause != null) log("native_pause_capture_summary eligibleFrames=$nativeEligibleFrames " +
                             "uncoveredEndpointFrames=$nativeUncoveredEndpointFrames proposals=$nativeProposalCount " +
                             "finalCue=${endpoint.cue} targetSilenceMs=${endpoint.silenceMs}")
@@ -875,5 +900,10 @@ class AudioTurnCapture(
 
     private companion object {
         const val MAX_TURN_BYTES = 25 * 16_000 * 2
+        /** Per-candidate cap on full re-decodes of the retained audio. One rescue
+         * attempt is the designed path; one more covers a drain-deferred retry.
+         * Beyond that the same audio cannot decode differently, so the turn
+         * completes with its recognition issue instead of looping. */
+        const val MAX_ASR_RECOVERY_ATTEMPTS = 2
     }
 }
