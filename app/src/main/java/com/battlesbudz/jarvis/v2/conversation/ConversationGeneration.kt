@@ -457,14 +457,23 @@ internal class ConversationGeneration(
         val contents = turnPrompt.injectedMemoryContents()
         if (contents.isEmpty()) return
         val userPrompt = draft.answer.invocation.prompt
-        val uncovered = MemoryCompleteness.uncoveredRecords(userPrompt, contents,
+        val assessment = MemoryCompleteness.assess(userPrompt, contents,
             AssistantText.forDisplay(draft.generated.text))
+        val uncovered = assessment.uncovered
         if (uncovered.isEmpty()) return
         val answer = draft.answer
         modelSession.reset()
         answer.engine.setToolsEnabled(false)
         answer.engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
-        val prompt = answer.submittedPrompt + MemoryCompleteness.correction(uncovered)
+        // A large packet on a broad question corrects toward the most
+        // important facts (at most ten, woven in), not toward a recital of
+        // every record; every other turn corrects toward full coverage.
+        val correctionText = if (assessment.largePacket) {
+            MemoryCompleteness.topFactsCorrection(uncovered, assessment.topFactsCovered)
+        } else {
+            MemoryCompleteness.correction(uncovered)
+        }
+        val prompt = answer.submittedPrompt + correctionText
         val regenerated = input.retry(answer.engine, prompt, answer.streamFilter::accept)
         answer.telemetry.record("memory completeness retry", regenerated, answer.submittedPrompt.length)
         val regeneratedText = AssistantText.forDisplay(regenerated.text)

@@ -28,6 +28,16 @@ package com.battlesbudz.jarvis.v2.conversation
  * regeneration disregards the records, in which case the disregard
  * fallback governs as usual.
  *
+ * One bound on "whole" (Battles, amending the ruling the same day): on a
+ * broad question with a large packet — more than [TOP_FACTS_WINDOW]
+ * records — wholeness is not a recital. The coverage set is the packet's
+ * top [TOP_FACTS_WINDOW] records in packet order (the retrieval/profile
+ * ranking; no new ranking signal is invented here), and a draft is whole
+ * when it covers at least [MIN_TOP_FACTS_COVERED] of them including the
+ * top-ranked one: the impression of full recall from the most important
+ * facts, not a robotic read-out of every detail. Narrow questions are
+ * unaffected; their wholeness is judged on the asked topic alone.
+ *
  * The check is pure string work on data already in the prompt: no model
  * call, no embedding, no network. A turn whose draft passes pays only the
  * check itself; the regeneration cost is paid only on turns where a
@@ -35,22 +45,51 @@ package com.battlesbudz.jarvis.v2.conversation
  */
 internal object MemoryCompleteness {
 
+    /** Records in a broad question's coverage window, in packet order. */
+    const val TOP_FACTS_WINDOW = 10
+
+    /** Distinct top-window records a large-packet broad answer must cover. */
+    const val MIN_TOP_FACTS_COVERED = 5
+
+    /** The outcome of one completeness evaluation. */
+    internal data class Assessment(
+        /** In-scope records the answer leaves uncovered, in packet order. */
+        val uncovered: List<String>,
+        /** Top-window records the answer covers; only set for a large packet on a broad question. */
+        val topFactsCovered: Int = 0,
+        /** True when the top-facts window decided this assessment (large packet, broad question). */
+        val largePacket: Boolean = false)
+
+    /** A packet is large when it holds more records than the broad coverage window. */
+    fun isLargePacket(contents: List<String>): Boolean = contents.size > TOP_FACTS_WINDOW
+
+    fun assess(question: String, contents: List<String>, answer: String): Assessment {
+        if (contents.isEmpty()) return Assessment(emptyList())
+        val draft = salientUnits(answer)
+        val broad = isBroadQuestion(question)
+        if (broad && isLargePacket(contents)) {
+            val top = contents.take(TOP_FACTS_WINDOW)
+            val covered = top.map { broadCovered(it, draft) }
+            val coveredCount = covered.count { it }
+            val uncovered = if (coveredCount >= MIN_TOP_FACTS_COVERED && covered.first()) emptyList()
+                else top.filterIndexed { index, _ -> !covered[index] }
+            return Assessment(uncovered, coveredCount, largePacket = true)
+        }
+        val nameQuestion = !broad && isNameQuestion(question)
+        val questionUnits = if (broad) emptySet() else salientUnits(question)
+        return Assessment(contents.filter { content ->
+            isUncovered(content, broad, nameQuestion, questionUnits, draft)
+        })
+    }
+
     /**
      * The injected records (their original contents, in packet order) that
      * [answer] leaves uncovered for [question]. Empty when the answer is
      * whole, when nothing was injected, and when no fact-bearing record is
      * in scope for the question.
      */
-    fun uncoveredRecords(question: String, contents: List<String>, answer: String): List<String> {
-        if (contents.isEmpty()) return emptyList()
-        val draft = salientUnits(answer)
-        val broad = isBroadQuestion(question)
-        val nameQuestion = !broad && isNameQuestion(question)
-        val questionUnits = if (broad) emptySet() else salientUnits(question)
-        return contents.filter { content ->
-            isUncovered(content, broad, nameQuestion, questionUnits, draft)
-        }
-    }
+    fun uncoveredRecords(question: String, contents: List<String>, answer: String): List<String> =
+        assess(question, contents, answer).uncovered
 
     fun isPartial(question: String, contents: List<String>, answer: String): Boolean =
         uncoveredRecords(question, contents, answer).isNotEmpty()
@@ -61,13 +100,43 @@ internal object MemoryCompleteness {
      * model cannot cover a fact it is not shown it dropped.
      */
     fun correction(uncovered: List<String>): String {
-        val items = uncovered.map { factSegment(it).replace(Regex("\\s+"), " ").trim().take(160).trimEnd() }
-            .filter { it.isNotEmpty() }.distinct().take(5)
-        val naming = if (items.isEmpty()) "" else " It left out: ${items.joinToString("; ")}."
+        val naming = naming(namedItems(uncovered, 5))
         return "\nThe previous draft answered only part of what the memory records included with " +
             "this message hold.$naming Answer the user's question again and cover everything in " +
             "those records that the question touches, including what was left out, without " +
             "dropping what the previous draft already stated correctly."
+    }
+
+    /**
+     * The large-packet form of [correction]: names the most important
+     * uncovered records from the top of the packet, capped so the facts the
+     * draft already covered plus the named additions stay within the
+     * window, and instructs the model to answer with the most important
+     * facts — at most ten in total — woven naturally rather than recited.
+     */
+    fun topFactsCorrection(uncovered: List<String>, alreadyCovered: Int): String {
+        val room = (TOP_FACTS_WINDOW - alreadyCovered).coerceAtLeast(0)
+        val naming = naming(namedItems(uncovered, room))
+        return "\nThe previous draft answered only part of what the memory records included with " +
+            "this message hold.$naming Answer the user's question again with the most important " +
+            "facts from those records, at most ten facts in total, woven naturally into the " +
+            "answer rather than recited as a list, and do not drop the important facts the " +
+            "previous draft already stated."
+    }
+
+    private fun namedItems(uncovered: List<String>, cap: Int): List<String> =
+        uncovered.map { factSegment(it).replace(Regex("\\s+"), " ").trim().take(160).trimEnd() }
+            .filter { it.isNotEmpty() }.distinct().take(cap)
+
+    private fun naming(items: List<String>): String =
+        if (items.isEmpty()) "" else " It left out: ${items.joinToString("; ")}."
+
+    /** Broad coverage of one record; a record with no fact units is covered vacuously. */
+    private fun broadCovered(content: String, draft: Set<String>): Boolean {
+        val fact = factSegment(content)
+        val units = salientUnits(fact)
+        if (units.isEmpty()) return true
+        return coveredBroad(fact, units, draft)
     }
 
     private fun isUncovered(content: String, broad: Boolean, nameQuestion: Boolean,
