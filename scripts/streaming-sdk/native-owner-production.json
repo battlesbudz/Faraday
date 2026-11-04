@@ -6,13 +6,13 @@
     "libnative_audio_owner_jni_test.so"
   ],
   "owner_source_sha256": {
-    "experimental/native_audio_owner_20261006/native_audio_owner.h": "54fe90939eb1d3266cc8b97dec4f4d286adc7b473d855d0e58ba805a489881d9",
-    "experimental/native_audio_owner_20261006/native_audio_owner.cc": "d626080a000504632938b09ecf8e9dc222f830ccfbf18345347d2cdc7aa654b8",
+    "experimental/native_audio_owner_20261006/native_audio_owner.h": "f0eaf3b08dd2684ed99bf960d006487e2c961c3e2eb5b84feea6cc145896a3d4",
+    "experimental/native_audio_owner_20261006/native_audio_owner.cc": "0538f3fb7371071facdd893cde748704f376dddc1ed2c35330b55ce5f9c8799b",
     "experimental/native_audio_owner_20261006/pinned_native_backend.h": "105e932459c099abd730f67e2fb1e12da185e88dcc0041b4e39360474ef24d4f",
     "experimental/native_audio_owner_20261006/pinned_native_backend.cc": "3729f673c3d4be7808fcd6164beb389f657b4aaf5bbfda86ccf0b62e2f0c18a9",
     "experimental/native_audio_owner_20261006/BUILD": "8bd8c8cb0c2dff8b97eb9831c50a41ec82f43142e27fe1aa62186c3a3c891cc7",
-    "experimental/native_audio_owner_jni_20261006/native_audio_owner_jni.cc": "f736fa9da2eee2cb962962b1d1c957625ef50bba9748b10cf2b955880ec4236a",
-    "experimental/native_audio_owner_jni_20261006/NativeAudioOwner.kt": "2c7c82fb16f35b4bd4d454e6e76c2414d1da23302dfd123840a381ec6c9e2215",
+    "experimental/native_audio_owner_jni_20261006/native_audio_owner_jni.cc": "393705638c12138ce24afec9b87163b15c2c3313a3e3d89b9e2c0f872d3e9427",
+    "experimental/native_audio_owner_jni_20261006/NativeAudioOwner.kt": "c0925393745cecce6df9c11ebee3175fe094eae2aa771448a7c52971d29939f9",
     "experimental/native_audio_owner_jni_20261006/BUILD": "bba731936a74867e0e38b0d35438ab8b4465e15829634989c73e020b3695b495",
     "kotlin/java/com/google/ai/edge/litertlm/Session.kt": "0dcf9050048d0f96e0843082ab87d0369f7dab57167a6a79645fac84e34d1250",
     "kotlin/java/com/google/ai/edge/litertlm/Conversation.kt": "c4da22296e96651d581b9871283aab90722058e3e218c3fc4ff445fd66ed5264",
@@ -67,7 +67,9 @@
     "com/google/ai/edge/litertlm/NativeTimingWords$Companion.class",
     "com/google/ai/edge/litertlm/NativeTimingWords.class",
     "com/google/ai/edge/litertlm/NativeWorkBefore.class",
-    "com/google/ai/edge/litertlm/NativeWorkBeforeKind.class"
+    "com/google/ai/edge/litertlm/NativeWorkBeforeKind.class",
+    "com/google/ai/edge/litertlm/NativeAudioRowsWire.class",
+    "com/google/ai/edge/litertlm/ProvisionalNativeAudio.class"
   ],
   "owner_jni_methods": {
     "nativeCreate": "(Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;JIII)J",
@@ -75,6 +77,7 @@
     "nativeSeal": "(JLjava/lang/String;J)Lcom/google/ai/edge/litertlm/NativeAudioSealWire;",
     "nativeRequestCancel": "(J)Z",
     "nativeDrain": "(JJ)Z",
+    "nativeProvisionalRows": "(JLjava/lang/String;JI)Lcom/google/ai/edge/litertlm/NativeAudioRowsWire;",
     "nativeClose": "(JJ)Z",
     "nativeTimingHandshake": "()[J",
     "nativeTimingSnapshot": "(J)[J"
@@ -84,6 +87,7 @@
     "Java_com_google_ai_edge_litertlm_NativeAudioOwnerJni_nativeClose",
     "Java_com_google_ai_edge_litertlm_NativeAudioOwnerJni_nativeCreate",
     "Java_com_google_ai_edge_litertlm_NativeAudioOwnerJni_nativeDrain",
+    "Java_com_google_ai_edge_litertlm_NativeAudioOwnerJni_nativeProvisionalRows",
     "Java_com_google_ai_edge_litertlm_NativeAudioOwnerJni_nativeRequestCancel",
     "Java_com_google_ai_edge_litertlm_NativeAudioOwnerJni_nativeSeal",
     "Java_com_google_ai_edge_litertlm_NativeAudioOwnerJni_nativeTimingHandshake",

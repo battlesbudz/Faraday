@@ -50,7 +50,7 @@ def verify_packaged_kotlin_contract(java, compiler_cp, runtime_cp, classes_jar, 
          str(test_classes) + ':' + str(classes_jar) + ':' + runtime_cp,
          'com.google.ai.edge.litertlm.PackagedSealedContentContractKt', receipt_path], timeout=20)
     result = json.loads(receipt_path.read_text())
-    if result.get('passed') is not True or result.get('checks') != 18:
+    if result.get('passed') is not True or result.get('checks') != 23:
         raise ValueError('Packaged SDK serialization contract did not pass completely')
     result.update(classes_jar_sha256=hashlib.sha256(classes_jar.read_bytes()).hexdigest(),
                   test_source_sha256=hashlib.sha256(source.read_bytes()).hexdigest())

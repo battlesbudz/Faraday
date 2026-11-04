@@ -91,6 +91,73 @@ internal object RouteBPrefillSpike {
         return RowDiff(max, if (expected.isEmpty()) 0.0 else sum / expected.size)
     }
 
+    /** One provisional snapshot as delivered during a capture (Option A). */
+    data class ProvisionalSnapshot(val firstRow: Int, val totalRows: Int, val rows: FloatArray)
+
+    /**
+     * Verifies one encode pass's provisional snapshot stream (Option A)
+     * against the sealed rows of the SAME pass: the chain must be
+     * contiguous from row 0, every snapshot's rows must equal the sealed
+     * rows at the same indices EXACTLY (checked per snapshot, not just on
+     * the concatenation), and the rows still outstanding at the seal may
+     * only be the final partial step's — that step runs inside Seal, never
+     * during capture, so it contributes 0..12 rows (12 exactly when the
+     * trailing frame group is 45..47 frames). This is the device-provable
+     * half of Option A: the bridge's finality contract on the real encoder.
+     */
+    fun verifyProvisionalSnapshots(
+        snapshots: List<ProvisionalSnapshot>,
+        sealedRows: FloatArray,
+        tokenCount: Int,
+        embeddingWidth: Int,
+    ): String {
+        val lines = mutableListOf<String>()
+        lines += "Provisional snapshots (Route B Option A bridge): count=${snapshots.size} " +
+            "sealedRows=$tokenCount width=$embeddingWidth"
+        var verdict: String? = null
+        if (snapshots.isEmpty()) {
+            verdict = "FAIL — no provisional snapshots arrived during the encode"
+        }
+        var expectedRow = 0
+        var worstDiff = 0.0
+        if (verdict == null) {
+            for ((index, snapshot) in snapshots.withIndex()) {
+                val rows = snapshot.totalRows - snapshot.firstRow
+                if (snapshot.firstRow != expectedRow || rows <= 0 ||
+                    snapshot.rows.size != rows * embeddingWidth) {
+                    verdict = "FAIL — snapshot $index breaks the chain " +
+                        "(firstRow=${snapshot.firstRow}, expected $expectedRow)"
+                    break
+                }
+                val sealedSlice = sealedRows.copyOfRange(
+                    snapshot.firstRow * embeddingWidth, snapshot.totalRows * embeddingWidth)
+                val diff = compareRows(sealedSlice, snapshot.rows)
+                if (diff.maxAbsDiff > worstDiff) worstDiff = diff.maxAbsDiff
+                if (!diff.exactlyEqual) {
+                    verdict = "FAIL — snapshot $index (rows ${snapshot.firstRow}.." +
+                        "${snapshot.totalRows}) diverges from the sealed rows, maxAbsDiff=${diff.maxAbsDiff}"
+                    break
+                }
+                expectedRow = snapshot.totalRows
+            }
+        }
+        if (verdict == null) {
+            val outstanding = tokenCount - expectedRow
+            lines += "Rows exposed during capture: $expectedRow of $tokenCount " +
+                "(outstanding at seal: $outstanding — the final partial step only)"
+            verdict = when {
+                outstanding !in 0..12 ->
+                    "FAIL — $outstanding rows were still outstanding at the seal; only the " +
+                        "final partial step (0..12 rows) may be"
+                else ->
+                    "PASS — every snapshot is an exact prefix slice of the sealed rows, " +
+                        "checked per snapshot (maxAbsDiff=$worstDiff)"
+            }
+        }
+        lines += "PROVISIONAL: $verdict"
+        return lines.joinToString("\n")
+    }
+
     data class Generation(val answer: String, val ttftMs: Long)
 
     data class ArmResult(

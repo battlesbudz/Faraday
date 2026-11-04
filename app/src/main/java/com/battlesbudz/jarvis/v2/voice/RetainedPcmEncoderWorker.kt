@@ -19,7 +19,11 @@ import kotlinx.coroutines.withTimeoutOrNull
  * The independent worker is deliberately not cancelled with the caller: a
  * coroutine cancellation cannot join a synchronous JNI borrower. All native
  * operations and destruction remain ordered on the worker, while cancel is a
- * fast signal only. T is the immutable sealed SDK content, not provisional rows.
+ * fast signal only. T is the immutable sealed SDK content. Provisional
+ * snapshots ([ProvisionalRows]) are a separate, optional side channel: an
+ * encoder that can expose rows for steps it has already completed reports
+ * them through the constructor's snapshot callback between appends, and the
+ * sealed content remains the only certified result.
  */
 internal class RetainedPcmEncoderWorker<T : Any>(
     private val createEncoder: (candidate: Long) -> Encoder<T>,
@@ -29,6 +33,7 @@ internal class RetainedPcmEncoderWorker<T : Any>(
     private val nativeCloseTimeoutMs: Long = 10_000,
     private val nowNs: () -> Long = System::nanoTime,
     private val onWork: (WorkSnapshot) -> Unit = {},
+    private val onProvisionalRows: (candidate: Long, snapshot: ProvisionalRows) -> Unit = { _, _ -> },
 ) : RetainedPcmObserver {
     /** API-wall work, not individual graph steps or LLM multimodal prefill. */
     data class WorkSnapshot(val phase: String, val busy: Boolean, val appendCalls: Int,
@@ -40,7 +45,24 @@ internal class RetainedPcmEncoderWorker<T : Any>(
         /** Must not wait for inference or hold the blocking native-operation lock. */
         fun requestCancel()
         fun closeOnWorker(timeoutMs: Long): Boolean
+        /**
+         * Route B Option A: a snapshot of the rows for encoder steps
+         * completed so far, starting at [fromRow], or null when this encoder
+         * exposes no provisional rows. Called only on the worker thread,
+         * between appends. The encoder's finality contract must guarantee
+         * the returned rows are exactly the rows a later [seal] publishes
+         * for the same steps; rows of a step still in progress are never
+         * included. A failure is treated by the worker as "no provisional
+         * surface for this candidate" and never fails capture.
+         */
+        fun provisionalRows(fromRow: Int): ProvisionalRows? = null
     }
+    /**
+     * Rows [firstRow, totalRows) of one candidate's step sequence, as one
+     * row-major values block. Ownership passes to the receiver; the worker
+     * never touches the array after delivery.
+     */
+    data class ProvisionalRows(val firstRow: Int, val totalRows: Int, val values: FloatArray)
     data class Sealed<T>(val pcmSampleCount: Int, val content: T, val timing: NativeAudioCaptureTiming? = null)
     data class Completed<T>(val candidate: Long, val pcmSampleCount: Int, val content: T, val timing: NativeAudioCaptureTiming? = null)
     private enum class Phase { ACCEPTING, SEAL_QUEUED, SEALED, INVALID, CLOSED }
@@ -49,7 +71,13 @@ internal class RetainedPcmEncoderWorker<T : Any>(
         data class Reset(val candidate: Long) : Event
         data class Seal(val candidate: Long, val bytes: Int, val digest: ByteArray) : Event
     }
-    private class Active<T>(val candidate: Long) { @Volatile var encoder: Encoder<T>? = null }
+    private class Active<T>(val candidate: Long) {
+        @Volatile var encoder: Encoder<T>? = null
+        /** Provisional rows already delivered for this candidate (worker-thread only). */
+        var provisionalDelivered = 0
+        /** Set when a snapshot fails or arrives malformed: no further attempts for this candidate. */
+        var provisionalDisabled = false
+    }
     private val gate = Any()
     private var phase = Phase.ACCEPTING
     private var candidate = 1L
@@ -243,6 +271,33 @@ internal class RetainedPcmEncoderWorker<T : Any>(
                             offset += samples * 2
                         }
                         consumedBytes += event.bytes.size
+                        // Route B Option A: surface rows of steps this
+                        // candidate's encoder completed during the appends
+                        // above. Fully fenced: a failing or malformed
+                        // snapshot disables the surface for this candidate
+                        // only — capture and the sealed route are never
+                        // affected, and finalization verification remains
+                        // the safety net for anything delivered.
+                        val snapshotOwner = current
+                        if (snapshotOwner != null && !snapshotOwner.provisionalDisabled &&
+                            isWanted(event.candidate)) {
+                            try {
+                                val snapshot = snapshotOwner.encoder?.provisionalRows(
+                                    snapshotOwner.provisionalDelivered)
+                                if (snapshot != null) {
+                                    val rows = snapshot.totalRows - snapshot.firstRow
+                                    require(snapshot.firstRow == snapshotOwner.provisionalDelivered &&
+                                        rows > 0 && snapshot.values.isNotEmpty() &&
+                                        snapshot.values.size % rows == 0) {
+                                        "native_audio_provisional_snapshot_shape"
+                                    }
+                                    snapshotOwner.provisionalDelivered = snapshot.totalRows
+                                    runCatching { onProvisionalRows(event.candidate, snapshot) }
+                                }
+                            } catch (_: Throwable) {
+                                snapshotOwner.provisionalDisabled = true
+                            }
+                        }
                     } catch (error: Throwable) {
                         // A discarded candidate may finish a synchronous native
                         // call with cancellation/error. Only its fresh replacement

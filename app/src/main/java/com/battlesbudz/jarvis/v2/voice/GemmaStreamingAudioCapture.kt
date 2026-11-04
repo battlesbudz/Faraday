@@ -14,7 +14,10 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 /** Turn-owned adapter. Capture observes retained bytes; only a joined complete
- * request can expose immutable SDK content. No microphone or tool authority. */
+ * request can expose immutable SDK content. No microphone or tool authority.
+ * Route B Option A: when [provisionalRowSink] is set, rows of encoder steps
+ * completed during capture are forwarded to it as they accumulate; the sink
+ * must be non-blocking and must never throw back into the encoder worker. */
 internal class GemmaStreamingAudioCapture(
     private val artifact: GemmaStreamingArtifactStore.Lease,
     turnId: String,
@@ -60,7 +63,17 @@ internal class GemmaStreamingAudioCapture(
         // byte budget bounds data events; leave room for seal/control events too.
         maxEvents = PREPARATION_MAX_EVENTS,
         onWork = onEncoderWork,
+        onProvisionalRows = { _, snapshot -> provisionalRowSink?.invoke(snapshot) },
     )
+
+    /**
+     * Route B Option A consumer for provisional encoder rows, invoked on the
+     * encoder worker thread between appends. Set before capture starts (the
+     * priming owner on an eligible turn, or the diagnostics spike); null
+     * disables the surface and capture behaves exactly as before.
+     */
+    @Volatile
+    var provisionalRowSink: ((RetainedPcmEncoderWorker.ProvisionalRows) -> Unit)? = null
 
     override fun onPcm(retainedPcm16: ByteArray) = worker.onPcm(retainedPcm16)
     override fun onCandidateDiscarded() = worker.onCandidateDiscarded()
@@ -120,6 +133,16 @@ internal class GemmaStreamingAudioCapture(
     private class EncoderAdapter : RetainedPcmEncoderWorker.Encoder<Content.SealedAudioEmbeddings> {
         lateinit var native: NativeAudioOwner
         override fun append(pcm: FloatArray) = native.appendOnWorker(pcm)
+        override fun provisionalRows(fromRow: Int): RetainedPcmEncoderWorker.ProvisionalRows? {
+            val snapshot = native.provisionalRowsOnWorker(fromRow)
+            try {
+                if (snapshot.rowCount == 0) return null
+                return RetainedPcmEncoderWorker.ProvisionalRows(
+                    snapshot.firstRow, snapshot.totalRows, snapshot.copyRows())
+            } finally {
+                snapshot.wipe()
+            }
+        }
         override fun seal(): RetainedPcmEncoderWorker.Sealed<Content.SealedAudioEmbeddings> {
             val calledAt = System.nanoTime()
             val result = native.sealOnWorker()

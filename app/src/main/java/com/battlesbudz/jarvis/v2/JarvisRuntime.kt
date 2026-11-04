@@ -393,7 +393,10 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
      * encodes the bundled fixture through the production capture/encoder once,
      * then runs the sealed one-shot and chunked-incremental prefill arms on
      * throwaway greedy sessions and publishes the parity report to
-     * [routeBSpikeReport] and the diagnostics recorder. Running it resets the
+     * [routeBSpikeReport] and the diagnostics recorder. The same encode also
+     * exercises the Option A bridge: the provisional snapshots delivered
+     * during capture are verified per snapshot against the sealed rows and
+     * reported as the PROVISIONAL section. Running it resets the
      * current conversation, like starting a voice call does. It never runs
      * during a call or turn: the guards below refuse while the model is busy.
      */
@@ -451,6 +454,15 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
                 val cap = com.battlesbudz.jarvis.v2.voice.GemmaStreamingAudioCapture(
                     artifact, "routeb-spike", turnIsCurrent = { true })
                 capture = cap
+                // Option A: collect the provisional snapshots this encode's
+                // steps produce DURING capture; the report verifies them
+                // against the sealed rows of the same pass, per snapshot.
+                val provisionalSnapshots = java.util.Collections.synchronizedList(
+                    mutableListOf<com.battlesbudz.jarvis.v2.ai.RouteBPrefillSpike.ProvisionalSnapshot>())
+                cap.provisionalRowSink = { snapshot ->
+                    provisionalSnapshots += com.battlesbudz.jarvis.v2.ai.RouteBPrefillSpike.ProvisionalSnapshot(
+                        snapshot.firstRow, snapshot.totalRows, snapshot.values)
+                }
                 val encodeStartedNs = System.nanoTime()
                 val pcm = wav.copyOfRange(44, wav.size)
                 var offset = 0
@@ -471,8 +483,11 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
                     spike.runArmCatching(com.battlesbudz.jarvis.v2.ai.SdkRouteBSpikeSession(session),
                         rows, sealed.audioTokenCount, sealed.embeddingWidth, chunked = true)
                 }
-                return spike.buildReport(encodeMs, sealed.audioTokenCount, sealed.embeddingWidth,
+                val report = spike.buildReport(encodeMs, sealed.audioTokenCount, sealed.embeddingWidth,
                     sealedArm, chunkedArm)
+                val snapshots = synchronized(provisionalSnapshots) { provisionalSnapshots.toList() }
+                return report + "\n" + spike.verifyProvisionalSnapshots(
+                    snapshots, rows, sealed.audioTokenCount, sealed.embeddingWidth)
             } finally {
                 // Mirror production cleanup: the artifact lease closes only
                 // after a checked encoder drain; a failed drain quarantines it.

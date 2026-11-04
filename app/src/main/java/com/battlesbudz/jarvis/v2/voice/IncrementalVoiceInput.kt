@@ -31,6 +31,22 @@ interface VoicePrefillSession : AutoCloseable {
     fun appendAudio(rows: FloatArray, tokenCount: Int, embeddingWidth: Int) {
         throw UnsupportedOperationException("This session cannot accept preprocessed audio embeddings")
     }
+
+    /**
+     * Route B (Option A): append ONE chunk of the turn's audio rows, in row
+     * order, as the rows become available — during capture for provisional
+     * chunks, at finalization for the rest. The begin marker rides only the
+     * turn's first audio chunk and the projected end marker only its last,
+     * exactly as the one-shot [appendAudio] plan places them, so a chunked
+     * turn assembles the same payload as the sealed one-shot submission.
+     * Sessions that cannot accept chunked audio throw; a caller feeding
+     * provisionally must then discard the session and answer on the sealed
+     * route instead of mixing shapes.
+     */
+    fun appendAudioChunk(rows: FloatArray, tokenCount: Int, embeddingWidth: Int,
+                         includeBeginMarker: Boolean, includeEndMarker: Boolean) {
+        throw UnsupportedOperationException("This session cannot accept chunked audio embeddings")
+    }
     suspend fun decode(onToken: (String) -> Unit): GenerationResult
 }
 

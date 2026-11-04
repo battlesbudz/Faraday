@@ -149,4 +149,63 @@ class RouteBPrefillSpikeTest {
         assertTrue(report.contains("Chunked incremental: FAILED: native gate rejected chunk"))
         assertTrue(report.lines().last().startsWith("PARITY: FAIL"))
     }
+
+    // Option A: the provisional snapshot stream of one encode pass must be
+    // an exact, contiguous prefix of that pass's sealed rows.
+
+    private fun snapshot(source: FloatArray, width: Int, firstRow: Int, totalRows: Int) =
+        RouteBPrefillSpike.ProvisionalSnapshot(
+            firstRow, totalRows, source.copyOfRange(firstRow * width, totalRows * width))
+
+    @Test fun provisionalSnapshotsPassWhenExactContiguousAndOnlyTheFinalStepOutstanding() {
+        val width = 4
+        val source = rows(188, width)
+        val snapshots = listOf(
+            snapshot(source, width, 0, 24), snapshot(source, width, 24, 96),
+            snapshot(source, width, 96, 180))
+        val section = RouteBPrefillSpike.verifyProvisionalSnapshots(snapshots, source, 188, width)
+        assertTrue(section.contains("count=3"))
+        assertTrue(section.contains("Rows exposed during capture: 180 of 188"))
+        assertTrue(section.lines().last().startsWith("PROVISIONAL: PASS"))
+    }
+
+    @Test fun provisionalSnapshotsFailOnAnyDivergentRow() {
+        val width = 4
+        val source = rows(188, width)
+        val corrupted = snapshot(source, width, 0, 24)
+        corrupted.rows[5] = corrupted.rows[5] + 1.0f
+        val section = RouteBPrefillSpike.verifyProvisionalSnapshots(
+            listOf(corrupted, snapshot(source, width, 24, 180)), source, 188, width)
+        assertTrue(section.lines().last().startsWith("PROVISIONAL: FAIL"))
+        assertTrue(section.contains("diverges from the sealed rows"))
+    }
+
+    @Test fun provisionalSnapshotsFailOnAChainGap() {
+        val width = 4
+        val source = rows(188, width)
+        val section = RouteBPrefillSpike.verifyProvisionalSnapshots(
+            listOf(snapshot(source, width, 0, 24), snapshot(source, width, 48, 96)),
+            source, 188, width)
+        assertTrue(section.lines().last().startsWith("PROVISIONAL: FAIL"))
+        assertTrue(section.contains("breaks the chain"))
+    }
+
+    @Test fun provisionalSnapshotsFailWhenMoreThanTheFinalStepIsOutstanding() {
+        val width = 4
+        val source = rows(188, width)
+        // 175 of 188 exposed: 13 rows outstanding, more than any final
+        // partial step can account for.
+        val section = RouteBPrefillSpike.verifyProvisionalSnapshots(
+            listOf(snapshot(source, width, 0, 175)), source, 188, width)
+        assertTrue(section.lines().last().startsWith("PROVISIONAL: FAIL"))
+        assertTrue(section.contains("still outstanding"))
+    }
+
+    @Test fun provisionalSnapshotsFailWhenNoneArrive() {
+        val width = 4
+        val section = RouteBPrefillSpike.verifyProvisionalSnapshots(
+            emptyList(), rows(188, width), 188, width)
+        assertTrue(section.lines().last().startsWith("PROVISIONAL: FAIL"))
+        assertTrue(section.contains("no provisional snapshots arrived"))
+    }
 }

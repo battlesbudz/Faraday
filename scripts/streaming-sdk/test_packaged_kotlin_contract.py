@@ -23,21 +23,21 @@ class PackagedKotlinContractTest(unittest.TestCase):
             self.assertEqual(60, commands[0][1]['timeout'])
             self.assertEqual(20, commands[1][1]['timeout'])
             self.assertIn('-Xfriend-paths=' + str(jar), commands[0][0])
-            self.assertEqual(18, receipt['checks'])
+            self.assertEqual(23, receipt['checks'])
             self.assertEqual(build.hashlib.sha256(jar.read_bytes()).hexdigest(), receipt['classes_jar_sha256'])
             self.assertFalse((out / 'kotlin-classes').exists())
             return receipt
 
     def test_complete_receipt_is_bound_to_actual_jar_and_test_source(self):
-        result = self.run_fixture({'passed': True, 'checks': 18})
+        result = self.run_fixture({'passed': True, 'checks': 23})
         self.assertEqual(64, len(result['test_source_sha256']))
 
     def test_compile_error_missing_receipt_or_partial_check_count_fail_closed(self):
         with self.assertRaises(subprocess.CalledProcessError):
-            self.run_fixture({'passed': True, 'checks': 18}, fail_compile=True)
+            self.run_fixture({'passed': True, 'checks': 23}, fail_compile=True)
         with self.assertRaises(FileNotFoundError):
-            self.run_fixture({'passed': True, 'checks': 18}, omit_receipt=True)
-        for result in ({'passed': False, 'checks': 18}, {'passed': True, 'checks': 17}, {'passed': True}):
+            self.run_fixture({'passed': True, 'checks': 23}, omit_receipt=True)
+        for result in ({'passed': False, 'checks': 23}, {'passed': True, 'checks': 17}, {'passed': True}):
             with self.subTest(result=result), self.assertRaises(ValueError):
                 self.run_fixture(result)
 

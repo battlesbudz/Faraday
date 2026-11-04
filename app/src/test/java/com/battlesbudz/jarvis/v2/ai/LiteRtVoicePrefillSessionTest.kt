@@ -335,6 +335,82 @@ class LiteRtVoicePrefillSessionTest {
         session.close()
     }
 
+    @Test fun chunkedAudioFeedingAssemblesTheOneShotPayloadExactly() = runBlocking {
+        val native = Native()
+        val session = LiteRtVoicePrefillSession(native)
+        session.append("Respond to the spoken request")
+        val width = 4
+        val rows = FloatArray(200 * width) { it.toFloat() }
+        // The Option A feeding shape for the same 200 rows: two provisional
+        // 72-row chunks during "capture", the 56-row tail at finalization.
+        session.appendAudioChunk(rows.copyOfRange(0, 72 * width), 72, width,
+            includeBeginMarker = true, includeEndMarker = false)
+        session.appendAudioChunk(rows.copyOfRange(72 * width, 144 * width), 72, width,
+            includeBeginMarker = false, includeEndMarker = false)
+        session.appendAudioChunk(rows.copyOfRange(144 * width, 200 * width), 56, width,
+            includeBeginMarker = false, includeEndMarker = true)
+        assertEquals(listOf(72, 72, 56), native.audioChunks.map { it.tokenCount })
+        assertEquals(listOf(true, false, false), native.audioChunks.map { it.includeBeginMarker })
+        assertEquals(listOf(false, false, true), native.audioChunks.map { it.includeEndMarker })
+        native.audioChunks.forEachIndexed { index, chunk ->
+            val startRow = listOf(0, 72, 144)[index]
+            assertTrue(chunk.rows.contentEquals(
+                rows.copyOfRange(startRow * width, (startRow + chunk.tokenCount) * width)))
+        }
+        val result = session.decode {}
+        assertEquals("Certainly, sir.", result.text)
+        session.close()
+    }
+
+    @Test fun beginMarkerIsOnlyLegalOnTheFirstChunk() = runBlocking {
+        val native = Native()
+        val session = LiteRtVoicePrefillSession(native)
+        session.append("Hello")
+        try {
+            session.appendAudioChunk(FloatArray(8), 2, 4,
+                includeBeginMarker = false, includeEndMarker = false)
+            fail("a first chunk without the begin marker must be rejected")
+        } catch (_: IllegalStateException) { }
+        session.appendAudioChunk(FloatArray(8), 2, 4,
+            includeBeginMarker = true, includeEndMarker = false)
+        try {
+            session.appendAudioChunk(FloatArray(8), 2, 4,
+                includeBeginMarker = true, includeEndMarker = false)
+            fail("a second begin marker must be rejected")
+        } catch (_: IllegalStateException) { }
+        assertEquals(1, native.audioChunks.size)
+        session.close()
+    }
+
+    @Test fun noChunkMayFollowTheEndMarkerAndOneShotCannotMixWithChunks() = runBlocking {
+        val native = Native()
+        val session = LiteRtVoicePrefillSession(native)
+        session.append("Hello")
+        session.appendAudioChunk(FloatArray(8), 2, 4,
+            includeBeginMarker = true, includeEndMarker = true)
+        try {
+            session.appendAudioChunk(FloatArray(8), 2, 4,
+                includeBeginMarker = false, includeEndMarker = false)
+            fail("a chunk after the end marker must be rejected")
+        } catch (_: IllegalStateException) { }
+        try {
+            session.appendAudio(FloatArray(8), 2, 4)
+            fail("the one-shot payload after chunks must be rejected")
+        } catch (_: IllegalStateException) { }
+        assertEquals(1, native.audioChunks.size)
+        session.close()
+    }
+
+    @Test fun audioChunkBeforeAnyTextIsRejected() = runBlocking {
+        val session = LiteRtVoicePrefillSession(Native())
+        try {
+            session.appendAudioChunk(FloatArray(8), 2, 4,
+                includeBeginMarker = true, includeEndMarker = true)
+            fail("an audio chunk without a started turn must be rejected")
+        } catch (_: IllegalStateException) { }
+        session.close()
+    }
+
     @Test fun audioBeforeAnyTextIsRejected() = runBlocking {
         val session = LiteRtVoicePrefillSession(Native())
         try {

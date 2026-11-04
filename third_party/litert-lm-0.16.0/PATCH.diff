@@ -65,10 +65,10 @@ index 0000000..66d5a5d
 +)
 diff --git a/experimental/native_audio_owner_20261006/lifecycle_tests.cc b/experimental/native_audio_owner_20261006/lifecycle_tests.cc
 new file mode 100644
-index 0000000..35789bb
+index 0000000..13d8fd4
 --- /dev/null
 +++ b/experimental/native_audio_owner_20261006/lifecycle_tests.cc
-@@ -0,0 +1,214 @@
+@@ -0,0 +1,267 @@
 +// Injected backends ONLY: native C++ lifetime/control-flow tests, not real model
 +// or real MiniAudio arithmetic coverage. Run separately from real_native_tests.
 +#include "native_audio_owner.h"
@@ -222,6 +222,59 @@ index 0000000..35789bb
 +    Require(owner.Inspect().completed_publications==0 && owner.CloseOnWorker(1s).ok(),"no failed publish");
 +  }
 +}
++void ProvisionalFinality() {
++  // One full step is 48 hops = 7680 samples; the fake's rows are a
++  // deterministic function of (hop sums, global step order), so a
++  // provisional snapshot and the sealed payload of the SAME encode pass
++  // must agree exactly, step by step — any drift is an owner bug.
++  auto state=std::make_shared<State>(); auto owner=Make(state);
++  std::vector<float> pcm(7680,0.25f);
++  auto empty=owner.ProvisionalRows(id,0);
++  Require(empty.status.ok() && empty.first_row==0 && empty.total_rows==0 && empty.rows.empty(),
++          "snapshot before any step is empty");
++  Require(owner.Append(pcm.data(),pcm.size(),id).ok(),"append one step");
++  auto first=owner.ProvisionalRows(id,0);
++  Require(first.status.ok() && first.first_row==0 && first.total_rows==12 &&
++          first.rows.size()==12*n::kEmbeddingWidth,"first step snapshot");
++  auto none=owner.ProvisionalRows(id,12);
++  Require(none.status.ok() && none.first_row==12 && none.total_rows==12 && none.rows.empty(),
++          "delta at the frontier is empty");
++  std::vector<float> partial(1600,0.25f);  // 10 frames: a partial group.
++  Require(owner.Append(partial.data(),partial.size(),id).ok(),"append partial group");
++  auto still=owner.ProvisionalRows(id,0);
++  Require(still.status.ok() && still.total_rows==12,"partial group rows are never exposed");
++  Require(owner.Append(pcm.data(),pcm.size(),id).ok(),"append second step");
++  auto delta=owner.ProvisionalRows(id,12);
++  Require(delta.status.ok() && delta.first_row==12 && delta.total_rows==24 &&
++          delta.rows.size()==12*n::kEmbeddingWidth,"second step delta");
++  Require(owner.ProvisionalRows(id,25).status.code==n::Code::kInvalid,"offset beyond completed steps");
++  Require(owner.ProvisionalRows({"other",11},0).status.code==n::Code::kStale,"stale utterance");
++  Require(owner.ProvisionalRows({id.utterance_id,12},0).status.code==n::Code::kStale,"stale generation");
++  // 7680+1600+7680 = 16960 samples -> 106 frames -> 27 sealed rows; the
++  // last 3 come from the final partial step that only Seal runs.
++  auto result=owner.Seal(id); Require(result.status.ok() && result.completed,"seal");
++  Require(result.completed->audio_rows()==27,"sealed row count");
++  const auto& sealed=result.completed->rows();
++  Require(std::equal(first.rows.begin(),first.rows.end(),sealed.begin()),
++          "step 1 provisional rows equal the sealed prefix exactly");
++  Require(std::equal(delta.rows.begin(),delta.rows.end(),sealed.begin()+12*n::kEmbeddingWidth),
++          "step 2 provisional rows equal sealed rows 12..24 exactly");
++  Require(owner.ProvisionalRows(id,0).status.code==n::Code::kNotOpen,"snapshot after seal rejected");
++  Require(owner.CloseOnWorker(1s).ok(),"close");
++  // A snapshot racing an in-flight step is busy, never a torn read; a
++  // cancelled owner fences snapshots like every other operation.
++  auto busy_state=std::make_shared<State>(); auto busy_owner=Make(busy_state);
++  busy_state->in_step=[&]{
++    Require(busy_owner.ProvisionalRows(id,0).status.code==n::Code::kBusy,
++            "snapshot during a step returns busy");
++  };
++  Require(busy_owner.Append(pcm.data(),pcm.size(),id).ok(),"append with busy probe");
++  busy_state->in_step={};
++  Require(busy_owner.ProvisionalRows(id,0).status.ok(),"snapshot after the step completes");
++  Require(busy_owner.RequestCancel()==n::CancelResult::kCancelledBeforePublication,"cancel");
++  Require(busy_owner.ProvisionalRows(id,0).status.code==n::Code::kCancelled,"snapshot after cancel");
++  Require(busy_owner.CloseOnWorker(1s).ok(),"close");
++}
 +void CancelDuringNative(bool at_seal) {
 +  auto state=std::make_shared<State>(); state->step_barrier=std::make_shared<Barrier>();
 +  auto owner=Make(state); auto worker_owner=owner; std::vector<float> pcm(at_seal?160:7680);
@@ -275,9 +328,9 @@ index 0000000..35789bb
 +}
 +int main() {
 +  try {
-+    Partitions(); Prevalidation(); Poison(); CancelDuringNative(false);
++    Partitions(); Prevalidation(); Poison(); ProvisionalFinality(); CancelDuringNative(false);
 +    CancelDuringNative(true); PublicationBoundary(); ReentrantDrain(); ConcurrentClose();
-+    std::cout << "{\"passed\":true,\"suite\":\"injected-native-cpp-lifecycle-only\",\"real_model_loaded\":false,\"groups\":8}\n";
++    std::cout << "{\"passed\":true,\"suite\":\"injected-native-cpp-lifecycle-only\",\"real_model_loaded\":false,\"groups\":9}\n";
 +    return 0;
 +  } catch(const std::exception& error) {
 +    std::cerr << "LIFECYCLE_TEST_ERROR " << error.what() << '\n'; return 2;
@@ -285,10 +338,10 @@ index 0000000..35789bb
 +}
 diff --git a/experimental/native_audio_owner_20261006/native_audio_owner.cc b/experimental/native_audio_owner_20261006/native_audio_owner.cc
 new file mode 100644
-index 0000000..edce9d1
+index 0000000..c5a856e
 --- /dev/null
 +++ b/experimental/native_audio_owner_20261006/native_audio_owner.cc
-@@ -0,0 +1,368 @@
+@@ -0,0 +1,404 @@
 +#include "native_audio_owner.h"
 +
 +#include <algorithm>
@@ -577,6 +630,42 @@ index 0000000..edce9d1
 +    return {core->FailConsumed(Error(Code::kNativeFailure, "exception during seal")), {}};
 +  }
 +}
++ProvisionalResult Owner::ProvisionalRows(const Identity& id, size_t from_row) const {
++  auto core = core_;
++  if (!core) return {Error(Code::kNotOpen, "empty owner handle"), 0, 0, {}};
++  ProvisionalResult result;
++  {
++    std::lock_guard<std::mutex> lock(core->gate);
++    auto status = core->ValidateOpenLocked(id);
++    if (!status.ok()) return {status, 0, 0, {}};
++    if (from_row > core->rows_count)
++      return {Error(Code::kInvalid, "provisional row offset beyond completed steps"), 0, 0, {}};
++    // Admission latches the range under the gate; EndLocked below publishes
++    // the same reported counts Inspect exposes after any completed operation.
++    result.first_row = from_row;
++    result.total_rows = core->rows_count;
++    core->BeginLocked();
++  }
++  try {
++    // This call holds the operation lease (in_flight), so no Append/Seal can
++    // mutate the row vector during the copy; the gate itself is not held, so
++    // RequestCancel stays a fast signal. Cancellation flips only the phase
++    // and never touches rows, so the copied range stays exact.
++    const size_t begin = result.first_row * kEmbeddingWidth;
++    const size_t end = result.total_rows * kEmbeddingWidth;
++    result.rows.assign(core->rows.begin() + begin, core->rows.begin() + end);
++  } catch (...) {
++    std::lock_guard<std::mutex> lock(core->gate);
++    core->EndLocked();
++    return {Error(Code::kNativeFailure, "exception during provisional snapshot"), 0, 0, {}};
++  }
++  {
++    std::lock_guard<std::mutex> lock(core->gate);
++    core->EndLocked();
++  }
++  result.status = Status::Ok();
++  return result;
++}
 +CancelResult Owner::RequestCancel() const {
 +  auto core = core_;
 +  if (!core) return CancelResult::kAlreadyTerminal;
@@ -659,10 +748,10 @@ index 0000000..edce9d1
 +}  // namespace native_audio
 diff --git a/experimental/native_audio_owner_20261006/native_audio_owner.h b/experimental/native_audio_owner_20261006/native_audio_owner.h
 new file mode 100644
-index 0000000..8862e3e
+index 0000000..c3dda88
 --- /dev/null
 +++ b/experimental/native_audio_owner_20261006/native_audio_owner.h
-@@ -0,0 +1,181 @@
+@@ -0,0 +1,204 @@
 +#ifndef RESEARCH_NATIVE_AUDIO_OWNER_H_
 +#define RESEARCH_NATIVE_AUDIO_OWNER_H_
 +
@@ -767,6 +856,22 @@ index 0000000..8862e3e
 +  std::vector<float> rows_;  // Object itself is allocated const; no mutable view.
 +};
 +struct SealResult { Status status; std::shared_ptr<const CompletedAudio> completed; };
++// Route B Option A provisional snapshot: a caller-owned copy of the rows of
++// encoder steps already completed by Append, covering
++// [first_row, total_rows) of the owner's step sequence. FINALITY: a step's
++// rows are computed exactly once, from its own 48 Mel frames plus causal
++// backend state committed by earlier steps, and appended to the owner's row
++// vector exactly once; the sealed payload is that same vector plus the one
++// final partial step Seal itself runs. While the owner is open the vector
++// therefore holds ONLY completed non-final steps, so every row in a snapshot
++// is final and identical to the sealed row at the same index. Partial groups
++// are never exposed: their rows do not exist until Seal runs the final step.
++struct ProvisionalResult {
++  Status status;
++  size_t first_row = 0;
++  size_t total_rows = 0;
++  std::vector<float> rows;  // (total_rows - first_row) * kEmbeddingWidth values.
++};
 +enum class Phase { kOpen, kSealed, kCancelled, kFailed, kClosed };
 +enum class CancelResult { kCancelledBeforePublication, kAlreadyPublished,
 +                          kAlreadyTerminal };
@@ -810,6 +915,13 @@ index 0000000..8862e3e
 +  Status Append(const float* pcm, size_t samples, const Identity& identity,
 +                int sample_rate_hz = 16000, int channels = 1) const;
 +  SealResult Seal(const Identity& identity) const;
++  // Copy the completed-step rows from from_row (see ProvisionalResult for
++  // the finality contract). Open owners only; a concurrent Append/Seal
++  // returns kBusy. The copy runs under this call's operation lease, never
++  // under the shared gate, so RequestCancel stays a fast signal; cancelling
++  // does not touch rows, so a snapshot linearized before a cancel is still
++  // an exact prefix of the steps completed at that moment.
++  ProvisionalResult ProvisionalRows(const Identity& identity, size_t from_row) const;
 +  // Fast signal only: no native call, join, wipe or backend destruction. A
 +  // cancel linearizing before publication suppresses the completed result.
 +  // AlreadyPublished means the app must still fence the generation itself.
@@ -1284,10 +1396,10 @@ index 0000000..84fbfd0
 +)
 diff --git a/experimental/native_audio_owner_jni_20261006/NativeAudioOwner.kt b/experimental/native_audio_owner_jni_20261006/NativeAudioOwner.kt
 new file mode 100644
-index 0000000..8ffaa6a
+index 0000000..76775a0
 --- /dev/null
 +++ b/experimental/native_audio_owner_jni_20261006/NativeAudioOwner.kt
-@@ -0,0 +1,236 @@
+@@ -0,0 +1,302 @@
 +package com.google.ai.edge.litertlm
 +
 +import java.io.File
@@ -1350,6 +1462,38 @@ index 0000000..8ffaa6a
 +  val timing: NativeAudioTimingReceipt?,
 +)
 +
++/**
++ * Route B Option A: a caller-owned snapshot of the encoder rows for steps
++ * completed so far, covering [firstRow, totalRows) of the owner's step
++ * sequence. The native finality contract (see the owner's ProvisionalRows)
++ * guarantees these rows are identical to the sealed payload's rows at the
++ * same indices if the utterance later seals: steps are computed once, in
++ * order, from causal state, and the sealed payload is the same row vector
++ * plus the final partial step Seal alone runs. Rows of a not-yet-complete
++ * step are never included. The snapshot owns a copy; [wipe] zeroes it when
++ * the consumer is done. A snapshot is evidence for prefill only — the
++ * sealed [CompletedNativeAudio] remains the certified input, and consumers
++ * must verify these rows against it before trusting a session fed from them.
++ */
++class ProvisionalNativeAudio internal constructor(
++  val identity: NativeAudioIdentity,
++  val firstRow: Int,
++  val totalRows: Int,
++  rows: FloatArray,
++) {
++  private val values: FloatArray = rows.copyOf()
++  val rowCount: Int get() = totalRows - firstRow
++  init {
++    require(firstRow >= 0 && totalRows >= firstRow && values.size == rowCount * 1536) {
++      "Provisional snapshot geometry mismatch"
++    }
++  }
++  /** An independent copy of the snapshot's row values, in step order. */
++  fun copyRows(): FloatArray = values.copyOf()
++  /** Best-effort zeroing of the owned copy once the consumer is done. */
++  fun wipe() { values.fill(0f) }
++}
++
 +class NativeAudioOwner private constructor(
 +  handle: Long,
 +  private val worker: NativeAudioWorker,
@@ -1397,6 +1541,32 @@ index 0000000..8ffaa6a
 +      val timing = timingSnapshotOnWorker()
 +      check(timing == null || timing.isBoundTo(provenance)) { "Timing receipt does not match sealed owner" }
 +      return CompletedNativeAudio(content, provenance, timing)
++    } finally {
++      wire.rows.fill(0f)
++    }
++  }
++
++  /**
++   * Route B Option A: snapshot the rows of encoder steps completed so far,
++   * starting at [fromRow] (an earlier snapshot's totalRows continues the
++   * sequence with no gap or overlap). Open owners only; the native side
++   * serializes against append/seal and rejects a terminal owner. The
++   * returned rows are final for their steps (see [ProvisionalNativeAudio])
++   * but are NOT a sealed payload: nothing here publishes, and the utterance
++   * still seals through [sealOnWorker] exactly as before.
++   */
++  fun provisionalRowsOnWorker(fromRow: Int, suppliedIdentity: NativeAudioIdentity = identity): ProvisionalNativeAudio {
++    worker.check()
++    require(fromRow in 0..750) { "Provisional row offset outside the utterance row budget" }
++    val wire = NativeAudioOwnerJni.nativeProvisionalRows(handle(), suppliedIdentity.utteranceId,
++      suppliedIdentity.generation, fromRow)
++    try {
++      check(wire.firstRow == fromRow) { "Provisional snapshot starts at a different row" }
++      check(wire.totalRows in fromRow..750) { "Provisional snapshot total outside the row budget" }
++      check(wire.rows.size == (wire.totalRows - wire.firstRow) * 1536) {
++        "Provisional snapshot payload size mismatch"
++      }
++      return ProvisionalNativeAudio(identity, wire.firstRow, wire.totalRows, wire.rows)
 +    } finally {
 +      wire.rows.fill(0f)
 +    }
@@ -1499,6 +1669,12 @@ index 0000000..8ffaa6a
 +  }
 +}
 +
++internal class NativeAudioRowsWire(
++  val rows: FloatArray,
++  val firstRow: Int,
++  val totalRows: Int,
++)
++
 +internal class NativeAudioSealWire(
 +  val rows: FloatArray,
 +  val pcmSamples: Int,
@@ -1520,6 +1696,8 @@ index 0000000..8ffaa6a
 +    generation: Long, maxSamples: Int, maxPacket: Int, stepTokens: Int): Long
 +  @JvmStatic external fun nativeAppend(handle: Long, pcm: FloatArray, utterance: String, generation: Long)
 +  @JvmStatic external fun nativeSeal(handle: Long, utterance: String, generation: Long): NativeAudioSealWire
++  @JvmStatic external fun nativeProvisionalRows(handle: Long, utterance: String,
++    generation: Long, fromRow: Int): NativeAudioRowsWire
 +  @JvmStatic external fun nativeRequestCancel(handle: Long): Boolean
 +  @JvmStatic external fun nativeDrain(handle: Long, timeoutMillis: Long): Boolean
 +  @JvmStatic external fun nativeClose(handle: Long, timeoutMillis: Long): Boolean
@@ -1762,10 +1940,10 @@ index 0000000..3d34f5b
 +}
 diff --git a/experimental/native_audio_owner_jni_20261006/native_audio_owner_jni.cc b/experimental/native_audio_owner_jni_20261006/native_audio_owner_jni.cc
 new file mode 100644
-index 0000000..bba5502
+index 0000000..3a6ad6c
 --- /dev/null
 +++ b/experimental/native_audio_owner_jni_20261006/native_audio_owner_jni.cc
-@@ -0,0 +1,415 @@
+@@ -0,0 +1,447 @@
 +// Additive JNI bridge; no edits to the SDK's existing JNI translation unit.
 +#include <jni.h>
 +#include <algorithm>
@@ -2098,6 +2276,38 @@ index 0000000..bba5502
 +      // allocation. RequestCancel uses this exact gate, never check-then-publish.
 +      entry->published=true;
 +      operation.poison_on_exception=false;
++    }
++    return wire;  // JNI local references are reclaimed when this native frame returns.
++  });
++}
++extern "C" JNIEXPORT jobject JNICALL METHOD(nativeProvisionalRows)(JNIEnv* env,jclass,jlong handle,
++    jstring utterance,jlong generation,jint from_row) {
++  return Boundary(env,[&]() -> jobject {
++    auto entry=Lookup(handle);auto id=Identity(env,utterance,generation);
++    Require(from_row>=0,"Provisional row offset must be non-negative");
++    Operation operation(entry,id);
++    auto result=entry->owner.ProvisionalRows(id,static_cast<size_t>(from_row));Check(result.status);
++    // Read-only snapshot: unlike Seal, a failure while assembling the wire
++    // poisons nothing (Operation::poison_on_exception stays false) — the
++    // owner is untouched and capture continues on the sealed route's owner.
++    jclass type=env->FindClass("com/google/ai/edge/litertlm/NativeAudioRowsWire");CheckJni(env);
++    if(!type)throw std::bad_alloc();
++    jmethodID constructor=env->GetMethodID(type,"<init>","([FII)V");CheckJni(env);
++    if(!constructor)throw std::bad_alloc();
++    jfloatArray rows=env->NewFloatArray(static_cast<jsize>(result.rows.size()));CheckJni(env);
++    if(!rows)throw std::bad_alloc();
++    if(!result.rows.empty()){
++      env->SetFloatArrayRegion(rows,0,static_cast<jsize>(result.rows.size()),result.rows.data());CheckJni(env);
++    }
++    jobject wire=env->NewObject(type,constructor,rows,static_cast<jint>(result.first_row),
++      static_cast<jint>(result.total_rows));
++    CheckJni(env);if(!wire)throw std::bad_alloc();
++    {
++      // Mirror Append's post-call gate check: a cancel/close that linearized
++      // during the copy invalidates this snapshot instead of publishing it.
++      std::lock_guard<std::mutex> lock(entry->gate);
++      if(entry->cancelled||entry->closing)
++        throw OwnerError{n::Code::kCancelled,"Provisional snapshot invalidated"};
 +    }
 +    return wire;  // JNI local references are reclaimed when this native frame returns.
 +  });

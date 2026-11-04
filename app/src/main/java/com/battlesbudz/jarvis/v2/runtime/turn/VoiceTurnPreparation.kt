@@ -401,6 +401,14 @@ internal class VoiceTurnPreparation(
                         log = { diagnosticRecorder.recordSummary("Voice route B turn=${request.asrTurnId} $it") })
                     lifetime.routeBPriming = primed
                     primed.prime()
+                    // Route B Option A: on an armed turn, the encoder's
+                    // provisional rows flow into the primed session during
+                    // capture. The sink is the capture's only Option A
+                    // surface; without an armed turn it stays unset and
+                    // capture behaves exactly as Option B left it.
+                    lifetime.nativeAudioCapture?.provisionalRowSink = { snapshot ->
+                        primed.offerProvisionalRows(snapshot)
+                    }
                 }
                 is com.battlesbudz.jarvis.v2.ai.RouteBPrimingPolicy.Verdict.Ineligible ->
                     observation.benchmark.configuration("route_b_priming_armed",

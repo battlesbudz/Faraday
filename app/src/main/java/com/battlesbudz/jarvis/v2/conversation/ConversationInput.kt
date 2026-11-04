@@ -117,6 +117,13 @@ internal class ConversationInput(
             primedUsed = primedAudio.usedPriming
             routeBPrimingOutcome = if (primedUsed) "used"
                 else "fallback:${primedAudio.fallbackReason ?: "unknown"}"
+            // Option A evidence rides the same diagnostics line: rows fed
+            // provisionally during capture and the seal-verification result.
+            if (primedAudio.provisionalRowsOffered > 0 || primedAudio.provisionalRowsFed > 0) {
+                routeBPrimingOutcome += " provisionalOffered=${primedAudio.provisionalRowsOffered}" +
+                    " provisionalFed=${primedAudio.provisionalRowsFed}" +
+                    " sealMaxAbsDiff=${primedAudio.provisionalSealMaxAbsDiff ?: "not_verified"}"
+            }
             result
         }
         directAudio -> {

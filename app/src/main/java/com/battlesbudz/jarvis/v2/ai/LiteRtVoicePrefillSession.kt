@@ -62,6 +62,8 @@ internal class LiteRtVoicePrefillSession(private val session: VoiceNativeSession
     private var appendedImageBytes = 0
     /** Route B: audio tokens appended to this turn; at most one payload per turn. */
     private var appendedAudioTokens = 0
+    /** Route B: true once a chunk carrying the projected end marker landed. */
+    private var audioPayloadComplete = false
     override fun append(text: String) {
         synchronized(accessLock) {
             check(!closed && !decoding && !nativeBorrowed && prefillFailure == null)
@@ -133,19 +135,49 @@ internal class LiteRtVoicePrefillSession(private val session: VoiceNativeSession
             check(started) { "Route B audio requires the turn text to be prefilled first" }
             check(appendedImageBytes == 0) { "Route B audio turns never carry a snapshot image" }
             check(appendedAudioTokens == 0) { "Only one audio payload per turn" }
+        }
+        for (chunk in RouteBPrefillSpike.planAudioChunks(tokenCount)) {
+            val slice = rows.copyOfRange(chunk.startRow * embeddingWidth,
+                (chunk.startRow + chunk.rowCount) * embeddingWidth)
+            appendAudioChunk(slice, chunk.rowCount, embeddingWidth,
+                chunk.includeBeginMarker, chunk.includeEndMarker)
+        }
+    }
+
+    /**
+     * Route B (Option A): one chunk of the turn's audio payload, fed in row
+     * order as rows become available. Marker discipline is enforced, not
+     * assumed: the begin marker must ride the first chunk (and only it), and
+     * no chunk may follow the chunk that carried the end marker — so any
+     * interleaving of provisional and finalization chunks assembles exactly
+     * the payload [appendAudio] would have built in one call. A native
+     * rejection is recorded as the session's prefill failure and thrown,
+     * poisoning the session like any other failed prefill: a caller feeding
+     * provisionally must discard it and answer on the sealed route.
+     */
+    override fun appendAudioChunk(rows: FloatArray, tokenCount: Int, embeddingWidth: Int,
+                                  includeBeginMarker: Boolean, includeEndMarker: Boolean) {
+        require(tokenCount >= 1 && embeddingWidth >= 1 && rows.size == tokenCount * embeddingWidth) {
+            "Audio chunk rows must be a tokenCount x embeddingWidth matrix"
+        }
+        synchronized(accessLock) {
+            check(!closed && !decoding && !nativeBorrowed && prefillFailure == null)
+            check(started) { "Route B audio requires the turn text to be prefilled first" }
+            check(appendedImageBytes == 0) { "Route B audio turns never carry a snapshot image" }
+            check(!audioPayloadComplete) { "The turn's audio payload is already complete" }
+            check(includeBeginMarker == (appendedAudioTokens == 0)) {
+                "The begin marker rides only the turn's first audio chunk"
+            }
             nativeBorrowed = true
         }
         val began = System.nanoTime()
+        prefillChunks++
         try {
             onBenchmarkNativeWorkStarted()
-            for (chunk in RouteBPrefillSpike.planAudioChunks(tokenCount)) {
-                val slice = rows.copyOfRange(chunk.startRow * embeddingWidth,
-                    (chunk.startRow + chunk.rowCount) * embeddingWidth)
-                session.runPrefillAudio(slice, chunk.rowCount, embeddingWidth,
-                    chunk.includeBeginMarker, chunk.includeEndMarker)
-                prefillChunks++
-            }
-            appendedAudioTokens = tokenCount
+            session.runPrefillAudio(rows, tokenCount, embeddingWidth,
+                includeBeginMarker, includeEndMarker)
+            appendedAudioTokens += tokenCount
+            if (includeEndMarker) audioPayloadComplete = true
         } catch (error: Throwable) {
             prefillFailure = error
             throw error

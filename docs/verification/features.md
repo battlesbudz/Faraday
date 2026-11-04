@@ -106,6 +106,101 @@ Acceptance checks:
   the text prefill) requires the future tools-disabled configuration
   described above.
 
+## Route B Option A: provisional encoder rows during capture — 4 November 2026
+
+Second half of Battles's "Both — B now, A next" (2026-11-02), sent
+2026-11-04. The reviewed bridge gains a provisional-rows surface: while
+an utterance is being captured, the native audio owner can copy out the
+rows of encoder steps already completed (`Owner::ProvisionalRows`, JNI
+`nativeProvisionalRows`, `NativeAudioOwner.provisionalRowsOnWorker`).
+Finality is a property of the encoder's construction, not an assumption:
+a step's rows are computed once, from its own 48 Mel frames plus causal
+backend state committed by earlier steps, and appended to the owner's
+row vector exactly once; the sealed payload is that same vector plus the
+one final partial step Seal alone runs. While the owner is open the
+vector holds only completed non-final steps, so every provisional row is
+final and identical to the sealed row at the same index; partial groups
+are never exposed. The sealed path is byte-for-byte untouched and stays
+the certified fallback. Bridge inventory: patch set unchanged at 52
+files (all changes land in files the patch already creates); owner JNI
+methods 8 → 9, owner JNI exports 8 → 9, owner classes 24 → 26
+(`NativeAudioRowsWire`, `ProvisionalNativeAudio`); SDK-side inventories
+(84 classes, 34 JNI methods, 35 exports) unchanged; packaged contract
+checks 18 → 23.
+
+Wiring: `RetainedPcmEncoderWorker` surfaces snapshots between appends
+for encoders that support them (the production adapter over
+`NativeAudioOwner`); `GemmaStreamingAudioCapture.provisionalRowSink`
+forwards them only when a consumer is registered. On a gate-admitted
+turn, `PrimedAudioInput` feeds them into the primed Session during
+capture in the spike-proven 72-row chunk shape (`appendAudioChunk`,
+markers enforced: begin only on the first chunk, nothing after the end
+marker), always holding back the last chunk-sized block so the
+finalization tail can carry the projected end marker. At the seal,
+every fed row is verified against the sealed rows of the same pass —
+exact equality, the only honest tolerance for one encode pass. Any
+mismatch, missing row, feed failure, broken snapshot sequence, or
+bridge error discards the primed session and the sealed route answers,
+silently, as Option B's fallback behaves.
+
+One ordering boundary is load-bearing: the sealed route submits the
+turn's full text before any audio (`Contents.of(Text, audio)`), and the
+final prompt is the primed prefix plus a remainder that only exists at
+finalization (the audio-request text and any request-dependent suffix).
+An append-only Session cannot move already-fed rows behind that
+remainder, so a session holding provisional rows may answer only when
+the final prompt is exactly the primed prefix; an extended prompt
+discards it with reason `prompt_extended_after_audio` and the sealed
+route answers. Turns the parity gate rejects behave identically to
+build 1701. Battles ruled 2026-11-04 that no tool-free voice mode will
+be created, so no production turn shape is admitted today — Option A is
+live exactly where Option B is live, no wider. The only remaining route
+to a live Route B is growing the bridge so Sessions can carry tool
+declarations and a system instruction; that is a separate project,
+not approved and not part of this change.
+
+Acceptance checks:
+- Native logic: `lifecycle_tests` group `ProvisionalFinality` (9 groups)
+  pins the finality rule against an injected backend — snapshots before
+  any step, per-step snapshots exactly equal to the sealed prefix step
+  by step, partial groups never exposed, delta chaining, offset/identity
+  fencing, kBusy during an in-flight step, kNotOpen after seal,
+  kCancelled after cancel.
+- JVM logic: `RetainedPcmEncoderWorkerTest` (snapshots stream per
+  packet with a first-row chain, match the sealed rows step for step,
+  restart with a fresh candidate, absent surface delivers nothing);
+  `PrimedAudioInputTest` (provisional feed verifies at the seal and
+  decodes on the session with the spike chunk/marker shape; a corrupted
+  provisional row, a feed failure, a sequence break after feeding, and
+  an extended prompt each discard the session with their recorded
+  reason; a sequence break or a sub-chunk offer before any feed keeps
+  the Option B path intact); `LiteRtVoicePrefillSessionTest` (chunked
+  feeding assembles the one-shot payload exactly; marker discipline;
+  no chunk after the end marker; one-shot/chunk mixing rejected);
+  `RouteBPrefillSpikeTest` (the spike's per-snapshot verifier: exact
+  chain passes, divergence/gap/over-outstanding/absent streams fail).
+  `RouteBPromptParityTest`, `RouteBPrimingPolicyTest` and
+  `ConversationSealedAudioInputTest` pass unmodified in intent — the
+  gate and its admitted shapes are unchanged.
+- Failure behavior: any provisional failure before user-visible output
+  degrades silently to the sealed Conversation route; gate-rejected
+  turns see no provisional surface at all.
+- Real model/device (device-owed, NOT CI-proven): no admitted
+  production turn exists (see above), so a live provisionally fed turn
+  cannot be produced on device today. The strongest runnable proof is
+  the call screen's Route B spike: it encodes the fixture through the
+  production capture/encoder with the provisional sink registered, and
+  its report gains a PROVISIONAL section — PASS requires snapshots
+  delivered during the encode, each exactly equal to the sealed rows at
+  its indices, with at most the final partial step's rows outstanding.
+  An ordinary voice-call turn's Copy Diagnostics must still show
+  `route_b_priming_armed=false:tools_enabled_for_turn`, unchanged from
+  build 1701. On a future admitted shape, the diagnostics surface is
+  the `Voice route B` lines (`route_b_provisional_fed`,
+  `route_b_seal_verification ... maxAbsDiff=0.0 equal=true`) and the
+  `Route B priming: outcome=used provisionalOffered=… provisionalFed=…
+  sealMaxAbsDiff=0.0` line.
+
 ## Faraday main integration and rename repairs — 12 October 2026
 
 [Integration evidence](faraday-integration-2026-10-12.md) retains Build 1295's
