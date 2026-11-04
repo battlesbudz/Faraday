@@ -105,16 +105,19 @@ suppressed for complete audio by `GemmaAudioInputPolicy`) or the
 existing clarify path on the ASR route. `capture_endpoint_timing` now
 carries `asrRecoveryAttempts`, and a spent budget logs
 `asr_recovery_skipped reason=attempt_budget`. Three JVM tests in
-`AudioTurnCaptureTest` pin the shape with the specimen's arbitration
+`SmartTurnAudioEndpointTest` pin the shape with the specimen's arbitration
 state (REFERENCE, non-binding endpoint observer, caption-only
 follow-up, segmented recognizer failing on speech): weak noise during
 finalization cannot invalidate and recovery runs once;
 `recoveryAttemptsAreBoundedPerCandidateAndTurnStillCompletes` proves
 the budget terminates the turn; and
 `confirmedSpeechDuringFinalizationStillInvalidatesWithEndpointObserver`
-proves genuine resumption still reopens the endpoint. Status: READY
-TO LAND on top of a0c6587b (developed in a snapshot while that head's
-CI was in flight; the JVM suite has not run yet). Device coverage
+proves genuine resumption still reopens the endpoint. Status:
+LANDED on main on 4 November 2026 (production fix on top of the
+honesty-guard head 1a17e8b2). First CI execution of the three tests:
+all three pass, the full JVM suite is green (2,730 tests), and the
+Android APK pipeline is green on the landed head; the pipeline
+published main build 1714 from it. Device coverage
 owed on the next main build: repeat the ee63 pattern (ask, challenge
 the answer, keep talking past a reply, then go quiet) and confirm the
 follow-up turn submits instead of looping; the diagnostics must show
