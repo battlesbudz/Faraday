@@ -38,6 +38,44 @@ tell me what you see?" and then "Tell me what you see" again must answer
 honestly both times — no invented scene, no repetition-fallback dead
 end. No on-phone proof is claimed here.
 
+## No-vision honesty guard, direct-audio admission — 4 November 2026
+
+The owed device coverage ran on build 1697 (voice call 443f75e8) and
+the guard failed it in native-audio (Gemma direct-audio) mode. Asked
+aloud "Can you tell me what you see?" with no visual input, the model
+answered "I see a picture of a very large, brightly coloured, somewhat
+abstract shape. It appears to be a complex, interwoven structure."; the
+follow-up "What do you see?" repeated it ("I see a large, abstract
+shape. It is complex and interwoven."). The export contains no guard
+line at all. Root cause, from the code: on a direct-audio turn the
+invocation prompt is the fixed audio instruction boilerplate
+(`GemmaAudioInputPolicy.REQUEST`, substituted by
+`FinalVoiceInputResolver`), so the guard's question detector — keyed
+on `invocation.prompt` at both stages — had no question to read and
+bailed silently; the turn's actual question sat in the submitted
+prompt's evidence block, which the guard never read, and the Gemma
+caption finalized only after the answer was generated. The claim
+detector itself caught both drafts verbatim, and the generation stage
+already ran after the invalid-tool retry, so the retry-born claim was
+checked and released by the question gate alone. The fix admits the
+guard by a shared test, `VisionPerceptionClaim.triggerFor`, at both
+stages: the original question trigger unchanged, plus a claim-side
+trigger for direct-audio turns — `assertsConcretePerception`, a
+narrower detector requiring a pictured, shaped or scened thing stated
+as seen, so metaphorical seeing ("I see what you mean", "I see the
+point") and content-free claims never fire it. A known, non-vision
+question is still never admitted by the claim side. Both stages now
+also record an `outcome=not_fired` diagnostics line (with the trigger
+named on firing lines) whenever a perception claim is evaluated but
+not acted on, ending the silent-bail gap. `VisionPerceptionClaimTest`
+gains the two build-1697 specimens verbatim at the detector, through
+the generation stage (including the tool-retry-born claim and the
+fabricated-history follow-up), and through the recovery backstop with
+the retained audio resubmitted. Device coverage is OPEN again and
+owed on the next main build: the same two spoken questions in
+native-audio mode must end honest, and the diagnostics must show the
+guard's `trigger=direct_audio_claim` outcome line.
+
 ## Faraday main integration and rename repairs — 12 October 2026
 
 [Integration evidence](faraday-integration-2026-10-12.md) retains Build 1295's
