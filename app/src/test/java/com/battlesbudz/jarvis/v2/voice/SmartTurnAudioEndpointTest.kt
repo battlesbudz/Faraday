@@ -37,13 +37,14 @@ class SmartTurnAudioEndpointTest {
                       segmentSoftMs: Long = 15_000, segmentHardMs: Long = 22_000,
                       reference: Boolean = false,
                       guardFollowup: Boolean = false, rejectAtLimit: Boolean = false,
-                      maxDurationMs: Int = 25_000) {
+                      maxDurationMs: Int = 25_000, failingSegmented: Boolean = false) {
         val wall = AtomicLong(); var samples = 0L; var acoustic = .99f; var captureTimeGapMs = 0L
         var riskyTailSamples = 0; var current = true; var routeAllowed = true; var blocker: String? = null
         var needsTranscript = false
         var caption = "what is the"; var finalCalls = 0; var captionClosed = false; var finalizeLogHook: (() -> Unit)? = null
         var finalCaption: String? = null; var finishHook: (() -> Unit)? = null
         var recoveryText = ""; var recoveredPcm: ByteArray? = null; var recoverHook: (() -> Unit)? = null
+        var segRecoveries = 0; var segRecoverHook: (() -> Unit)? = null
         var hardwareBacklog = 0L; var collectorBytes = 0; var acknowledgedSamples = 0L
         val proposals = mutableListOf<NativePauseProposal>()
         val logs = mutableListOf<String>(); val original = ByteArrayOutputStream(); val retained = ByteArrayOutputStream()
@@ -68,7 +69,16 @@ class SmartTurnAudioEndpointTest {
             guardFollowupSpeech = guardFollowup, rejectAtAudioLimit = rejectAtLimit,
             maxAudioDurationMs = maxDurationMs,
             turnStopPolicy = if (reference) TurnStopPolicy.REFERENCE else TurnStopPolicy.LEGACY,
-            createTranscriber = if (!captions) null else { { object : StreamingTranscriber {
+            createTranscriber = if (!captions) null else if (failingSegmented) { { SegmentedTranscriber(
+                create = { object : StreamingTranscriber {
+                    override fun accept(pcm: ByteArray) = ""
+                    override fun finish() = ""
+                    override fun recover(pcm: ByteArray): String {
+                        segRecoveries++; segRecoverHook?.invoke(); return ""
+                    }
+                    override fun close() = Unit
+                    override val segmentSoftLimitMs = 100L
+                } }, log = { logs.add(it) }) } } else { { object : StreamingTranscriber {
                 override val segmentSoftLimitMs = segmentSoftMs
                 override val segmentHardLimitMs = segmentHardMs
                 override fun accept(pcm: ByteArray) = caption
@@ -1038,6 +1048,86 @@ class SmartTurnAudioEndpointTest {
             assertEquals(765_000_000L, r.capture.endpointDecisionAtNs)
             assertTrue(r.logs.any { it.contains("endpointCue=smart_turn_complete") })
             r.completeWav(); assertEquals(1, r.finalCalls)
+        } finally { r.close() }
+    }
+
+    // The build-1697 follow-up specimen (call ee63fa69, capture turn
+    // 502400fd): caption-only follow-up capture under REFERENCE with the
+    // analyzer attached but never binding, so the 5s turn-stop backstop is
+    // the only decider; the segmented recognizer fails on the speech it was
+    // given (blank segment commit -> unrecognized_segment). One queued
+    // hardware frame lands during the first finalization pass, so the
+    // endpoint defers with the finalization work sealed.
+    private suspend fun deferredFailingCaptionRig(scope: CoroutineScope): Rig {
+        val r = Rig(scope, captions = true, native = true, reference = true,
+            guardFollowup = true, rejectAtLimit = true, maxDurationMs = 28_000,
+            failingSegmented = true)
+        r.finalizeLogHook = { r.hardwareBacklog = 100; r.finalizeLogHook = null }
+        r.capture.start()
+        repeat(4) { r.emit(.99f) }
+        while (r.samples / 16 < 5400) r.emit(.01f)
+        eventually { r.logs.any { it.contains("turn_endpoint_deferred reason=audio_arrived_during_finalization") } }
+        assertNull(r.capture.endpointDecisionAtNs)
+        return r
+    }
+
+    @Test fun weakNoiseDuringFinalizationCannotInvalidateOrLoopRecovery() = runBlocking<Unit> {
+        val r = deferredFailingCaptionRig(this)
+        try {
+            // Weak noise: raw VAD probability above the old 0.15 raw-risk
+            // threshold, confirmed decision non-speech. Before the fix this
+            // frame invalidated the pending endpoint as resumed_speech and
+            // discarded the sealed finalization; the turn then re-ran
+            // recovery on every pass until the 28s audio limit.
+            r.hardwareBacklog = 0; r.emit(.25f)
+            assertTrue(withTimeout(1000) { r.capture.awaitTurnCompletion() })
+            assertFalse(r.logs.any { it.contains("turn_endpoint_invalidated") })
+            assertEquals(1, r.segRecoveries)
+            assertTrue(r.logs.any { it.contains("asr_recovery_started reason=unrecognized_segment source=complete_turn attempt=1") })
+            assertTrue(r.logs.any { it.contains("capture_endpoint_timing") && it.contains("asrRecoveryAttempts=1") })
+            assertEquals("unrecognized_segment", r.capture.recognitionIssue)
+        } finally { r.close() }
+    }
+
+    @Test fun recoveryAttemptsAreBoundedPerCandidateAndTurnStillCompletes() = runBlocking<Unit> {
+        val r = deferredFailingCaptionRig(this)
+        try {
+            // Every recovery leaves one more queued frame behind it, so each
+            // recovered pass defers again on the recovery drain. The budget
+            // is per candidate and shared: two attempts, then the turn
+            // completes with its recognition issue recorded instead of
+            // re-decoding the retained audio forever.
+            r.segRecoverHook = { r.hardwareBacklog = 100 }
+            r.hardwareBacklog = 0; r.emit(.01f)
+            eventually { r.segRecoveries == 1 }
+            eventually { r.logs.count { it.contains("turn_endpoint_deferred reason=audio_arrived_during_recovery") } == 1 }
+            r.hardwareBacklog = 0; r.emit(.01f)
+            eventually { r.segRecoveries == 2 }
+            eventually { r.logs.count { it.contains("turn_endpoint_deferred reason=audio_arrived_during_recovery") } == 2 }
+            r.hardwareBacklog = 0; r.emit(.01f)
+            assertTrue(withTimeout(1000) { r.capture.awaitTurnCompletion() })
+            assertEquals(2, r.segRecoveries)
+            assertEquals(2, r.logs.count { it.contains("asr_recovery_started") })
+            assertTrue(r.logs.any { it.contains("asr_recovery_skipped reason=attempt_budget") })
+            assertEquals("unrecognized_segment", r.capture.recognitionIssue)
+        } finally { r.close() }
+    }
+
+    @Test fun confirmedSpeechDuringFinalizationStillInvalidatesWithEndpointObserver() = runBlocking<Unit> {
+        val r = deferredFailingCaptionRig(this)
+        try {
+            // Genuine resumption: confirmed speech while the endpoint is
+            // pending still invalidates exactly once and reopens the turn;
+            // the enlarged candidate then ends on the same backstop and
+            // completes through one bounded recovery.
+            repeat(2) { r.emit(.99f) }
+            eventually { r.logs.count { it.contains("turn_endpoint_invalidated") } == 1 }
+            r.hardwareBacklog = 0
+            while (r.samples / 16 < 10700) r.emit(.01f)
+            assertTrue(withTimeout(1000) { r.capture.awaitTurnCompletion() })
+            assertEquals(1, r.logs.count { it.contains("turn_endpoint_invalidated") })
+            assertEquals(1, r.segRecoveries)
+            assertEquals("unrecognized_segment", r.capture.recognitionIssue)
         } finally { r.close() }
     }
 }
