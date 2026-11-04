@@ -42,16 +42,16 @@ class ConversationMemoryTest {
         // produce the pending state this token test exercises.
         val (os, bridge) = bridge()
         val pending = os.propose(MemoryProposal("I live in Austin", MemorySource("home", "final_text_input", now))).memory!!
-        val before = bridge.approvedContext("where do I live", 500)
+        val before = bridge.approvedContext("where do I live", 700)
         assertNotNull(before.stateToken); assertTrue(before.packet!!.memories.isEmpty())
         os.approve(pending.id)
-        val approved = bridge.approvedContext("where do I live", 500)
+        val approved = bridge.approvedContext("where do I live", 700)
         assertNotEquals(before.stateToken, approved.stateToken)
         assertTrue(approved.packet!!.text.contains("Austin"))
         os.propose(MemoryProposal("I prefer tea", MemorySource("tea", "final_text_input", now)))
-        assertEquals(approved.stateToken, bridge.approvedContext("where do I live", 500).stateToken)
+        assertEquals(approved.stateToken, bridge.approvedContext("where do I live", 700).stateToken)
         os.delete(pending.id)
-        assertNotEquals(approved.stateToken, bridge.approvedContext("where do I live", 500).stateToken)
+        assertNotEquals(approved.stateToken, bridge.approvedContext("where do I live", 700).stateToken)
     }
 
     @Test fun conversationCaptureKeepsLegacyIdentityWhenWikiIsDerivedLater() {
