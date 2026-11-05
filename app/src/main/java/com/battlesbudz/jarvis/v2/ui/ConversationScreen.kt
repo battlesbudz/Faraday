@@ -3,6 +3,7 @@ package com.battlesbudz.jarvis.v2.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.lazy.LazyColumn
@@ -157,9 +158,46 @@ internal fun ConversationScreen(
             keyboard?.hide()
         }
     }
-    LaunchedEffect(thread.id, thread.messages.lastOrNull()?.text, liveTranscript, armed) {
-        if (armed && liveTranscript.isNotBlank()) listState.animateScrollToItem(thread.messages.size)
-        else if (thread.messages.isNotEmpty()) listState.animateScrollToItem(thread.messages.lastIndex)
+    // Issue #20 item 2: follow the transcript's tail without fighting the
+    // reader. The previous effect scrolled on every change to the last
+    // message's text and landed on that item's START, so a reply taller
+    // than the viewport never showed its end, and a reader who scrolled up
+    // was dragged back down by the next streamed chunk. Now the scroll
+    // lands on the END of the last item (a maximal item offset, clamped to
+    // the list's end) and only runs while the reader is parked at the
+    // tail; ChatScrollPolicy holds the stickiness rules.
+    var stickToBottom by remember(thread.id) { mutableStateOf(true) }
+    var userDraggingList by remember { mutableStateOf(false) }
+    LaunchedEffect(listState) {
+        listState.interactionSource.interactions.collect { interaction ->
+            when (interaction) {
+                is DragInteraction.Start -> userDraggingList = true
+                is DragInteraction.Stop, is DragInteraction.Cancel -> userDraggingList = false
+            }
+        }
+    }
+    val currentLastIndex = rememberUpdatedState(thread.messages.lastIndex)
+    LaunchedEffect(listState, thread.id) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val lastVisible = info.visibleItemsInfo.lastOrNull()
+            if (lastVisible == null) null
+            else ChatScrollPolicy.isAtTail(
+                lastVisible.index, lastVisible.offset + lastVisible.size,
+                info.viewportEndOffset, currentLastIndex.value,
+            ) to userDraggingList
+        }.collect { observed ->
+            if (observed != null) {
+                stickToBottom = ChatScrollPolicy.updatedStick(stickToBottom, observed.first, observed.second)
+            }
+        }
+    }
+    LaunchedEffect(thread.id, thread.messages.lastOrNull()?.id, thread.messages.lastOrNull()?.text, liveTranscript, armed) {
+        if (armed && liveTranscript.isNotBlank()) {
+            if (stickToBottom) listState.animateScrollToItem(thread.messages.size, Int.MAX_VALUE)
+        } else if (thread.messages.isNotEmpty() && stickToBottom) {
+            listState.animateScrollToItem(thread.messages.lastIndex, Int.MAX_VALUE)
+        }
     }
     Column(Modifier.fillMaxSize().safeDrawingPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
@@ -229,9 +267,19 @@ internal fun ConversationScreen(
                                         style = MaterialTheme.typography.labelMedium)
                                     message.attachment?.let { ChatAttachmentPreview(it, playbackEnabled = !dictating && !armed && !effectiveVoiceVisible) }
                                     SelectionContainer {
-                                        Text(message.text.ifBlank { if (sending) "Thinking…" else "No reply was saved." },
-                                            fontStyle = if (message.spoken) FontStyle.Italic else FontStyle.Normal,
-                                            modifier = Modifier.padding(top = 6.dp))
+                                        when {
+                                            message.text.isBlank() -> Text(if (sending) "Thinking…" else "No reply was saved.",
+                                                fontStyle = if (message.spoken) FontStyle.Italic else FontStyle.Normal,
+                                                modifier = Modifier.padding(top = 6.dp))
+                                            // Issue #20 item 1: assistant replies are
+                                            // Markdown and now render as such. User
+                                            // messages keep the plain rendering.
+                                            message.role == "Jarvis" -> AssistantMarkdownText(message.text,
+                                                spoken = message.spoken, modifier = Modifier.padding(top = 6.dp))
+                                            else -> Text(message.text,
+                                                fontStyle = if (message.spoken) FontStyle.Italic else FontStyle.Normal,
+                                                modifier = Modifier.padding(top = 6.dp))
+                                        }
                                     }
                                     if (message.role == "Jarvis")
                                         Text((message.metrics ?: com.battlesbudz.jarvis.v2.diagnostics.ReplyMetrics.unavailable).withOutputText(message.text).summary(),
@@ -296,6 +344,7 @@ internal fun ConversationScreen(
                                 val failure = onSend(voiceText, requireNotNull(attached))
                                 check(failure == null) { failure.orEmpty() }
                                 accepted = true
+                                stickToBottom = true
                                 draft = ""
                                 error = null
                             } finally { if (!accepted) attached?.let { ChatMediaStore.discard(context, it) } }
@@ -326,7 +375,7 @@ internal fun ConversationScreen(
                                 (pendingAttachment == null || AttachmentPolicy.accepts(selectedModel, pendingAttachment.kind))
                             FilledIconButton(enabled = canSend && !sending && !inputBusy && (!effectiveVoiceVisible || armed), onClick = {
                                 error = onSend(draft, if (armed) null else pendingAttachment)
-                                if (error == null) { draft = ""; pendingUri = null }
+                                if (error == null) { stickToBottom = true; draft = ""; pendingUri = null }
                             }, modifier = Modifier.testTag("chat_send")) {
                                 ComposerIcon(com.battlesbudz.jarvis.v2.R.drawable.ic_composer_send, if (sending) "Thinking" else "Send message")
                             }
