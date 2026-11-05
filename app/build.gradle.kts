@@ -177,6 +177,10 @@ dependencies {
     // (org.tukaani:xz is public domain; see app/src/main/cpp/terminal/NOTICE.md).
     implementation("org.tukaani:xz:1.10")
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    // Markdown parsing for assistant replies (issue #20): the maintained
+    // CommonMark parser, pure JVM with no transitive dependencies. Only the
+    // parsed tree is used; rendering to Compose lives in the ui package.
+    implementation("org.commonmark:commonmark:0.32.0")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test:rules:1.6.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
