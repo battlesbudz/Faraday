@@ -4722,3 +4722,64 @@ Not established by this entry: on-device behavior. That requires Battles's
 Fold 6 proof on the first published main build containing the fix — during
 a voice call, stay silent at a follow-up prompt and nothing happens at all;
 then mumble genuine unintelligible speech and the clarify reply still fires.
+
+## Chat display fixes: keyboard clearance, Markdown replies, tail scrolling — 5 November 2026
+
+An external tester on build 1568 (Pixel 6a, GrapheneOS) filed issues #19
+and #20 against the chat screen. Every layout file involved is
+byte-identical between build 1568 and the fix, so each item was judged
+against the current code, not the report's age.
+
+Issue #19 (a keyboard-sized empty gap under the composer while typing,
+gone when the keyboard closes): the whole UI is laid out against window
+insets (`safeDrawingPadding` / `imePadding`), which is only sound when
+the window never resizes for the keyboard. `MainActivity` never
+configured its window, so on the reporter's device the window resized
+AND the chat root padded for the same IME inset, subtracting the
+keyboard height twice (the screenshot's content height is the screen
+minus two keyboard heights). `MainActivity.onCreate` now calls
+`enableEdgeToEdge()` before `setContent`, pinning the insets model
+every screen already assumes; on devices that were already edge-to-edge
+nothing changes. No JVM check can prove window behavior; this is
+device-class coverage, owed on a device that resizes for the IME.
+
+Issue #20 item 1 (assistant replies showed raw Markdown): replies were
+rendered with a plain `Text`. They now render through
+`AssistantMarkdownText`: the maintained CommonMark parser
+(`org.commonmark:commonmark`, pure JVM, no transitive dependencies)
+produces a tree that `chat/AssistantMarkdown` projects onto a small
+block/span model (paragraphs, headings, bullet/ordered lists with
+markers and nesting depth, code blocks, quotes, dividers; bold, italic,
+inline code and links inline), rendered with Material3 `Text` so the
+existing SelectionContainer behavior is unchanged. User messages keep
+the plain rendering; the blank-reply fallback is unchanged; a streamed
+partial reply parses as whatever is complete so far, an unclosed marker
+degrading to literal text. `AssistantMarkdownTest` pins the projection,
+including the reporter's exact list format from the screenshot, and
+`AssistantMarkdownComposeTest` pins the rendered surface (formatted
+text present, no literal `**`).
+
+Issue #20 item 2 (the view did not go to the end of a finished reply):
+the transcript's auto-scroll landed on the last item's START, so a
+reply taller than the viewport kept its end off-screen, and it fired on
+every streamed chunk, dragging a reader who had scrolled up back down.
+The scroll now lands on the END of the last item (maximal item offset,
+clamped to the list end) and only while the reader is parked at the
+tail: `ui/ChatScrollPolicy` holds the stickiness rules (reaching the
+tail sticks; a user drag away from the tail unsticks; programmatic
+scrolls and streamed growth change nothing), a send re-sticks, and
+`ChatScrollPolicyTest` pins the transitions.
+
+Issue #20 item 3 ("top menu too low", uneven menu fonts): not
+identifiable as a concrete defect in the current code, and no change
+was made for it. The header rows are uniform Material3 TextButtons in
+vertically centered rows; the menu sits below the wisp presence header
+by design, and the perceived font offset matches the intentional
+title-versus-label type scale. The issue reply says this plainly
+instead of claiming a fix.
+
+Not established by this entry: on-device behavior. The keyboard
+clearance and the rendered Markdown/scroll behavior want a device pass
+on the published build carrying these changes (open a long Markdown
+reply, confirm it renders formatted and lands at its end; open the
+keyboard on a device that resizes for it, confirm no gap).
