@@ -10,6 +10,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import com.battlesbudz.jarvis.v2.ui.JarvisApp
@@ -79,6 +80,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Issue #19: every screen is laid out against window insets
+        // (safeDrawingPadding / imePadding), which is only sound when the
+        // window itself never resizes for the keyboard. Left implicit, some
+        // devices resize the window AND deliver the IME inset, subtracting
+        // the keyboard height twice and leaving a keyboard-sized empty gap
+        // under the chat composer. Pin the insets model explicitly.
+        enableEdgeToEdge()
         val interruptedSession = runtime.sessionPreferences.getBoolean("sending", false)
         if (!runtime.voiceSessionArmed) runtime.shortTermContext.restoreSummary(
             if (interruptedSession) null else {
