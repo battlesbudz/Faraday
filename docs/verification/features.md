@@ -5011,3 +5011,118 @@ code mode to open yet — generation, the contract, the gate, the
 preview, the exporter, and the Code screen are Units 2 to 6, and the
 device proof for the whole phase is Unit 6's script on Battles's
 phone.
+
+## Code-and-export Unit 2: code mode session, contract, and action parsing — 6 November 2026
+
+Unit 2 gives the memory core of Unit 1 its voice: the code system
+prompt, the engine seam that prepares the one shared conversation for
+code mode, the session controller that runs rounds under the
+fingerprint reuse rule, the strict action parser with its write
+recovery chain, and truncation continuation. There is still no code
+screen and nothing is applied to a project yet — the gate and the
+atomic apply are Unit 3 — so a round today ends in a parsed action
+set, proven against the fake engine, and the project on disk is
+exactly what it was before the round.
+
+`CodeSystemPrompt` is a reviewed constant carrying the contract of
+section 4.1: exactly four verbs (`write_file`, `edit_file`,
+`update_brief`, `reply`) in the XML envelope Mochu proved, and the
+house rules that do the product design work — one self-contained
+`index.html` by default, fully offline, phone layout, complete code,
+never stop inside an action. Its char count feeds `CodeBudget` on
+every round. The sampler check the scope required is settled in code:
+the reviewed 0.16 bridge's `ConversationConfig` does expose a
+per-conversation `samplerConfig` (the JNI layer reads topK, topP,
+temperature, and seed off it), so code mode samples at the
+Mochu-derived values in `CodeSampling` (topK 20, topP 0.9, temperature
+0.35, seed 0) through a new `codeConversationConfig` beside the
+existing conversation config — no bridge patch, and the known-limit
+fallback the scope allowed for was not needed.
+
+The engine seam is `CodeModeEngine`, implemented by `LiteRtLmEngine`
+and mirrored by `FakeModelEngine` for tests. Preparing code mode
+resets the shared conversation, after which the next conversation is
+created from the code configuration: tools disabled, the code prompt
+as system instruction, the code sampler. The seam exposes the
+conversation generation (the engine's native session count, which
+increments on every reset) and releases the conversation when code
+mode is left; every ordinary reset also leaves code mode, so a chat
+turn, a voice turn, a tool-policy change, or a model switch between
+rounds is visible to the controller as a moved generation and a
+dropped code-mode flag. Ordinary-conversation preparation now releases
+code mode first, the same way it already undid the voice preface.
+There is no second engine and no second KV cache.
+
+`CodeSessionController` runs a round. It reuses the live conversation
+— sending only Battles's request plus the contract's reminder line —
+only when the same project is open, the fingerprint on disk still
+equals the session fingerprint, the generation is unchanged, and the
+estimated remaining room covers the short prompt plus the reply
+reserve; otherwise it re-prepares and sends a fresh full snapshot
+from Unit 1's builder. Two bookkeeping rules keep the fingerprint
+honest, and both are stated on the controller: the round log is
+fingerprint content and the controller appends one line per round, so
+after a round that wrote nothing the session fingerprint is refreshed
+past the app's own append (the conversation lived that round); and a
+round carrying any write verb invalidates the session fingerprint
+outright, because section 3.5's rule is that a write round changes
+the fingerprint by definition and the next turn always re-snapshots.
+While a round streams, the file being written is extracted live from
+the partial response for the round status Unit 6 will show. Each
+round appends exactly one round-log entry with its one-line outcome;
+Unit 3's apply outcomes ride that entry rather than adding a second.
+
+Generation runs the parser only on the stitched whole:
+`CodeContinuation` treats a response as cut off when an action
+envelope was opened and never closed, when Mochu's long-with-no-
+closing-tag rule fires, or when a written HTML file never closes its
+`</html>` tag, and then asks for continuation from the exact next
+character — up to six times, on the same conversation — stitching
+with an overlap de-dup of up to 1,000 chars and stripping a re-emitted
+action header. `CodeActionParser` splits the thinking channel off
+first (reasoning that mentions an action tag is never parsed), takes
+complete well-formed envelopes literally — when any write action is
+present the writes define the round and a riding `reply` is dropped —
+and, only when the strict parse finds nothing, runs the recovery
+chain: a bare `<content>` block containing HTML, then a raw HTML
+document anywhere in the text, then a Markdown html fence, each
+becoming a `write_file` for `index.html`. File bodies are byte-exact
+except for one envelope rule, stated on the parser: a single line
+break directly inside a `<content>`, `<find>`, or `<replace>` tag
+(and one before its close) belongs to the envelope, not the file. The
+parser produces data and nothing else; it never touches disk.
+
+Pinned by tests: `CodeSystemPromptTest` (the four verb envelopes and
+house rules present, the prompt fitting the fallback budget beside
+the floored snapshot, the sampler constants at the scope's values),
+`CodeActionParserTest` (one fixture per verb; pairs in order; riding
+reply dropped; prose around an envelope; thinking mentioning action
+tags never parsed, including an unclosed think before an action;
+unknown verb, missing content, and missing pairs named as malformed;
+unclosed envelope; one fixture per recovery shape; byte-exact
+interiors), `CodeContinuationTest` (the three cut-off signals and
+their negatives, the continuation prompt quoting the ending, plain
+and overlapping stitches, the overlap cap, both re-emitted-header
+shapes, a stitched stream parsing into one coherent write),
+`CodeSessionControllerTest` (a scripted fake-engine drive: first
+round sends the full snapshot and returns the parsed write; unchanged
+project reuses with the short prompt; write round, external file
+change, engine reset, project switch, and room exhaustion each force
+a fresh snapshot; truncated-then-continued round stitches into one
+action; continuation stops at the cap of six; budget refusal sends
+nothing; generation failure fails the round and the next round
+re-prepares; release forgets the session; the round log records
+parsed and failed rounds; progress names the file being written), and
+`ModelConversationConfigTest` (the code configuration carries no
+tools, no automatic tool calling, the code instruction, and the code
+sampler on both the Gemma bundles and a community bundle).
+`FakeModelEngine` gained the `CodeModeEngine` surface for these
+tests, with LiteRtLmEngine's semantics: preparing resets into code
+mode, every reset bumps the generation and leaves code mode, and
+releasing is a no-op when code mode is not active.
+
+Not established by this entry: everything that makes a round change
+a project. The normalizers, the completeness gate, the all-or-nothing
+apply with its version snapshot, and brief application are Unit 3;
+the preview and console loop are Unit 4; the exporter is Unit 5; the
+Code screen and the on-phone proof are Unit 6.

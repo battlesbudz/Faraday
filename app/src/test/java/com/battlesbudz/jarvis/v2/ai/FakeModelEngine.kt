@@ -11,12 +11,12 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * Reusable fake-engine test double for the reliability epic (item 8,
  * pattern 2). One class implements every engine seam a test can consume —
- * [LocalModelEngine], [ToolCallEngine] and the conversation layer's
- * [ConversationBackend] — so a test scripts behavior once and hands the
- * same fake to whichever consumer it drives, instead of each test class
- * hand-rolling its own partial stub (the pattern this replaces: the
- * per-class Backend/RecordingEngine copies in the conversation and eval
- * test packages).
+ * [LocalModelEngine], [ToolCallEngine], the conversation layer's
+ * [ConversationBackend] and code mode's [CodeModeEngine] — so a test
+ * scripts behavior once and hands the same fake to whichever consumer it
+ * drives, instead of each test class hand-rolling its own partial stub
+ * (the pattern this replaces: the per-class Backend/RecordingEngine
+ * copies in the conversation and eval test packages).
  *
  * Behavior is scripted per generation call. Scripts are consumed from a
  * FIFO queue in call order, across ALL generate variants (text, image,
@@ -49,7 +49,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class FakeModelEngine(
     override val modelId: String = "fake-model"
-) : LocalModelEngine, ToolCallEngine, ConversationBackend {
+) : LocalModelEngine, ToolCallEngine, ConversationBackend, CodeModeEngine {
 
     /** How one generation call ended. */
     enum class Outcome { COMPLETED, FAILED, CANCELLED }
@@ -153,10 +153,17 @@ class FakeModelEngine(
     private val initializeCount = AtomicInteger(0)
     private val resetCount = AtomicInteger(0)
     private val closeCount = AtomicInteger(0)
+    private val generationCount = AtomicInteger(0)
+    private val prepareCodeCount = AtomicInteger(0)
+    private val releaseCodeCount = AtomicInteger(0)
 
     val initializeCalls: Int get() = initializeCount.get()
     val resetCalls: Int get() = resetCount.get()
     val closeCalls: Int get() = closeCount.get()
+    /** [CodeModeEngine.prepareCodeConversation] calls so far. */
+    val prepareCodeCalls: Int get() = prepareCodeCount.get()
+    /** Effective [CodeModeEngine.releaseCodeConversation] calls so far (no-ops excluded). */
+    val releaseCodeCalls: Int get() = releaseCodeCount.get()
 
     /** Every generation call received, in receive order. Snapshot copy. */
     val calls: List<RecordedCall> get() = synchronized(lock) { recordedCalls.toList() }
@@ -194,6 +201,36 @@ class FakeModelEngine(
 
     override suspend fun resetConversation() {
         resetCount.incrementAndGet()
+        generationCount.incrementAndGet()
+        codeModeState = false
+    }
+
+    // --- CodeModeEngine surface (code-and-export Unit 2) ---------------------
+    //
+    // Mirrors LiteRtLmEngine's code-mode semantics: preparing always
+    // resets into code mode, every reset bumps the conversation
+    // generation and leaves code mode, and releasing is a no-op when
+    // code mode is not active. The code session policy tests drive the
+    // controller against these counters.
+
+    @Volatile private var codeModeState: Boolean = false
+
+    override val conversationGeneration: Long get() = generationCount.get().toLong()
+
+    override val codeModeActive: Boolean get() = codeModeState
+
+    override suspend fun prepareCodeConversation(): Boolean {
+        prepareCodeCount.incrementAndGet()
+        resetConversation()
+        codeModeState = true
+        return true
+    }
+
+    override suspend fun releaseCodeConversation() {
+        if (!codeModeState) return
+        releaseCodeCount.incrementAndGet()
+        codeModeState = false
+        resetConversation()
     }
 
     override fun close() {
