@@ -9,7 +9,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -45,16 +44,19 @@ import java.util.concurrent.atomic.AtomicLong
  * sampled when the callback STARTS, before any bookkeeping, and a
  * callback that crosses a lifecycle transition while it is still being
  * booked in is rejected outright — its detect is never admitted under
- * a later capture's generation. [onCaptureStarted], [onCaptureEnded]
- * and [close] each advance the generation, and an admitted detect's
- * completion may publish only while its generation is still current,
- * so a detect that completes after its capture ended (or a new one
- * began) is discarded instead of republishing a dead call's scene into
- * the holder or feeding the next call's tracker. The lifecycle
- * transitions also release the single-flight flag themselves: a stale
- * request must never keep the new capture's frames dropped while it
- * finishes, and its completion must never clear the flag a newer
- * request is holding.
+ * a later capture's generation. Validation and flight admission are
+ * atomic: the epoch check and the single-flight claim happen in one
+ * critical section, and [onCaptureStarted], [onCaptureEnded] and
+ * [close] advance the generation and release the flag under the same
+ * lock, so a stale callback can never claim the flag after a
+ * transition reset it (its completion is generation-fenced and could
+ * not release the flag again, which would wedge the new capture). An
+ * admitted detect's completion may publish only while its generation
+ * is still current, so a detect that completes after its capture
+ * ended (or a new one began) is discarded instead of republishing a
+ * dead call's scene into the holder or feeding the next call's
+ * tracker, and its completion never clears the flag a newer request
+ * is holding.
  *
  * Internal, not public: the injected settings type is
  * [VisionServerSettings.Config], whose declaring object is internal, so a
@@ -78,7 +80,16 @@ internal class CallServerVisionObserver(
      */
     private val frameGeometry: () -> FrameGeometry? = { null },
 ) : VisionObserver {
-    private val inFlight = AtomicBoolean(false)
+    private enum class Admission { ADMITTED, BUSY, REJECTED }
+
+    /**
+     * Guards [inFlight] together with the capture generation: admission,
+     * flight release and every lifecycle transition take this lock, so
+     * validating a callback's epoch and claiming the flight slot are
+     * atomic with respect to a transition (see the class doc).
+     */
+    private val captureLock = Any()
+    private var inFlight = false
 
     /** Bumped at every capture lifecycle transition; see the class doc. */
     private val captureGeneration = AtomicLong(0L)
@@ -107,14 +118,32 @@ internal class CallServerVisionObserver(
             holder.recordFrame(jpegBytes, timestampMs, geometry)
             val config = runCatching { settings() }.getOrNull() ?: return
             if (!config.enabled || config.token.isBlank()) return
-            // The callback crossed a lifecycle transition while it was
-            // being booked in (the capture it started in has ended or
-            // been replaced): reject it here, before any detect is
-            // admitted under the sampled epoch.
-            if (captureGeneration.get() != epoch) return
-            if (!inFlight.compareAndSet(false, true)) {
-                holder.recordDroppedInFlight()
-                return
+            // Admission is atomic: the epoch validation and the
+            // single-flight claim happen in one critical section, and
+            // every lifecycle transition (which advances the epoch and
+            // releases the flag) takes the same lock. A callback that
+            // crossed a transition while it was being booked in is
+            // rejected; it can never claim the flag after a transition
+            // already reset it — its completion is generation-fenced
+            // and could not release a flag it no longer owns, so the
+            // new capture would drop frames until its next transition.
+            val admission = synchronized(captureLock) {
+                when {
+                    closed || captureGeneration.get() != epoch -> Admission.REJECTED
+                    inFlight -> Admission.BUSY
+                    else -> {
+                        inFlight = true
+                        Admission.ADMITTED
+                    }
+                }
+            }
+            when (admission) {
+                Admission.REJECTED -> return
+                Admission.BUSY -> {
+                    holder.recordDroppedInFlight()
+                    return
+                }
+                Admission.ADMITTED -> Unit
             }
             holder.recordSent()
             val token = config.token
@@ -148,10 +177,14 @@ internal class CallServerVisionObserver(
                         }
                     } finally {
                         // Only this generation's request may release the
-                        // flag; after a lifecycle transition the flag is
-                        // already reset (or held by a newer request).
-                        if (captureGeneration.get() == generation) {
-                            inFlight.set(false)
+                        // flag, under the same lock as admission and the
+                        // transitions; after a lifecycle transition the
+                        // flag is already reset (or held by a newer
+                        // request).
+                        synchronized(captureLock) {
+                            if (captureGeneration.get() == generation) {
+                                inFlight = false
+                            }
                         }
                     }
                 }
@@ -159,7 +192,9 @@ internal class CallServerVisionObserver(
                 // The scope was cancelled under us (teardown raced a frame):
                 // never leave the single-flight flag set or the send counted
                 // with nobody able to complete it.
-                inFlight.set(false)
+                synchronized(captureLock) {
+                    if (captureGeneration.get() == generation) inFlight = false
+                }
                 holder.recordFailure(
                     errorText = error.message ?: error.javaClass.simpleName,
                     latencyMs = clockMs() - startedMs,
@@ -170,15 +205,19 @@ internal class CallServerVisionObserver(
 
     /** A new call's capture is live: the previous call's proof is wiped. */
     fun onCaptureStarted() {
-        captureGeneration.incrementAndGet()
-        inFlight.set(false)
+        synchronized(captureLock) {
+            captureGeneration.incrementAndGet()
+            inFlight = false
+        }
         holder.reset()
     }
 
     /** The owning call's capture ended: no result may read as current. */
     fun onCaptureEnded() {
-        captureGeneration.incrementAndGet()
-        inFlight.set(false)
+        synchronized(captureLock) {
+            captureGeneration.incrementAndGet()
+            inFlight = false
+        }
         holder.clear()
     }
 
@@ -190,7 +229,10 @@ internal class CallServerVisionObserver(
      */
     fun close() {
         closed = true
-        captureGeneration.incrementAndGet()
+        synchronized(captureLock) {
+            captureGeneration.incrementAndGet()
+            inFlight = false
+        }
         scope.cancel()
     }
 }
