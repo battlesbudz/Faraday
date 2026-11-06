@@ -17,11 +17,14 @@ import android.system.StructPollfd
 import android.provider.MediaStore
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
@@ -3595,23 +3598,40 @@ class ReleaseJourneyTest {
             assertEquals(1, restored.report(conversationId = thread).turns.size)
             activity.onActivity { host -> host.setContent {
                 MaterialTheme { Surface(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
-                    ConversationScreen(history, MutableStateFlow(false), MutableStateFlow(VoiceSessionState.PASSIVE_LISTENING),
-                        onSend = { _, _ -> null }, selectedModel = LocalModelSpec("release-fixture", "fixture.bin", recommendedGpu = false),
-                        onSelectConversation = { null }, onEndVoice = {}, onOpenVoiceCalls = {}, resumedVoice = false,
-                        pipelineBenchmarkStore = restored, voiceContent = { _, _, _, _ -> })
+                    // The Metrics action lives in the header band beside the
+                    // wisp now; the header's Copy metrics button is removed.
+                    // Conversation-scoped export remains covered by
+                    // ConversationMetricsExportTest and by the benchmark
+                    // screen's own copy below.
+                    Column(Modifier.fillMaxSize()) {
+                        val settingsState = remember { mutableStateOf(false) }
+                        val historyState = remember { mutableStateOf(false) }
+                        val headerErrorState = remember { mutableStateOf<String?>(null) }
+                        val inputBusyState = remember { mutableStateOf(false) }
+                        val benchmarksState = remember { mutableStateOf(false) }
+                        val benchmarkReplyState = remember { mutableStateOf<String?>(null) }
+                        com.battlesbudz.jarvis.v2.ui.ChatHeaderBand(
+                            memoryEnabled = true, settingsEnabled = true,
+                            conversationsEnabled = true, privateEnabled = true, newEnabled = true,
+                            metricsVisible = true,
+                            onOpenMemory = {}, onOpenSettings = { settingsState.value = true },
+                            onOpenHistory = { historyState.value = true },
+                            onNewPrivateConversation = { headerErrorState.value = "Private chat is unavailable right now." },
+                            onNewConversation = { headerErrorState.value = null },
+                            onOpenMetrics = { benchmarkReplyState.value = null; benchmarksState.value = true },
+                            presence = {},
+                        )
+                        ConversationScreen(history, MutableStateFlow(false), MutableStateFlow(VoiceSessionState.PASSIVE_LISTENING),
+                            onSend = { _, _ -> null }, selectedModel = LocalModelSpec("release-fixture", "fixture.bin", recommendedGpu = false),
+                            onSelectConversation = { null }, onEndVoice = {}, onOpenVoiceCalls = {}, resumedVoice = false,
+                            pipelineBenchmarkStore = restored,
+                            settingsOpenState = settingsState, historyOpenState = historyState,
+                            headerErrorState = headerErrorState, inputBusyState = inputBusyState,
+                            benchmarksOpenState = benchmarksState, benchmarkReplyState = benchmarkReplyState,
+                            voiceContent = { _, _, _, _ -> })
+                    }
                 } }
             } }
-            find(By.res("conversation_metrics_copy")).click()
-            find(By.text("Conversation metrics copied."))
-            val copiedConversation = AtomicReference<String>()
-            activity.onActivity { host -> copiedConversation.set(host.getSystemService(android.content.ClipboardManager::class.java)
-                .primaryClip?.getItemAt(0)?.coerceToText(host)?.toString().orEmpty()) }
-            val directReport = org.json.JSONObject(copiedConversation.get())
-            assertEquals(1, directReport.getJSONArray("turns").length())
-            assertEquals(thread, directReport.getJSONArray("turns").getJSONObject(0).getString("conversationId"))
-            assertEquals(4, directReport.getJSONArray("replyMetrics").getJSONObject(0).getInt("estimatedOutputTokens"))
-            assertFalse(copiedConversation.get().contains("other-conversation"))
-            assertFalse(copiedConversation.get().contains("Measured reply"))
             find(By.res("conversation_metrics_open")).click()
             find(By.res("pipeline_benchmark_screen"))
             benchmarkClickEnabled(By.res("pipeline_benchmark_close"), towardTop = true)

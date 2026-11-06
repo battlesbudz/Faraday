@@ -4818,3 +4818,39 @@ clearance and the rendered Markdown/scroll behavior want a device pass
 on the published build carrying these changes (open a long Markdown
 reply, confirm it renders formatted and lands at its end; open the
 keyboard on a device that resizes for it, confirm no gap).
+
+## Chat header beside the wisp — 5 November 2026
+
+The chat header no longer stacks under the wisp presence. The three
+rows that sat below it (JARVIS title with Memory and Settings;
+Conversations, Private and New; Metrics and Copy metrics) are replaced
+by `ui/ChatHeaderBand` in the app frame's presence band: Memory,
+Conversations and Metrics stacked on the left of the wisp, Settings,
+Private and New on the right, in the same Material3 TextButton style,
+with the one-line ellipsizing label contract the old second row used.
+The wisp itself — graphic, size, centered position, status pill — is
+untouched, and the transcript starts immediately below the band. The
+JARVIS title text is removed (header only; no other label changes),
+and Copy metrics is removed: the conversation report was too large to
+copy reliably, and the Metrics destination (`PipelineBenchmarkScreen`)
+already carries the full export surface (Copy report, Save TXT,
+Share TXT, per-format copy/save/share). The band is stateless;
+JarvisApp hoists the settings/history/error/input-busy/benchmark
+state holders and shares them with ConversationScreen, so every
+button keeps its exact previous callback, destination and enabled
+rules, and every existing test tag (`memory_open`, `new_private_chat`,
+`conversation_metrics_open`) is preserved on the same action. The
+private-mode indicator keeps its text, style and tag as a full-width
+strip at the top of the transcript. `ConversationMetricsControls` is
+deleted; `ConversationMetricsExport` itself is unchanged and remains
+covered by its own test and the benchmark screen's copy actions.
+
+Not established by this entry: on-device behavior. The band's geometry
+wants the release layout and journey suites on the build carrying
+these changes — in particular the wisp centering and
+above-the-transcript assertions, the narrow-width (320 dp) large-font
+layout pass, the call-state wisp expansion ratios, and a check that
+the side labels (notably Conversations) stay legible on a
+cover-screen-width device — plus Battles's own pass on his phone:
+the six actions beside the wisp, no JARVIS title, no Copy metrics,
+and the transcript starting directly under the band.

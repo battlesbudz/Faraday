@@ -91,6 +91,22 @@ fun JarvisApp(
         val memoryOs = remember(phoneContext.applicationContext) { AndroidMemoryOs.get(phoneContext.applicationContext) }
         val activeVoiceCall by com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.armed.collectAsState()
         val activeVoiceStatus by com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.status.collectAsState()
+        // Chat header state, hoisted out of ConversationScreen: the header
+        // buttons now render beside the wisp in the frame's presence band
+        // (ChatHeaderBand), while the settings surface, history dialog,
+        // error line and benchmark dialog they drive stay in the screen.
+        // Both sides share these holders, so behavior is unchanged.
+        val chatSettingsOpen = remember { mutableStateOf(false) }
+        val chatHistoryOpen = remember { mutableStateOf(false) }
+        val chatHeaderError = remember { mutableStateOf<String?>(null) }
+        val chatInputBusy = remember { mutableStateOf(false) }
+        val chatBenchmarksOpen = remember { mutableStateOf(false) }
+        val chatBenchmarkReply = remember { mutableStateOf<String?>(null) }
+        val chatSending by chatBusy.collectAsState()
+        // The band shows only while the chat destination is the visible
+        // content (never over Memory, the voice-call list/detail, or setup).
+        val chatDestination = setup.modelsReady && setup.smokeTestPassed &&
+            selectedVoiceCall == null && !showingVoiceCalls && !showingMemory
         val modelSelector: @Composable (Boolean) -> Unit = { enabled ->
             ModelSelectionSection(setup, enabled, benchmarkStore, onOpenMemory = { showingMemory = true })
         }
@@ -108,13 +124,34 @@ fun JarvisApp(
         ) {
             Surface(modifier = Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
                 WispAppFrame(presence = {
-                    WispPresence(conversationHistory, chatBusy, callState, voicePlayback, phoneTasks, phoneTaskError,
-                        agentActivity, setupActivity = when {
-                            setup.modelDownloadRunning -> WispPresentation(WispActivity.CONNECTING, "Installing model")
-                            setup.modelImportRunning -> WispPresentation(WispActivity.CHECKING, "Importing model")
-                            setup.smokeTestRunning -> WispPresentation(WispActivity.THINKING, "Testing model")
-                            else -> null
-                        })
+                    val wispPresence: @Composable () -> Unit = {
+                        WispPresence(conversationHistory, chatBusy, callState, voicePlayback, phoneTasks, phoneTaskError,
+                            agentActivity, setupActivity = when {
+                                setup.modelDownloadRunning -> WispPresentation(WispActivity.CONNECTING, "Installing model")
+                                setup.modelImportRunning -> WispPresentation(WispActivity.CHECKING, "Importing model")
+                                setup.smokeTestRunning -> WispPresentation(WispActivity.THINKING, "Testing model")
+                                else -> null
+                            })
+                    }
+                    if (chatDestination) {
+                        ChatHeaderBand(
+                            memoryEnabled = !chatInputBusy.value,
+                            settingsEnabled = !chatInputBusy.value,
+                            conversationsEnabled = !chatSending && !activeVoiceCall && !chatInputBusy.value,
+                            privateEnabled = !chatSending && !activeVoiceCall && !chatInputBusy.value,
+                            newEnabled = !chatSending && !activeVoiceCall && !chatInputBusy.value,
+                            metricsVisible = true,
+                            onOpenMemory = { showingMemory = true },
+                            onOpenSettings = { chatSettingsOpen.value = true },
+                            onOpenHistory = { chatHistoryOpen.value = true },
+                            onNewPrivateConversation = { chatHeaderError.value = onNewPrivateConversation() },
+                            onNewConversation = { chatHeaderError.value = onSelectConversation(null) },
+                            onOpenMetrics = { chatBenchmarkReply.value = null; chatBenchmarksOpen.value = true },
+                            presence = wispPresence,
+                        )
+                    } else {
+                        wispPresence()
+                    }
                 }) {
                     if (setup.modelsReady && setup.smokeTestPassed) {
                         AssistantBannerPopupLayer(
@@ -172,7 +209,13 @@ fun JarvisApp(
                                         onForceVoiceConsumed = { memoryReturnToVoice = false },
                                         forceChatDestination = memoryReturnToChat,
                                         onForceChatConsumed = { memoryReturnToChat = false },
-                                        pipelineBenchmarkStore = benchmarkStore
+                                        pipelineBenchmarkStore = benchmarkStore,
+                                        settingsOpenState = chatSettingsOpen,
+                                        historyOpenState = chatHistoryOpen,
+                                        headerErrorState = chatHeaderError,
+                                        inputBusyState = chatInputBusy,
+                                        benchmarksOpenState = chatBenchmarksOpen,
+                                        benchmarkReplyState = chatBenchmarkReply
                                     ) { visible, settingsOpen, dismissSettings, startRequest ->
                                         VoiceCallScreen(
                                             visible = visible, settingsOpen = settingsOpen, memoryOpen = showingMemory,
