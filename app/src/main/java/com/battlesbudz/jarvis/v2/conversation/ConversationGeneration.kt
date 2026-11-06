@@ -157,7 +157,20 @@ internal class ConversationGeneration(
         // fields that prove whether the model actually received the image
         // (see recordSnapshotOutcome below). attached= alone was misleading
         // on build 1624 — it recorded the decision, not the delivery.
-        val promptContext = listOfNotNull(visionContext, visualDecision.block)
+        // Direct audio submits audio only, so a snapshot decision's block
+        // must not be injected on such a turn either: the block tells the
+        // model an image is attached and its boxes mark positions in it,
+        // and with no image submitted the model would narrate detector
+        // labels as sight, owed no disclosure. The same scene decided as
+        // not image-capable yields the summary block, which claims no
+        // attachment; the snapshot decision above still drives the
+        // direct_audio_turn diagnostics line.
+        val visualBlock = if (visualDecision.snapshot != null && directAudio) {
+            callVisualContext(false).block
+        } else {
+            visualDecision.block
+        }
+        val promptContext = listOfNotNull(visionContext, visualBlock)
             .joinToString("\n\n").takeIf { it.isNotBlank() }
         val submission = turnPrompt.assemble(invocation.prompt, promptContext, promptHistory, !modelSession.hasContext,
             routed.plan.activeSubject, routed.plan.resolvedQuestion, prepared.referenceContext, contextLimit)

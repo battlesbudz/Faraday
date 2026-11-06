@@ -324,6 +324,33 @@ class CallServerVisionObserverTest {
         scope.cancel()
     }
 
+    @Test fun frameCallbackCrossingCaptureEndLaunchesNoDetect() {
+        val holder = LatestServerVisionResult()
+        val detect = FakeDetect(snapshotOf(1))
+        val scope = testScope()
+        lateinit var observer: CallServerVisionObserver
+        observer = CallServerVisionObserver(
+            holder = holder,
+            settings = {
+                // The capture ends while this callback is still being
+                // booked in (the settings lookup stands in for any pause
+                // between the callback's start and its detect launch):
+                // the frame belongs to the dead capture, so its detect
+                // must never be admitted under the next epoch.
+                observer.onCaptureEnded()
+                VisionServerSettings.Config(enabled = true, token = "tok")
+            },
+            detect = detect.fn,
+            scope = scope,
+        )
+        observer.onCaptureStarted()
+        observer.onFrame(byteArrayOf(1), 100L)
+        assertEquals(0, detect.callCount())
+        assertEquals(0L, holder.counters().framesSent)
+        assertNull(holder.latest())
+        scope.cancel()
+    }
+
     @Test fun captureEndClearsResultButKeepsCounters() {
         val holder = LatestServerVisionResult()
         val detect = FakeDetect(snapshotOf(4))

@@ -41,15 +41,20 @@ import java.util.concurrent.atomic.AtomicLong
  * settings and call the real client, constructed per detect exactly as
  * the chat-photo path constructs it per turn.
  *
- * Capture fencing: every detect is tagged with the capture generation
- * current when its frame was sent. [onCaptureStarted], [onCaptureEnded]
- * and [close] each advance the generation, so a detect that completes
- * after its capture ended (or a new one began) is discarded instead of
- * republishing a dead call's scene into the holder or feeding the next
- * call's tracker. The lifecycle transitions also release the
- * single-flight flag themselves: a stale request must never keep the
- * new capture's frames dropped while it finishes, and its completion
- * must never clear the flag a newer request is holding.
+ * Capture fencing: a frame callback belongs to the capture generation
+ * sampled when the callback STARTS, before any bookkeeping, and a
+ * callback that crosses a lifecycle transition while it is still being
+ * booked in is rejected outright — its detect is never admitted under
+ * a later capture's generation. [onCaptureStarted], [onCaptureEnded]
+ * and [close] each advance the generation, and an admitted detect's
+ * completion may publish only while its generation is still current,
+ * so a detect that completes after its capture ended (or a new one
+ * began) is discarded instead of republishing a dead call's scene into
+ * the holder or feeding the next call's tracker. The lifecycle
+ * transitions also release the single-flight flag themselves: a stale
+ * request must never keep the new capture's frames dropped while it
+ * finishes, and its completion must never clear the flag a newer
+ * request is holding.
  *
  * Internal, not public: the injected settings type is
  * [VisionServerSettings.Config], whose declaring object is internal, so a
@@ -86,6 +91,12 @@ internal class CallServerVisionObserver(
         // is on the call's camera path: nothing here may ever throw.
         runCatching {
             if (closed) return
+            // The capture generation this callback belongs to, sampled
+            // before any bookkeeping: a callback that began in a capture
+            // which has since ended must never tag its detect with the
+            // next capture's generation (the completion fence can only
+            // reject generations older than the one sampled).
+            val epoch = captureGeneration.get()
             holder.recordReceived()
             // Snapshot synthesis: retain the frame itself for Gemma's
             // per-turn snapshot. Deliberately BEFORE the server gating
@@ -96,6 +107,11 @@ internal class CallServerVisionObserver(
             holder.recordFrame(jpegBytes, timestampMs, geometry)
             val config = runCatching { settings() }.getOrNull() ?: return
             if (!config.enabled || config.token.isBlank()) return
+            // The callback crossed a lifecycle transition while it was
+            // being booked in (the capture it started in has ended or
+            // been replaced): reject it here, before any detect is
+            // admitted under the sampled epoch.
+            if (captureGeneration.get() != epoch) return
             if (!inFlight.compareAndSet(false, true)) {
                 holder.recordDroppedInFlight()
                 return
@@ -103,10 +119,10 @@ internal class CallServerVisionObserver(
             holder.recordSent()
             val token = config.token
             val startedMs = clockMs()
-            // The generation this request belongs to, and the exact
-            // frame it runs on: the completion is fenced on the first
-            // and the result is paired with the second.
-            val generation = captureGeneration.get()
+            // The epoch this request belongs to, and the exact frame it
+            // runs on: the completion is fenced on the first and the
+            // result is paired with the second.
+            val generation = epoch
             val detectFrame = LatestServerVisionResult.Frame(jpegBytes, timestampMs, geometry)
             try {
                 scope.launch {

@@ -642,6 +642,28 @@ class ConversationGenerationTest {
         assertTrue(summaries.none { it.startsWith("Call snapshot: attached=true") })
     }
 
+    @Test fun directAudioTurnGetsTheSummaryBlockNotTheSnapshotBlock() = runBlocking {
+        val backend = SnapshotBackend()
+        val summaries = mutableListOf<String>()
+        val image = byteArrayOf(9, 8, 7)
+        generateWithBackend(backend, byteArrayOf(1, 2, 3), directAudio = true,
+            callVisualContext = { capable ->
+                if (capable) snapshotDecision(image) else CallVisualContext.Decision(
+                    "SUMMARY BLOCK TEXT",
+                    "Call visual context: injected=true mode=summary chars=18")
+            },
+            summaryLog = summaries)
+        // The direct-audio submission carries no image, so its prompt
+        // must not carry the snapshot block either: that block tells the
+        // model an image is attached and its boxes mark positions in it.
+        // The summary block describes the same scene with no such claim.
+        assertTrue(backend.imageRequests.isEmpty())
+        assertEquals(1, backend.audioRequests.size)
+        assertTrue(backend.audioRequests.single().contains("SUMMARY BLOCK TEXT"))
+        assertFalse(backend.audioRequests.single().contains("SNAPSHOT BLOCK TEXT"))
+        assertTrue(summaries.any { it == "Call snapshot: attached=false reason=direct_audio_turn submitted=false" })
+    }
+
     @Test fun snapshotTurnWhoseImageSubmissionFailsEverywhereGetsTheDisclosureNotALabelsAnswer() = runBlocking {
         val backend = SnapshotBackend().apply { failImageGenerate = true }
         val summaries = mutableListOf<String>()
