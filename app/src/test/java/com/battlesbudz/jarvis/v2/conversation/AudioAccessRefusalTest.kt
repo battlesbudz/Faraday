@@ -222,7 +222,6 @@ class AudioAccessRefusalTest {
             // tool call and no text — the completion the interrupted
             // build-1706 turn never reached.
             GenerationResult("", 1, null, toolCalls = listOf(ToolCall("read_battery", "{}")))))
-        backend.toolResultOutputs += GenerationResult("Your battery is at 82 percent, sir.", 1, null)
         val executed = mutableListOf<String>()
         val reported = mutableListOf<Triple<String, String, Boolean>>()
         val actions = ConversationActions(
@@ -242,8 +241,9 @@ class AudioAccessRefusalTest {
         assertEquals(listOf(Triple("read_battery", "Battery is at 82 percent.", true)), reported)
         assertEquals("read_battery", draft.actionName)
         assertEquals("Battery is at 82 percent.", draft.actionResultMessage)
-        assertEquals("read_battery", backend.toolResultSubmissions.single().single().first.name)
-        assertEquals("Your battery is at 82 percent, sir.", draft.generated.text)
+        // The single-step plan completes from the executor receipt, so the
+        // runner needs no follow-up generation to finish the turn.
+        assertTrue(backend.toolResultSubmissions.isEmpty())
     }
 
     @Test fun repeatedRefusalFallsBackToAnHonestRepeatRequest() = runBlocking {
