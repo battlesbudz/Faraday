@@ -157,16 +157,28 @@ internal class ConversationInput(
 
     /**
      * One image-bearing generation attempt with submission bookkeeping: a
-     * success proves the model received the image on this route; a failure
-     * is recorded and rethrown as [SnapshotImageUndeliverableException] so
-     * the generation owner can keep the turn honest.
+     * success proves the model received the image on this route. A failure
+     * before any output is a delivery failure — the image reached no
+     * route — and is recorded and rethrown as
+     * [SnapshotImageUndeliverableException] so the generation owner can
+     * keep the turn honest. A failure after output has streamed is an
+     * inference failure instead: the model demonstrably received the
+     * image and began answering, so the original error propagates to the
+     * normal failure handling rather than dressing itself as an
+     * image-delivery failure (which would substitute the "couldn't see"
+     * disclosure over output the user already saw or heard).
      */
     private suspend fun generateWithImage(engine: ConversationBackend, prompt: String,
                                           image: ByteArray, onToken: (String) -> Unit): GenerationResult {
+        var outputStarted = false
         try {
-            return engine.generate(prompt, image, onToken).also { snapshotImageSubmitted = true }
+            return engine.generate(prompt, image) { token ->
+                if (token.isNotBlank()) outputStarted = true
+                onToken(token)
+            }.also { snapshotImageSubmitted = true }
         } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
         catch (error: Throwable) {
+            if (outputStarted) throw error
             snapshotImageSubmitError = shortSubmitError(error)
             throw SnapshotImageUndeliverableException(error)
         }

@@ -565,6 +565,7 @@ class ConversationGenerationTest {
         val imageRequests = mutableListOf<Pair<String, ByteArray>>()
         val audioRequests = mutableListOf<String>()
         var failImageGenerate = false
+        var failImageGenerateAfterToken = false
         override val modelId = "fake"
         override var onPromptSubmitted: (String, Int) -> Unit = { _, _ -> }
         override var onInferenceProgress: (InferenceProgress) -> Unit = {}
@@ -590,6 +591,10 @@ class ConversationGenerationTest {
         }
         override suspend fun generate(prompt: String, imageBytes: ByteArray, onToken: (String) -> Unit): GenerationResult {
             if (failImageGenerate) throw IllegalStateException("native image reject")
+            if (failImageGenerateAfterToken) {
+                onToken("Partial sight answer.")
+                throw IllegalStateException("inference died mid-stream")
+            }
             imageRequests += prompt to imageBytes
             return result(prompt, onToken)
         }
@@ -680,6 +685,28 @@ class ConversationGenerationTest {
             it == "Call snapshot: attached=true frameAgeMs=300 frameBytes=3 tracks=2 windowMs=15000 omitted=0" +
                 " submitted=false submitError=IllegalStateException: native image reject"
         })
+    }
+
+    @Test fun imageInferenceFailureAfterOutputPropagatesInsteadOfDisclosure() = runBlocking {
+        val backend = SnapshotBackend().apply { failImageGenerateAfterToken = true }
+        val summaries = mutableListOf<String>()
+        val image = byteArrayOf(9, 8, 7)
+        // The image was accepted and output already streamed when
+        // inference died: that is an inference failure, not an
+        // image-delivery failure, so the original error propagates to
+        // the normal failure handling. Substituting the "couldn't see"
+        // disclosure here would contradict output the user already
+        // saw or heard.
+        val thrown = try {
+            generateWithBackend(backend, byteArrayOf(1, 2, 3), directAudio = false,
+                callVisualContext = { snapshotDecision(image) },
+                summaryLog = summaries)
+            null
+        } catch (error: IllegalStateException) {
+            error
+        }
+        assertEquals("inference died mid-stream", thrown?.message)
+        assertTrue(summaries.none { it.contains("disclosure substituted") })
     }
 
     @Test fun unattachedSnapshotDecisionRecordsSubmittedFalse() = runBlocking {
