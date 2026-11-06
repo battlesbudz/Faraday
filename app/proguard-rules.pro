@@ -122,6 +122,10 @@
 
 # A controlled Android-test fixture renders the actual conversation surface.
 -keep class com.battlesbudz.jarvis.v2.ui.ConversationScreenKt { *; }
+# test46 also composes the header band directly from the test DEX (the
+# header landing's rewrite); without this keep the app build renames
+# ChatHeaderBand while the test DEX links it by its source name.
+-keep class com.battlesbudz.jarvis.v2.ui.ChatHeaderBandKt { *; }
 -keep class com.battlesbudz.jarvis.v2.ui.MemoryScreenKt { *; }
 -keep class com.battlesbudz.jarvis.v2.ai.LocalModelSpec { *; }
 # Release instrumentation seeds the shipping parent through ModelCatalog; retain its Kotlin object INSTANCE ABI.
@@ -157,6 +161,13 @@
 # usage report lists INSTANCE and every arrangement getter as removed),
 # which killed the journey process with NoSuchFieldError. Retain the ABI.
 -keep class androidx.compose.foundation.layout.Arrangement { *; }
+# Same composition, next link: the inlined Column body calls
+# ColumnKt.columnMeasurePolicy across the boundary, and R8 narrows its
+# return type to the concrete ColumnMeasurePolicy in the app build while
+# the test DEX links the source MeasurePolicy descriptor
+# (NoSuchMethodError). The public Column composable is likewise inlined
+# away app-side. Retain the whole owner, as with BoxKt above.
+-keep class androidx.compose.foundation.layout.ColumnKt { *; }
 # Build 916's layout test calls Dp.constructor-impl through its separate DEX.
 # Preserve this inline value-class ABI used by the 320 dp width fixture.
 -keep class androidx.compose.ui.unit.Dp { *; }
