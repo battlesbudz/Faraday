@@ -392,6 +392,6 @@ class CodeProjectStore(private val workspaceDir: File) {
         }
 
         /** The `versions/` folder name for a version number: v001, v002, … */
-        fun versionDirName(number: Int): String = "v" + number.toString().padStart(3, "0")
+        fun versionDirName(number: Int): String = "v" + number.toString().padStart(3, '0')
     }
 }
