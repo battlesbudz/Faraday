@@ -14,9 +14,10 @@ package com.battlesbudz.jarvis.v2.voice
  * Snapshot synthesis (Battles's approved design, 2026-10-30, after the
  * build-1612 paste showed the summary alone misleads: 12 minted tracks,
  * 8 of them one toilet re-detected as the camera moved, reached Gemma as
- * "toilet 1" plus two recent toilets): when the video toggle is ON, a
- * fresh camera frame is retained, and the turn's engine can accept an
- * image, the turn attaches that ONE retained frame as an image input and
+ * "toilet 1" plus two recent toilets): when the video toggle is ON, the
+ * frame the latest detect ran on is retained with its result, and the
+ * turn's engine can accept an image, the turn attaches that ONE retained
+ * frame as an image input and
  * this block becomes the FULL track list for the last
  * [SNAPSHOT_WINDOW_MS]: every track, present or not, one-frame tracks
  * included, each with its ID, label, latest box and last-seen age. The
@@ -31,8 +32,8 @@ package com.battlesbudz.jarvis.v2.voice
  * at most [FRESH_WINDOW_MS] old. Detects land every ~1.7 s, so 10 s is
  * roughly six missed cycles; the tracker's own presence window is 5 s.
  * Older than that, the scene is not current and the turn proceeds with no
- * block and no behavior change. The retained frame carries the same
- * bound: a frame older than that means capture has stalled.
+ * block and no behavior change. The paired frame is the entry's own
+ * frame, so it carries the same bound by construction.
  *
  * Trust weighting for the SUMMARY block (from the step-3 device proof,
  * where a raised hand was detected once as a "baseball glove"): a track
@@ -109,7 +110,13 @@ object CallVisualContext {
             null, "Call visual context: injected=false reason=stale snapshotAgeMs=$ageMs",
             snapshotLine = "Call snapshot: attached=false reason=stale_result snapshotAgeMs=$ageMs")
         val snapshot = holder.trackedSnapshot(nowMs)
-        val frame = holder.latestFrame()
+        // The snapshot image is the frame the live entry's detect ran
+        // on, retained with the entry — never the newest retained
+        // frame. Newer frames keep arriving after the detect, and the
+        // tracked boxes describe the detect's frame, not them; pairing
+        // a newer JPEG with those boxes would present positions the
+        // attached image does not show.
+        val frame = holder.entryFrame()
         val frameAgeMs = frame?.let { (nowMs - it.capturedAtMs).coerceAtLeast(0L) }
         val snapshotBlockedReason = when {
             !VoiceSessionUi.videoEnabled.value -> "video_off"

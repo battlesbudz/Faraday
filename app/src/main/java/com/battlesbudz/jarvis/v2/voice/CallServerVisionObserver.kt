@@ -10,6 +10,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Video-call step 2: frames instead of photos.
@@ -40,6 +41,16 @@ import java.util.concurrent.atomic.AtomicBoolean
  * settings and call the real client, constructed per detect exactly as
  * the chat-photo path constructs it per turn.
  *
+ * Capture fencing: every detect is tagged with the capture generation
+ * current when its frame was sent. [onCaptureStarted], [onCaptureEnded]
+ * and [close] each advance the generation, so a detect that completes
+ * after its capture ended (or a new one began) is discarded instead of
+ * republishing a dead call's scene into the holder or feeding the next
+ * call's tracker. The lifecycle transitions also release the
+ * single-flight flag themselves: a stale request must never keep the
+ * new capture's frames dropped while it finishes, and its completion
+ * must never clear the flag a newer request is holding.
+ *
  * Internal, not public: the injected settings type is
  * [VisionServerSettings.Config], whose declaring object is internal, so a
  * public constructor could not expose it (compileReleaseKotlin error on
@@ -64,6 +75,9 @@ internal class CallServerVisionObserver(
 ) : VisionObserver {
     private val inFlight = AtomicBoolean(false)
 
+    /** Bumped at every capture lifecycle transition; see the class doc. */
+    private val captureGeneration = AtomicLong(0L)
+
     @Volatile
     private var closed = false
 
@@ -78,7 +92,8 @@ internal class CallServerVisionObserver(
             // below: the snapshot serves the local model, not the server,
             // so a disabled/unconfigured server must not starve it (the
             // tracks it is paired with still come only from real detects).
-            holder.recordFrame(jpegBytes, timestampMs, runCatching { frameGeometry() }.getOrNull())
+            val geometry = runCatching { frameGeometry() }.getOrNull()
+            holder.recordFrame(jpegBytes, timestampMs, geometry)
             val config = runCatching { settings() }.getOrNull() ?: return
             if (!config.enabled || config.token.isBlank()) return
             if (!inFlight.compareAndSet(false, true)) {
@@ -88,25 +103,40 @@ internal class CallServerVisionObserver(
             holder.recordSent()
             val token = config.token
             val startedMs = clockMs()
+            // The generation this request belongs to, and the exact
+            // frame it runs on: the completion is fenced on the first
+            // and the result is paired with the second.
+            val generation = captureGeneration.get()
+            val detectFrame = LatestServerVisionResult.Frame(jpegBytes, timestampMs, geometry)
             try {
                 scope.launch {
                     try {
                         val snapshot = detect(jpegBytes, token)
-                        holder.recordSuccess(
-                            snapshot = snapshot,
-                            frameTimestampMs = timestampMs,
-                            latencyMs = clockMs() - startedMs,
-                            receivedAtMs = clockMs(),
-                        )
+                        if (captureGeneration.get() == generation) {
+                            holder.recordSuccess(
+                                snapshot = snapshot,
+                                frameTimestampMs = timestampMs,
+                                latencyMs = clockMs() - startedMs,
+                                receivedAtMs = clockMs(),
+                                frame = detectFrame,
+                            )
+                        }
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: Exception) {
-                        holder.recordFailure(
-                            errorText = error.message ?: error.javaClass.simpleName,
-                            latencyMs = clockMs() - startedMs,
-                        )
+                        if (captureGeneration.get() == generation) {
+                            holder.recordFailure(
+                                errorText = error.message ?: error.javaClass.simpleName,
+                                latencyMs = clockMs() - startedMs,
+                            )
+                        }
                     } finally {
-                        inFlight.set(false)
+                        // Only this generation's request may release the
+                        // flag; after a lifecycle transition the flag is
+                        // already reset (or held by a newer request).
+                        if (captureGeneration.get() == generation) {
+                            inFlight.set(false)
+                        }
                     }
                 }
             } catch (error: Exception) {
@@ -124,21 +154,27 @@ internal class CallServerVisionObserver(
 
     /** A new call's capture is live: the previous call's proof is wiped. */
     fun onCaptureStarted() {
+        captureGeneration.incrementAndGet()
+        inFlight.set(false)
         holder.reset()
     }
 
     /** The owning call's capture ended: no result may read as current. */
     fun onCaptureEnded() {
+        captureGeneration.incrementAndGet()
+        inFlight.set(false)
         holder.clear()
     }
 
     /**
      * Terminal teardown (service closing): no frame is accepted and the
      * worker scope is cancelled. A detect still in flight is abandoned;
-     * its result, if it ever lands, goes to a holder nobody reads.
+     * its result, if it ever lands, is fenced out by the generation bump
+     * and goes to a holder nobody reads.
      */
     fun close() {
         closed = true
+        captureGeneration.incrementAndGet()
         scope.cancel()
     }
 }

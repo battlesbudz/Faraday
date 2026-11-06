@@ -220,6 +220,51 @@ class LatestServerVisionResultTest {
         assertTrue(holder.diagnosticsText().contains("retainedFrame=bytes=4 capturedAtMs=200"))
     }
 
+    @Test fun successRetainsTheDetectFrameItRanOn() {
+        val holder = LatestServerVisionResult()
+        val detectBytes = byteArrayOf(1, 2, 3)
+        holder.recordSuccess(
+            snapshotOf(1), frameTimestampMs = 100L, latencyMs = 250L, receivedAtMs = 400L,
+            frame = LatestServerVisionResult.Frame(detectBytes, capturedAtMs = 100L, geometry = FrameGeometry(640, 480, 0)),
+        )
+        val paired = holder.entryFrame()
+        assertTrue(detectBytes.contentEquals(paired!!.bytes))
+        assertEquals(100L, paired.capturedAtMs)
+        assertEquals(640, paired.geometry?.width)
+        // A newer frame is retained as the newest frame, but the pairing
+        // stays with the frame the live entry's detect ran on.
+        holder.recordFrame(byteArrayOf(9, 9), capturedAtMs = 200L, geometry = null)
+        assertEquals(200L, holder.latestFrame()?.capturedAtMs)
+        assertEquals(100L, holder.entryFrame()?.capturedAtMs)
+    }
+
+    @Test fun failureDoesNotMoveTheEntryFramePairing() {
+        val holder = LatestServerVisionResult()
+        holder.recordSuccess(
+            snapshotOf(1), frameTimestampMs = 100L, latencyMs = 250L, receivedAtMs = 400L,
+            frame = LatestServerVisionResult.Frame(byteArrayOf(1), capturedAtMs = 100L, geometry = null),
+        )
+        holder.recordFailure("server down", latencyMs = 30L)
+        assertEquals(100L, holder.entryFrame()?.capturedAtMs)
+        assertEquals(100L, holder.latest()?.frameTimestampMs)
+    }
+
+    @Test fun clearAndResetDropTheEntryFrame() {
+        val holder = LatestServerVisionResult()
+        holder.recordSuccess(
+            snapshotOf(1), frameTimestampMs = 1L, latencyMs = 250L, receivedAtMs = 2L,
+            frame = LatestServerVisionResult.Frame(byteArrayOf(1), capturedAtMs = 1L, geometry = null),
+        )
+        holder.clear()
+        assertNull(holder.entryFrame())
+        holder.recordSuccess(
+            snapshotOf(1), frameTimestampMs = 2L, latencyMs = 250L, receivedAtMs = 3L,
+            frame = LatestServerVisionResult.Frame(byteArrayOf(2), capturedAtMs = 2L, geometry = null),
+        )
+        holder.reset()
+        assertNull(holder.entryFrame())
+    }
+
     @Test fun clearAndResetDropTheRetainedFrame() {
         val holder = LatestServerVisionResult()
         holder.recordFrame(byteArrayOf(1), capturedAtMs = 1L, geometry = null)

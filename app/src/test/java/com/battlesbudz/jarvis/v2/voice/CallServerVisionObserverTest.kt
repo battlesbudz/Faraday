@@ -34,15 +34,21 @@ class CallServerVisionObserverTest {
         val calls = mutableListOf<Pair<Int, String>>()
         var gate: CompletableDeferred<Unit>? = null
         var failure: Exception? = null
+        private val returns = java.util.concurrent.atomic.AtomicInteger(0)
 
         val fn: suspend (ByteArray, String) -> NativeVisionSnapshot = { bytes, token ->
             synchronized(calls) { calls += bytes.size to token }
-            gate?.await()
-            failure?.let { throw it }
-            snapshot
+            try {
+                gate?.await()
+                failure?.let { throw it }
+                snapshot
+            } finally {
+                returns.incrementAndGet()
+            }
         }
 
         fun callCount(): Int = synchronized(calls) { calls.size }
+        fun returnCount(): Int = returns.get()
     }
 
     private fun awaitCondition(description: String, condition: () -> Boolean) {
@@ -207,6 +213,114 @@ class CallServerVisionObserverTest {
         assertEquals(640, frame.geometry?.width)
         observer.onCaptureEnded()
         assertNull(holder.latestFrame())
+        scope.cancel()
+    }
+
+    @Test fun successFromAnEndedCaptureIsDiscarded() {
+        val holder = LatestServerVisionResult()
+        val detect = FakeDetect(snapshotOf(2))
+        val gate = CompletableDeferred<Unit>()
+        detect.gate = gate
+        val scope = testScope()
+        val observer = observer(holder, detect, VisionServerSettings.Config(enabled = true, token = "tok"), scope)
+        observer.onCaptureStarted()
+        observer.onFrame(byteArrayOf(1), 100L)
+        awaitCondition("detect started") { detect.callCount() == 1 }
+        // The capture ends and a new one begins while the detect is
+        // still in flight; its result belongs to the dead capture.
+        observer.onCaptureEnded()
+        observer.onCaptureStarted()
+        gate.complete(Unit)
+        awaitCondition("stale detect returned") { detect.returnCount() == 1 }
+        Thread.sleep(300)
+        assertNull(holder.latest())
+        assertNull(holder.entryFrame())
+        assertEquals(0L, holder.counters().detectsSucceeded)
+        assertTrue(holder.trackedSnapshot().objects.isEmpty())
+        scope.cancel()
+    }
+
+    @Test fun failureFromAnEndedCaptureIsDiscarded() {
+        val holder = LatestServerVisionResult()
+        val detect = FakeDetect(snapshotOf(1))
+        val gate = CompletableDeferred<Unit>()
+        detect.gate = gate
+        val scope = testScope()
+        val observer = observer(holder, detect, VisionServerSettings.Config(enabled = true, token = "tok"), scope)
+        observer.onFrame(byteArrayOf(1), 100L)
+        awaitCondition("detect started") { detect.callCount() == 1 }
+        observer.onCaptureEnded()
+        detect.failure = RuntimeException("server down")
+        gate.complete(Unit)
+        awaitCondition("stale detect returned") { detect.returnCount() == 1 }
+        Thread.sleep(300)
+        assertEquals(0L, holder.counters().detectsFailed)
+        assertNull(holder.lastError())
+        scope.cancel()
+    }
+
+    @Test fun staleInFlightDetectNeitherBlocksNorClearsTheNewCapture() {
+        val holder = LatestServerVisionResult()
+        val detect = FakeDetect(snapshotOf(1))
+        val firstGate = CompletableDeferred<Unit>()
+        detect.gate = firstGate
+        val scope = testScope()
+        val observer = observer(holder, detect, VisionServerSettings.Config(enabled = true, token = "tok"), scope)
+        observer.onCaptureStarted()
+        observer.onFrame(byteArrayOf(1), 100L)
+        awaitCondition("first detect started") { detect.callCount() == 1 }
+
+        // Restart the capture around the still-running request: the new
+        // capture's frame must be sent, not dropped behind the stale one.
+        observer.onCaptureEnded()
+        observer.onCaptureStarted()
+        detect.gate = null
+        observer.onFrame(byteArrayOf(2, 2), 200L)
+        awaitCondition("new capture's detect succeeds") { holder.counters().detectsSucceeded == 1L }
+        assertEquals(200L, holder.latest()!!.frameTimestampMs)
+        assertEquals(0L, holder.counters().framesDroppedInFlight)
+
+        // A third request goes in flight for the new capture; only then
+        // does the stale request complete. Its completion is discarded
+        // and must not release the third request's single-flight flag.
+        val thirdGate = CompletableDeferred<Unit>()
+        detect.gate = thirdGate
+        observer.onFrame(byteArrayOf(3, 3, 3), 300L)
+        awaitCondition("third detect started") { detect.callCount() == 3 }
+        firstGate.complete(Unit)
+        awaitCondition("stale detect returned") { detect.returnCount() == 2 }
+        Thread.sleep(300)
+        observer.onFrame(byteArrayOf(4), 400L)
+        assertEquals(3, detect.callCount())
+        assertEquals(1L, holder.counters().framesDroppedInFlight)
+        assertEquals(1L, holder.counters().detectsSucceeded)
+        assertEquals(200L, holder.latest()!!.frameTimestampMs)
+
+        thirdGate.complete(Unit)
+        awaitCondition("third detect succeeds") { holder.counters().detectsSucceeded == 2L }
+        assertEquals(300L, holder.latest()!!.frameTimestampMs)
+        scope.cancel()
+    }
+
+    @Test fun successPairsTheDetectFrameWithTheEntry() {
+        val holder = LatestServerVisionResult()
+        val detect = FakeDetect(snapshotOf(1))
+        val scope = testScope()
+        val observer = CallServerVisionObserver(
+            holder = holder,
+            settings = { VisionServerSettings.Config(enabled = true, token = "tok") },
+            detect = detect.fn,
+            scope = scope,
+            frameGeometry = { FrameGeometry(640, 480, 0) },
+        )
+        val sent = byteArrayOf(1, 2, 3)
+        observer.onFrame(sent, 1_000L)
+        awaitCondition("detect succeeds") { holder.counters().detectsSucceeded == 1L }
+        val paired = holder.entryFrame()
+        assertNotNull(paired)
+        assertTrue(sent.contentEquals(paired!!.bytes))
+        assertEquals(1_000L, paired.capturedAtMs)
+        assertEquals(640, paired.geometry?.width)
         scope.cancel()
     }
 

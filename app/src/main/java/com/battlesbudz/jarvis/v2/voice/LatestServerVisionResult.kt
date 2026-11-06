@@ -48,7 +48,10 @@ class LatestServerVisionResult {
      * space — the same space the server reports detection boxes in.
      * Lifecycle matches [Entry]: dropped by [clear] and [reset], so a
      * frame from a finished call (or a toggled-off camera) can never be
-     * read as current.
+     * read as current. A frame is retained in two places: as the newest
+     * frame ([latestFrame], replaced by every dispatched frame) and as
+     * the frame the live entry's detect ran on ([entryFrame], replaced
+     * only by the next success).
      */
     class Frame(
         val bytes: ByteArray,
@@ -70,6 +73,7 @@ class LatestServerVisionResult {
     private val lock = Any()
     private val tracker = ServerVisionTracker()
     private var entry: Entry? = null
+    private var entryFrame: Frame? = null
     private var latestFrame: Frame? = null
     private var lastError: String? = null
     private var framesReceived = 0L
@@ -100,10 +104,12 @@ class LatestServerVisionResult {
 
     /**
      * Snapshot synthesis: retain [bytes] as the newest camera frame,
-     * replacing any older one wholesale — only the newest frame can ever
-     * be attached to a turn, so nothing accumulates. Recorded for every
-     * dispatched frame, independent of the vision-server gating: the
-     * frame serves Gemma's snapshot, not the server detect.
+     * replacing any older one wholesale, so nothing accumulates.
+     * Recorded for every dispatched frame, independent of the
+     * vision-server gating. This newest-frame retention is the
+     * diagnostics witness; the frame a turn actually attaches is the
+     * one paired with the live entry by [recordSuccess] — the same
+     * dispatched bytes, kept with the result they produced.
      */
     fun recordFrame(bytes: ByteArray, capturedAtMs: Long, geometry: FrameGeometry?) {
         synchronized(lock) { latestFrame = Frame(bytes, capturedAtMs, geometry) }
@@ -112,6 +118,17 @@ class LatestServerVisionResult {
 
     /** The newest retained camera frame, or null when none (or cleared). */
     fun latestFrame(): Frame? = synchronized(lock) { latestFrame }
+
+    /**
+     * The camera frame the live [entry]'s detect actually ran on,
+     * retained with the entry by [recordSuccess]. Snapshot turns pair
+     * the entry's boxes with THIS frame, never with [latestFrame]: a
+     * newer frame may already have replaced the newest retention, and
+     * the boxes do not describe it. Lifecycle matches the entry:
+     * replaced by every success, dropped by [clear] and [reset]; a
+     * failure never moves it, because a failure never moves the entry.
+     */
+    fun entryFrame(): Frame? = synchronized(lock) { entryFrame }
 
     fun recordSent() {
         synchronized(lock) { framesSent++ }
@@ -123,10 +140,24 @@ class LatestServerVisionResult {
         notifyChanged()
     }
 
-    /** A detect came back: the new snapshot replaces the old one wholesale. */
-    fun recordSuccess(snapshot: NativeVisionSnapshot, frameTimestampMs: Long, latencyMs: Long, receivedAtMs: Long) {
+    /**
+     * A detect came back: the new snapshot replaces the old one
+     * wholesale. [frame] is the exact camera frame the detect ran on;
+     * it is retained alongside the entry (see [entryFrame]) so a later
+     * snapshot turn attaches the image the entry's boxes describe, even
+     * after newer frames have been retained. Callers that have no frame
+     * to pair (tests of the counters alone) may omit it.
+     */
+    fun recordSuccess(
+        snapshot: NativeVisionSnapshot,
+        frameTimestampMs: Long,
+        latencyMs: Long,
+        receivedAtMs: Long,
+        frame: Frame? = null,
+    ) {
         synchronized(lock) {
             entry = Entry(snapshot, frameTimestampMs, receivedAtMs)
+            entryFrame = frame
             detectsSucceeded++
             lastLatencyMs = latencyMs
             lastDetectionCount = snapshot.detections.size
@@ -183,6 +214,7 @@ class LatestServerVisionResult {
     fun clear() {
         synchronized(lock) {
             entry = null
+            entryFrame = null
             latestFrame = null
             lastError = null
         }
@@ -193,6 +225,7 @@ class LatestServerVisionResult {
     fun reset() {
         synchronized(lock) {
             entry = null
+            entryFrame = null
             latestFrame = null
             lastError = null
             framesReceived = 0L

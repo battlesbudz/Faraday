@@ -36,6 +36,24 @@ class CallVisualContextTest {
         return holder
     }
 
+    /**
+     * Like [holderFeeding], but every success also retains its input
+     * frame with the result — the pairing production makes through the
+     * observer — so snapshot turns have the detect's own frame (with
+     * [pairedBytes] as its JPEG) to attach.
+     */
+    private fun holderFeedingPaired(pairedBytes: ByteArray, vararg results: Pair<Long, List<Detection>>): LatestServerVisionResult {
+        val holder = LatestServerVisionResult()
+        for ((frameTimestampMs, detections) in results) {
+            holder.recordSuccess(
+                snapshotOf(*detections.toTypedArray()),
+                frameTimestampMs = frameTimestampMs, latencyMs = 250L, receivedAtMs = frameTimestampMs + 250L,
+                frame = LatestServerVisionResult.Frame(pairedBytes, frameTimestampMs, FrameGeometry(640, 480, 0)),
+            )
+        }
+        return holder
+    }
+
     @Test fun noHolderIsInactive() {
         val decision = CallVisualContext.decide(null, nowMs = 5_000L)
         assertEquals(CallVisualContext.INACTIVE, decision)
@@ -146,7 +164,8 @@ class CallVisualContextTest {
     }
 
     @Test fun snapshotTurnListsEveryWindowTrackIncludingOneFrameTracks() = withVideoOn {
-        val holder = holderFeeding(
+        val holder = holderFeedingPaired(
+            frameBytes,
             1_000L to listOf(
                 detection("person", 0f, 0f, 100f, 100f),
                 detection("toilet", 200f, 200f, 400f, 400f),
@@ -154,12 +173,15 @@ class CallVisualContextTest {
             2_700L to listOf(detection("person", 10f, 0f, 110f, 100f)),
             4_400L to emptyList<Detection>(),
         )
-        holder.recordFrame(frameBytes, capturedAtMs = 6_500L, geometry = FrameGeometry(640, 480, 0))
+        // A newer frame arrives after the last detect and is retained as
+        // the newest frame, but the snapshot must attach the 4_400 ms
+        // detect's own frame — the boxes describe that one.
+        holder.recordFrame(byteArrayOf(8, 8, 8, 8), capturedAtMs = 6_500L, geometry = FrameGeometry(640, 480, 0))
         val decision = CallVisualContext.decide(holder, nowMs = 7_000L, imageCapable = true)
         val snapshot = decision.snapshot
         assertNotNull(snapshot)
         assertTrue(frameBytes.contentEquals(snapshot!!.bytes))
-        assertEquals(500L, snapshot.frameAgeMs)
+        assertEquals(2_600L, snapshot.frameAgeMs)
         assertEquals(2, snapshot.tracksIncluded)
         assertEquals(0, snapshot.tracksOmitted)
         val block = decision.block!!
@@ -171,7 +193,7 @@ class CallVisualContextTest {
         assertTrue(block.contains("#2 toilet box=(200,200)-(400,400) last seen 6 seconds ago"))
         val line = decision.snapshotLine!!
         assertTrue(line.contains("Call snapshot: attached=true"))
-        assertTrue(line.contains("frameAgeMs=500"))
+        assertTrue(line.contains("frameAgeMs=2600"))
         assertTrue(line.contains("frameBytes=5"))
         assertTrue(line.contains("tracks=2"))
         assertTrue(line.contains("windowMs=15000"))
@@ -181,8 +203,7 @@ class CallVisualContextTest {
     }
 
     @Test fun snapshotBlockStatesTheSharedPixelSpace() = withVideoOn {
-        val holder = holderFeeding(1_000L to listOf(detection("car", 1f, 2f, 30f, 40f)))
-        holder.recordFrame(frameBytes, capturedAtMs = 1_500L, geometry = FrameGeometry(640, 480, 0))
+        val holder = holderFeedingPaired(frameBytes, 1_000L to listOf(detection("car", 1f, 2f, 30f, 40f)))
         val decision = CallVisualContext.decide(holder, nowMs = 2_000L, imageCapable = true)
         val block = decision.block!!
         assertTrue(block.contains("the attached snapshot's own 640x480 pixel frame"))
@@ -192,12 +213,12 @@ class CallVisualContextTest {
     }
 
     @Test fun snapshotWindowExcludesTracksOlderThan15Seconds() = withVideoOn {
-        val holder = holderFeeding(
+        val holder = holderFeedingPaired(
+            frameBytes,
             1_000L to listOf(detection("ancient")),
             6_000L to listOf(detection("boundary")),
             20_000L to listOf(detection("fresh")),
         )
-        holder.recordFrame(frameBytes, capturedAtMs = 20_500L, geometry = FrameGeometry(640, 480, 0))
         val decision = CallVisualContext.decide(holder, nowMs = 21_000L, imageCapable = true)
         assertNotNull(decision.snapshot)
         val block = decision.block!!
@@ -216,10 +237,10 @@ class CallVisualContextTest {
             holder.recordSuccess(
                 snapshotOf(detection("tracked-object-number-$index-with-a-long-label")),
                 frameTimestampMs = atMs, latencyMs = 250L, receivedAtMs = atMs + 250L,
+                frame = LatestServerVisionResult.Frame(frameBytes, atMs, FrameGeometry(640, 480, 0)),
             )
             atMs += 200L
         }
-        holder.recordFrame(frameBytes, capturedAtMs = atMs, geometry = FrameGeometry(640, 480, 0))
         val decision = CallVisualContext.decide(holder, nowMs = atMs + 500L, imageCapable = true)
         assertNotNull(decision.snapshot)
         val block = decision.block!!
@@ -233,19 +254,24 @@ class CallVisualContextTest {
         assertTrue(decision.snapshotLine!!.contains("omitted=$omitted"))
     }
 
-    @Test fun staleFrameFallsBackToTheSummaryBlock() = withVideoOn {
-        val holder = holderFeeding(9_000L to listOf(detection("person")))
-        holder.recordFrame(frameBytes, capturedAtMs = 0L, geometry = FrameGeometry(640, 480, 0))
+    @Test fun newerFrameNeverReplacesTheDetectFrameInTheSnapshot() = withVideoOn {
+        // The finding behind the pairing: a frame captured after the
+        // last detect is retained as the newest frame, but the tracked
+        // boxes describe the detect's frame — attaching the newer JPEG
+        // would present those boxes as positions in an image they were
+        // never computed from.
+        val holder = holderFeedingPaired(frameBytes, 9_000L to listOf(detection("person")))
+        holder.recordFrame(byteArrayOf(7, 7, 7), capturedAtMs = 9_800L, geometry = FrameGeometry(640, 480, 0))
         val decision = CallVisualContext.decide(holder, nowMs = 10_001L, imageCapable = true)
-        assertNull(decision.snapshot)
-        assertNotNull(decision.block)
-        assertFalse(decision.block!!.contains("Tracked objects (last 15 seconds)"))
-        assertTrue(decision.snapshotLine!!.contains("attached=false reason=stale_frame"))
+        assertNotNull(decision.snapshot)
+        assertTrue(frameBytes.contentEquals(decision.snapshot!!.bytes))
+        assertEquals(1_001L, decision.snapshot!!.frameAgeMs)
+        assertTrue(decision.snapshotLine!!.contains("attached=true"))
+        assertTrue(decision.snapshotLine!!.contains("frameAgeMs=1001"))
     }
 
     @Test fun videoOffFallsBackToTheSummaryBlock() {
-        val holder = holderFeeding(1_000L to listOf(detection("person")))
-        holder.recordFrame(frameBytes, capturedAtMs = 1_500L, geometry = FrameGeometry(640, 480, 0))
+        val holder = holderFeedingPaired(frameBytes, 1_000L to listOf(detection("person")))
         val decision = CallVisualContext.decide(holder, nowMs = 2_000L, imageCapable = true)
         assertNull(decision.snapshot)
         assertNotNull(decision.block)
@@ -253,8 +279,7 @@ class CallVisualContextTest {
     }
 
     @Test fun engineWithoutVisionFallsBackToTheSummaryBlock() = withVideoOn {
-        val holder = holderFeeding(1_000L to listOf(detection("person")))
-        holder.recordFrame(frameBytes, capturedAtMs = 1_500L, geometry = FrameGeometry(640, 480, 0))
+        val holder = holderFeedingPaired(frameBytes, 1_000L to listOf(detection("person")))
         val decision = CallVisualContext.decide(holder, nowMs = 2_000L, imageCapable = false)
         assertNull(decision.snapshot)
         assertNotNull(decision.block)
