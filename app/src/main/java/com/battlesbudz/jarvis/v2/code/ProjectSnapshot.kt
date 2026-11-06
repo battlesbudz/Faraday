@@ -71,11 +71,15 @@ object ProjectSnapshotBuilder {
         }
 
         // 4. Other files, in file-map order, until the budget runs out.
-        // The brief's body is step 1, so it is not carried twice.
+        // The brief's body is step 1, so it is not carried twice. The
+        // round log's body is step 5, clipped to the last few entries;
+        // carrying it whole here would defeat the clipping and leak the
+        // older rounds the snapshot deliberately leaves behind.
         val notShown = mutableListOf<ProjectFileEntry>()
         for (entry in entries) {
             if (entry.path == CodeProjectStore.INDEX_FILE_NAME) continue
             if (entry.path == CodeProjectStore.BRIEF_FILE_NAME) continue
+            if (entry.path == CodeProjectStore.ROUND_LOG_FILE_NAME) continue
             val content = readText(File(dir, entry.path))
             val header = "## ${entry.path}\n\n"
             val needed = minOf(content.length, budget.fileCapChars)
