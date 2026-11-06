@@ -150,6 +150,13 @@
 -keep class androidx.compose.material3.SurfaceKt { *; }
 -keep class androidx.compose.material3.TextKt { *; }
 -keep class androidx.compose.foundation.layout.SizeKt { *; }
+# test46's fixture composes a bare Column in the test DEX; its omitted
+# verticalArrangement defaults to Arrangement.Top, evaluated across the
+# independently shrunk boundary as Arrangement.INSTANCE.getTop(). R8
+# inlines that singleton away in the app build (the header landing's R8
+# usage report lists INSTANCE and every arrangement getter as removed),
+# which killed the journey process with NoSuchFieldError. Retain the ABI.
+-keep class androidx.compose.foundation.layout.Arrangement { *; }
 # Build 916's layout test calls Dp.constructor-impl through its separate DEX.
 # Preserve this inline value-class ABI used by the 320 dp width fixture.
 -keep class androidx.compose.ui.unit.Dp { *; }
