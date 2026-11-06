@@ -16,6 +16,10 @@ import kotlinx.coroutines.sync.withLock
  * inside its window is dropped, not forced — sync is idempotent, so the next
  * trigger (a later approval change, the next app start) catches up, and the
  * diagnostics line keeps reporting the honest pending count in the meantime.
+ * A request that arrives while a pass is already queued or running is not
+ * discarded either: it raises a rerun flag, and the current pass is followed by
+ * one more pass, so a change that lands after the sync body has read the ledger
+ * is still picked up without waiting for an unrelated trigger.
  * Sync failures are swallowed here on purpose: they surface as the diagnostics
  * state (pending counts, engine state), never as fabricated vectors and never
  * as a crash on a background path.
@@ -28,25 +32,38 @@ class MemoryEmbeddingSyncScheduler(
     private val sync: suspend () -> Unit,
 ) {
     private val queued = AtomicBoolean(false)
+    private val rerunRequested = AtomicBoolean(false)
     private val mutex = Mutex()
 
-    /** Queue a background sync; a no-op while one is already queued or running. */
+    /**
+     * Queue a background sync. While a pass is queued or running, further
+     * requests coalesce into the rerun flag instead of launching again: the
+     * active coroutine drains the flag, running one follow-up pass per
+     * mid-pass request burst, so a request is never silently lost.
+     */
     fun request() {
+        rerunRequested.set(true)
         if (!queued.compareAndSet(false, true)) return
         scope.launch {
             try {
-                var polls = 0
-                while (!idleProbe() && polls < maxPolls) {
-                    delay(pollIntervalMs)
-                    polls++
+                while (rerunRequested.getAndSet(false)) {
+                    var polls = 0
+                    while (!idleProbe() && polls < maxPolls) {
+                        delay(pollIntervalMs)
+                        polls++
+                    }
+                    if (idleProbe()) runSync()
                 }
-                if (idleProbe()) runSync()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (ignored: Exception) {
                 // Surfaced through diagnostics, never thrown into the host process.
             } finally {
                 queued.set(false)
+                // A request that arrived while this coroutine was finishing
+                // saw queued still set and could only raise the rerun flag;
+                // re-dispatch so that request gets its pass after all.
+                if (rerunRequested.get()) request()
             }
         }
     }
