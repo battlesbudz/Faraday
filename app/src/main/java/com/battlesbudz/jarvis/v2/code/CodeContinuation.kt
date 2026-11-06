@@ -19,6 +19,14 @@ object CodeContinuation {
     /** Overlap de-dup window when stitching a continuation (section 4.2). */
     const val MAX_OVERLAP_CHARS: Int = 1_000
 
+    /**
+     * Smallest overlap the stitch will merge on. One shared character
+     * is as likely a mid-word split (Hel|lo) as a re-emission, and
+     * merging on it silently drops a real character from the file, so
+     * the de-dup only trusts overlaps of at least this many chars.
+     */
+    const val MIN_OVERLAP_CHARS: Int = 2
+
     /** Mochu's length floor for the no-closing-tag cut-off signal. */
     const val MIN_CUT_OFF_CHARS: Int = 5_000
 
@@ -87,10 +95,14 @@ object CodeContinuation {
         return continuation.substring(match.range.last + 1)
     }
 
-    /** The largest k ≤ [MAX_OVERLAP_CHARS] with [existing] ending in [continuation]'s first k chars. */
+    /**
+     * The largest k in [MIN_OVERLAP_CHARS]..[MAX_OVERLAP_CHARS] with
+     * [existing] ending in [continuation]'s first k chars, or 0 when no
+     * overlap that long exists.
+     */
     fun overlapLength(existing: String, continuation: String): Int {
         val max = minOf(MAX_OVERLAP_CHARS, existing.length, continuation.length)
-        for (k in max downTo 1) {
+        for (k in max downTo MIN_OVERLAP_CHARS) {
             if (existing.endsWith(continuation.substring(0, k))) return k
         }
         return 0

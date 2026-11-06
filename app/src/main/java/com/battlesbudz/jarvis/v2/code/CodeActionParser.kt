@@ -16,12 +16,17 @@ package com.battlesbudz.jarvis.v2.code
  *    `reply` riding alongside them is dropped — the actions speak for
  *    themselves. A round of replies only is a reply round.
  * 3. The recovery chain, only when the strict parse found no action at
- *    all: a bare `<content>` block containing HTML, then a raw HTML
- *    document anywhere in the text, then a Markdown html fence. Any of
+ *    all: a bare `<content>` block containing HTML, then a Markdown
+ *    html fence, then a raw HTML document anywhere in the text. Any of
  *    these becomes a `write_file` for `index.html`. This chain is the
  *    Mochu finding that matters most for a small model: its common
  *    sloppiness shapes each have a dedicated recovery, so malformation
- *    is cheap instead of fatal.
+ *    is cheap instead of fatal. The fence is checked before the raw
+ *    document scan even though the scope lists it last: a fence
+ *    wrapping a complete document is the more specific shape, and
+ *    checked after the raw scan it could never fire for exactly the
+ *    input it names — the scan would claim every fenced document
+ *    first. A fence without HTML in it falls through to the scan.
  *
  * Envelope rule: file bodies are carried byte-exact, except that one
  * line break directly inside a `<content>`, `<find>` or `<replace>` tag
@@ -115,6 +120,12 @@ object CodeActionParser {
                 CodeProjectStore.INDEX_FILE_NAME, envelopeBody(bare)),
                 CodeParseSource.RECOVERED_CONTENT_BLOCK, thinking)
         }
+        val fenced = HTML_FENCE.find(body)?.groupValues?.get(1)
+        if (fenced != null && looksLikeHtml(fenced)) {
+            return recovered(CodeAction.WriteFile(
+                CodeProjectStore.INDEX_FILE_NAME, envelopeBody(fenced)),
+                CodeParseSource.RECOVERED_MARKDOWN_FENCE, thinking)
+        }
         val docStart = htmlDocumentStart(body)
         if (docStart >= 0) {
             val docEnd = body.lastIndexOf("</html>", ignoreCase = true)
@@ -124,12 +135,6 @@ object CodeActionParser {
                     body.substring(docStart, docEnd + "</html>".length)),
                     CodeParseSource.RECOVERED_RAW_HTML, thinking)
             }
-        }
-        val fenced = HTML_FENCE.find(body)?.groupValues?.get(1)
-        if (fenced != null && looksLikeHtml(fenced)) {
-            return recovered(CodeAction.WriteFile(
-                CodeProjectStore.INDEX_FILE_NAME, envelopeBody(fenced)),
-                CodeParseSource.RECOVERED_MARKDOWN_FENCE, thinking)
         }
         val reason = when {
             malformedNote != null -> "Malformed action output: $malformedNote."
