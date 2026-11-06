@@ -7,15 +7,19 @@ internal object SmartTurnEndpointPolicy {
     const val COMPLETE_SILENCE_MS = 350L
     const val CONTINUE_SILENCE_MS = 3500L
 
-    // Reference (Pipecat) turn-stop constants. The analyzer is the stop strategy;
-    // the only ending behind it is the user_turn_stop_timeout backstop, which
-    // Pipecat documents as "a backstop, not part of normal timing". With no
-    // analyzer available, Pipecat's plain stop strategy is a fixed silence
-    // window after the VAD stop (SpeechTimeoutUserTurnStopStrategy, 0.6s default).
-    const val TURN_STOP_TIMEOUT_MS = 5_000L
-    const val SPEECH_TIMEOUT_MS = 600L
-    const val CUE_TURN_STOP_TIMEOUT = "turn_stop_timeout"
-    const val CUE_SPEECH_TIMEOUT = "speech_timeout"
+    // Deadline-first turn-stop constants (Battles's design, approved
+    // 2026-11-05; replaces the REFERENCE arbitration). Silence creates a
+    // deadline, not a request for the analyzer's permission to finish: the
+    // turn submits DEADLINE_MS after the last speech unless the analyzer has
+    // already produced a high-confidence unfinished verdict (the veto), which
+    // buys exactly one VETO_EXTENSION_MS window. No verdict, a late verdict,
+    // an uncertain verdict and a COMPLETE verdict all resolve to submission
+    // at the deadline.
+    const val DEADLINE_MS = 300L
+    const val VETO_EXTENSION_MS = 300L
+    const val VETO_MAX_COMPLETION_PROBABILITY = 0.02f
+    const val CUE_DEADLINE = "deadline"
+    const val CUE_VETO_HOLD = "smart_turn_veto_hold"
 
     /** Pinned Pipecat v3.2 semantics; this threshold is not Jarvis calibration. */
     fun modelState(probability: Float): CaptureEndpointState {
@@ -62,26 +66,59 @@ internal object SmartTurnEndpointPolicy {
     }
 
     /**
-     * Reference turn-stop arbitration: a COMPLETE verdict under input sanity is
-     * the ONLY verdict-based endpoint. [eligible] is
-     * [NativePauseEndpointPolicy.smartTurnSanity] on every route — real speech
-     * existed and the model snapshot covers the speech span it judged. Later
-     * retained bytes are the pause itself and need no byte-exact coverage: the
-     * capture owner's finalization drain, not this policy, protects unclassified
-     * audio behind the seal. Any other state (CONTINUE, PENDING, FALLBACK, or a
-     * sanity-blocked COMPLETE) returns null: the turn stays open and only the
-     * caller's dead-man backstop may end it.
+     * Input sanity for a verdict under deadline-first arbitration. [eligible]
+     * is [NativePauseEndpointPolicy.smartTurnSanity] on every route — real
+     * speech existed and the model snapshot covers the speech span it judged.
+     * Later retained bytes are the pause itself and need no byte-exact
+     * coverage: the capture owner's finalization drain, not this policy,
+     * protects unclassified audio behind the seal.
      */
-    fun referenceDecision(decision: CaptureEndpointDecision,
-                          eligible: NativePauseEndpointPolicy.Eligibility,
-                          collectedBytes: Long, silenceMs: Long,
-                          lastSpeechSample: Long): AdaptiveTurnEnd.Decision? {
-        if (decision.state != CaptureEndpointState.COMPLETE || !eligible.allowed) return null
-        val modelThrough = decision.modelThroughSample ?: return null
-        if (modelThrough * 2 > collectedBytes) return null
-        if (modelThrough < lastSpeechSample) return null
-        if (silenceMs < COMPLETE_SILENCE_MS) return null
-        return AdaptiveTurnEnd.Decision(COMPLETE_SILENCE_MS, "smart_turn_complete")
+    fun saneVerdict(decision: CaptureEndpointDecision,
+                    eligible: NativePauseEndpointPolicy.Eligibility,
+                    collectedBytes: Long, lastSpeechSample: Long): Boolean {
+        if (!eligible.allowed) return false
+        val modelThrough = decision.modelThroughSample ?: return false
+        if (modelThrough * 2 > collectedBytes) return false
+        return modelThrough >= lastSpeechSample
+    }
+
+    /**
+     * The veto: the analyzer may hold a turn past the deadline ONLY with a
+     * CONTINUE verdict whose completion probability is at most
+     * [VETO_MAX_COMPLETION_PROBABILITY] (at least 98% confident the sentence
+     * is unfinished) under input sanity. A CONTINUE lean (e.g. p=0.34), a
+     * verdict without a probability, or a sanity-failed verdict never holds.
+     * The caller additionally requires the verdict to be in hand by the
+     * deadline and latches the hold: exactly one extension per pause.
+     */
+    fun vetoQualifies(decision: CaptureEndpointDecision,
+                      eligible: NativePauseEndpointPolicy.Eligibility,
+                      collectedBytes: Long, lastSpeechSample: Long): Boolean {
+        if (decision.state != CaptureEndpointState.CONTINUE) return false
+        val probability = decision.probability ?: return false
+        if (probability > VETO_MAX_COMPLETION_PROBABILITY) return false
+        return saneVerdict(decision, eligible, collectedBytes, lastSpeechSample)
+    }
+
+    /**
+     * Deadline-first arbitration. The default ending is submission at
+     * [DEADLINE_MS] after the last speech: no verdict, a pending or fallback
+     * state, an uncertain verdict and a sanity-failed verdict all land there.
+     * A sane COMPLETE keeps its cue (the caption-omission consumer keys on
+     * it) but still ends at the deadline, never earlier. While [vetoHoldActive]
+     * the one extension runs to DEADLINE_MS + VETO_EXTENSION_MS under the
+     * veto cue, whatever later verdicts say.
+     */
+    fun deadlineDecision(decision: CaptureEndpointDecision,
+                         eligible: NativePauseEndpointPolicy.Eligibility,
+                         collectedBytes: Long, lastSpeechSample: Long,
+                         vetoHoldActive: Boolean): AdaptiveTurnEnd.Decision {
+        if (vetoHoldActive) return AdaptiveTurnEnd.Decision(
+            DEADLINE_MS + VETO_EXTENSION_MS, CUE_VETO_HOLD)
+        if (decision.state == CaptureEndpointState.COMPLETE &&
+            saneVerdict(decision, eligible, collectedBytes, lastSpeechSample))
+            return AdaptiveTurnEnd.Decision(DEADLINE_MS, "smart_turn_complete")
+        return AdaptiveTurnEnd.Decision(DEADLINE_MS, CUE_DEADLINE)
     }
 
     /** A timestamp gap or unclassified suffix cannot spend CONTINUE's protection.

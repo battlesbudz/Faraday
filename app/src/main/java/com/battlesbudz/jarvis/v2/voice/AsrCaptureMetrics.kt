@@ -25,8 +25,10 @@ data class AsrCaptureMetrics(
     val endpointAuthority: String? = null,
     /** Silence evidence the accepted endpoint actually consumed, in ms of classified quiet. */
     val silenceWaitedMs: Long? = null,
-    /** Smart Turn state at the accepted endpoint ("COMPLETE"/"CONTINUE"/"PENDING"/"FALLBACK");
-     * null when no analyzer observed this capture. Diagnostics only. */
+    /** The verdict the analyzer produced for the accepted pause
+     * ("COMPLETE"/"CONTINUE"), or the raw state at the endpoint
+     * ("PENDING"/"FALLBACK") when it produced none; null when no analyzer
+     * observed this capture. Diagnostics only. */
     val smartTurnState: String? = null,
     /** Model probability behind [smartTurnState] when the analyzer reported one. */
     val smartTurnProbability: Float? = null,

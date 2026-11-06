@@ -112,6 +112,9 @@ data class EndpointingSummary(
                 metrics.endpointReason == "utterance_capacity" -> "max-turn cap — utterance capacity"
                 metrics.endpointReason == "initial_silence" -> "initial silence timeout — no speech heard"
                 cue == "smart_turn_complete" -> "smart-turn verdict"
+                cue == "deadline" -> "deadline — submitted at the 300 ms decision deadline"
+                cue == "smart_turn_veto_hold" ->
+                    "smart-turn veto hold — a high-confidence unfinished verdict extended the deadline once, then it expired"
                 cue == "turn_stop_timeout" -> "turn_stop_timeout — the 5 s dead-man backstop"
                 cue == "speech_timeout" -> "speech timeout — no analyzer verdict"
                 cue == "smart_turn_continue" -> "smart-turn CONTINUE protection elapsed"
@@ -134,6 +137,8 @@ data class EndpointingSummary(
         }
 
         private fun plainDeferral(reason: String): String = when {
+            reason == "smart_turn_veto_hold" ->
+                "smart turn held the turn once (high-confidence unfinished verdict)"
             reason == "resumed_speech" -> "you resumed speaking mid-decision"
             reason == "audio_arrived_during_finalization" -> "audio arrived during finalization"
             reason == "audio_arrived_during_recovery" -> "audio arrived during ASR recovery"

@@ -334,6 +334,10 @@ internal class VoiceTurnPreparation(
                 call.controller.currentCallId() == expectedCallId },
             observeCapture = correction == null,
             endpointEnabled = true,
+            // Deadline-first captures: Smart Turn judging starts at the first
+            // quiet frame of the pause, alongside the 300ms decision deadline,
+            // so a veto-grade verdict can be in hand before the deadline.
+            endpointPauseAdmissionMs = 0L,
             admissionBlocker = {
                 when {
                     lifetime.nativeSpeculation?.consumedEncoder == true -> "gemma_speculation"

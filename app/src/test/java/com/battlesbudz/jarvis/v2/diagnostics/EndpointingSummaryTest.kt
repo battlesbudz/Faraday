@@ -195,6 +195,36 @@ class EndpointingSummaryTest {
         assertTrue(unknown.endsWith("  reply interrupted: not recorded"))
     }
 
+    @Test fun deadlineTurnRendersDeadlineMechanismAndContinueVerdictWithProbability() {
+        // The diagnostics correction: a CONTINUE verdict is reported as
+        // CONTINUE with its probability, never as "no verdict".
+        val block = EndpointingSummary.from(metrics(
+            endpointCue = "deadline", endpointAuthority = "deadline",
+            targetSilenceMs = 300, silenceWaitedMs = 300,
+            smartTurnState = "CONTINUE", smartTurnProbability = 0.34f),
+            endpointToFirstTextMs = 480, speechEndToFirstAudioMs = 1_250,
+            nativeAudioTurn = false).render()
+        assertTrue(block.contains("turn ended by: deadline — submitted at the 300 ms decision deadline"))
+        assertTrue(block.contains("smart-turn verdict: CONTINUE, probability 0.34"))
+        assertFalse(block.contains("no verdict"))
+        assertTrue(block.contains("silence waited: 300 ms (target was 300 ms)"))
+    }
+
+    @Test fun vetoHoldTurnRendersHoldMechanismAndDeferral() {
+        val block = EndpointingSummary.from(metrics(
+            endpointCue = "smart_turn_veto_hold", endpointAuthority = "smart_turn",
+            targetSilenceMs = 600, silenceWaitedMs = 600,
+            smartTurnState = "CONTINUE", smartTurnProbability = 0.01f,
+            endpointDeferrals = listOf("smart_turn_veto_hold")),
+            endpointToFirstTextMs = 480, speechEndToFirstAudioMs = 1_250,
+            nativeAudioTurn = false).render()
+        assertTrue(block.contains("turn ended by: smart-turn veto hold — a high-confidence unfinished verdict " +
+            "extended the deadline once, then it expired (cue: smart_turn_veto_hold)"))
+        assertTrue(block.contains("smart-turn verdict: CONTINUE, probability 0.01"))
+        assertTrue(block.contains("endpoint deferred: 1 time (smart turn held the turn once " +
+            "(high-confidence unfinished verdict))"))
+    }
+
     @Test fun blockAppearsInTextExportForARecordedCall() {
         val prefs = preferences()
         val recorder = DiagnosticRecorder(prefs, "test")

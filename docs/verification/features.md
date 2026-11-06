@@ -1,5 +1,40 @@
 # Feature and acceptance map
 
+## Deadline-first endpointing — 5 November 2026
+
+The REFERENCE turn-stop arbitration (PR #18) made Smart Turn a
+gatekeeper: only a COMPLETE verdict could end a conversation turn, so a
+CONTINUE verdict (build 1697 specimen: p=0.34), no verdict, or a pending
+verdict held the turn for the 5s turn-stop backstop. Deadline-first
+endpointing (Battles's design, approved 2026-11-05) replaces REFERENCE
+for every conversation capture (VoiceTurnCaptureFactory primary and
+follow-up captures, and the ReplyVoiceCapture barge-in shapes) with no
+carve-outs: the turn submits 300ms after the last speech by default.
+Smart Turn judging starts at the first quiet frame of the pause
+(`endpointPauseAdmissionMs = 0` for conversation captures) and runs
+alongside the deadline; it may hold the turn only when a CONTINUE
+verdict with completion probability at most 0.02 is in hand by the
+deadline, and that veto buys exactly one extra 300ms window
+(`smart_turn_veto_hold`). Resumed speech resets the clock and the
+latch. No verdict, a late verdict, an uncertain verdict and a COMPLETE
+verdict all resolve to submission at the deadline (cue `deadline`; a
+sane COMPLETE keeps the `smart_turn_complete` cue). With no analyzer
+the deadline itself decides. The Smart Turn model and inference are
+unchanged; the capture-loop recovery budget and the follow-up
+speech-evidence gate are untouched. Diagnostics: capture metrics now
+record the pause's actual verdict (state and probability) instead of
+the final frame's raw state, so a CONTINUE is exported as CONTINUE
+with its probability, never as "no verdict"; the endpointing summary
+renders the deadline and veto-hold endings. `SmartTurnAudioEndpointTest`
+pins the deadline on both routes and both reply shapes, the veto hold
+and its single extension, resumption resetting clock and latch, a late
+verdict not re-deciding a submitted turn, and the policy-level veto
+bar; `EndpointingSummaryTest` pins the new renderings. Device coverage
+owed: on the build carrying this, voice turns should end about 300ms
+after speech stops (about 600ms only when a veto hold fires), with the
+endpointing block showing cue `deadline` (or `smart_turn_veto_hold`)
+and the recorded verdict.
+
 ## No-vision honesty guard — 31 October 2026
 
 A voice call on build 1632 (a build with no vision input of any kind)

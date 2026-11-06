@@ -34,6 +34,12 @@ internal class SmartTurnCaptureObserver(
     private val admissionBlocker: () -> String?,
     private val clock: () -> Long = System::nanoTime,
     private val endpointEnabled: Boolean = false,
+    /** Endpoint mode only: how much classified silence must accumulate before
+     * the first inference of a pause is offered. Deadline-first conversation
+     * captures pass 0 so judging starts at the first quiet frame and a verdict
+     * can land inside the capture's 300ms decision deadline; the historical
+     * 350ms admission remains the default for every other consumer. */
+    private val endpointPauseAdmissionMs: Long = 350L,
 ) : CaptureEndpointObserver {
     override val controlsEndpoint get() = endpointEnabled
     private val evidence = SafeSmartTurnTelemetry(telemetry)
@@ -74,7 +80,7 @@ internal class SmartTurnCaptureObserver(
         evidence.configuration("smart_turn_mode", if (endpointEnabled) "native_endpoint_v1" else "shadow_only_v1")
         evidence.configuration("smart_turn_model_sha256", SmartTurnModelSpec.SHA256)
         evidence.configuration("smart_turn_budget", if (endpointEnabled)
-            "accepted_requests=8_per_turn,max_requests_per_pause=2,refresh_after_samples=8000,spacing_ms=500,pause_ms=350,deadline_ms=250,continue_classified_quiet_ms=3500,window_samples=128000,threads=1"
+            "accepted_requests=8_per_turn,max_requests_per_pause=2,refresh_after_samples=8000,spacing_ms=500,pause_ms=$endpointPauseAdmissionMs,deadline_ms=250,continue_classified_quiet_ms=3500,window_samples=128000,threads=1"
             else "attempts=3,spacing_ms=500,pause_ms=200,deadline_ms=250,window_samples=128000,threads=1")
         evidence.configuration("smart_turn_contention", "background_priority_requested;cancel_on_native_priority;overlap_may_remain_until_drain")
     }
@@ -136,7 +142,7 @@ internal class SmartTurnCaptureObserver(
         // A pending/failed refresh retains the earlier CONTINUE, never promotes UNKNOWN.
         if (endpointEnabled && (endpointVerdict == CaptureEndpointState.COMPLETE || pauseRequests >= 2 ||
             (endpointVerdict == CaptureEndpointState.CONTINUE && boundary - lastAcceptedBoundary < 8_000))) return
-        if (!frame.hasSpeech || frame.possibleSpeech || frame.silenceMs < (if (endpointEnabled) 350 else 200) ||
+        if (!frame.hasSpeech || frame.possibleSpeech || frame.silenceMs < (if (endpointEnabled) endpointPauseAdmissionMs else 200) ||
             size < 1600 || attempts >= (if (endpointEnabled) 8 else 3)) return
         val now = clock()
         if (lastAttemptAt?.let { now - it < 500_000_000L } == true) return
