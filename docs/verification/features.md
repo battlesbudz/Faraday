@@ -4892,3 +4892,44 @@ still owed is a relative-path sandbox write surviving a Reset: run a
 sandbox command that writes a file by a relative path, Reset the
 rootfs from settings, reinstall, and read the file back from
 /workspace.
+
+## Audio-access refusal detector hears the build-1706 phrasing — 6 November 2026
+
+Battles's build-1706 battery call (video branch, call dd1e17f1): on a
+tools-enabled voice call he asked for his battery, barged in mid-reply,
+and the follow-up turn — whose only audio was the barge — answered "As
+I am currently unable to hear the audio, I require you to provide it so
+that I may assist you with your request." The audio-access refusal
+guard ran on that turn, but the claim matched neither detector family:
+"hear" was not among the direct-denial verbs, and the demand that the
+user hand over the audio matched no access-denial pattern, so the
+false claim shipped. The video branch fixed the detector (commit
+e3669487, shipped in build 1727); main's `AudioAccessRefusal.kt` was
+byte-identical to the branch's pre-fix file, so main carried the same
+miss, and this entry ports the fix unchanged.
+
+The detector now treats a hearing denial as the same false claim
+("hear" joins respond to / answer / process / access in the
+direct-denial pattern), and a new provide-demand pattern
+(require / requires / need / needs + "you to" + provide / send /
+upload / share / give) counts as a refusal when the audio anchor
+gates it, exactly like the access-denial family. Honest difficulty
+stays untouched: "I could barely hear the audio, but you asked about
+your battery level" does not fire, and a provide-demand with no audio
+anchor is an ordinary request.
+
+`AudioAccessRefusalTest` grows from 10 to 16 tests, ported with the
+detector: the verbatim SPECIMEN_1706 detector cases, the
+hearing-difficulty near-miss negatives, generation-side and
+recovery-backstop replays of the specimen (regenerate once with the
+same audio; a repeated specimen falls back to the honest
+repeat-request), and `directAudioBatteryCallReachesExecution`, which
+pins that a completed direct-audio `read_battery` call reaches the
+executor — in its corrected form, where the single-step plan
+completes from the executor receipt with no follow-up generation.
+
+Not established by this entry: on-device behavior. The device proof
+rides the same battery retest as build 1727, run on this main build:
+a tools-on voice call that asks for the battery and lets her finish
+(the tool runs and the level is reported), then one barge-in
+mid-reply whose follow-up must not claim she cannot hear.
