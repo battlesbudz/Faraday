@@ -4933,3 +4933,81 @@ rides the same battery retest as build 1727, run on this main build:
 a tools-on voice call that asks for the battery and lets her finish
 (the tool runs and the level is reported), then one barge-in
 mid-reply whose follow-up must not claim she cannot hear.
+
+## Code-and-export Unit 1: the project memory core — 6 November 2026
+
+The code-and-export phase (scope of 5 November 2026) rests on one
+decision of Battles's: a project stays cohesive across rounds and past
+the model's context limit because the project files on disk are the
+memory, not the chat. Unit 1 builds that memory core — the `code`
+package — and nothing else: no model calls, no UI, no tool-catalog
+entries, no manifest changes. Units 2 to 6 consume the store's surface;
+none of them reaches around it into raw files.
+
+`CodeProjectStore` owns one folder per project under the sandbox
+workspace (`files/sandbox/workspace/projects/<projectId>/`, the same
+folder as the guest's `/workspace/projects/<id>`), with plain host-side
+file IO — the sandbox engine is never in the path, so the store works
+whether or not the rootfs is installed, and the workspace's lifecycle
+is inherited rather than reimplemented: a rootfs Reset leaves projects
+untouched, Clear workspace deletes them with everything else (decision
+D2). A project is its content files (`index.html` plus any split
+files), `BRIEF.md`, `project.json` machine state (id, name, created and
+updated stamps, round counter, and the deterministic export package
+name of scope section 5.2, derived at creation), the persisted round
+log, and `versions/` snapshots. Creation seeds a working starter page
+and a brief whose Goal is Battles's first request. Project ids are
+app-generated slugs; `resolvePath` resolves model-supplied paths
+inside the project folder with the scope's escape check (absolute
+paths, `..` segments anywhere, and canonical escapes are refused;
+backslashes count as separators).
+
+`ProjectSnapshot` rebuilds the model's whole view from disk in the
+scope's order under one budget: the brief in full, the file map,
+`index.html` capped at half the snapshot budget with head and tail kept
+and the middle dropped (the snapshot says so), the remaining files in
+file-map order capped per file until the budget runs out (the rest are
+listed by name and size only), and the last five round-log entries,
+clipped. `CodeBudget` derives every number from the chat layer's own
+limit — `ConversationPrompt.contextLimit`, whose fallback for the
+current Gemma bundles is `ConversationPolicy`'s compaction limit —
+never from Mochu's: the reply reserve is half the limit capped at
+12,000 chars, the snapshot budget is what remains after the reserve
+and the code system prompt, floored at 4,000 chars, and the round is
+refused only when even that floored snapshot plus the prompt cannot
+fit under the limit. The brief cap and per-file caps are quarters of
+the snapshot budget (the index cap a half), so the proportions hold on
+any model.
+
+`ProjectBrief` is the one owner of the `BRIEF.md` format: five fixed
+sections (Goal, Files, Decisions, Known problems, Next steps), a parse
+that fails when any section is missing, and cap validation that fails
+an oversized update with the reason instead of truncating it. The
+Files section is machine-owned — the store regenerates it from the
+real folder, overwriting whatever was written there. `ProjectFingerprint`
+is the content hash the session-reuse rule keys on: SHA-256 over the
+sorted (path, size, content hash) list of every project file, the
+brief included, `versions/` and `project.json` excluded. Version
+snapshots copy the project before an accepted round writes and prune
+to the last ten; rollback restores a version byte-for-byte and takes a
+snapshot of the state it replaces first, so a rollback can itself be
+rolled back.
+
+Pinned by tests: `CodeBudgetTest` (the constants against
+`ConversationPolicy` and the `contextLimit` formula, the floor, the
+refusal boundary), `CodeProjectStoreTest` (create/write/reopen/delete
+round-trips, slug uniqueness and fallback, name escaping through
+`project.json`, path-escape refusals, the round log, Files-section
+regeneration over a bogus entry), `ProjectBriefTest` (render/parse
+round-trips, missing-section refusal, cap validation),
+`ProjectSnapshotTest` (section order, budget adherence, the
+head-and-tail rule, listed-only files when the budget is spent, the
+five-entry clipped round log), `ProjectFingerprintTest` (stability,
+one-byte sensitivity, versions and `project.json` excluded), and
+`CodeVersionsTest` (snapshot contents, byte-exact rollback, pruning).
+
+Not established by this entry: everything above the store. There is no
+code mode to open yet — generation, the contract, the gate, the
+preview, the exporter, and the Code screen are Units 2 to 6, and the
+device proof for the whole phase is Unit 6's script on Battles's
+phone.
