@@ -4854,3 +4854,41 @@ the side labels (notably Conversations) stay legible on a
 cover-screen-width device — plus Battles's own pass on his phone:
 the six actions beside the wisp, no JARVIS title, no Copy metrics,
 and the transcript starting directly under the band.
+
+## Sandbox exec runs land in the persistent workspace — 6 November 2026
+
+Codex review on PR #25 (P2): a sandbox exec run asked for /workspace as
+its working directory, but `UserlandRootfs.buildCommand` resolved that
+directory against the rootfs tree alone, before the workspace bind was
+added to the engine command line. The bundled rootfs contains no
+/workspace — the workspace is a host directory of its own, bound over
+the mount point at runtime — so resolution failed and the run fell back
+to the identity home inside the rootfs. Commands using relative paths
+therefore wrote into the disposable rootfs instead of the persistent
+workspace, and those files were lost on Reset, breaking decision D2.
+
+`buildCommand` now creates the guest-side mount point of every bind
+(`ensureBindMountPoints`) before the working directory is resolved:
+each `host:guest` spec's guest path is normalized textually, proven to
+stay inside the rootfs by canonical path, and created when absent; an
+existing target is left untouched, and a spec that would escape the
+rootfs creates nothing. With the mount point present, /workspace
+validates, the run starts there, and the bind covers the empty mount
+point with the real workspace. Login sessions (no binds) are
+unchanged, and a working directory that genuinely does not exist
+still falls back to the identity home, then "/".
+
+`UserlandRootfsExecWorkDirTest` pins the resolution end to end (a
+bound /workspace is the run's --work-dir; a missing directory still
+falls back to /root; a bind-less login command creates nothing and
+keeps its home working directory), `UserlandRootfsBindMountPointTest`
+pins the mount-point creation rules (nested targets, malformed and
+escaping specs, symlink escapes, existing targets untouched), and
+`SandboxStoreResetTest` pins the D2 contract the fix serves (Reset
+removes the rootfs; the workspace survives).
+
+Not established by this entry: on-device behavior. The device proof
+still owed is a relative-path sandbox write surviving a Reset: run a
+sandbox command that writes a file by a relative path, Reset the
+rootfs from settings, reinstall, and read the file back from
+/workspace.

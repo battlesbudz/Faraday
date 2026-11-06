@@ -464,6 +464,15 @@ public final class UserlandRootfs {
         // /proc is always shared across sessions of this rootfs (registry keyed
         // by rootfs), so ps/top see processes from every session.
         argv.add("--shared-proc");
+        // FARADAY (Codex P2 on PR #25): a bind target does not exist inside
+        // the rootfs until something creates it — the workspace is a host
+        // directory of its own, bound over a mount point the rootfs tree
+        // does not contain — and resolveGuestDir below validates against
+        // the rootfs tree alone. Without the mount points, an exec run
+        // asking for /workspace fell back to the identity home inside the
+        // disposable rootfs, and relative-path writes were lost on reset
+        // (decision D2). Create the mount points before resolving.
+        ensureBindMountPoints(root, extraBinds);
         // Working directory: the configured path, else the configured user's
         // home from /etc/passwd, else "/". guestDir validates existence, so
         // --work-dir (fatal on a missing dir) is always safe to pass.
@@ -549,6 +558,70 @@ public final class UserlandRootfs {
         String p = path.trim();
         if (p.isEmpty() || !p.startsWith("/")) return null;
         return guestDirExists(root, p) ? p : null; // null on escape or absence
+    }
+
+    /**
+     * Creates the guest-side mount point of every {@code host:guest} bind
+     * in {@code binds} inside the rootfs, so the path resolution in
+     * {@link #buildCommand} — which validates against the rootfs tree
+     * alone — can see the directories the binds will cover at runtime.
+     * A bound directory lives outside the rootfs (Faraday's workspace is
+     * a host directory of its own), so without this a working directory
+     * naming a bind target never validates and the run silently falls
+     * back to a directory inside the disposable rootfs.
+     *
+     * <p>Best effort and conservative: a spec is skipped unless its guest
+     * path normalizes to a location whose canonical path stays inside
+     * the rootfs, and an existing target — file, directory or link — is
+     * left untouched. {@link #resolveInGuest} cannot do the lookup: it
+     * reports a not-yet-existing path as absent, which is exactly the
+     * state being repaired. Package-private so a test can drive it
+     * directly (the {@link #extractTar} precedent).
+     */
+    static void ensureBindMountPoints(File root, List<String> binds) {
+        if (root == null || binds == null) return;
+        final String rootCanon;
+        try {
+            rootCanon = root.getCanonicalPath();
+        } catch (IOException e) {
+            return; // confinement unprovable: create nothing
+        }
+        for (String bind : binds) {
+            if (bind == null) continue;
+            int sep = bind.indexOf(':');
+            if (sep < 0) continue;
+            String rel = guestRelativePath(bind.substring(sep + 1).trim());
+            if (rel == null || rel.isEmpty()) continue;
+            File target = new File(root, rel);
+            try {
+                String canon = target.getCanonicalPath();
+                if (!canon.startsWith(rootCanon + File.separator)) continue;
+            } catch (IOException e) {
+                continue; // escapes through a planted symlink, or unprovable
+            }
+            if (!target.exists()) target.mkdirs();
+        }
+    }
+
+    /**
+     * Normalizes a guest-absolute path to a rootfs-relative path with no
+     * leading slash, resolving {@code "."} and {@code ".."} textually
+     * (the walk {@link #resolveInGuest} performs); null when the path is
+     * not absolute or escapes the guest root.
+     */
+    private static String guestRelativePath(String guest) {
+        if (guest == null || !guest.startsWith("/")) return null;
+        List<String> walked = new ArrayList<>();
+        for (String part : guest.split("/")) {
+            if (part.isEmpty() || part.equals(".")) continue;
+            if (part.equals("..")) {
+                if (walked.isEmpty()) return null; // escapes the guest root
+                walked.remove(walked.size() - 1);
+                continue;
+            }
+            walked.add(part);
+        }
+        return String.join("/", walked);
     }
 
     /**
