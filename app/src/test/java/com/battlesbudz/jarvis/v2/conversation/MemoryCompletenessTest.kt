@@ -133,6 +133,59 @@ class MemoryCompletenessTest {
             "What's my favorite food?", SPECIMEN_CONTENTS, "Your favorite food is ice cream."))
     }
 
+    // ---- preference polarity ----
+
+    @Test fun negatedPreferenceIsNotCoveredByOppositeDraft() {
+        // The salient units of "I don't like ice cream" and of "You like
+        // ice cream" are the same {ice, cream}: the unit rules alone would
+        // call the record covered by an answer that contradicts it.
+        val contents = listOf("I don't like ice cream")
+        assertEquals(contents, MemoryCompleteness.uncoveredRecords(
+            SPECIMEN_QUESTION, contents, "You like ice cream."))
+    }
+
+    @Test fun negatedPreferenceIsCoveredByMatchingDraft() {
+        val contents = listOf("I don't like ice cream")
+        assertEquals(emptyList<String>(), MemoryCompleteness.uncoveredRecords(
+            SPECIMEN_QUESTION, contents, "You don't like ice cream."))
+    }
+
+    @Test fun positivePreferenceIsNotCoveredByNegatedDraft() {
+        val contents = listOf("I like ice cream")
+        assertEquals(contents, MemoryCompleteness.uncoveredRecords(
+            SPECIMEN_QUESTION, contents, "You don't like ice cream."))
+    }
+
+    @Test fun hatedPreferenceIsNotCoveredByLikedDraft() {
+        val contents = listOf("I hate ice cream")
+        assertEquals(contents, MemoryCompleteness.uncoveredRecords(
+            SPECIMEN_QUESTION, contents, "You like ice cream."))
+        assertEquals(emptyList<String>(), MemoryCompleteness.uncoveredRecords(
+            SPECIMEN_QUESTION, contents, "You don't like ice cream."))
+    }
+
+    @Test fun negatedPreferenceSurvivesAMixedClauseDraft() {
+        // The ice-cream clause carries its own polarity; the cake clause's
+        // opposite polarity neither condemns nor rescues it.
+        val contents = listOf("I don't like ice cream")
+        assertEquals(emptyList<String>(), MemoryCompleteness.uncoveredRecords(
+            SPECIMEN_QUESTION, contents, "You like cake, but you don't like ice cream."))
+    }
+
+    @Test fun narrowFavoriteQuestionNegatedDraftFails() {
+        val contents = listOf("My favorite food is ice cream.")
+        assertEquals(contents, MemoryCompleteness.uncoveredRecords(
+            "What's my favorite food?", contents, "You don't like ice cream."))
+    }
+
+    @Test fun neutralRestatementStillCoversAPreferenceRecord() {
+        // A draft clause that names the topic without taking a side does
+        // not contradict the record, whichever way the preference runs.
+        val contents = listOf("I don't like ice cream")
+        assertEquals(emptyList<String>(), MemoryCompleteness.uncoveredRecords(
+            SPECIMEN_QUESTION, contents, "Ice cream is a food you have mentioned."))
+    }
+
     // ---- number forms ----
 
     @Test fun digitAndWordNumberFormsMatchBothWays() {

@@ -38,6 +38,18 @@ package com.battlesbudz.jarvis.v2.conversation
  * facts, not a robotic read-out of every detail. Narrow questions are
  * unaffected; their wholeness is judged on the asked topic alone.
  *
+ * One more coverage rule, for preference records: the salient units are
+ * polarity-blind — the stopword list strips negations and preference
+ * verbs alike, so "I don't like ice cream" and "You like ice cream"
+ * reduce to the same units and the unit rules alone would call the
+ * record covered by an answer that contradicts it. A preference record
+ * therefore also needs polarity agreement: some clause of the draft that
+ * touches the record's units must state the preference with the same
+ * polarity as the record (a clause with no preference marker of its own,
+ * a bare restatement of the topic, agrees with either). Only a draft
+ * whose every touching clause flips the record's polarity leaves the
+ * record uncovered.
+ *
  * The check is pure string work on data already in the prompt: no model
  * call, no embedding, no network. A turn whose draft passes pays only the
  * check itself; the regeneration cost is paid only on turns where a
@@ -69,7 +81,7 @@ internal object MemoryCompleteness {
         val broad = isBroadQuestion(question)
         if (broad && isLargePacket(contents)) {
             val top = contents.take(TOP_FACTS_WINDOW)
-            val covered = top.map { broadCovered(it, draft) }
+            val covered = top.map { broadCovered(it, draft, answer) }
             val coveredCount = covered.count { it }
             val uncovered = if (coveredCount >= MIN_TOP_FACTS_COVERED && covered.first()) emptyList()
                 else top.filterIndexed { index, _ -> !covered[index] }
@@ -78,7 +90,7 @@ internal object MemoryCompleteness {
         val nameQuestion = !broad && isNameQuestion(question)
         val questionUnits = if (broad) emptySet() else salientUnits(question)
         return Assessment(contents.filter { content ->
-            isUncovered(content, broad, nameQuestion, questionUnits, draft)
+            isUncovered(content, broad, nameQuestion, questionUnits, draft, answer)
         })
     }
 
@@ -132,22 +144,22 @@ internal object MemoryCompleteness {
         if (items.isEmpty()) "" else " It left out: ${items.joinToString("; ")}."
 
     /** Broad coverage of one record; a record with no fact units is covered vacuously. */
-    private fun broadCovered(content: String, draft: Set<String>): Boolean {
+    private fun broadCovered(content: String, draft: Set<String>, answer: String): Boolean {
         val fact = factSegment(content)
         val units = salientUnits(fact)
         if (units.isEmpty()) return true
-        return coveredBroad(fact, units, draft)
+        return coveredBroad(fact, units, draft, answer)
     }
 
     private fun isUncovered(content: String, broad: Boolean, nameQuestion: Boolean,
-                            questionUnits: Set<String>, draft: Set<String>): Boolean {
+                            questionUnits: Set<String>, draft: Set<String>, answer: String): Boolean {
         val fact = factSegment(content)
         val units = salientUnits(fact)
         // No fact to cover: a greeting exchange ("hey" / "Hello. How can I
         // help you today?") carries no salient units and can never be the
         // part an answer left out.
         if (units.isEmpty()) return false
-        if (broad) return !coveredBroad(fact, units, draft)
+        if (broad) return !coveredBroad(fact, units, draft, answer)
         if (nameQuestion && nameMarker.containsMatchIn(fact)) {
             val names = nameUnits(fact)
             // A name question is answered whole only by stating the name;
@@ -157,7 +169,7 @@ internal object MemoryCompleteness {
             // to demand, so it falls back to the generic narrow rule.
             if (names.isNotEmpty()) return names.intersect(draft).isEmpty()
         }
-        return !coveredNarrow(units, questionUnits, draft)
+        return !coveredNarrow(fact, units, questionUnits, draft, answer)
     }
 
     /**
@@ -167,13 +179,13 @@ internal object MemoryCompleteness {
      * travel and food facts but never states the name has left the name
      * record out, so the draft must state the name too.
      */
-    private fun coveredBroad(fact: String, units: Set<String>, draft: Set<String>): Boolean {
+    private fun coveredBroad(fact: String, units: Set<String>, draft: Set<String>, answer: String): Boolean {
         if (units.intersect(draft).isEmpty()) return false
         if (nameMarker.containsMatchIn(fact)) {
             val names = nameUnits(fact)
             if (names.isNotEmpty() && names.intersect(draft).isEmpty()) return false
         }
-        return true
+        return !polarityConflict(fact, units, answer)
     }
 
     /**
@@ -185,13 +197,81 @@ internal object MemoryCompleteness {
      * When in doubt a record stays out of scope: a missed firing costs
      * nothing, a false one costs the user a regeneration.
      */
-    private fun coveredNarrow(units: Set<String>, questionUnits: Set<String>, draft: Set<String>): Boolean {
+    private fun coveredNarrow(fact: String, units: Set<String>, questionUnits: Set<String>,
+                              draft: Set<String>, answer: String): Boolean {
         val shared = units.intersect(questionUnits)
         if (shared.isEmpty()) return true // out of scope for this question
         val own = units - questionUnits
-        return if (own.isEmpty()) shared.intersect(draft).isNotEmpty()
-        else own.intersect(draft).isNotEmpty()
+        val stated = if (own.isEmpty()) shared.intersect(draft).isNotEmpty()
+            else own.intersect(draft).isNotEmpty()
+        if (!stated) return false
+        return !polarityConflict(fact, units, answer)
     }
+
+    // ---- preference polarity ----
+
+    /**
+     * True when [fact] states a preference and every clause of the draft
+     * that touches the record's units states that preference with the
+     * opposite polarity — the draft contradicts the record while naming
+     * its topic, which the polarity-blind unit rules would otherwise
+     * count as coverage. A draft clause with no preference marker of its
+     * own agrees with either polarity: it restates the topic without
+     * taking a side.
+     */
+    private fun polarityConflict(fact: String, units: Set<String>, answer: String): Boolean {
+        val recordPolarity = preferencePolarity(fact)
+        if (recordPolarity == 0) return false
+        val covering = answerClauses(answer).filter { salientUnits(it).intersect(units).isNotEmpty() }
+        if (covering.isEmpty()) return false
+        return covering.none { clause ->
+            val clausePolarity = preferencePolarity(clause)
+            clausePolarity == 0 || clausePolarity == recordPolarity
+        }
+    }
+
+    /**
+     * The polarity a text states about a preference: +1 positive,
+     * -1 negative, 0 when it carries no preference marker at all. A
+     * negative-class verb (hate, dislike) states a negative preference on
+     * its own; a negation token flips whichever marker is present, so
+     * "don't like" is negative and "don't hate" is not.
+     */
+    private fun preferencePolarity(text: String): Int {
+        val toks = tokens(text).toSet()
+        val hasPositive = toks.any { it in positivePreferenceWords }
+        val hasNegative = toks.any { it in negativePreferenceWords }
+        if (!hasPositive && !hasNegative) return 0
+        var negative = hasNegative
+        if (toks.any { it in negationWords }) negative = !negative
+        return if (negative) -1 else 1
+    }
+
+    /**
+     * The draft's clauses: sentences, then "but" clauses within them, so
+     * "You like cake, but you don't like ice cream" judges its ice-cream
+     * clause on its own polarity instead of the whole sentence's.
+     */
+    private fun answerClauses(answer: String): List<String> =
+        answer.split(Regex("[.!?;\\n]+"))
+            .flatMap { it.split(Regex("\\bbut\\b", RegexOption.IGNORE_CASE)) }
+            .filter { it.isNotBlank() }
+
+    // Preference verbs and markers, in the raw token forms [tokens]
+    // produces (lowercase, apostrophes removed). These words are
+    // stopwords for salient units — facts are their objects, not the
+    // verbs — but they carry the polarity a coverage check must respect.
+    private val positivePreferenceWords = setOf(
+        "like", "likes", "liked", "love", "loves", "loved", "enjoy", "enjoys", "enjoyed",
+        "prefer", "prefers", "preferred", "want", "wants", "wanted", "favorite", "favourite")
+
+    private val negativePreferenceWords = setOf(
+        "hate", "hates", "hated", "dislike", "dislikes", "disliked")
+
+    private val negationWords = setOf(
+        "no", "not", "never", "cannot", "cant", "dont", "didnt", "doesnt", "havent", "hasnt",
+        "hadnt", "isnt", "arent", "wasnt", "werent", "wont", "couldnt", "shouldnt", "wouldnt",
+        "aint")
 
     // ---- question shape ----
 
