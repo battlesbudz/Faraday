@@ -5084,9 +5084,12 @@ first (reasoning that mentions an action tag is never parsed), takes
 complete well-formed envelopes literally — when any write action is
 present the writes define the round and a riding `reply` is dropped —
 and, only when the strict parse finds nothing, runs the recovery
-chain: a bare `<content>` block containing HTML, then a raw HTML
-document anywhere in the text, then a Markdown html fence, each
-becoming a `write_file` for `index.html`. File bodies are byte-exact
+chain: a bare `<content>` block containing HTML, then a Markdown
+html fence, then a raw HTML document anywhere in the text (the fence
+is checked before the raw scan because the scan would otherwise
+claim every fenced document first and the fence recovery could
+never fire for the input it names), each becoming a `write_file`
+for `index.html`. File bodies are byte-exact
 except for one envelope rule, stated on the parser: a single line
 break directly inside a `<content>`, `<find>`, or `<replace>` tag
 (and one before its close) belongs to the envelope, not the file. The
@@ -5126,3 +5129,111 @@ a project. The normalizers, the completeness gate, the all-or-nothing
 apply with its version snapshot, and brief application are Unit 3;
 the preview and console loop are Unit 4; the exporter is Unit 5; the
 Code screen and the on-phone proof are Unit 6.
+
+## Code-and-export Unit 3: repair, completeness gate, and atomic apply — 6 November 2026
+
+Unit 3 makes rounds land. Unit 2 ended with a parsed action set and
+a project exactly as it was; Unit 3 adds the Mochu repair layer, the
+completeness gate, the 4-attempt retry loop, and the apply step that
+writes — atomically, and only after everything has passed. Decision
+A stands in code: there is no per-round approval anywhere in a
+round. Writes are confined to the open project's folder, checked by
+the gate, and snapshotted before they land.
+
+`CodeNormalizer` carries the four repairs of section 4.3, applied to
+every parsed or recovered write. Path cleanup normalizes separators,
+strips leading slashes, and gives `index.htm` its `.html` extension;
+escape attempts are deliberately not cleaned away, so the store's
+resolution refuses them and the round fails with that reason. Body
+cleaning strips a Markdown fence or a CDATA section only when it
+wraps the whole body. The CSS/JS un-mix cuts JavaScript out of a
+written css file — line signals in Mochu's shape, brace tracking so a
+function body travels with its opening line, whole script blocks
+lifted out — into `app.js`, and `index.html` gains the script
+reference when it does not already carry it. Single-file
+consolidation inlines a round's referenced css/js writes back into
+its `index.html` and drops the separate writes, unless Battles asked
+for a split; where Mochu keyed "unrequested" off the generated HTML,
+the runner here holds Battles's actual request and reads it, which
+is the better signal.
+
+`CodeEditApplier` is Mochu's edit protocol: exact substring match
+first (first occurrence), then a line-by-line match that ignores
+indentation, pairs applied in order against the running result, in
+memory first and all-or-nothing — one unmatched find fails the
+attempt with the snippet recorded. `CodeCompletenessGate` checks
+what a round writes: an HTML file must open with a doctype or an
+html tag, close its html tag, carry no unclosed script or style tag,
+and not end with an open bracket or angle character; a split script
+file's braces must balance, scanned string- and comment-aware so a
+brace inside a string does not unbalance it. Files a round only
+edited are exempt — they were already whole, and a surgical edit is
+not re-judged for its file's pre-existing state.
+
+`CodeRoundRunner` runs the round. Each attempt goes through the
+Unit 2 controller, then normalization, in-memory application, and
+the gate; a failed attempt retries with specific feedback as the
+next attempt's prompt — what was incomplete, which find text was not
+found (with the instruction to return a full write instead), why a
+brief was refused — up to 4 attempts total, each retry on a reset
+conversation with a fresh snapshot. The commit is the only code path
+that touches the project, and it runs only after the full action set
+has passed, in the scope's order: the version snapshot of the
+pre-round state, then the file writes (temp-then-rename, as the
+store writes), then the brief update with its Files section
+regenerated (the regeneration also follows any round that changed
+files, since that section is machine-owned), then the round counter.
+An `update_brief` is validated on the way in — all five sections
+present, under the brief cap — and fails the attempt with the reason
+when it is not. Model writes to `BRIEF.md`, `project.json`,
+`rounds.log`, or anything under `versions/` fail the attempt with
+feedback naming the right channel: section 3.3 makes `update_brief`
+the brief's one door, and the rest are the app's bookkeeping.
+
+Because a failed attempt writes nothing, takes no version, and bumps
+no counter, a fully failed round leaves every project file
+byte-identical to before the round. The one exception is the round
+log, which gains exactly one entry per attempt from the controller:
+the log is the scope's designated carrier of round outcomes —
+section 3.2 names "failed" as one of them — so its growth is the
+record of the failure, not a change to the project the gate
+protects. Per Unit 2's design the apply outcomes ride the
+controller's entry; the runner appends no round-log entries of its
+own.
+
+Pinned by tests: `CodeNormalizerTest` (path cleanup including the
+preserved escape, fence and CDATA stripping including a fence around
+CDATA and untouched interior fences, the un-mix in three shapes —
+block of JavaScript, a pure-JavaScript css file, a lifted script
+block — consolidation inlining referenced files and leaving
+unreferenced ones, script-reference injection, split detection from
+the request text), `CodeEditApplierTest` (first-occurrence exact
+match, ordered pairs, the indentation-insensitive line match, an
+unmatched find carrying its snippet, one bad pair failing the whole
+edit, the empty find), `CodeCompletenessGateTest` (one fixture per
+HTML rule and per brace outcome, braces in strings and comments not
+counted, routing by extension), and `CodeRoundRunnerTest` against
+the fake engine and a real store in a temp folder (a passing write
+asserting the written bytes, the version snapshot's starter page,
+and the regenerated brief Files entry; exact and
+differently-indented edits; a second round snapshotting the first
+round's result; a reply round changing nothing; the unrequested
+split consolidated to one file and the requested split left split;
+JavaScript un-mixed out of a css file into `app.js` with the
+reference injected; fenced and CDATA bodies stored clean; an
+unmatched find retrying with the targeted feedback and exactly one
+version taken; an incomplete page retrying with its specific
+problem named; an escaping path refused with the retry staying
+inside the project; unbalanced JavaScript failing the gate and
+retrying; an edited pre-existing broken file exempt from the gate;
+a brief update landing with its Files section regenerated over a
+bogus model-written entry; brief failures naming the missing section
+and the cap; a direct write to `BRIEF.md` refused with the
+`update_brief` channel named; and the unit's reason to exist — all
+4 attempts failing, after which every project file is asserted
+byte-identical, no version exists, the round counter never moved,
+and the round log holds exactly the four attempt entries).
+
+Not established by this entry: anything the user can see. The
+preview and the console-error loop are Unit 4, the exporter is
+Unit 5, and the Code screen with the on-phone proof is Unit 6.
