@@ -5237,3 +5237,115 @@ and the round log holds exactly the four attempt entries).
 Not established by this entry: anything the user can see. The
 preview and the console-error loop are Unit 4, the exporter is
 Unit 5, and the Code screen with the on-phone proof is Unit 6.
+
+## Code-and-export Unit 4: WebView preview and the console-error loop — 7 November 2026
+
+Unit 4 gives code mode its eyes. Until now a round's only verdict
+was structural: the gate can prove a page is whole, never that it
+runs. The preview runs it — a WebView over the open project, its
+console captured — and the console-error loop feeds real runtime
+errors back through the same gated rounds that wrote the code, so a
+page that throws gets fixed by the machinery that produced it, under
+a bound. Decision A still stands: no approval step appears anywhere
+in the loop.
+
+One dependency is added: `androidx.webkit` 1.14.0, for
+`WebViewAssetLoader`. The browser-automation WebView in `actions/`
+does not use it and is not touched or reused; this is a separate,
+simpler WebView with a different job.
+
+`CodePreview` serves the open project on the fake HTTPS origin
+`https://appassets.androidplatform.net`, the asset loader's default
+domain, with a path handler rooted at the project folder. A real
+origin is what makes relative files, DOM storage, and normal page
+behavior work without file:// quirks. JavaScript and DOM storage are
+on — generated apps need both — and every file-access switch is off:
+general file access, content access, and both file-URL access flags.
+Navigation is locked down harder than serving alone would need: a
+main-frame navigation to anything but the appassets origin is
+refused, and an http or https subresource request to any other host
+is answered with an empty 403, so a previewed page has no network
+reach at all — the contract's offline rule enforced by the host, not
+trusted to the page. The WebView cache is disabled, deliberately: the
+fix loop's checks must read the files as they are now, and a cached
+pre-fix page would send the loop chasing errors the disk no longer
+contains.
+
+`CodeProjectAssetHandler` carries the path safety, at the handler
+level rather than delegated to the loader. A request path is
+resolved against the project root and canonicalized; anything whose
+canonical form is not the project folder or strictly inside it is
+refused — `..` segments, traversals that arrive decoded, and
+symlinks pointing out of the project all fail the same containment
+check. Directories and missing files are refused; only real project
+files are served. The bare root serves `index.html`. MIME types come
+from a small fixed table for the file kinds a web project carries.
+
+`CodeConsoleStore` is the console: bounded at 300 entries, oldest
+dropped first, fed by the chrome client's `onConsoleMessage` with
+level, message text, source id, and line number kept, each entry
+stamped with an arrival sequence. The Console pane (Unit 6) will
+read the entries themselves; the fix loop reads through a watermark
+instead, so every error is handed to it exactly once and merely
+displaying the console never re-feeds old errors as new ones. Because
+the watermark counts sequences rather than list positions, an error
+evicted under the bound before the loop's next check is gone for
+good — the bound is the scope's — and one still held is neither
+skipped nor repeated.
+
+`CodePreviewFixLoop` is the loop of section 4.5. The screen will
+call `afterRound` after an accepted round; the loop waits for the
+page to settle (4 seconds, Mochu's number, an injected seam in
+tests), reads the errors captured since the last check, and when
+there are errors runs a fix round whose prompt is the errors
+themselves, composed by `CodeConsolePrompt`: up to 4 distinct errors
+(distinct by text, source, and line — the same throw reported twice
+is one error), each flattened to one line and clipped at 300
+characters, its source shown as the file and line rather than the
+whole origin URL. A fix round is a full round through
+`CodeRoundRunner` — snapshot, contract, gate, version, write — and
+after one lands the preview reloads through the injected reload
+seam and the loop settles and checks again. Automatic passes are
+capped at 2 fix rounds since Battles's last own message;
+`onUserMessage` resets that budget. The manual `fixNow`, the
+controller behind the Console pane's Fix errors button in Unit 6,
+runs the same flow without the cap and does not spend the automatic
+budget. Uncapped cannot mean unbounded on a phone, so the manual
+flow also stops when an applied round leaves the error set
+unchanged — a model that keeps "fixing" without fixing is told apart
+from one still making progress. Both paths stop with the round's own
+outcome when a fix round does not land (failed the gate, refused by
+the budget, or answered with a plain reply): the errors were just
+put to the model and it could not or would not fix them, so looping
+would only repeat the attempt.
+
+Pinned by tests, all on the JVM: `CodeConsoleStoreTest` (the
+300-entry bound dropping the oldest, error-level filtering, the
+watermark handing each error over exactly once, an evicted error
+never resurrected, clear keeping later errors flowing, arrival
+sequences in order), `CodeProjectAssetHandlerTest` (the root serving
+the index page, nested files resolving, missing files and
+directories refused, `..` traversals refused, a symlink out of the
+project refused, the MIME table), `CodeConsolePromptTest` (error
+text and source position carried, duplicates collapsing under the
+4-error cap, a long error clipped and flattened, a source-less error
+shown bare), and `CodePreviewFixLoopTest` against the fake engine
+and a real store with a scripted console and reload (a clean console
+producing no round and no generation; one error producing exactly
+one fix round whose prompt is the error text, the fixed page on
+disk, the budget spent by one; the cap stopping at two rounds and
+reporting what remains; Battles's message resetting the cap and the
+next fix landing; a fix round that never lands stopping the loop
+after the runner's own four attempts; the manual flow running past
+a spent cap without touching the budget; the manual flow stopping
+when an applied round leaves the identical error set).
+
+Not established by this entry: an actual page rendering and its
+actual console. `CodePreview`'s WebView wiring — settings, clients,
+the loader — is exercised only on a device, and no JVM test here
+constructs it; what the JVM pins is everything around it (the
+handler's decisions, the store, the prompt, the loop's policy). The
+Code screen that mounts the preview, with the Console, Files, and
+Brief panes, the Fix errors button wired to `fixNow`, and the
+on-phone proof of the whole phase, is Unit 6. The exporter is
+Unit 5.

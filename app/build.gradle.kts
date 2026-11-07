@@ -181,6 +181,11 @@ dependencies {
     // CommonMark parser, pure JVM with no transitive dependencies. Only the
     // parsed tree is used; rendering to Compose lives in the ui package.
     implementation("org.commonmark:commonmark:0.32.0")
+    // Code mode preview (code-and-export Unit 4): WebViewAssetLoader
+    // serving the open project on the appassets origin. The
+    // browser-automation WebView in actions/ does not use it and is
+    // untouched; this is a separate WebView with a different job.
+    implementation("androidx.webkit:webkit:1.14.0")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test:rules:1.6.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
