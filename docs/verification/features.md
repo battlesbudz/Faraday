@@ -5349,3 +5349,112 @@ Code screen that mounts the preview, with the Console, Files, and
 Brief panes, the Fix errors button wired to `fixNow`, and the
 on-phone proof of the whole phase, is Unit 6. The exporter is
 Unit 5.
+
+## Code-and-export Unit 5: shell module and APK exporter — 7 November 2026
+
+Unit 5 gives code mode its exit door: a project becomes an
+installable APK, on the phone, with no Android toolchain anywhere in
+the loop. The mechanism is the placeholder-manifest trick the scope
+took from Mochu's exporter, rebuilt for Faraday's Gradle build.
+Decision B is in force here: Faraday's manifest gains
+`REQUEST_INSTALL_PACKAGES`, and the unit ships the install hand-off
+surface (`CodeApkInstaller`) the Code screen's Install button will
+call in Unit 6.
+
+The shell is a new Gradle module, `:webshell`: a complete minimal
+Android app whose whole UI is one WebView (`ShellActivity`, plain
+Java, no dependencies beyond the platform), serving its own
+`assets/www/` in answer to requests for the appassets origin — the
+same fake HTTPS origin the Unit 4 preview uses, with the same `..`
+guard and an extension-to-MIME table — and refusing navigation to
+any other host. It requests no permissions and uses the stock system
+icon, so an exported app is offline by construction. Its manifest is
+built with deliberate placeholders sized to be the longest values any
+export will ever need: a 64-character package name (the module's
+applicationId, `com.battlesbudz.faraday.app.p` plus filler digits)
+and a 48-character label. The activity's name is fully qualified on
+purpose, naming the real compiled class, so it does not move when
+the package placeholder is replaced. The module's release output is
+left unsigned — no signing config — and a `copyWebShell` task in
+`app/build.gradle.kts`, following the generated-assets precedent the
+whisper QNN runtime set, embeds it into the app as
+`assets/shell/webshell.apk` off `preBuild`. A `verifyWebShellAsset`
+task hangs off `assembleRelease` and fails the build unless the
+packaged release APK actually contains that asset, printing the
+shell's size so the CI log reports what it costs; no prebuilt binary
+is committed to the repo.
+
+The exporter (`CodeApkExporter.exportProjectApk`, in the code
+package) follows the scope's sequence exactly. It refuses early,
+with the reason: no `index.html` in the project, a project name over
+the 48-character label bound, or a derived package name over the
+64-character placeholder. It streams the shell entry by entry
+through `AlignedZipWriter`, dropping `META-INF/` entirely;
+`resources.arsc` is written STORED, and every STORED entry is
+4-byte aligned by a padding extra field, the zipalign way. The
+writer is hand-rolled for that guarantee (commons-compress stays
+unused here, as the scope directed), writes a fixed DOS date, and so
+produces byte-identical output for identical inputs — a property the
+tests pin. `BinaryXmlStringPoolPatcher` patches the manifest in
+place in its binary string pool, in both encodings aapt2 emits
+(UTF-16 and UTF-8): the placeholder package and label strings are
+replaced with the project's real ones, the remainder of each slot
+zero-filled, no offsets moved, and a replacement that would outgrow
+its slot refuses instead of truncating. The project files are
+injected under `assets/www/`, excluding the workshop: `versions/`
+never reaches the file list, `project.json` is machine state, and
+`BRIEF.md` and `rounds.log` are filtered by the exporter — the round
+log is Battles's own request history, and the scope's rule is that
+Faraday-side bookkeeping never ships inside an export. The result is
+signed with the apksig library (8.7.3, matched to the AGP pin; its
+notice sits with the other third-party notices in the app's license
+assets), APK Signature Scheme v2 only.
+
+The signing key is an RSA-2048 key generated once, on first export,
+into the AndroidKeyStore under the alias `faraday-code-export`,
+certificate subject `CN=Faraday Code export`, 30-year validity
+(`CodeExportSigningKey`), and reused for every export from that
+install. Stable key plus the store's deterministic per-project
+package name (at most 61 characters by Unit 1's derivation, inside
+the 64 placeholder) means re-exporting a project installs as an
+update of the same app. The known edge stands as the scope stated
+it: uninstalling Faraday or clearing its data destroys the key, and
+later exports will not update-install over earlier ones; the
+projects are unaffected. The finished APK lands in the app's
+`code-exports` cache folder, named after the project, and
+`CodeApkInstaller` hands it to the system installer through a
+matching FileProvider authority, with the can-install check and the
+unknown-sources settings intent beside it for Unit 6's button.
+
+Pinned by tests, all on the JVM: `BinaryXmlStringPoolPatcherTest`
+(byte fixtures of both pool encodings — replacements land in the
+right slots, an identity patch is byte-identical, a shorter
+replacement zero-fills its slot, an over-long one is refused, a
+missing placeholder is refused, non-binary input is refused),
+`AlignedZipWriterTest` (entries round-trip through ZipFile, STORED
+entries start on 4-byte boundaries, methods are preserved, output
+is deterministic), `CodeApkExporterTest` (an end-to-end export over
+a fixture shell and a real project folder: the entry list is exact,
+the manifest strings are the project's package name and name, the
+workshop files never ship, META-INF is gone, resources.arsc is
+STORED and aligned in the signed output, and apksig's own verifier
+accepts the result as v2-signed; the same over a UTF-8-pool shell;
+both refusals; the derivation fitting the placeholders with the
+longest package at 61 of 64; package names stable per project and
+distinct across projects; the unsigned build deterministic; a
+re-export keeping its package and verifying again), and
+`CodeApkExportRealShellTest`, which runs the same export over the
+actual CI-built shell the app embeds — its placeholders must match
+the exporter's constants, and the export must verify — so shell and
+exporter cannot drift apart silently. The signing tests use a
+throwaway PKCS12 fixture key generated for the test resources only;
+the production key path is the AndroidKeyStore and is not
+JVM-exercisable.
+
+Not established by this entry: an exported APK actually installing
+and running on a phone. That is device behavior — the install
+hand-off, the keystore key generation, the shell serving a real
+project inside an installed export, in airplane mode — and it is
+Unit 6's on-phone proof, with the Code screen, the Install and
+Export buttons, the diagnostics block, and the phase's six-item
+Fold 6 script.
