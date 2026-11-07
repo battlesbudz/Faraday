@@ -143,7 +143,7 @@ internal object BinaryXmlStringPoolPatcher {
 
         private fun decodeUtf8(start: Int): String {
             var pos = start
-            pos += utf8LengthSize(bytes, pos) // UTF-16 character count; not needed to decode
+            pos += utf8LengthSize(pos) // UTF-16 character count; not needed to decode
             val byteLengthAndSize = readUtf8Length(pos)
             pos += byteLengthAndSize.second
             return String(bytes, pos, byteLengthAndSize.first, Charsets.UTF_8)
