@@ -1,6 +1,7 @@
 package com.battlesbudz.jarvis.v2.ui
 
 import com.battlesbudz.jarvis.v2.ChatEntry
+import com.battlesbudz.jarvis.v2.JarvisRuntime
 import com.battlesbudz.jarvis.v2.WithPipelineDiagnostics
 import com.battlesbudz.jarvis.v2.voice.VoiceCallRecord
 import android.net.Uri
@@ -80,6 +81,7 @@ fun JarvisApp(
         var pickerModelId by rememberSaveable { mutableStateOf<String?>(null) }
         var showingVoiceCalls by rememberSaveable { mutableStateOf(false) }
         var showingMemory by rememberSaveable { mutableStateOf(false) }
+        var showingCode by rememberSaveable { mutableStateOf(false) }
         var memoryReturnToVoice by rememberSaveable { mutableStateOf(false) }
         var memoryReturnToChat by rememberSaveable { mutableStateOf(false) }
         var showingFullSetup by rememberSaveable { mutableStateOf(false) }
@@ -106,7 +108,7 @@ fun JarvisApp(
         // The band shows only while the chat destination is the visible
         // content (never over Memory, the voice-call list/detail, or setup).
         val chatDestination = setup.modelsReady && setup.smokeTestPassed &&
-            selectedVoiceCall == null && !showingVoiceCalls && !showingMemory
+            selectedVoiceCall == null && !showingVoiceCalls && !showingMemory && !showingCode
         val modelSelector: @Composable (Boolean) -> Unit = { enabled ->
             ModelSelectionSection(setup, enabled, benchmarkStore, onOpenMemory = { showingMemory = true })
         }
@@ -233,6 +235,7 @@ fun JarvisApp(
                                             onWorkflowSetEnabled = onWorkflowSetEnabled,
                                             onConnectMcpServer = onConnectMcpServer,
                                             callEvidenceActions = callEvidence,
+                                            onOpenCodeProjects = { showingCode = true },
                                         )
                                     }
                                 }
@@ -251,6 +254,20 @@ fun JarvisApp(
                                 onOpenChat = { memoryReturnToVoice = false; memoryReturnToChat = true; showingMemory = false },
                                 onOpenVoice = { memoryReturnToChat = false; memoryReturnToVoice = true; showingMemory = false },
                             )
+                        // The Code destination (code-and-export Unit 6) overlays the
+                        // same way: chat stays composed beneath, and rounds borrow
+                        // the shared engine through the runtime's lease.
+                        if (showingCode) {
+                            val codeRuntime = remember(phoneContext) { JarvisRuntime.get(phoneContext.applicationContext) }
+                            CodeScreen(
+                                store = codeRuntime.codeProjectStore,
+                                statsStore = codeRuntime.codeStatsStore,
+                                engineAccess = codeRuntime.codeEngineAccess,
+                                roundsEnabled = !chatSending && !activeVoiceCall,
+                                onBack = { showingCode = false },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     } else if (showingMemory) {
                         MemoryScreen(
                             memoryOs = memoryOs,

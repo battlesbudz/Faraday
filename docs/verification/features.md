@@ -5458,3 +5458,134 @@ project inside an installed export, in airplane mode — and it is
 Unit 6's on-phone proof, with the Code screen, the Install and
 Export buttons, the diagnostics block, and the phase's six-item
 Fold 6 script.
+
+## Code-and-export Unit 6: the Code screen, diagnostics, and the phase's device proof — 7 November 2026
+
+Unit 6 is the phase's face: the Code destination the earlier units
+were building toward, wired over their surfaces without rebuilding
+any of their logic. Decision C is in force — code mode is its own
+destination with a project list, not a mode inside a chat thread —
+and it is reached from the Settings dialog's new Code projects
+section, opening over the conversation the way the Memory screen
+does, with chat composed beneath. `JarvisApp`'s signature does not
+change (the release journeys construct it), and the header band
+keeps exactly its six settled buttons; the settings door is the one
+new surface.
+
+The project list renders the store's contents: create, open, rename
+(through `project.json`; the id, folder, and derived package name
+never move, so earlier exports still update-install), and delete
+behind a confirmation. Creating asks for a name (optional — a blank
+name falls back to the first request's opening words) and the first
+request, and the first round starts as soon as the project exists.
+The project view carries the request box and the round status,
+including the file being written as the response streams; the
+Preview, Console, Files, and Brief panes; the Fix errors button in
+the Console pane; the Export APK button; and the rollback picker
+over the saved versions, which names the version a rollback itself
+saves before it restores. The preview stays composed under the
+other panes, so switching tabs never destroys the WebView or loses
+the page. The Console pane re-reads its store when it is opened,
+when an operation completes, and on Clear — no polling loop watches
+the WebView.
+
+The wiring is one new class over the landed machinery,
+`CodeModeDriver`: it owns a single session — a
+`CodeSessionController`, a `CodeRoundRunner`, and a
+`CodePreviewFixLoop` bound to the borrowed engine, the open
+project, and that project's console store — and drives the round
+flow. Battles's message runs a gated round; an applied round
+reloads the preview before the loop's first check, so the check
+reads the page Battles is looking at, and then the bounded
+automatic fix pass runs; the Fix errors button runs the same loop
+uncapped. Decision A holds throughout: no approval step exists
+anywhere in the flow. Switching projects on the same engine
+releases the old session first; leaving the destination releases
+inside a borrow when one is available, and a skipped release is
+safe because the engine's reset discipline exits code mode before
+any ordinary generation.
+
+Rounds generate on the one shared engine, borrowed through
+`JarvisRuntime.withCodeModeEngine` under the model-operation lease
+chat replies, voice turns, and the reliability check already
+respect, so a code round can never interleave with a chat reply or
+a call. The resident engine is used as-is; when none is resident,
+one is created for the selected model exactly as a plain
+conversation turn creates it (no attachments, so no vision or
+audio encoders) and becomes the resident engine, with the context
+accounting cleared as on any creation, and the conversation
+layer's native-quarantine guard mirrored. While a chat reply or a
+voice call holds the model, the borrow refuses and the status line
+says the round did not run; Battles's words stay in the request box
+for the retry.
+
+Export finishes the loop on the screen: Export APK runs Unit 5's
+exporter, and the exported APK then offers Install (Decision B,
+over `CodeApkInstaller`'s hand-off, with the unknown-sources
+settings intent first when Android has not allowed installs), Save
+(through the system document picker), and Share, all from the same
+exported file. An applied round or a rollback clears the export
+offer, since the files it was built from have moved on. The Clear
+workspace settings copy gains the section 3.1 clause naming code
+projects.
+
+The diagnostics block follows the sandbox block's shape and closes
+the Copy Diagnostics paste (one append in `MainActivity`): a `code:`
+title line, then the projects count with each project's
+12-character fingerprint short form, rounds, retries, fix rounds,
+exports, and the last outcome and last error. The counters live in
+`CodeStatsStore`, one small file in the workspace root, so Clear
+workspace clears them with the projects they describe and Reset
+keeps them. Retries are measured, not estimated: the session
+controller appends exactly one round-log entry per generation
+attempt, and the driver counts an operation's attempts from the
+log's growth.
+
+Pinned by tests: `CodeModeDriverTest` against the real store,
+runner, and fix loop over the fake engine (an applied round
+reloading the preview and running the automatic fix pass to clean;
+retries counted from the round log at one and at the runner's
+four-attempt cap; a reply round writing nothing and running no fix
+pass; a budget-refused round recorded with its reason; a refused
+borrow running and recording nothing; the manual pass recorded as
+its own outcome; project switches and releases ending the right
+sessions), `CodeStatsStoreTest` (the counters' arithmetic,
+persistence across a recreated store, single-line bounded outcomes,
+a torn file reading as zeroes), `CodeDiagnosticsTest` (the block's
+exact layout, empty and populated, an unknown fingerprint), and
+`CodeScreenTest`, Robolectric screen tests with a stubbed preview
+pane (the list rendering store contents, the empty state, the
+create dialog opening a project with the preview mounted, every
+pane mounting in the project view, rename changing only the listed
+name, delete asking first). No instrumentation journey composes
+the Code UI — verified against the androidTest sources — so no new
+R8 keeps were needed; `VoiceCallScreen` gained only a trailing
+defaulted parameter, and no journey constructs it either.
+
+Not established by this entry: everything on a phone. The screen's
+life against a real WebView, a real model driving rounds on
+Gemma-4-E4B (Decision D's proof model), the install hand-off, and
+an exported game running offline are device behavior, and the
+phase's proof is Battles's to run on the Fold 6, on the build
+published from this unit's head:
+
+1. Fresh project from one request ("a snake game"): preview runs
+   it, no console errors after any automatic fix rounds.
+2. Iterate: a change request ("make it faster, add a score") lands
+   as edits, preview still clean, brief shows the decision.
+3. Cohesion past context: force a fresh conversation (leave code
+   mode, chat normally, come back, or switch models and back) and
+   make another change. The round starts from snapshot and brief,
+   the app still works, nothing from the chat leaks in.
+4. Break it on purpose through a request, watch a fix round run,
+   and roll back one version from the picker; the app returns to
+   the pre-break state.
+5. Export the APK, install it from the saved file, open it in
+   airplane mode: the game plays, fully offline. (Decision B's
+   in-app Install button is the same install without the Files
+   detour; Save is there for the from-file path.)
+6. Copy Diagnostics shows the code block with counters matching
+   what just happened.
+
+Until that proof passes, the code-and-export phase is
+code-complete and nightly-green, not device-proven.

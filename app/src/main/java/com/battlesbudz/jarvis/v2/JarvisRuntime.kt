@@ -10,10 +10,17 @@ import com.battlesbudz.jarvis.v2.actions.ExternalAgentAccess
 import com.battlesbudz.jarvis.v2.actions.ExternalAgentGrant
 import com.battlesbudz.jarvis.v2.actions.ExternalAgentProvider
 import com.battlesbudz.jarvis.v2.actions.ToolTaskLedger
+import com.battlesbudz.jarvis.v2.actions.MobileActionToolDefinitions
+import com.battlesbudz.jarvis.v2.ai.CodeModeEngine
 import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngine
+import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngineFactory
+import com.battlesbudz.jarvis.v2.ai.ModelCatalog
 import com.battlesbudz.jarvis.v2.ai.ModelStore
 import com.battlesbudz.jarvis.v2.ai.ReferenceGroundingClient
 import com.battlesbudz.jarvis.v2.chat.ShortTermConversationContext
+import com.battlesbudz.jarvis.v2.code.CodeEngineAccess
+import com.battlesbudz.jarvis.v2.code.CodeProjectStore
+import com.battlesbudz.jarvis.v2.code.CodeStatsStore
 import com.battlesbudz.jarvis.v2.conversation.ConversationActions
 import com.battlesbudz.jarvis.v2.conversation.ConversationCallbacks
 import com.battlesbudz.jarvis.v2.conversation.ConversationContextPreparation
@@ -70,6 +77,7 @@ import com.battlesbudz.jarvis.v2.runtime.turn.VoiceTurnRequest
 import com.battlesbudz.jarvis.v2.runtime.turn.VoiceTurnRunner
 import com.battlesbudz.jarvis.v2.runtime.turn.VoiceTypedInputOwnership
 import com.battlesbudz.jarvis.v2.vision.VisionServerSettings
+import com.battlesbudz.jarvis.v2.sandbox.SandboxStore
 import com.battlesbudz.jarvis.v2.voice.AudioTurnCapture
 import com.battlesbudz.jarvis.v2.voice.PiperVoiceOutput
 import com.battlesbudz.jarvis.v2.voice.SharedPreferencesVoiceCallStore
@@ -126,6 +134,78 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         set(value) { voiceCallState.acceptedSession = value }
     internal lateinit var modelStore: ModelStore
     internal var conversationEngine: LiteRtLmEngine? = null
+
+    /** The code projects' store (code-and-export Unit 1), rooted in the sandbox workspace. */
+    internal val codeProjectStore: CodeProjectStore by lazy {
+        CodeProjectStore(SandboxStore(applicationContext).workspaceDir)
+    }
+
+    /** The code-mode counters the Copy Diagnostics block reads (Unit 6). */
+    internal val codeStatsStore: CodeStatsStore by lazy {
+        CodeStatsStore(SandboxStore(applicationContext).workspaceDir)
+    }
+
+    /** The Code screen's borrow of the shared engine; see [withCodeModeEngine]. */
+    internal val codeEngineAccess: CodeEngineAccess = object : CodeEngineAccess {
+        override suspend fun <T> withEngine(
+            block: suspend (engine: CodeModeEngine, contextTokens: Int?) -> T
+        ): T? = withCodeModeEngine(block)
+    }
+
+    /**
+     * Borrows the one shared model engine for a single code-mode
+     * operation (code-and-export Unit 6), under the same
+     * model-operation lease chat replies, voice turns, and the tool
+     * reliability check already respect — so a code round can never
+     * interleave with a chat reply or a call. The resident engine is
+     * used as-is; when none is resident, one is created for the
+     * selected model exactly as a plain conversation turn creates it
+     * (no attachments, so no vision or audio encoders) and becomes
+     * the resident engine, with the context accounting cleared the
+     * way `ConversationModelSession` clears it on creation. Returns
+     * null when the lease is held, the selected model is not usable,
+     * or engine creation fails; the lease is released on every path.
+     *
+     * Sharing is safe in the other direction too: the engine's own
+     * reset discipline exits code mode before any ordinary
+     * generation, so chat can never generate into a code
+     * conversation a code round left behind.
+     */
+    internal suspend fun <T> withCodeModeEngine(
+        block: suspend (engine: CodeModeEngine, contextTokens: Int?) -> T
+    ): T? {
+        if (!modelStore.tryBeginModelOperation()) return null
+        try {
+            // The conversation layer's quarantine guard, mirrored: a
+            // quarantined engine is never reused until restart.
+            if (conversationEngine?.isNativeQuarantined == true) return null
+            val engine = conversationEngine ?: run {
+                val spec = modelStore.selectedModel()
+                if (!modelStore.isUsable(spec)) return null
+                val created = withContext(Dispatchers.IO) {
+                    runCatching {
+                        LiteRtLmEngineFactory.createInitialized(
+                            modelId = spec.id,
+                            modelPath = modelStore.fileFor(spec).path,
+                            cacheDir = modelStore.engineCacheRoot().path,
+                            useGpu = spec.recommendedGpu,
+                            tools = if (spec.supportsTools) MobileActionToolDefinitions.all() else emptyList(),
+                            visionEnabled = false,
+                            audioEnabled = false,
+                        )
+                    }.getOrNull()
+                } ?: return null
+                conversationEngine = created
+                nativeConversationHasContext = false
+                conversationCharacters = 0
+                created
+            }
+            return block(engine, ModelCatalog.resolve(engine.modelId).contextTokens)
+        } finally {
+            modelStore.endModelOperation()
+        }
+    }
+
     internal var conversationJob: Job? = null
     internal var conversationCharacters = 0
     // The full transcript and rolling summary live in the app. This flag only

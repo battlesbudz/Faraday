@@ -148,7 +148,8 @@ internal fun SandboxSettingsSection(enabled: Boolean) {
             ) { Text("Clear workspace") }
         } else {
             Text(
-                "Clear workspace deletes every file in the workspace. The Linux system is kept.",
+                "Clear workspace deletes every file in the workspace, including all code " +
+                    "projects and their saved versions. The Linux system is kept.",
                 style = MaterialTheme.typography.bodySmall
             )
             TextButton(

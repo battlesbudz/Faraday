@@ -237,7 +237,9 @@ class MainActivity : ComponentActivity() {
         // Comparison archives and full chat histories do not belong in a call failure report.
         // The sandbox block (Phase 1 scope §12) rides along: install state,
         // run bookkeeping and the engine probe answer most sandbox reports.
-        val diagnostics = "Jarvis OS V2 — latest Voice Call diagnostics\n\n${runtime.diagnosticRecorder.snapshot()}\n\n${com.battlesbudz.jarvis.v2.voice.MicrophoneHandoff.diagnostics()}\n\n${com.battlesbudz.jarvis.v2.sandbox.SandboxDiagnostics.snapshot(this)}"
+        // The code block (code-and-export scope Unit 6) closes the paste:
+        // project fingerprints and the round/fix/export counters.
+        val diagnostics = "Jarvis OS V2 — latest Voice Call diagnostics\n\n${runtime.diagnosticRecorder.snapshot()}\n\n${com.battlesbudz.jarvis.v2.voice.MicrophoneHandoff.diagnostics()}\n\n${com.battlesbudz.jarvis.v2.sandbox.SandboxDiagnostics.snapshot(this)}\n\n${com.battlesbudz.jarvis.v2.code.CodeDiagnostics.snapshot(this)}"
         val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("Jarvis diagnostics", diagnostics))
     }
