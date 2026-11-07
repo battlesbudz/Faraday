@@ -1,3 +1,4 @@
+import java.util.zip.ZipFile
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -92,7 +93,7 @@ val verifyWebShellAsset by tasks.registering {
     doLast {
         val apk = apkFile.get().asFile
         check(apk.isFile) { "Release APK not found at ${apk.path}; packageRelease should have produced it." }
-        java.util.zip.ZipFile(apk).use { zip ->
+        ZipFile(apk).use { zip ->
             val shell = zip.getEntry("assets/shell/webshell.apk")
                 ?: throw GradleException(
                     "assets/shell/webshell.apk is missing from ${apk.name}: " +
