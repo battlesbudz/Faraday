@@ -1,7 +1,6 @@
 package com.battlesbudz.jarvis.v2.ui
 
 import com.battlesbudz.jarvis.v2.ChatEntry
-import com.battlesbudz.jarvis.v2.JarvisRuntime
 import com.battlesbudz.jarvis.v2.WithPipelineDiagnostics
 import com.battlesbudz.jarvis.v2.voice.VoiceCallRecord
 import android.net.Uri
@@ -71,7 +70,7 @@ fun JarvisApp(
     onWorkflowSetEnabled: (String, Boolean) -> Unit = { _, _ -> },
     onConnectMcpServer: (String, String, String, (String) -> Unit) -> Unit = { _, _, _, done -> done("MCP setup is unavailable right now.") },
 ) {
-    WithPipelineDiagnostics { benchmarkStore, callEvidence ->
+    WithPipelineDiagnostics { benchmarkStore, callEvidence, codeAccess ->
         val setup = rememberModelSetupState(store, ModelSetupActions(
             select = onSelectModel, delete = onDeleteModel, test = onRunModelSmokeTest,
             download = onDownloadGemma, pauseDownload = onCancelModelDownload,
@@ -256,13 +255,12 @@ fun JarvisApp(
                             )
                         // The Code destination (code-and-export Unit 6) overlays the
                         // same way: chat stays composed beneath, and rounds borrow
-                        // the shared engine through the runtime's lease.
+                        // the shared engine through the injected lease.
                         if (showingCode) {
-                            val codeRuntime = remember(phoneContext) { JarvisRuntime.get(phoneContext.applicationContext) }
                             CodeScreen(
-                                store = codeRuntime.codeProjectStore,
-                                statsStore = codeRuntime.codeStatsStore,
-                                engineAccess = codeRuntime.codeEngineAccess,
+                                store = codeAccess.store,
+                                statsStore = codeAccess.statsStore,
+                                engineAccess = codeAccess.engineAccess,
                                 roundsEnabled = !chatSending && !activeVoiceCall,
                                 onBack = { showingCode = false },
                                 modifier = Modifier.fillMaxSize(),
