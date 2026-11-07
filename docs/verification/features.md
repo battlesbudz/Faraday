@@ -5555,7 +5555,7 @@ a torn file reading as zeroes), `CodeDiagnosticsTest` (the block's
 exact layout, empty and populated, an unknown fingerprint), and
 `CodeScreenTest`, Robolectric screen tests with a stubbed preview
 pane (the list rendering store contents, the empty state, the
-create dialog opening a project with the preview mounted, every
+creating a project opening it with the preview mounted, every
 pane mounting in the project view, rename changing only the listed
 name, delete asking first). No instrumentation journey composes
 the Code UI — verified against the androidTest sources — so no new

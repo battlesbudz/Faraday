@@ -131,11 +131,15 @@ internal fun CodeScreen(
     }
 
     BackHandler {
-        if (openProjectId != null) {
-            openProjectId = null
-            releaseSession()
-        } else {
-            onBack()
+        when {
+            showCreate -> showCreate = false
+            renameTarget != null -> renameTarget = null
+            deleteTarget != null -> deleteTarget = null
+            openProjectId != null -> {
+                openProjectId = null
+                releaseSession()
+            }
+            else -> onBack()
         }
     }
     DisposableEffect(driver, engineAccess) {
@@ -144,14 +148,46 @@ internal fun CodeScreen(
 
     Column(modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
         if (openProject == null) {
-            CodeProjectList(
-                projects = projects,
-                onBack = onBack,
-                onNewProject = { showCreate = true },
-                onOpen = { openProjectId = it.id },
-                onRename = { renameTarget = it },
-                onDelete = { deleteTarget = it },
-            )
+            val renaming = renameTarget
+            when {
+                showCreate -> CodeCreatePanel(
+                    onDismiss = { showCreate = false },
+                    onCreate = { name, firstRequest ->
+                        showCreate = false
+                        scope.launch {
+                            val created = withContext(Dispatchers.IO) {
+                                store.createProject(
+                                    name.ifBlank { deriveProjectName(firstRequest) },
+                                    firstRequest,
+                                    System.currentTimeMillis(),
+                                )
+                            }
+                            refreshKey++
+                            pendingFirstRequest = firstRequest to created.id
+                            openProjectId = created.id
+                        }
+                    },
+                )
+                renaming != null -> CodeRenamePanel(
+                    project = renaming,
+                    onDismiss = { renameTarget = null },
+                    onRename = { newName ->
+                        renameTarget = null
+                        scope.launch {
+                            withContext(Dispatchers.IO) { store.saveProject(renaming.copy(name = newName)) }
+                            refreshKey++
+                        }
+                    },
+                )
+                else -> CodeProjectList(
+                    projects = projects,
+                    onBack = onBack,
+                    onNewProject = { showCreate = true },
+                    onOpen = { openProjectId = it.id },
+                    onRename = { renameTarget = it },
+                    onDelete = { deleteTarget = it },
+                )
+            }
         } else {
             CodeProjectView(
                 store = store,
@@ -170,41 +206,6 @@ internal fun CodeScreen(
                 previewContent = previewContent,
             )
         }
-    }
-
-    if (showCreate) {
-        CodeCreateDialog(
-            onDismiss = { showCreate = false },
-            onCreate = { name, firstRequest ->
-                showCreate = false
-                scope.launch {
-                    val created = withContext(Dispatchers.IO) {
-                        store.createProject(
-                            name.ifBlank { deriveProjectName(firstRequest) },
-                            firstRequest,
-                            System.currentTimeMillis(),
-                        )
-                    }
-                    refreshKey++
-                    pendingFirstRequest = firstRequest to created.id
-                    openProjectId = created.id
-                }
-            },
-        )
-    }
-
-    renameTarget?.let { target ->
-        CodeRenameDialog(
-            project = target,
-            onDismiss = { renameTarget = null },
-            onRename = { newName ->
-                renameTarget = null
-                scope.launch {
-                    withContext(Dispatchers.IO) { store.saveProject(target.copy(name = newName)) }
-                    refreshKey++
-                }
-            },
-        )
     }
 
     deleteTarget?.let { target ->
@@ -292,76 +293,80 @@ private fun CodeProjectList(
 private fun formatUpdated(millis: Long): String =
     SimpleDateFormat("MMM d, h:mm a", Locale.US).format(Date(millis))
 
+/**
+ * The create and rename forms are inline panels in the destination,
+ * not dialog windows: full-width fields suit a phone, and the repo's
+ * Robolectric screen tests cannot idle a text field inside a dialog
+ * window (it recomposes forever there and every interaction times
+ * out as not-idle). The delete confirmation stays a dialog — it has
+ * no text field and behaves in both worlds.
+ */
 @Composable
-private fun CodeCreateDialog(onDismiss: () -> Unit, onCreate: (name: String, firstRequest: String) -> Unit) {
+private fun CodeCreatePanel(onDismiss: () -> Unit, onCreate: (name: String, firstRequest: String) -> Unit) {
     var name by remember { mutableStateOf("") }
     var request by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("New code project") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = name, onValueChange = { name = it },
-                    label = { Text("Name (optional)") }, singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag("code_create_name"),
-                )
-                OutlinedTextField(
-                    value = request, onValueChange = { request = it },
-                    label = { Text("First request") },
-                    modifier = Modifier.fillMaxWidth().testTag("code_create_request"),
-                )
-                Text(
-                    "The first round starts as soon as the project is created — there is no " +
-                        "approval step. The gate keeps the last working version safe.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onCreate(name.trim(), request.trim()) },
-                enabled = request.isNotBlank(),
-                modifier = Modifier.testTag("code_create_confirm"),
-            ) { Text("Create and start") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Row {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+            Spacer(Modifier.weight(1f))
+        }
+        Text("New code project", style = MaterialTheme.typography.headlineSmall)
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = name, onValueChange = { name = it },
+            label = { Text("Name (optional)") }, singleLine = true,
+            modifier = Modifier.fillMaxWidth().testTag("code_create_name"),
+        )
+        OutlinedTextField(
+            value = request, onValueChange = { request = it },
+            label = { Text("First request") },
+            modifier = Modifier.fillMaxWidth().testTag("code_create_request"),
+        )
+        Text(
+            "The first round starts as soon as the project is created — there is no " +
+                "approval step. The gate keeps the last working version safe.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Spacer(Modifier.height(12.dp))
+        Button(
+            onClick = { onCreate(name.trim(), request.trim()) },
+            enabled = request.isNotBlank(),
+            modifier = Modifier.testTag("code_create_confirm"),
+        ) { Text("Create and start") }
+    }
 }
 
 @Composable
-private fun CodeRenameDialog(
+private fun CodeRenamePanel(
     project: CodeProjectStore.CodeProject,
     onDismiss: () -> Unit,
     onRename: (String) -> Unit,
 ) {
     var name by remember(project.id) { mutableStateOf(project.name) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Rename project") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = name, onValueChange = { name = it },
-                    label = { Text("Name") }, singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag("code_rename_input"),
-                )
-                Text(
-                    "Only the name changes. The project's folder and its exported package " +
-                        "name stay the same, so earlier exports still update-install.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onRename(name.trim()) },
-                enabled = name.isNotBlank(),
-                modifier = Modifier.testTag("code_rename_confirm"),
-            ) { Text("Rename") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Row {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+            Spacer(Modifier.weight(1f))
+        }
+        Text("Rename project", style = MaterialTheme.typography.headlineSmall)
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = name, onValueChange = { name = it },
+            label = { Text("Name") }, singleLine = true,
+            modifier = Modifier.fillMaxWidth().testTag("code_rename_input"),
+        )
+        Text(
+            "Only the name changes. The project's folder and its exported package " +
+                "name stay the same, so earlier exports still update-install.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Spacer(Modifier.height(12.dp))
+        Button(
+            onClick = { onRename(name.trim()) },
+            enabled = name.isNotBlank(),
+            modifier = Modifier.testTag("code_rename_confirm"),
+        ) { Text("Rename") }
+    }
 }
 
 private enum class CodePane { PREVIEW, CONSOLE, FILES, BRIEF }
