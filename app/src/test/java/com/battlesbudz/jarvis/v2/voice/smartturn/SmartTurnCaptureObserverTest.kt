@@ -61,6 +61,22 @@ class SmartTurnCaptureObserverTest {
             assertEquals(1350L, telemetry.stages["smart_turn_0_source_captured"])
         } finally { observer.close(); shadow.close(); assertTrue(shadow.awaitClosed(1000)) }
     }
+    @Test fun endpointAdmissionZeroStartsInferenceAtTheFirstQuietFrame() {
+        val now = AtomicLong(1_000_000_000L); val backend = Backend(); val telemetry = Telemetry()
+        val shadow = SmartTurnShadow({ backend }, true, TimeUnit.SECONDS.toNanos(2), now::get)
+        val observer = SmartTurnCaptureObserver(shadow, "turn", 1, telemetry, { true }, { null }, now::get,
+            endpointEnabled = true, endpointPauseAdmissionMs = 0)
+        try {
+            observer.onPcm(ByteArray(3200), 1600)
+            observer.onFrame(frame(now.get(), speech = true))
+            assertEquals(0, backend.calls.get())
+            now.addAndGet(32_000_000L)
+            observer.onFrame(frame(now.get()).copy(silenceMs = 32))
+            waitFor { backend.calls.get() == 1 && !shadow.isBusy() }
+            assertEquals(1032L, telemetry.stages["smart_turn_0_request_accepted"])
+            assertTrue(telemetry.strings["smart_turn_budget"]!!.contains("pause_ms=0"))
+        } finally { observer.close(); shadow.close(); assertTrue(shadow.awaitClosed(1000)) }
+    }
     @Test fun realPcmSnapshotAndPredictionEnterMetadataOnly() {
         val now = AtomicLong(1_000_000_000); val backend = Backend(); val telemetry = Telemetry()
         val shadow = SmartTurnShadow({ backend }, true, TimeUnit.SECONDS.toNanos(2), now::get)
@@ -123,9 +139,9 @@ class SmartTurnCaptureObserverTest {
             assertEquals(1, backend.calls.get())
         } finally { backend.release.countDown(); observer.close(); shadow.close(); shadow.awaitClosed(1000) }
     }
-    @Test fun backlogThermalAndMissingBoundarySkipBeforeAnyWorker() {
+    @Test fun backlogBlockerAndMissingBoundarySkipBeforeAnyWorker() {
         val now = AtomicLong(1_000_000_000); val backend = Backend(); val telemetry = Telemetry()
-        var blocker: String? = "thermal_severe"
+        var blocker: String? = "admission_blocked"
         val shadow = SmartTurnShadow({ backend }, true, TimeUnit.SECONDS.toNanos(2), now::get)
         val observer = SmartTurnCaptureObserver(shadow, "turn", 1, telemetry, { true }, { blocker }, now::get)
         try {

@@ -24,6 +24,15 @@ class AndroidMobileActionExecutor(
      */
     reminderScheduling: ReminderScheduling? = null,
     /**
+     * Sandbox Phase 2 bridge behind run_in_sandbox. Supplied by the runtime
+     * composition root (JarvisRuntime) and backed by the Phase 1
+     * SandboxRunner; it blocks for the run's duration and returns the
+     * shaped receipt (exit code + capped output). Null means the sandbox
+     * path is not installed in this executor and the action fails closed
+     * with an honest receipt, exactly like the browse actions below.
+     */
+    private val sandboxRun: ((String) -> ExecutionResult)? = null,
+    /**
      * Background-launch seams (finding 3): injectable so the route matrix
      * and the visibility observation are unit-testable. Defaults are the
      * production Android checks.
@@ -206,6 +215,19 @@ class AndroidMobileActionExecutor(
                 ExecutionResult(false, "I couldn't read the schedule right now.")
             } else {
                 bridge.describeSchedule()
+            }
+        }
+        is MobileAction.RunInSandbox -> {
+            val bridge = sandboxRun
+            if (bridge == null) {
+                onDiagnostic("run_in_sandbox result=unavailable reason=no_sandbox_bridge")
+                ExecutionResult(false, "The sandbox isn't wired into this action path, so I didn't run anything.")
+            } else {
+                // Blocking run (up to the D4 timeout); the pipeline invokes
+                // the executor off the main thread.
+                val result = bridge(action.command)
+                onDiagnostic("run_in_sandbox result=${result.succeeded} message=${result.message.take(80)}")
+                result
             }
         }
         is MobileAction.PostNotification -> {

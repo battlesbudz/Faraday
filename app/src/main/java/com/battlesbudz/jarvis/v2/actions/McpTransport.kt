@@ -106,9 +106,46 @@ class AndroidKeystoreMcpCredentialStore(context: Context) : McpCredentialStore {
 
 data class McpHttpResponse(val status: Int, val body: String, val headers: Map<String, String>)
 
+/**
+ * Read-timeout budget per request phase (item 3 tiering, replacing the
+ * old flat 10s/30s). A discovery handshake is quick or the server is
+ * dead; tools/list gets a middle budget; a real tool call may
+ * legitimately run for a while. The connect timeout stays flat at the
+ * client's configured value: a connect that takes longer than that is
+ * a dead server as far as a voice turn is concerned.
+ */
+enum class McpPhase(val readTimeoutMs: Int) {
+    DISCOVERY(20_000),
+    LIST(30_000),
+    CALL(60_000)
+}
+
 fun interface McpHttpClient {
     /** POST a JSON-RPC payload. Implementations must never log the Authorization header. */
     fun post(url: String, body: String, headers: Map<String, String>): McpHttpResponse
+
+    /**
+     * POST a request whose JSON-RPC response the caller is waiting for,
+     * identified by [expectedId]. Streaming implementations consume the
+     * response as it arrives and return as soon as the message with that
+     * id has been seen, instead of reading to end-of-stream: a Streamable
+     * HTTP server may hold an SSE response open (keepalives, a pending
+     * server-initiated request) long after the reply was delivered, and
+     * reading to close would stall the call to the read timeout. The
+     * returned body is then the matched message's JSON text. When no
+     * message matches before the stream ends, the full response body is
+     * returned and the protocol layer applies its whole-body tolerance,
+     * so plain JSON replies behave exactly as with [post]. The default
+     * implementation simply delegates to [post]; [phase] selects the
+     * read-timeout tier for implementations that support one.
+     */
+    fun postForResponse(
+        url: String,
+        body: String,
+        headers: Map<String, String>,
+        expectedId: Int,
+        phase: McpPhase = McpPhase.CALL
+    ): McpHttpResponse = post(url, body, headers)
 }
 
 /** JVM-pure HTTP client over HttpURLConnection; works on Android as well. */
@@ -116,7 +153,29 @@ class UrlConnectionMcpHttpClient(
     private val connectTimeoutMs: Int = 10_000,
     private val readTimeoutMs: Int = 30_000
 ) : McpHttpClient {
-    override fun post(url: String, body: String, headers: Map<String, String>): McpHttpResponse {
+    override fun post(url: String, body: String, headers: Map<String, String>): McpHttpResponse =
+        exchange(url, body, headers, readTimeoutMs) { stream ->
+            stream?.bufferedReader(StandardCharsets.UTF_8)?.readText() ?: ""
+        }
+
+    override fun postForResponse(
+        url: String,
+        body: String,
+        headers: Map<String, String>,
+        expectedId: Int,
+        phase: McpPhase
+    ): McpHttpResponse =
+        exchange(url, body, headers, phase.readTimeoutMs) { stream ->
+            if (stream == null) "" else readUntilMatch(stream, expectedId)
+        }
+
+    private fun exchange(
+        url: String,
+        body: String,
+        headers: Map<String, String>,
+        readTimeoutMs: Int,
+        readBody: (java.io.InputStream?) -> String
+    ): McpHttpResponse {
         val connection = URL(url).openConnection() as HttpURLConnection
         try {
             connection.requestMethod = "POST"
@@ -130,7 +189,7 @@ class UrlConnectionMcpHttpClient(
             val status = connection.responseCode
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream
             val responseBody = try {
-                stream?.bufferedReader(StandardCharsets.UTF_8)?.readText() ?: ""
+                readBody(stream)
             } catch (_: Exception) { "" }
             val responseHeaders = connection.headerFields.entries
                 .mapNotNull { (name, values) -> name?.let { it to (values.firstOrNull() ?: "") } }
@@ -139,6 +198,44 @@ class UrlConnectionMcpHttpClient(
         } finally {
             connection.disconnect()
         }
+    }
+
+    /**
+     * Consume a response body incrementally. Each SSE `data:` payload is
+     * checked as it arrives; the moment one is the JSON-RPC message with
+     * [expectedId], it is returned and the rest of the stream is
+     * abandoned (the caller disconnects). If the stream ends without a
+     * match, the accumulated body text is returned whole, preserving the
+     * protocol layer's existing tolerance for both plain JSON replies
+     * (which take this path) and unmatched event streams.
+     */
+    private fun readUntilMatch(stream: java.io.InputStream, expectedId: Int): String {
+        val reader = stream.bufferedReader(StandardCharsets.UTF_8)
+        val raw = StringBuilder()
+        reader.use {
+            while (true) {
+                val line = it.readLine() ?: break
+                if (raw.isNotEmpty()) raw.append('\n')
+                raw.append(line)
+                val trimmed = line.trim()
+                if (!trimmed.startsWith("data:")) continue
+                val payload = trimmed.removePrefix("data:").trim()
+                if (payload.isEmpty() || payload == "[DONE]") continue
+                if (payloadId(payload) == expectedId) return payload
+            }
+        }
+        return raw.toString()
+    }
+
+    /** The JSON-RPC id of one SSE payload, or null when it carries none. */
+    private fun payloadId(payload: String): Int? = try {
+        when (val id = org.json.JSONObject(payload).opt("id")) {
+            is Number -> id.toInt()
+            is String -> id.toIntOrNull()
+            else -> null
+        }
+    } catch (_: Exception) {
+        null
     }
 }
 

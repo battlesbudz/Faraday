@@ -68,6 +68,15 @@ internal val SCREEN_MUTATION_TOOLS = setOf("screen_tap", "screen_scroll", "scree
  */
 internal val BROWSE_APPROVAL_TOOLS = setOf("browse_submit")
 
+/**
+ * Sandbox Phase 2: run_in_sandbox is never routine-eligible and never
+ * auto-dispatched. A model-proposed command may be admitted for tracking
+ * and parked for an exact approval of the command text; only that approval
+ * (consumed atomically with the dispatch claim) makes it dispatch-eligible.
+ * No grant, routine, or external agent can ever cover it.
+ */
+internal val SANDBOX_APPROVAL_TOOLS = setOf("run_in_sandbox")
+
 /** No grant can expand these tools into arbitrary or consequential operations. */
 internal fun ActionRequest.isRoutineEligible() = when (name) {
     "read_battery" -> arguments.isEmpty()
@@ -103,7 +112,8 @@ internal fun ActionRequest.isRoutineEligible() = when (name) {
  */
 internal fun ActionRequest.isDispatchEligible(authority: ToolAuthority): Boolean =
     isRoutineEligible() || (authority == ToolAuthority.EXACT_APPROVAL &&
-        (name in SCREEN_MUTATION_TOOLS || name in BROWSE_APPROVAL_TOOLS))
+        (name in SCREEN_MUTATION_TOOLS || name in BROWSE_APPROVAL_TOOLS ||
+            name in SANDBOX_APPROVAL_TOOLS))
 
 /** Human-readable label for the screen Stop overlay and approval prompts (M1d). */
 internal fun ActionRequest.describeForOverlay(): String = when (name) {
@@ -118,5 +128,8 @@ internal fun ActionRequest.describeForOverlay(): String = when (name) {
     "create_reminder" -> "Set a reminder"
     "show_schedule" -> "Show the schedule"
     "post_notification" -> "Post a notification"
+    // The approval prompt must show the exact command text Battles is
+    // approving (Phase 2 requirement) — never a paraphrase.
+    "run_in_sandbox" -> "Run in the sandbox: ${arguments["command"] ?: ""}"
     else -> name
 }

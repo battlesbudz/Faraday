@@ -14,6 +14,75 @@ import com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy
 import com.battlesbudz.jarvis.v2.voice.IncrementalVoiceInput
 
 
+/**
+ * Explicit history budget for the persistent-conversation model (M7,
+ * epic item 5 part 3). Faraday keeps one persistent LiteRT conversation
+ * and rebuilds it from confirmed history, so the budget is enforced on
+ * the history handed to prompt assembly / a confirmed-history rebuild —
+ * never as a per-turn re-prefill cap.
+ *
+ * Budgets, enforced newest-first:
+ * - at most [MAX_MESSAGES] entries;
+ * - at most [MAX_CHARS] characters of entry text, the measurable proxy
+ *   for tokens in this codebase (prompt limits are computed as
+ *   contextTokens × [CHARS_PER_TOKEN] in
+ *   [ConversationPrompt.contextLimit]), i.e. about [MAX_ESTIMATED_TOKENS]
+ *   estimated tokens;
+ * - the newest entry is always kept, even if it alone exceeds the char
+ *   budget, so the latest exchange can never be windowed away.
+ *
+ * Heavy-payload windowing: within the window, an attached-payload
+ * reference (a [ChatEntry.imageUri] or the persisted
+ * "[image|audio attached to this message]" context marker written by
+ * ConversationHistory) survives only on the newest entry that carries
+ * one. Older payload entries continue as text with the reference
+ * stripped, so a rebuild never re-pays the payload cost of every old
+ * attachment. Returns the input instance unchanged when nothing is
+ * trimmed or stripped.
+ */
+internal object HistoryBudget {
+    const val MAX_MESSAGES = 32
+    const val MAX_CHARS = 6_000
+    const val CHARS_PER_TOKEN = 3
+    const val MAX_ESTIMATED_TOKENS = MAX_CHARS / CHARS_PER_TOKEN
+
+    private val ATTACHMENT_MARKER = Regex("\\[(?:image|audio) attached to this message\\]")
+    private val ATTACHMENT_MARKER_LINE = Regex("\\n?\\[(?:image|audio) attached to this message\\]")
+
+    /** Rough token estimate using the codebase's chars-per-token ratio. */
+    fun estimatedTokens(history: List<ChatEntry>): Int =
+        history.sumOf { it.text.length } / CHARS_PER_TOKEN
+
+    fun window(history: List<ChatEntry>): List<ChatEntry> {
+        if (history.isEmpty()) return history
+        val selected = ArrayDeque<ChatEntry>()
+        var chars = 0
+        for (entry in history.asReversed()) {
+            if (selected.isNotEmpty() &&
+                (selected.size >= MAX_MESSAGES || chars + entry.text.length > MAX_CHARS)) break
+            selected.addFirst(entry)
+            chars += entry.text.length
+        }
+        val newestPayload = selected.indexOfLast { carriesPayload(it) }
+        val trimmed = selected.size != history.size
+        if (newestPayload < 0) return if (trimmed) selected.toList() else history
+        var strippedAny = false
+        val windowed = selected.mapIndexed { index, entry ->
+            if (index < newestPayload && carriesPayload(entry)) {
+                strippedAny = true
+                textOnly(entry)
+            } else entry
+        }
+        return if (trimmed || strippedAny) windowed else history
+    }
+
+    private fun carriesPayload(entry: ChatEntry): Boolean =
+        entry.imageUri != null || ATTACHMENT_MARKER.containsMatchIn(entry.text)
+
+    private fun textOnly(entry: ChatEntry): ChatEntry =
+        entry.copy(text = ATTACHMENT_MARKER_LINE.replace(entry.text, "").trimEnd(), imageUri = null)
+}
+
 internal data class PreparedConversation(
     val history: List<ChatEntry>,
     val memoryContext: MemoryTurnContext?,

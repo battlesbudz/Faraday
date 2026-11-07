@@ -146,6 +146,7 @@ playback evidence; unplayed generated text must not become heard conversation co
 | `presentation/` | Model setup operations through a narrow session port; durable download work identity | `ModelSetupOperations`, `ModelSetupContract` |
 | `ui/` | Compose screens, model presentation, call overlay, attachments, task/memory panels and evidence exports | `JarvisApp`, `ModelSetupState`, `ModelSelectionSection`, `ConversationScreen`, `VoiceCallScreen`, `MemoryScreen`, `ConversationMetricsControls` |
 | `assistant/` | Android default-assistant integration entry points | `JarvisInteractionService`, `JarvisRecognitionService` |
+| `sandbox/` | On-device Linux sandbox (Phase 1): rootfs/workspace layout and storage accounting, session lifecycle, exec-style runs, settings and diagnostics over the vendored terminal engine (`io.github.sylirre.terminal.term`, native `libterm.so` with chroot-ng) | `SandboxStore`, `SandboxManager`, `SandboxRunner`, `SandboxSettings`, `SandboxDiagnostics` |
 
 ## Voice stage and lifetime contracts
 

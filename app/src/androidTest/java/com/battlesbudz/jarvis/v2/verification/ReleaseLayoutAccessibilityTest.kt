@@ -22,6 +22,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
@@ -97,8 +99,33 @@ class ReleaseLayoutAccessibilityTest {
                     Surface(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
                         Box(Modifier.fillMaxSize()) {
                         Box(if (narrow) Modifier.widthIn(max = 320.dp).fillMaxHeight() else Modifier.fillMaxSize()) {
+                            // Mirror the production arrangement: the header
+                            // band flanks the wisp in the frame's presence,
+                            // sharing its state holders with the screen.
+                            val settingsState = remember { mutableStateOf(false) }
+                            val historyState = remember { mutableStateOf(false) }
+                            val headerErrorState = remember { mutableStateOf<String?>(null) }
+                            val inputBusyState = remember { mutableStateOf(false) }
+                            val benchmarksState = remember { mutableStateOf(false) }
+                            val benchmarkReplyState = remember { mutableStateOf<String?>(null) }
+                            val sending by busy.collectAsState()
+                            val inCall by com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.armed.collectAsState()
                             WispAppFrame(presence = {
-                                WispPresence(history, busy, callState, playback, null, null, null)
+                                com.battlesbudz.jarvis.v2.ui.ChatHeaderBand(
+                                    memoryEnabled = !inputBusyState.value,
+                                    settingsEnabled = !inputBusyState.value,
+                                    conversationsEnabled = !sending && !inCall && !inputBusyState.value,
+                                    privateEnabled = !sending && !inCall && !inputBusyState.value,
+                                    newEnabled = !sending && !inCall && !inputBusyState.value,
+                                    metricsVisible = false,
+                                    onOpenMemory = { opensMemory.incrementAndGet() },
+                                    onOpenSettings = { settingsState.value = true },
+                                    onOpenHistory = { historyState.value = true },
+                                    onNewPrivateConversation = { headerErrorState.value = "Private chat is unavailable right now." },
+                                    onNewConversation = { headerErrorState.value = null },
+                                    onOpenMetrics = {},
+                                    presence = { WispPresence(history, busy, callState, playback, null, null, null) },
+                                )
                             }) {
                             ConversationScreen(
                                 history = history, busy = busy, callState = callState,
@@ -108,6 +135,12 @@ class ReleaseLayoutAccessibilityTest {
                                 onEndVoice = { done -> endCall(); done("Voice Call ended.") },
                                 onOpenVoiceCalls = {}, resumedVoice = false,
                                 onOpenMemory = { opensMemory.incrementAndGet() },
+                                settingsOpenState = settingsState,
+                                historyOpenState = historyState,
+                                headerErrorState = headerErrorState,
+                                inputBusyState = inputBusyState,
+                                benchmarksOpenState = benchmarksState,
+                                benchmarkReplyState = benchmarkReplyState,
                                 voiceContent = { visible, _, _, startRequest ->
                                     LaunchedEffect(startRequest) {
                                         if (startRequest > 0 && callState.value == VoiceSessionState.PASSIVE_LISTENING) {

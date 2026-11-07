@@ -2,11 +2,14 @@ package com.battlesbudz.jarvis.v2.ai
 
 import com.battlesbudz.jarvis.v2.ai.storage.modelFiles
 import com.battlesbudz.jarvis.v2.ai.storage.removeModelFiles
+import com.battlesbudz.jarvis.v2.ai.storage.removePartialDownloadFiles
+import com.battlesbudz.jarvis.v2.ai.storage.DownloadSpaceBudget
 import com.battlesbudz.jarvis.v2.ai.storage.ModelDownloader
 import com.battlesbudz.jarvis.v2.ai.storage.DownloadedModelLookup
 import com.battlesbudz.jarvis.v2.ai.storage.sha256
 import android.content.Context
 import android.net.Uri
+import android.os.storage.StorageManager
 import android.provider.OpenableColumns
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
@@ -55,12 +58,35 @@ class ModelStore @JvmOverloads constructor(
 
     fun fileFor(spec: LocalModelSpec): File = File(modelDirectory, spec.fileName)
 
+    /**
+     * Root the native engine appends the model id to for its compiled cache:
+     * the models directory itself, so the compiled cache lives beside the
+     * model file in app files storage. It used to be the cache directory,
+     * which Android may evict under storage pressure — potentially
+     * mid-session, taking the compiled weights with it.
+     */
+    fun engineCacheRoot(): File = modelDirectory
+
+    /** This model's compiled-cache directory inside [engineCacheRoot]. */
+    fun compiledCacheDirectory(spec: LocalModelSpec): File = File(modelDirectory, spec.id)
+
+    /** Where the compiled cache lived before the move to files storage. */
+    private fun legacyCompiledCacheDirectory(spec: LocalModelSpec): File =
+        File(context.cacheDir, spec.id)
+
     /** Caller holds the model-operation lock and has closed the idle engine. */
     fun deleteModel(spec: LocalModelSpec) {
         require(ModelCatalog.find(spec.id) == spec) { "Unsupported model." }
         check(isModelOperationActive()) { "Model deletion requires exclusive ownership." }
         check(!operations.downloading(spec.id)) { "Cancel this model's download before deleting it." }
-        removeModelFiles(modelDirectory, spec.fileName, File(context.cacheDir, spec.id))
+        removeModelFiles(modelDirectory, spec.fileName, compiledCacheDirectory(spec))
+        // Installs from before the compiled-cache move kept it under the
+        // evictable cache directory; remove that too so deleting a model
+        // frees everything it did before the move.
+        val legacyCache = legacyCompiledCacheDirectory(spec)
+        check(!legacyCache.exists() || legacyCache.deleteRecursively()) {
+            "Could not remove the model cache. Please try again."
+        }
         val key = fingerprintKey(spec)
         val editor = preferences.edit()
         listOf(key, "${key}_length", "${key}_modified", "${key}_invalid",
@@ -70,12 +96,44 @@ class ModelStore @JvmOverloads constructor(
         check(editor.commit()) { "Model removed, but its test state could not be cleared." }
     }
 
+    /**
+     * Bytes held by an unfinished download of this model: the partial file
+     * plus its chunk checkpoints. Zero when no resumable state exists. This
+     * is the "saved progress" a pause keeps and a cancel discards; the
+     * installed model file and the compiled caches are not part of it.
+     */
+    fun partialDownloadBytes(spec: LocalModelSpec): Long {
+        val partial = File(modelDirectory, "${spec.fileName}.part")
+        val chunks = File(modelDirectory, "${spec.fileName}.part.chunks")
+        return (if (partial.isFile) partial.length() else 0L) +
+            (if (chunks.exists()) directoryBytes(chunks) else 0L)
+    }
+
+    /**
+     * Discards a stopped download's resumable state — the partial file and
+     * its chunk checkpoints — so the next download of this model starts
+     * over. An installed model file and its caches are untouched; use
+     * [deleteModel] to remove those. Caller holds the model-operation lock
+     * (the same ownership contract as [deleteModel]) and has stopped the
+     * transfer: this refuses while the model is still marked downloading.
+     */
+    fun discardPartialDownload(spec: LocalModelSpec) {
+        require(ModelCatalog.find(spec.id) == spec) { "Unsupported model." }
+        check(isModelOperationActive()) { "Discarding a partial download requires exclusive ownership." }
+        check(!operations.downloading(spec.id)) { "Stop this model's download before discarding it." }
+        removePartialDownloadFiles(modelDirectory, spec.fileName)
+    }
+
     fun storedBytes(spec: LocalModelSpec): Long = modelFiles(modelDirectory, spec.fileName)
         .sumOf { it.length() } + File(modelDirectory, "${spec.fileName}.part.chunks").let { chunks ->
             if (chunks.exists()) chunks.walkTopDown().filter { it.isFile }.sumOf { it.length() } else 0L
-        } + File(context.cacheDir, spec.id).let { cache ->
-            if (cache.exists()) cache.walkTopDown().filter { it.isFile }.sumOf { it.length() } else 0L
-        }
+        } + directoryBytes(compiledCacheDirectory(spec)) +
+        // A pre-move install's cache still occupies space until it is deleted
+        // or the system evicts it; count it while it exists.
+        directoryBytes(legacyCompiledCacheDirectory(spec))
+
+    private fun directoryBytes(directory: File): Long =
+        if (directory.exists()) directory.walkTopDown().filter { it.isFile }.sumOf { it.length() } else 0L
 
     fun hasModel(spec: LocalModelSpec): Boolean =
         fileFor(spec).let { it.isFile && it.length() > 0L }
@@ -213,6 +271,7 @@ class ModelStore @JvmOverloads constructor(
                 onProgress(fileFor(spec).length(), fileFor(spec).length())
                 return@runCatching fileFor(spec)
             }
+            checkDownloadSpace(spec)
             // Try the exact Downloads lookup first, but preserve download as
             // the explicit one-tap setup fallback when Android hides the file
             // from the app's background provider query.
@@ -253,7 +312,8 @@ class ModelStore @JvmOverloads constructor(
                 temporary = temporary,
                 onProgress = reportProgress,
                 onStatus = onStatus,
-                onStall = onStall
+                onStall = onStall,
+                expectedSha256 = spec.expectedSha256
             )
             check(temporary.isFile && temporary.length() > 0L) { "The downloaded model is empty." }
             onStatus("Verifying the downloaded AI model…")
@@ -280,6 +340,34 @@ class ModelStore @JvmOverloads constructor(
             operations.endDownload(spec.id)
         }
     }.onFailure { if (it is CancellationException) throw it }
+
+    /**
+     * Fail before the first byte moves when this phone cannot hold the model
+     * plus its compiled cache, naming the shortfall. Runs only once the
+     * installed-file check above has failed, so a verified model already on
+     * the phone is never refused. Bytes this model already occupies —
+     * including a resumable partial download — count toward the budget. A
+     * failed space probe never blocks setup: the check guards downloads, it
+     * does not gate on its own measurement.
+     */
+    private fun checkDownloadSpace(spec: LocalModelSpec) {
+        val modelBytes = spec.downloadBytes?.takeIf { it > 0L } ?: return
+        val allocatable = allocatableBytes() ?: return
+        val existing = storedBytes(spec)
+        val shortfall = DownloadSpaceBudget.shortfallBytes(modelBytes, existing, allocatable)
+        check(shortfall <= 0L) {
+            "Not enough free space for ${spec.id}. Free up about ${ModelGuidance.gb(shortfall)} " +
+                "and try again: the model and its cache need " +
+                "${ModelGuidance.gb(DownloadSpaceBudget.budgetBytes(modelBytes))} in total, " +
+                "${ModelGuidance.gb(existing)} is already on this phone for it, and " +
+                "${ModelGuidance.gb(allocatable)} can be made available."
+        }
+    }
+
+    private fun allocatableBytes(): Long? = runCatching {
+        val storageManager = context.getSystemService(StorageManager::class.java)
+        storageManager.getAllocatableBytes(storageManager.getUuidForPath(modelDirectory))
+    }.getOrNull()
 
     private sealed interface DownloadLookupResult {
         data class Completed(val uri: Uri?) : DownloadLookupResult

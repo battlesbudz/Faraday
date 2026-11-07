@@ -1,0 +1,3 @@
+HTTP/1.1 200 OK
+content-type: application/json
+mcp-session-id: 8d9896619a2d48acb199899bf03cf914

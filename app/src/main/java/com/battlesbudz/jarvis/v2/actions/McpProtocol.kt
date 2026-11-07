@@ -85,15 +85,17 @@ object McpProtocol {
         .put("method", "notifications/initialized")
         .toString()
 
-    fun toolsListRequest(requestId: Int): String = JSONObject()
+    fun toolsListRequest(requestId: Int, cursor: String? = null): String = JSONObject()
         .put("jsonrpc", JSONRPC)
         .put("id", requestId)
         .put("method", "tools/list")
-        .put("params", JSONObject())
+        .put("params", JSONObject().apply {
+            if (!cursor.isNullOrBlank()) put("cursor", cursor)
+        })
         .toString()
 
     sealed interface ToolsList {
-        data class Ok(val tools: List<McpTool>) : ToolsList
+        data class Ok(val tools: List<McpTool>, val nextCursor: String? = null) : ToolsList
         data class Failed(val reason: String) : ToolsList
     }
 
@@ -132,7 +134,22 @@ object McpProtocol {
                 pricing = pricing
             )
         }
-        return ToolsList.Ok(parsed)
+        val nextCursor = result.optString("nextCursor", "").ifBlank { null }
+        return ToolsList.Ok(parsed, nextCursor)
+    }
+
+    /** Hard cap on tool-result text fed back into the conversation. */
+    const val MAX_TOOL_RESULT_CHARS = 8_000
+
+    /**
+     * Cap [text] at [MAX_TOOL_RESULT_CHARS]. When anything is cut, an
+     * explicit marker states how much was omitted, so neither the model
+     * nor the user can mistake a truncated result for a complete one.
+     */
+    fun truncateResultText(text: String): String {
+        if (text.length <= MAX_TOOL_RESULT_CHARS) return text
+        val omitted = text.length - MAX_TOOL_RESULT_CHARS
+        return text.take(MAX_TOOL_RESULT_CHARS) + "\n[truncated, $omitted more characters]"
     }
 
     fun callToolRequest(requestId: Int, name: String, arguments: Map<String, Any?>): String =
@@ -169,7 +186,7 @@ object McpProtocol {
             ?: return ProviderCallResult.TypedError(ProviderErrorCode.UNKNOWN,
                 "The tool call reply had no result.")
         if (result.optBoolean("isError", false)) {
-            val text = contentText(result)
+            val text = truncateResultText(contentText(result))
             return ProviderCallResult.TypedError(ProviderErrorCode.UNKNOWN,
                 "The tool reported an error: ${text.ifBlank { "no details" }}.")
         }
@@ -182,7 +199,7 @@ object McpProtocol {
         if (!uri.isNullOrBlank()) {
             return ProviderCallResult.UriResult(uri, result.optString("uriLabel", uri))
         }
-        val text = contentText(result)
+        val text = truncateResultText(contentText(result))
         return ProviderCallResult.Success(
             data = mapOf("text" to text),
             receipt = text.take(512).ifBlank { "The tool ran and returned no text." })

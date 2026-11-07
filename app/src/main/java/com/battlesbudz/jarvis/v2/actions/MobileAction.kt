@@ -46,7 +46,17 @@ sealed interface MobileAction {
     data object BrowseHandoff : MobileAction
     /** M4: password-manager fill; credentials never touch the model. */
     data class BrowseLogin(val token: String) : MobileAction
+    /**
+     * Sandbox Phase 2: one shell command in the on-phone Linux sandbox.
+     * Reachable only under an exact approval of the command text
+     * (SANDBOX_APPROVAL_TOOLS); execution itself lives behind the
+     * executor's sandbox bridge (the Phase 1 SandboxRunner).
+     */
+    data class RunInSandbox(val command: String) : MobileAction
 }
+
+/** Longest command the sandbox tool accepts; scripts belong in /workspace files, not inline. */
+const val MAX_SANDBOX_COMMAND_CHARS = 8_000
 
 /** Verbs accepted by the media_control tool; skip maps to next/previous track. */
 enum class MediaControlAction(val verb: String, val label: String) {
@@ -222,6 +232,23 @@ class MobileActionValidator {
                 atMs == null || atMs <= 0 ->
                     ActionValidation.Rejected("A reminder needs a positive trigger time in epoch milliseconds.")
                 else -> ActionValidation.Valid(MobileAction.CreateReminder(message, atMs))
+            }
+        }
+        "run_in_sandbox" -> {
+            // The command is NOT trimmed: it is shown to the user verbatim
+            // for approval and must run exactly as approved. Only structural
+            // sanity is checked here (non-blank, bounded, no NUL).
+            val command = request.arguments["command"].orEmpty()
+            when {
+                command.isBlank() ->
+                    ActionValidation.Rejected("A sandbox command is required.")
+                command.length > MAX_SANDBOX_COMMAND_CHARS ->
+                    ActionValidation.Rejected(
+                        "Sandbox commands are limited to $MAX_SANDBOX_COMMAND_CHARS characters. " +
+                            "Write longer scripts to a file in /workspace instead.")
+                command.contains('\u0000') ->
+                    ActionValidation.Rejected("A sandbox command cannot contain NUL characters.")
+                else -> ActionValidation.Valid(MobileAction.RunInSandbox(command))
             }
         }
         "show_schedule" -> ActionValidation.Valid(MobileAction.ShowSchedule)
