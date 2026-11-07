@@ -39,6 +39,14 @@ import org.robolectric.annotation.GraphicsMode
  * their dialogs. The engine borrow always refuses here — the round
  * flow itself is pinned by CodeModeDriverTest — and the preview
  * pane is a stub, so no WebView is in the room.
+ *
+ * The two tests that type into a dialog field freeze the compose
+ * test clock while the dialog is open ([withDialogClockFrozen]): a
+ * text field's cursor machinery inside a dialog window keeps
+ * scheduling clock-driven recompositions under Robolectric, so the
+ * paused looper never drains and every interaction times out as
+ * not-idle (AppNotIdleException after 60 s). The dialogs themselves
+ * are plain Material3, the same shape as MemoryScreen's editor.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w480dp-h900dp-mdpi")
@@ -91,6 +99,22 @@ class CodeScreenTest {
     private fun nodeExists(tag: String): Boolean =
         compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
 
+    /**
+     * Runs [block] with the compose test clock frozen; see the class
+     * KDoc for why dialog text fields need this under Robolectric.
+     * Clicks and text input are looper-driven and still land; the
+     * clock restarts before the block's effects are asserted, so
+     * post-dialog assertions run under normal idling.
+     */
+    private fun withDialogClockFrozen(block: () -> Unit) {
+        compose.mainClock.autoAdvance = false
+        try {
+            block()
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
+    }
+
     @Test fun theListRendersTheStoreContents() {
         val snake = store.createProject("Snake", "a snake game", 1_000L)
         val tank = store.createProject("Tank Game", "a tank game", 2_000L)
@@ -113,10 +137,12 @@ class CodeScreenTest {
 
     @Test fun creatingAProjectOpensItWithThePreviewMounted() {
         setScreen()
-        compose.onNodeWithTag("code_new_project").performClick()
-        compose.onNodeWithTag("code_create_name").performTextInput("Snake")
-        compose.onNodeWithTag("code_create_request").performTextInput("a snake game")
-        compose.onNodeWithTag("code_create_confirm").performClick()
+        withDialogClockFrozen {
+            compose.onNodeWithTag("code_new_project").performClick()
+            compose.onNodeWithTag("code_create_name").performTextInput("Snake")
+            compose.onNodeWithTag("code_create_request").performTextInput("a snake game")
+            compose.onNodeWithTag("code_create_confirm").performClick()
+        }
         await("the project to be created in the store") { store.listProjects().size == 1 }
         compose.waitUntil(10_000) { nodeExists("code_preview_stub") }
         compose.onNodeWithText("preview of Snake").assertIsDisplayed()
@@ -149,10 +175,12 @@ class CodeScreenTest {
     @Test fun renamingAProjectChangesOnlyItsListedName() {
         val snake = store.createProject("Snake", "a snake game", 1_000L)
         setScreen()
-        compose.onNodeWithText("Rename").performClick()
-        compose.onNodeWithTag("code_rename_input").performTextClearance()
-        compose.onNodeWithTag("code_rename_input").performTextInput("Snake II")
-        compose.onNodeWithTag("code_rename_confirm").performClick()
+        withDialogClockFrozen {
+            compose.onNodeWithText("Rename").performClick()
+            compose.onNodeWithTag("code_rename_input").performTextClearance()
+            compose.onNodeWithTag("code_rename_input").performTextInput("Snake II")
+            compose.onNodeWithTag("code_rename_confirm").performClick()
+        }
         await("the rename to reach the store") { store.loadProject(snake.id)?.name == "Snake II" }
         compose.waitUntil(10_000) {
             compose.onAllNodesWithText("Snake II").fetchSemanticsNodes().isNotEmpty()
