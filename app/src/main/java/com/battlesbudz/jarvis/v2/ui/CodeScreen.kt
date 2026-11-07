@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+
 package com.battlesbudz.jarvis.v2.ui
 
 import android.app.Activity
@@ -405,8 +407,11 @@ private fun CodeProjectView(
     // polling loop watches the WebView.
     var consoleTick by remember(projectId) { mutableIntStateOf(0) }
 
-    val reloadPreview = remember(projectId) {
-        suspend { withContext(Dispatchers.Main) { preview?.reload() } }
+    val reloadPreview: suspend () -> Unit = remember(projectId) {
+        suspend {
+            withContext(Dispatchers.Main) { preview?.reload() }
+            Unit
+        }
     }
     val onProgress = remember(projectId) {
         { progress: CodeRoundProgress -> writingFile = progress.writingFilePath }
@@ -439,7 +444,7 @@ private fun CodeProjectView(
         }
     }
 
-    fun launchOperation(block: suspend () -> CodeOperationReport, onReport: (CodeOperationReport) -> Unit = {}) {
+    fun launchOperation(onReport: (CodeOperationReport) -> Unit = {}, block: suspend () -> CodeOperationReport) {
         if (busy) return
         busy = true
         writingFile = null
