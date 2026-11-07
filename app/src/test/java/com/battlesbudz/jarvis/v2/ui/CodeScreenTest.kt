@@ -40,13 +40,16 @@ import org.robolectric.annotation.GraphicsMode
  * flow itself is pinned by CodeModeDriverTest — and the preview
  * pane is a stub, so no WebView is in the room.
  *
- * The two tests that type into a dialog field freeze the compose
- * test clock while the dialog is open ([withDialogClockFrozen]): a
- * text field's cursor machinery inside a dialog window keeps
- * scheduling clock-driven recompositions under Robolectric, so the
- * paused looper never drains and every interaction times out as
- * not-idle (AppNotIdleException after 60 s). The dialogs themselves
- * are plain Material3, the same shape as MemoryScreen's editor.
+ * The two tests that type into a dialog field run the dialog
+ * through [inDialog]: under Robolectric a text field inside a
+ * dialog window never lets the paused looper idle (AppNotIdle
+ * after 60 s with the clock auto-advancing), while the dialog's
+ * entry is itself clock-gated (frozen from the start, it never
+ * composes). So the clock is frozen, frames are pumped by hand
+ * until the dialog is in the tree, and the interactions run
+ * frozen; the button-only delete dialog needs none of this. The
+ * dialogs themselves are plain Material3, the same shape as
+ * MemoryScreen's shipped editor dialog.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w480dp-h900dp-mdpi")
@@ -100,15 +103,23 @@ class CodeScreenTest {
         compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
 
     /**
-     * Runs [block] with the compose test clock frozen; see the class
-     * KDoc for why dialog text fields need this under Robolectric.
-     * Clicks and text input are looper-driven and still land; the
-     * clock restarts before the block's effects are asserted, so
-     * post-dialog assertions run under normal idling.
+     * Opens a text-field dialog and runs [block] inside it; see the
+     * class KDoc for why. The clock is frozen before [open] runs,
+     * frames are pumped by hand until the node tagged [dialogTag]
+     * is in the semantics tree, [block] runs frozen (clicks and
+     * text input are looper-driven and still land), and the clock
+     * restarts before the caller asserts the dialog's effects.
      */
-    private fun withDialogClockFrozen(block: () -> Unit) {
+    private fun inDialog(dialogTag: String, open: () -> Unit, block: () -> Unit) {
         compose.mainClock.autoAdvance = false
         try {
+            open()
+            var frames = 0
+            while (!nodeExists(dialogTag) && frames < 60) {
+                compose.mainClock.advanceTimeByFrame()
+                frames++
+            }
+            assertTrue("dialog node $dialogTag composed after $frames frames", nodeExists(dialogTag))
             block()
         } finally {
             compose.mainClock.autoAdvance = true
@@ -137,8 +148,7 @@ class CodeScreenTest {
 
     @Test fun creatingAProjectOpensItWithThePreviewMounted() {
         setScreen()
-        withDialogClockFrozen {
-            compose.onNodeWithTag("code_new_project").performClick()
+        inDialog("code_create_name", open = { compose.onNodeWithTag("code_new_project").performClick() }) {
             compose.onNodeWithTag("code_create_name").performTextInput("Snake")
             compose.onNodeWithTag("code_create_request").performTextInput("a snake game")
             compose.onNodeWithTag("code_create_confirm").performClick()
@@ -175,8 +185,7 @@ class CodeScreenTest {
     @Test fun renamingAProjectChangesOnlyItsListedName() {
         val snake = store.createProject("Snake", "a snake game", 1_000L)
         setScreen()
-        withDialogClockFrozen {
-            compose.onNodeWithText("Rename").performClick()
+        inDialog("code_rename_input", open = { compose.onNodeWithText("Rename").performClick() }) {
             compose.onNodeWithTag("code_rename_input").performTextClearance()
             compose.onNodeWithTag("code_rename_input").performTextInput("Snake II")
             compose.onNodeWithTag("code_rename_confirm").performClick()
