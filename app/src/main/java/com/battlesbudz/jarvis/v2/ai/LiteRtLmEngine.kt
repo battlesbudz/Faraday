@@ -34,7 +34,7 @@ class LiteRtLmEngine(
     val visionEnabled: Boolean = false,
     val audioEnabled: Boolean = false,
     private val speculativeDecoding: Boolean? = null
-) : LocalModelEngine, Closeable, ToolCallEngine {
+) : LocalModelEngine, Closeable, ToolCallEngine, CodeModeEngine {
     private companion object {
         val initializationLock = Any()
         val callbackDepth = ThreadLocal.withInitial { 0 }
@@ -100,6 +100,8 @@ class LiteRtLmEngine(
     /** True once engine close has been requested; a closed engine must not be reset or reused. */
     val isNativeClosed: Boolean get() = lifecycle.isClosed
     val requiresConfirmedHistoryRebuild: Boolean get() = lifecycle.requiresConfirmedHistoryRebuild
+    /** True when the resident native conversation holds at least one accepted turn. */
+    val hasNativeConversationHistory: Boolean get() = lifecycle.hasConversationHistory
 
     /** Reports actual submissions, including incremental input, retries and recognition fallback. */
     var onPromptSubmitted: (String, Int) -> Unit = { _, _ -> }
@@ -186,6 +188,7 @@ class LiteRtLmEngine(
 
     /** Called by the session owner before deciding whether to seed confirmed history. */
     internal suspend fun prepareOrdinaryConversation(): Boolean {
+        if (codeMode) { releaseCodeConversation(); return true }
         if (!fixedVoicePreface) return false
         resetConversation()
         return true
@@ -215,8 +218,37 @@ class LiteRtLmEngine(
         return true
     }
 
+    private var codeMode = false
+    /** Read-only view of code-mode preparation; never resets the conversation. */
+    override val codeModeActive: Boolean get() = codeMode
+    /** Native conversation sessions so far; the code reuse rule keys on this count. */
+    override val conversationGeneration: Long get() = nativeSession
+
+    /**
+     * Prepares the shared conversation for code mode (code-and-export
+     * scope sections 3.5 and 4.2): a reset, after which the next
+     * conversation is created from [codeConversationConfig] — tools
+     * disabled, the code prompt as system instruction, the code sampler.
+     * Always prepares fresh. The reset itself clears the flag (see
+     * [resetConversation]); the flag is set after it, so the conversation
+     * created lazily by the next turn is the code one.
+     */
+    override suspend fun prepareCodeConversation(): Boolean {
+        resetConversation()
+        codeMode = true
+        return true
+    }
+
+    /** Leaving code mode releases the conversation; chat rebuilds from confirmed history. */
+    override suspend fun releaseCodeConversation() {
+        if (!codeMode) return
+        codeMode = false
+        resetConversation()
+    }
+
     private fun createConversation() = engine.createConversation(
-        modelConversationConfig(modelSpec, tools, toolsEnabled, fixedVoicePreface)
+        if (codeMode) codeConversationConfig(modelSpec)
+        else modelConversationConfig(modelSpec, tools, toolsEnabled, fixedVoicePreface)
     )
 
     @OptIn(ExperimentalApi::class)
@@ -240,6 +272,10 @@ class LiteRtLmEngine(
     override suspend fun resetConversation() = withContext(NonCancellable) {
         lifecycle.resetForConfirmedHistory()
         fixedVoicePreface = false
+        // A reset is how every mode change already happens; it always
+        // leaves code mode too, so a stale code conversation can never be
+        // mistaken for a chat or voice one (scope section 3.5).
+        codeMode = false
         nativeSession++
         nativeSubmissions = 0
     }

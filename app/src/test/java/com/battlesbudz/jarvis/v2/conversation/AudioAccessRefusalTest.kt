@@ -1,6 +1,8 @@
 package com.battlesbudz.jarvis.v2.conversation
 
 import com.battlesbudz.jarvis.v2.actions.ActionTurnPlan
+import com.battlesbudz.jarvis.v2.actions.ExecutionResult
+import com.battlesbudz.jarvis.v2.actions.MobileActionExecutor
 import com.battlesbudz.jarvis.v2.ai.ConversationPromptBuilder
 import com.battlesbudz.jarvis.v2.ai.FactualityVerifier
 import com.battlesbudz.jarvis.v2.ai.GenerationResult
@@ -17,6 +19,7 @@ import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkProvenance
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkPurpose
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkSubmission
 import com.battlesbudz.jarvis.v2.memory.MemoryDeliveryFence
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -29,6 +32,12 @@ import org.junit.Test
  * refusal guard: the claim is detected, the turn regenerates once with the
  * audio re-attached and the false claim named, and a second refusal is
  * replaced by the honest repeat-request fallback instead of being answered.
+ *
+ * The build-1706 specimen (a tools-enabled call; the user asked for his
+ * battery, barged in, and the follow-up turn answered the barge audio with
+ * a hearing refusal) proved the detector's phrasing family was incomplete:
+ * no access phrase, instead "unable to hear the audio" plus "I require you
+ * to provide it". Those shapes are pinned here too.
  */
 class AudioAccessRefusalTest {
     private companion object {
@@ -37,6 +46,9 @@ class AudioAccessRefusalTest {
             "I require the audio file to process your request."
         /** Second verbatim refusal from the same call. */
         const val REFUSAL_TWO = "Sir, I am unable to respond to the audio as I do not have access to its content."
+        /** Verbatim refusal from Battles's build-1706 call (turn 13774b34). */
+        const val SPECIMEN_1706 = "Sir, I shall respond to your request by processing the audio you have provided. " +
+            "As I am currently unable to hear the audio, I require you to provide it so that I may assist you with your request."
         const val HONEST_UNCLEAR = "I couldn't make out the words in that recording, sir. Could you say it again?"
     }
 
@@ -54,6 +66,24 @@ class AudioAccessRefusalTest {
         assertFalse(AudioAccessRefusal.isRefusal("I can't access the audio settings from here, sir."))
         assertFalse(AudioAccessRefusal.isRefusal("You are looking at a person."))
         assertFalse(AudioAccessRefusal.isRefusal(""))
+    }
+
+    @Test fun detectorCatchesTheBuild1706HearingRefusalFamily() {
+        assertTrue(AudioAccessRefusal.isRefusal(SPECIMEN_1706))
+        assertTrue(AudioAccessRefusal.isRefusal("I am unable to hear the audio, sir."))
+        assertTrue(AudioAccessRefusal.isRefusal("I can't hear the recording, sir."))
+        assertTrue(AudioAccessRefusal.isRefusal("I need you to provide the audio again."))
+    }
+
+    @Test fun detectorLeavesHearingDifficultyAlone() {
+        // Difficulty hearing is not an access denial: the model received the
+        // audio and is reporting that it was hard to make out, which is a
+        // legitimate answer on a noisy capture.
+        assertFalse(AudioAccessRefusal.isRefusal(
+            "I could barely hear the audio, but you asked about your battery level."))
+        assertFalse(AudioAccessRefusal.isRefusal("The audio was hard to hear over the road noise."))
+        // A provide-demand with no audio anchor is an ordinary request.
+        assertFalse(AudioAccessRefusal.isRefusal("I need you to provide your email address."))
     }
 
     /** Scripted backend: each generation consumes the next queued result. */
@@ -85,11 +115,21 @@ class AudioAccessRefusalTest {
             result(prompt, audioBytes, onToken)
         override suspend fun generate(prompt: String, imageBytes: ByteArray, onToken: (String) -> Unit): GenerationResult =
             error("Unexpected image input")
-        override suspend fun sendToolResults(results: List<Pair<ToolCall, String>>, onToken: (String) -> Unit): GenerationResult =
-            error("Unrequested tools must not execute")
+        /** Follow-up generations after a tool execution, queued per test. */
+        val toolResultOutputs = ArrayDeque<GenerationResult>()
+        val toolResultSubmissions = mutableListOf<List<Pair<ToolCall, String>>>()
+        override suspend fun sendToolResults(results: List<Pair<ToolCall, String>>, onToken: (String) -> Unit): GenerationResult {
+            toolResultSubmissions.add(results)
+            check(toolResultOutputs.isNotEmpty()) { "Unrequested tools must not execute" }
+            return toolResultOutputs.removeFirst().also { if (it.text.isNotEmpty()) onToken(it.text) }
+        }
     }
 
-    private suspend fun generate(backend: ScriptedBackend, audio: ByteArray?): ConversationDraft {
+    private suspend fun generate(backend: ScriptedBackend, audio: ByteArray?,
+                                 actions: ConversationActions = ConversationActions(
+                                     { error("No Android executor") }, { _, _ -> error("No action admission") },
+                                     { _, _, _, _ -> error("No action dispatch") }, {}, "conversation",
+                                     { _, _, _ -> })): ConversationDraft {
         val diagnostics = ConversationDiagnostics({}, {}, {}, {})
         val memory = MemoryDeliveryFence()
         val input = ConversationInvocation("Hello", emptyList(), voiceAudio = audio, directVoiceAudio = audio != null)
@@ -110,8 +150,6 @@ class AudioAccessRefusalTest {
             override suspend fun fetch(query: String): String? = error("Generation must not fetch")
             override fun isInsufficientAnswer(answer: String) = false
         }
-        val actions = ConversationActions({ error("No Android executor") }, { _, _ -> error("No action admission") },
-            { _, _, _, _ -> error("No action dispatch") }, {}, "conversation", { _, _, _ -> })
         val generation = ConversationGeneration(session, references, builder, { error("No attachment") }, diagnostics)
         return generation.generate(input, 10_000,
             RoutedConversation(emptyList(), TurnPlan(TurnKind.NORMAL_CHAT), ActionTurnPlan.NotAction, null),
@@ -149,6 +187,63 @@ class AudioAccessRefusalTest {
         assertEquals(2, backend.requests.size)
         assertTrue(backend.requests.all { it.audio === audio })
         assertEquals("A fresh answer.", draft.generated.text)
+    }
+
+    @Test fun build1706RefusalIsRegeneratedWithTheSameAudioAndTheClaimNamed() = runBlocking {
+        val audio = byteArrayOf(2, 4, 6)
+        val backend = ScriptedBackend(listOf(
+            GenerationResult(SPECIMEN_1706, 1, null),
+            GenerationResult("What don't you want, sir? Tell me and I will stop.", 1, null)))
+        val draft = generate(backend, audio)
+        assertEquals(2, backend.requests.size)
+        assertTrue(backend.requests.all { it.audio === audio })
+        assertTrue(backend.requests.last().prompt.contains("IS attached to this message"))
+        assertEquals(PipelineBenchmarkPurpose.RETRY, backend.requests.last().purpose)
+        assertEquals(listOf(true, false), backend.tools)
+        assertEquals("What don't you want, sir? Tell me and I will stop.", draft.generated.text)
+        assertNull(draft.actionResultMessage)
+    }
+
+    @Test fun build1706RepeatedRefusalFallsBackToAnHonestRepeatRequest() = runBlocking {
+        val audio = byteArrayOf(2, 4, 6)
+        val backend = ScriptedBackend(listOf(
+            GenerationResult(SPECIMEN_1706, 1, null),
+            GenerationResult(SPECIMEN_1706, 1, null)))
+        val draft = generate(backend, audio)
+        assertEquals(2, backend.requests.size)
+        assertEquals(AudioAccessRefusal.FALLBACK, draft.generated.text)
+        assertFalse(AudioAccessRefusal.isRefusal(draft.generated.text))
+    }
+
+    @Test fun directAudioBatteryCallReachesExecution() = runBlocking {
+        val audio = byteArrayOf(9, 8, 7)
+        val backend = ScriptedBackend(listOf(
+            // The model answers the spoken battery request with a native
+            // tool call and no text — the completion the interrupted
+            // build-1706 turn never reached.
+            GenerationResult("", 1, null, toolCalls = listOf(ToolCall("read_battery", "{}")))))
+        val executed = mutableListOf<String>()
+        val reported = mutableListOf<Triple<String, String, Boolean>>()
+        val actions = ConversationActions(
+            { MobileActionExecutor { error("Dispatch is runtime-owned") } },
+            { _, _ -> "test-group" },
+            { request, _, _, _ ->
+                executed += request.name
+                ExecutionResult(true, "Battery is at 82 percent.")
+            },
+            {}, "conversation",
+            { name, message, succeeded -> reported += Triple(name, message, succeeded) },
+            Dispatchers.Unconfined, Dispatchers.Unconfined)
+        val draft = generate(backend, audio, actions)
+        assertEquals(1, backend.requests.size)
+        assertTrue(backend.requests.single().audio === audio)
+        assertEquals(listOf("read_battery"), executed)
+        assertEquals(listOf(Triple("read_battery", "Battery is at 82 percent.", true)), reported)
+        assertEquals("read_battery", draft.actionName)
+        assertEquals("Battery is at 82 percent.", draft.actionResultMessage)
+        // The single-step plan completes from the executor receipt, so the
+        // runner needs no follow-up generation to finish the turn.
+        assertTrue(backend.toolResultSubmissions.isEmpty())
     }
 
     @Test fun repeatedRefusalFallsBackToAnHonestRepeatRequest() = runBlocking {
@@ -250,6 +345,18 @@ class AudioAccessRefusalTest {
         assertEquals(listOf(false), f.backend.tools)
         assertEquals(1, f.resets)
         assertEquals("A fresh answer.", draft.cleanedResponse)
+    }
+
+    @Test fun recoveryBackstopCatchesTheBuild1706Refusal() = runBlocking {
+        val audio = byteArrayOf(3, 2, 1)
+        val f = RecoveryFixture(directAudio = true, voiceAudio = audio)
+        f.backend.outputs += GenerationResult(SPECIMEN_1706, 1L, null)
+        val draft = f.draft(SPECIMEN_1706)
+        f.recovery.recover(draft)
+        assertEquals(1, f.backend.requests.size)
+        assertSame(audio, f.backend.requests.single().audio)
+        assertTrue(f.backend.requests.single().prompt.contains("IS attached to this message"))
+        assertEquals(AudioAccessRefusal.FALLBACK, draft.cleanedResponse)
     }
 
     @Test fun recoveryBackstopFallsBackWhenTheRegenerationRefusesAgain() = runBlocking {

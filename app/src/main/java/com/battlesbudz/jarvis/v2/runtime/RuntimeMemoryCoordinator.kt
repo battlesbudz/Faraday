@@ -53,13 +53,14 @@ internal class RuntimeMemoryCoordinator(
         }
     }
 
-    fun freshMemoryTurnContext(query: String, maxChars: Int): MemoryTurnContext? {
+    fun freshMemoryTurnContext(query: String, maxChars: Int,
+                               maxEntryChars: Int = Int.MAX_VALUE): MemoryTurnContext? {
         if (boundaryPending.get()) return null
         // An approved mutation can happen between a store read and context construction. Retry
         // once rather than labeling that older packet with the newer epoch.
         repeat(2) {
             val before = epoch.get()
-            val result = memory().approvedContext(query, maxChars, limit = 8)
+            val result = memory().approvedContext(query, maxChars, limit = 8, maxEntryChars = maxEntryChars)
             if (boundaryPending.get() || before != epoch.get()) return@repeat
             val packet = result.packet ?: return null
             // Hybrid retrieval reports its candidate counts and semantic state per

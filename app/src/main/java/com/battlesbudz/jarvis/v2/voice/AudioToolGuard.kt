@@ -11,6 +11,12 @@ import com.battlesbudz.jarvis.v2.actions.ActionRequest
  * sanity-checked without a transcript are permitted. Every argument must be
  * structurally valid. Risky actions still go through the D11 approval gates
  * downstream via the normal [phoneActions.runNative] path.
+ *
+ * run_in_sandbox is the one approval-gated tool admitted here (Sandbox
+ * Phase 2): its argument is a free-form command that no transcript check
+ * could verify anyway, and it can never dispatch from this path — the
+ * model call only ever parks for Battles's exact approval of the command
+ * text in the phone tasks panel, which is the verification step.
  */
 object AudioToolGuard {
     /**
@@ -27,7 +33,8 @@ object AudioToolGuard {
         "set_volume",
         "post_notification",
         "open_app",
-        "create_reminder"
+        "create_reminder",
+        "run_in_sandbox"
     )
 
     fun allows(request: ActionRequest): Boolean {
@@ -42,6 +49,12 @@ object AudioToolGuard {
             "create_reminder" ->
                 request.arguments["message"].orEmpty().isNotBlank() &&
                     request.arguments["at_ms"]?.toLongOrNull() != null
+            "run_in_sandbox" ->
+                request.arguments["command"].orEmpty().let { command ->
+                    command.isNotBlank() &&
+                        command.length <= com.battlesbudz.jarvis.v2.actions.MAX_SANDBOX_COMMAND_CHARS &&
+                        !command.contains('\u0000')
+                }
             // read_battery, show_schedule: no arguments required.
             else -> true
         }

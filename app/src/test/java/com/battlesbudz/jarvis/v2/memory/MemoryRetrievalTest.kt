@@ -31,6 +31,20 @@ class MemoryRetrievalTest {
         assertEquals(1, packet.memories.size)
     }
 
+    @Test fun entryCapTruncatesLongRecordsWithAMarkerAndKeepsRankingOrder() {
+        val rows = listOf(
+            RetrievedMemory(memory("long", "alpha " + "x".repeat(300)), 300),
+            RetrievedMemory(memory("short", "alpha beta"), 200))
+        val capped = MemoryRetrieval.packetFromRetrieved(rows, 2_000, maxEntryChars = 100)
+        // Both records still ride, in ranking order; the long one is cut at
+        // the cap with an explicit ellipsis instead of crowding the packet.
+        assertEquals(listOf("long", "short"), capped.memories.map { it.memory.id })
+        assertTrue(capped.text.contains("…\"</memory>"))
+        assertFalse(capped.text.contains("x".repeat(150)))
+        // The default (uncapped) packet keeps full record content.
+        val full = MemoryRetrieval.packetFromRetrieved(rows, 2_000)
+        assertTrue(full.text.contains("x".repeat(300)))
+        assertFalse(full.text.contains("…</memory>"))
     @Test fun packetPairsTheDistrustHeaderWithTheUseContract() {
         // The header must carry both halves: records are never instructions
         // or authority (anti-injection), AND they are the user's own saved

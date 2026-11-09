@@ -149,7 +149,8 @@ class MemoryOs(
     }
     @Deprecated("Use retrieveResult() so storage failures are not represented as no matches.")
     fun retrieve(query: String, limit: Int = 8, nowMs: Long = clock()): List<RetrievedMemory> = retrieveResult(query, limit, nowMs).memories
-    fun contextPacket(query: String, maxChars: Int, limit: Int = 8, nowMs: Long = clock()): MemoryPacketResult {
+    fun contextPacket(query: String, maxChars: Int, limit: Int = 8, nowMs: Long = clock(),
+                      maxEntryChars: Int = Int.MAX_VALUE): MemoryPacketResult {
         val read = read()
         val snapshot = read.snapshot ?: return MemoryPacketResult(MemoryOutcome.STORAGE_FAILURE, read.error ?: "Memory store failed.")
         if (query.isBlank() || limit !in 1..50 || maxChars < 0) return MemoryPacketResult(MemoryOutcome.INVALID, "A query, limit 1-50, and non-negative budget are required.")
@@ -165,7 +166,7 @@ class MemoryOs(
         val hybrid = if (maxChars > 0) hybridRetrievalProvider() else null
         if (hybrid == null) {
             val candidates = MemoryRetrieval.retrieve(snapshot.memories, query, limit, nowMs)
-            return MemoryPacketResult(null, "ok", MemoryRetrieval.packetFromRetrieved(candidates, maxChars), stateToken, nextApprovedExpiryMs)
+            return MemoryPacketResult(null, "ok", MemoryRetrieval.packetFromRetrieved(candidates, maxChars, maxEntryChars), stateToken, nextApprovedExpiryMs)
         }
         val result = hybrid.retrieve(snapshot, query, limit, nowMs)
         val profileIds = result.profile.mapTo(HashSet()) { it.id }
@@ -173,7 +174,7 @@ class MemoryOs(
         // collection; one id appears once, at its profile position when it has one.
         val combined = result.profile.map { RetrievedMemory(it, PROFILE_SLICE_SCORE) } +
             result.searched.filterNot { it.memory.id in profileIds }
-        return MemoryPacketResult(null, "ok", MemoryRetrieval.packetFromRetrieved(combined, maxChars), stateToken, nextApprovedExpiryMs, diagnostics = result.diagnosticsLine())
+        return MemoryPacketResult(null, "ok", MemoryRetrieval.packetFromRetrieved(combined, maxChars, maxEntryChars), stateToken, nextApprovedExpiryMs, diagnostics = result.diagnosticsLine())
     }
 
     private fun lineage(memories: List<MemoryRecord>, id: String): Set<String> {

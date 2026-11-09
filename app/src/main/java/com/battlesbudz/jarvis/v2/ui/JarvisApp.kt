@@ -73,7 +73,7 @@ fun JarvisApp(
     onWorkflowSetEnabled: (String, Boolean) -> Unit = { _, _ -> },
     onConnectMcpServer: (String, String, String, (String) -> Unit) -> Unit = { _, _, _, done -> done("MCP setup is unavailable right now.") },
 ) {
-    WithPipelineDiagnostics { benchmarkStore, callEvidence ->
+    WithPipelineDiagnostics { benchmarkStore, callEvidence, codeAccess ->
         val setup = rememberModelSetupState(store, ModelSetupActions(
             select = onSelectModel, delete = onDeleteModel, test = onRunModelSmokeTest,
             download = onDownloadGemma, pauseDownload = onCancelModelDownload,
@@ -83,6 +83,7 @@ fun JarvisApp(
         var pickerModelId by rememberSaveable { mutableStateOf<String?>(null) }
         var showingVoiceCalls by rememberSaveable { mutableStateOf(false) }
         var showingMemory by rememberSaveable { mutableStateOf(false) }
+        var showingCode by rememberSaveable { mutableStateOf(false) }
         var memoryReturnToVoice by rememberSaveable { mutableStateOf(false) }
         var memoryReturnToChat by rememberSaveable { mutableStateOf(false) }
         var showingFullSetup by rememberSaveable { mutableStateOf(false) }
@@ -95,6 +96,22 @@ fun JarvisApp(
         val embeddingSetup = remember(phoneContext.applicationContext) { AndroidMemoryEmbeddings.setupController(phoneContext.applicationContext) }
         val activeVoiceCall by com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.armed.collectAsState()
         val activeVoiceStatus by com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.status.collectAsState()
+        // Chat header state, hoisted out of ConversationScreen: the header
+        // buttons now render beside the wisp in the frame's presence band
+        // (ChatHeaderBand), while the settings surface, history dialog,
+        // error line and benchmark dialog they drive stay in the screen.
+        // Both sides share these holders, so behavior is unchanged.
+        val chatSettingsOpen = remember { mutableStateOf(false) }
+        val chatHistoryOpen = remember { mutableStateOf(false) }
+        val chatHeaderError = remember { mutableStateOf<String?>(null) }
+        val chatInputBusy = remember { mutableStateOf(false) }
+        val chatBenchmarksOpen = remember { mutableStateOf(false) }
+        val chatBenchmarkReply = remember { mutableStateOf<String?>(null) }
+        val chatSending by chatBusy.collectAsState()
+        // The band shows only while the chat destination is the visible
+        // content (never over Memory, the voice-call list/detail, or setup).
+        val chatDestination = setup.modelsReady && setup.smokeTestPassed &&
+            selectedVoiceCall == null && !showingVoiceCalls && !showingMemory && !showingCode
         val modelSelector: @Composable (Boolean) -> Unit = { enabled ->
             ModelSelectionSection(setup, enabled, benchmarkStore, onOpenMemory = { showingMemory = true })
         }
@@ -112,13 +129,34 @@ fun JarvisApp(
         ) {
             Surface(modifier = Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
                 WispAppFrame(presence = {
-                    WispPresence(conversationHistory, chatBusy, callState, voicePlayback, phoneTasks, phoneTaskError,
-                        agentActivity, setupActivity = when {
-                            setup.modelDownloadRunning -> WispPresentation(WispActivity.CONNECTING, "Installing model")
-                            setup.modelImportRunning -> WispPresentation(WispActivity.CHECKING, "Importing model")
-                            setup.smokeTestRunning -> WispPresentation(WispActivity.THINKING, "Testing model")
-                            else -> null
-                        })
+                    val wispPresence: @Composable () -> Unit = {
+                        WispPresence(conversationHistory, chatBusy, callState, voicePlayback, phoneTasks, phoneTaskError,
+                            agentActivity, setupActivity = when {
+                                setup.modelDownloadRunning -> WispPresentation(WispActivity.CONNECTING, "Installing model")
+                                setup.modelImportRunning -> WispPresentation(WispActivity.CHECKING, "Importing model")
+                                setup.smokeTestRunning -> WispPresentation(WispActivity.THINKING, "Testing model")
+                                else -> null
+                            })
+                    }
+                    if (chatDestination) {
+                        ChatHeaderBand(
+                            memoryEnabled = !chatInputBusy.value,
+                            settingsEnabled = !chatInputBusy.value,
+                            conversationsEnabled = !chatSending && !activeVoiceCall && !chatInputBusy.value,
+                            privateEnabled = !chatSending && !activeVoiceCall && !chatInputBusy.value,
+                            newEnabled = !chatSending && !activeVoiceCall && !chatInputBusy.value,
+                            metricsVisible = true,
+                            onOpenMemory = { showingMemory = true },
+                            onOpenSettings = { chatSettingsOpen.value = true },
+                            onOpenHistory = { chatHistoryOpen.value = true },
+                            onNewPrivateConversation = { chatHeaderError.value = onNewPrivateConversation() },
+                            onNewConversation = { chatHeaderError.value = onSelectConversation(null) },
+                            onOpenMetrics = { chatBenchmarkReply.value = null; chatBenchmarksOpen.value = true },
+                            presence = wispPresence,
+                        )
+                    } else {
+                        wispPresence()
+                    }
                 }) {
                     if (setup.modelsReady && setup.smokeTestPassed) {
                         AssistantBannerPopupLayer(
@@ -176,7 +214,13 @@ fun JarvisApp(
                                         onForceVoiceConsumed = { memoryReturnToVoice = false },
                                         forceChatDestination = memoryReturnToChat,
                                         onForceChatConsumed = { memoryReturnToChat = false },
-                                        pipelineBenchmarkStore = benchmarkStore
+                                        pipelineBenchmarkStore = benchmarkStore,
+                                        settingsOpenState = chatSettingsOpen,
+                                        historyOpenState = chatHistoryOpen,
+                                        headerErrorState = chatHeaderError,
+                                        inputBusyState = chatInputBusy,
+                                        benchmarksOpenState = chatBenchmarksOpen,
+                                        benchmarkReplyState = chatBenchmarkReply
                                     ) { visible, settingsOpen, dismissSettings, startRequest ->
                                         VoiceCallScreen(
                                             visible = visible, settingsOpen = settingsOpen, memoryOpen = showingMemory,
@@ -195,6 +239,7 @@ fun JarvisApp(
                                             onWorkflowSetEnabled = onWorkflowSetEnabled,
                                             onConnectMcpServer = onConnectMcpServer,
                                             callEvidenceActions = callEvidence,
+                                            onOpenCodeProjects = { showingCode = true },
                                         )
                                     }
                                 }
@@ -215,6 +260,19 @@ fun JarvisApp(
                                 embeddingSetup = embeddingSetup,
                                 dreamJournalProvider = { AndroidMemoryDream.journalState(phoneContext).entries },
                             )
+                        // The Code destination (code-and-export Unit 6) overlays the
+                        // same way: chat stays composed beneath, and rounds borrow
+                        // the shared engine through the injected lease.
+                        if (showingCode) {
+                            CodeScreen(
+                                store = codeAccess.store,
+                                statsStore = codeAccess.statsStore,
+                                engineAccess = codeAccess.engineAccess,
+                                roundsEnabled = !chatSending && !activeVoiceCall,
+                                onBack = { showingCode = false },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     } else if (showingMemory) {
                         MemoryScreen(
                             memoryOs = memoryOs,

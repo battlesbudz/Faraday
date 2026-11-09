@@ -35,23 +35,29 @@ class SmartTurnAudioEndpointTest {
     private class Rig(scope: CoroutineScope, captions: Boolean = false, val native: Boolean = true,
                       available: Boolean = true, val fixed: Long? = null, speculate: Boolean = false,
                       segmentSoftMs: Long = 15_000, segmentHardMs: Long = 22_000,
-                      reference: Boolean = false,
+                      deadline: Boolean = false,
                       guardFollowup: Boolean = false, rejectAtLimit: Boolean = false,
-                      maxDurationMs: Int = 25_000) {
+                      maxDurationMs: Int = 25_000, failingSegmented: Boolean = false) {
         val wall = AtomicLong(); var samples = 0L; var acoustic = .99f; var captureTimeGapMs = 0L
         var riskyTailSamples = 0; var current = true; var routeAllowed = true; var blocker: String? = null
         var needsTranscript = false
         var caption = "what is the"; var finalCalls = 0; var captionClosed = false; var finalizeLogHook: (() -> Unit)? = null
         var finalCaption: String? = null; var finishHook: (() -> Unit)? = null
         var recoveryText = ""; var recoveredPcm: ByteArray? = null; var recoverHook: (() -> Unit)? = null
+        var segRecoveries = 0; var segRecoverHook: (() -> Unit)? = null
         var hardwareBacklog = 0L; var collectorBytes = 0; var acknowledgedSamples = 0L
         val proposals = mutableListOf<NativePauseProposal>()
         val logs = mutableListOf<String>(); val original = ByteArrayOutputStream(); val retained = ByteArrayOutputStream()
         val inputFrames = Channel<ByteArray>(Channel.UNLIMITED)
+        val metrics = mutableListOf<AsrCaptureMetrics>()
         val backend = Backend(); val telemetry = Telemetry()
         val worker = SmartTurnShadow({ backend }, enabled = true, clock = { wall.get() * 1_000_000 })
+        // Deadline-policy rigs judge from the first quiet frame (admission 0),
+        // matching production conversation captures; legacy rigs keep the
+        // historical 350ms admission the observer defaults to.
         val observer = SmartTurnCaptureObserver(worker, "turn-1", 7, telemetry, { current }, { blocker },
-            { wall.get() * 1_000_000 }, endpointEnabled = true)
+            { wall.get() * 1_000_000 }, endpointEnabled = true,
+            endpointPauseAdmissionMs = if (deadline) 0L else 350L)
         val capture = AudioTurnCapture(object : AudioInput {
             override val sampleRateHz = 16000; override val channelCount = 1
             override val lastChunkCaptureTimeMs get() = samples / 16 + captureTimeGapMs
@@ -67,8 +73,21 @@ class SmartTurnAudioEndpointTest {
             captionOnly = native, allowAudioOnlyTurns = native, trailingSilenceMs = fixed,
             guardFollowupSpeech = guardFollowup, rejectAtAudioLimit = rejectAtLimit,
             maxAudioDurationMs = maxDurationMs,
-            turnStopPolicy = if (reference) TurnStopPolicy.REFERENCE else TurnStopPolicy.LEGACY,
-            createTranscriber = if (!captions) null else { { object : StreamingTranscriber {
+            turnStopPolicy = if (deadline) TurnStopPolicy.DEADLINE else TurnStopPolicy.LEGACY,
+            onMetrics = { m, _ -> metrics += m },
+            createTranscriber = if (!captions) null else if (failingSegmented) { { object : StreamingTranscriber {
+                // The capture wraps this in its own SegmentedTranscriber; the
+                // 100ms soft limit makes that wrapper seam blank segments
+                // during streaming, raising the specimen's recognition issue.
+                override val segmentSoftLimitMs = 100L
+                override val segmentHardLimitMs = 22_000L
+                override fun accept(pcm: ByteArray) = ""
+                override fun finish() = ""
+                override fun recover(pcm: ByteArray): String {
+                    segRecoveries++; segRecoverHook?.invoke(); return ""
+                }
+                override fun close() = Unit
+            } } } else { { object : StreamingTranscriber {
                 override val segmentSoftLimitMs = segmentSoftMs
                 override val segmentHardLimitMs = segmentHardMs
                 override fun accept(pcm: ByteArray) = caption
@@ -106,6 +125,14 @@ class SmartTurnAudioEndpointTest {
             capture.start(); repeat(3) { emit(.99f) }; repeat(4) { emit(.01f) }
             eventually { backend.calls.get() == 1 }
             assertEquals(700L, wall.get()); assertEquals(11200L, samples)
+        }
+        /** Deadline rigs: speech ends at 300ms and the first quiet frame
+         * (400ms wall, 100ms of silence) has already offered the pause to the
+         * analyzer, so a result released now is in hand before the deadline. */
+        suspend fun startShortPause() {
+            capture.start(); repeat(3) { emit(.99f) }; emit(.01f)
+            eventually { backend.calls.get() == 1 }
+            assertEquals(400L, wall.get()); assertEquals(6400L, samples)
         }
         suspend fun result(probability: Float, wallMs: Long) {
             backend.probability = probability; wall.set(wallMs); backend.releases.release()
@@ -786,114 +813,196 @@ class SmartTurnAudioEndpointTest {
         }
     }
 
-    // REFERENCE turn-stop (the Pipecat pattern the conversation captures use):
-    // the analyzer is the stop strategy, the 5s turn-stop timeout is only a
-    // backstop, and with no analyzer the plain speech-timeout window decides.
+    // DEADLINE turn-stop (deadline-first, Battles's design approved
+    // 2026-11-05; replaces the REFERENCE arbitration): the turn submits
+    // 300ms after the last speech by default. Smart Turn judges alongside
+    // that clock (these rigs admit judging at the first quiet frame, as
+    // production conversation captures do); only a high-confidence
+    // unfinished verdict in hand by the deadline holds the turn, for
+    // exactly one extra 300ms window. With no analyzer the deadline
+    // itself decides.
 
-    @Test fun referenceTimeoutBackstopIsTheOnlyEndingWhenTheModelNeverDecides() = runBlocking<Unit> {
-        val r = Rig(this, captions = true, native = false, reference = true)
+    @Test fun deadlineNoVerdictSubmitsAt300msOnTheAsrRoute() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = false, deadline = true)
         try {
             r.caption = "What is the weather today?"
-            r.startPause() // Speech ends at 300ms; the ask stays in flight, never released.
-            // AdaptiveTurnEnd would end this turn at a transcript target (350ms
-            // complete-and-stable, 1100ms settling). REFERENCE has no second
-            // decider: nothing ends the turn before the backstop.
-            while (r.samples / 16 < 5200) r.emit(.01f)
+            r.capture.start(); repeat(3) { r.emit(.99f) }; repeat(2) { r.emit(.01f) }
+            // 500ms wall: 200ms of silence, the analyzer's ask still in flight.
             assertNull(r.capture.endpointDecisionAtNs)
             r.emit(.01f)
             eventually { r.capture.endpointDecisionAtNs != null }
-            assertEquals(5_300_000_000L, r.capture.endpointDecisionAtNs)
-            assertTrue(r.logs.any { it.contains("endpointCue=turn_stop_timeout") && it.contains("targetSilenceMs=5000") })
+            assertEquals(600_000_000L, r.capture.endpointDecisionAtNs)
+            assertTrue(r.logs.any { it.contains("endpointCue=deadline") && it.contains("targetSilenceMs=300") })
+            val m = r.metrics.single()
+            assertEquals("deadline", m.endpointCue); assertEquals("deadline", m.endpointAuthority)
+            assertEquals("PENDING", m.smartTurnState); assertNull(m.smartTurnProbability)
             r.completeWav()
             // The transcript is still an ingredient of the seal: finalization ran.
             assertEquals(1, r.finalCalls); assertEquals("What is the weather today?", r.capture.finalTranscript)
         } finally { r.close() }
     }
 
-    @Test fun referenceContinueKeepsTheTurnOpenAndOnlyTheBackstopEndsIt() = runBlocking<Unit> {
-        val r = Rig(this, fixed = 650, reference = true)
+    @Test fun deadlineCompleteVerdictSubmitsAtTheDeadlineNotEarlier() = runBlocking<Unit> {
+        val r = Rig(this, deadline = true)
         try {
-            r.startPause(); r.result(.1f, 765) // CONTINUE
-            // One bounded refresh re-judges the same pause after 0.5s of new PCM.
-            while (r.samples / 16 < 1200) r.emit(.01f)
-            eventually { r.backend.calls.get() == 2 }; r.result(.1f, 1265) // CONTINUE again
-            // LEGACY ended this turn at speech end + 3500ms (decision at 4000ms).
-            // A CONTINUE is the analyzer saying "not done", not an endpoint.
-            while (r.samples / 16 < 4000) r.emit(.01f)
-            assertNull(r.capture.endpointDecisionAtNs)
-            while (r.samples / 16 < 5200) r.emit(.01f)
+            r.startShortPause(); r.result(.9f, 465) // COMPLETE, in hand at 100ms of silence.
+            r.emit(.01f) // 500ms wall: 200ms of silence. Even a COMPLETE waits for the deadline.
             assertNull(r.capture.endpointDecisionAtNs)
             r.emit(.01f)
             eventually { r.capture.endpointDecisionAtNs != null }
-            assertEquals(5_300_000_000L, r.capture.endpointDecisionAtNs)
-            assertEquals(2, r.backend.calls.get())
-            assertTrue(r.logs.any { it.contains("endpointCue=turn_stop_timeout") })
+            assertEquals(600_000_000L, r.capture.endpointDecisionAtNs)
+            assertTrue(r.logs.any { it.contains("endpointCue=smart_turn_complete") })
+            val m = r.metrics.single()
+            assertEquals("COMPLETE", m.smartTurnState); assertEquals(0.9f, m.smartTurnProbability)
+            assertEquals(300L, m.targetSilenceMs)
             r.completeWav()
         } finally { r.close() }
     }
 
-    @Test fun referenceNoModelUsesSpeechTimeoutInsteadOfAdaptiveTranscriptTargets() = runBlocking<Unit> {
-        val r = Rig(this, captions = true, native = false, available = false, reference = true)
+    @Test fun deadlineContinueLeanSubmitsAt300msWithoutAHold() = runBlocking<Unit> {
+        val r = Rig(this, deadline = true)
         try {
-            // The partial ("what is the") reads as unfinished, so AdaptiveTurnEnd
-            // would wait 1800ms. With no analyzer attached, REFERENCE uses the
-            // plain speech-timeout strategy: a fixed 600ms window after the stop.
-            r.capture.start(); repeat(3) { r.emit(.99f) }; repeat(5) { r.emit(.01f) }
-            assertNull(r.capture.endpointDecisionAtNs) // 800ms wall: only 500ms of silence.
+            r.startShortPause(); r.result(.34f, 465) // CONTINUE, completion probability 0.34.
+            r.emit(.01f); assertNull(r.capture.endpointDecisionAtNs)
             r.emit(.01f)
             eventually { r.capture.endpointDecisionAtNs != null }
+            // The build-1697 specimen shape: a 0.34 CONTINUE lean held the turn
+            // for the 5s backstop under REFERENCE. It is nowhere near the 0.02
+            // veto bar, so the turn submits at the 300ms deadline.
+            assertEquals(600_000_000L, r.capture.endpointDecisionAtNs)
+            assertTrue(r.logs.any { it.contains("endpointCue=deadline") })
+            assertFalse(r.logs.any { it.contains("smart_turn_veto_hold probability") })
+            val m = r.metrics.single()
+            assertEquals("CONTINUE", m.smartTurnState); assertEquals(0.34f, m.smartTurnProbability)
+            assertEquals("deadline", m.endpointCue); assertEquals(300L, m.targetSilenceMs)
+            assertEquals(300L, m.silenceWaitedMs)
+            r.completeWav()
+        } finally { r.close() }
+    }
+
+    @Test fun deadlineVetoHoldExtendsExactlyOnceThenSubmits() = runBlocking<Unit> {
+        val r = Rig(this, deadline = true)
+        try {
+            r.startShortPause(); r.result(.01f, 465) // CONTINUE, completion probability 0.01.
+            assertTrue(r.logs.any { it.contains("smart_turn_veto_hold probability=0.01") })
+            repeat(4) { r.emit(.01f) } // 800ms wall: 500ms of silence, past the deadline.
+            assertNull(r.capture.endpointDecisionAtNs)
+            r.emit(.01f) // 900ms wall: the one extension expires.
+            eventually { r.capture.endpointDecisionAtNs != null }
             assertEquals(900_000_000L, r.capture.endpointDecisionAtNs)
-            assertTrue(r.logs.any { it.contains("endpointCue=speech_timeout") && it.contains("targetSilenceMs=600") })
+            assertTrue(r.logs.any { it.contains("endpointCue=smart_turn_veto_hold") && it.contains("targetSilenceMs=600") })
+            val m = r.metrics.single()
+            assertEquals("smart_turn_veto_hold", m.endpointCue); assertEquals(600L, m.targetSilenceMs)
+            assertEquals(600L, m.silenceWaitedMs)
+            assertEquals("CONTINUE", m.smartTurnState); assertEquals(0.01f, m.smartTurnProbability)
+            assertEquals(listOf("smart_turn_veto_hold"), m.endpointDeferrals)
+            r.completeWav()
+        } finally { r.close() }
+    }
+
+    @Test fun deadlineVetoHoldSpeechResumptionResetsTheClockAndTheLatch() = runBlocking<Unit> {
+        val r = Rig(this, deadline = true)
+        try {
+            r.startShortPause(); r.result(.01f, 465) // Veto hold latched for the first pause.
+            repeat(2) { r.emit(.99f) } // Speech resumes inside the hold window (600ms wall).
+            repeat(2) { r.emit(.01f) } // 800ms wall: 200ms into the new pause.
+            assertNull(r.capture.endpointDecisionAtNs)
+            r.emit(.01f) // 900ms wall: the new pause reaches its own 300ms deadline.
+            eventually { r.capture.endpointDecisionAtNs != null }
+            // Same turn, fresh deadline: had the hold survived resumption, the
+            // target would still be 600ms and nothing would fire before 1200ms.
+            assertEquals(900_000_000L, r.capture.endpointDecisionAtNs)
+            assertTrue(r.logs.any { it.contains("endpointCue=deadline") })
+            val m = r.metrics.single()
+            assertEquals("deadline", m.endpointCue)
+            r.completeWav()
+        } finally { r.close() }
+    }
+
+    @Test fun deadlineLateVerdictDoesNotResurrectOrReDecideTheTurn() = runBlocking<Unit> {
+        val r = Rig(this, deadline = true)
+        try {
+            r.capture.start(); repeat(3) { r.emit(.99f) }; repeat(3) { r.emit(.01f) }
+            eventually { r.capture.endpointDecisionAtNs != null }
+            assertEquals(600_000_000L, r.capture.endpointDecisionAtNs)
+            assertTrue(r.logs.any { it.contains("endpointCue=deadline") })
+            // A veto-grade verdict arriving after the deadline changes nothing:
+            // the turn is already submitted and is never re-decided.
+            r.backend.probability = .01f; r.backend.releases.release()
+            eventually { !r.worker.isBusy() }
+            assertEquals(600_000_000L, r.capture.endpointDecisionAtNs)
+            assertEquals(1, r.metrics.size)
+            r.completeWav()
+        } finally { r.close() }
+    }
+
+    @Test fun deadlineNoAnalyzerSubmitsAt300msInsteadOfAdaptiveTranscriptTargets() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = false, available = false, deadline = true)
+        try {
+            // The partial ("what is the") reads as unfinished, so AdaptiveTurnEnd
+            // would wait 1800ms. With no analyzer attached, DEADLINE still
+            // submits at the 300ms deadline after the stop.
+            r.capture.start(); repeat(3) { r.emit(.99f) }; repeat(2) { r.emit(.01f) }
+            assertNull(r.capture.endpointDecisionAtNs) // 500ms wall: only 200ms of silence.
+            r.emit(.01f)
+            eventually { r.capture.endpointDecisionAtNs != null }
+            assertEquals(600_000_000L, r.capture.endpointDecisionAtNs)
+            assertTrue(r.logs.any { it.contains("endpointCue=deadline") && it.contains("targetSilenceMs=300") })
+            assertNull(r.metrics.single().smartTurnState)
             r.completeWav()
             assertEquals(1, r.finalCalls); assertEquals("what is the", r.capture.finalTranscript)
         } finally { r.close() }
     }
 
-    @Test fun referenceRouteGateNoLongerVetoesACompleteVerdict() = runBlocking<Unit> {
-        val r = Rig(this, captions = true, native = false, fixed = 1200, reference = true)
+    @Test fun deadlineRouteGateDoesNotVetoACompleteVerdict() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = false, fixed = 1200, deadline = true)
         try {
             r.routeAllowed = false // Onset inside the playback echo window.
-            r.startPause(); r.result(.9f, 765)
+            r.startShortPause(); r.result(.9f, 465)
             // LEGACY kept the ordinary endpoint here (see
             // playbackRiskKeepsOrdinaryEndpointAndRequiredFinalRecognitionOnBothPaths).
-            // REFERENCE judges every conversation stop: echo stays an
+            // DEADLINE judges every conversation stop: echo stays an
             // acceptance-side rejection, never a stop-decision veto.
+            r.emit(.01f); r.emit(.01f)
             eventually { r.capture.endpointDecisionAtNs != null }
-            assertEquals(765_000_000L, r.capture.endpointDecisionAtNs)
+            assertEquals(600_000_000L, r.capture.endpointDecisionAtNs)
             assertTrue(r.logs.any { it.contains("endpointCue=smart_turn_complete") })
             r.completeWav(); assertEquals(1, r.finalCalls)
         } finally { r.close() }
     }
 
-    @Test fun referenceWeakSpeechCompleteBindsOnTheNativeRouteOnSanityAlone() = runBlocking<Unit> {
-        val r = Rig(this, captions = true, native = true, fixed = 1800, reference = true)
+    @Test fun deadlineWeakSpeechCompleteBindsOnTheNativeRouteOnSanityAlone() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = true, fixed = 1800, deadline = true)
         try {
-            r.capture.start(); repeat(5) { r.emit(.25f) }; repeat(4) { r.emit(.01f) }
-            eventually { r.backend.calls.get() == 1 }; r.result(.9f, 965)
+            r.capture.start(); repeat(5) { r.emit(.25f) }; r.emit(.01f)
+            eventually { r.backend.calls.get() == 1 }; r.result(.9f, 665)
             // The native conjunction vetoed this verdict in LEGACY
             // (ASR-corroborated weak speech). Input sanity is the only gate in
-            // REFERENCE: speech existed and the snapshot covers its span.
+            // DEADLINE: speech existed and the snapshot covers its span.
+            r.emit(.01f); r.emit(.01f)
             eventually { r.capture.endpointDecisionAtNs != null }
-            assertEquals(965_000_000L, r.capture.endpointDecisionAtNs)
+            assertEquals(800_000_000L, r.capture.endpointDecisionAtNs)
             r.completeWav()
             assertEquals("skipped_smart_turn_caption", r.capture.finalAsrStatus)
             assertEquals("", r.capture.finalTranscript)
         } finally { r.close() }
     }
 
-    @Test fun referenceEchoWindowCompleteStillFinalizesTheCaptionOnTheNativeRoute() = runBlocking<Unit> {
-        val r = Rig(this, captions = true, native = true, reference = true)
+    @Test fun deadlineEchoWindowCompleteStillFinalizesTheCaptionOnTheNativeRoute() = runBlocking<Unit> {
+        val r = Rig(this, captions = true, native = true, deadline = true)
         try {
             r.routeAllowed = false // Onset inside the playback echo window: the
             // factory closes the Smart Turn route gate exactly when the final
             // transcript is required for playback-echo rejection.
-            r.startPause(); r.result(.9f, 765) // COMPLETE
-            // The verdict still binds (under REFERENCE the gate is not a
-            // stop-decision veto); what the closed gate removes is the caption
-            // omission, the one place a binding COMPLETE used to discard the
-            // transcript acceptance-side echo rejection depends on.
+            r.startShortPause(); r.result(.9f, 465) // COMPLETE
+            // The verdict still ends the turn at the deadline (under DEADLINE
+            // the gate is not a stop-decision veto); what the closed gate
+            // removes is the caption omission, the one place a binding
+            // COMPLETE used to discard the transcript acceptance-side echo
+            // rejection depends on.
+            r.emit(.01f); r.emit(.01f)
             eventually { r.capture.endpointDecisionAtNs != null }
-            assertTrue(r.capture.endpointDecisionAtNs!! < 5_300_000_000L)
+            assertEquals(600_000_000L, r.capture.endpointDecisionAtNs)
             assertTrue(r.logs.any { it.contains("endpointCue=smart_turn_complete") })
             r.completeWav()
             assertEquals(1, r.finalCalls)
@@ -903,20 +1012,21 @@ class SmartTurnAudioEndpointTest {
         } finally { r.close() }
     }
 
-    @Test fun referenceNoCaptionEchoWindowCompleteIsRejectedAtAcceptance() = runBlocking<Unit> {
-        val r = Rig(this, captions = false, native = true, fixed = 650, reference = true)
+    @Test fun deadlineNoCaptionEchoWindowCompleteIsRejectedAtAcceptance() = runBlocking<Unit> {
+        val r = Rig(this, captions = false, native = true, fixed = 650, deadline = true)
         try {
             // Direct audio with captions off: the capture has no transcriber,
             // so no final transcript can ever exist for it. This onset is
             // inside the playback echo window — the route gate is closed and
             // echo rejection would require exactly that transcript.
             r.routeAllowed = false; r.needsTranscript = true
-            r.startPause(); r.result(.9f, 765) // COMPLETE
-            repeat(2) { r.emit(.01f) }
-            // The verdict still binds the stop (REFERENCE never vetoes it);
-            // the candidate dies at acceptance instead: unverifiable as
-            // non-echo, it is rejected through the final-candidate path and
-            // the retained playback audio is never submitted as a request.
+            r.startShortPause(); r.result(.9f, 465) // COMPLETE
+            r.emit(.01f); r.emit(.01f)
+            // The verdict still ends the turn at the deadline (DEADLINE never
+            // vetoes it); the candidate dies at acceptance instead:
+            // unverifiable as non-echo, it is rejected through the
+            // final-candidate path and the retained playback audio is never
+            // submitted as a request.
             eventually { r.logs.any { it.contains("final_candidate_rejected policy=existing_playback_echo") } }
             assertNull(r.capture.endpointDecisionAtNs)
             assertEquals("", r.capture.finalTranscript)
@@ -932,112 +1042,215 @@ class SmartTurnAudioEndpointTest {
         } finally { r.close() }
     }
 
-    @Test fun referenceDecisionBindsCompleteOnSanityAlone() {
+    @Test fun deadlineDecisionSubmitsEveryNonVetoOutcomeAtTheDeadline() {
         val sane = NativePauseEndpointPolicy.smartTurnSanity(true, 8000, 7168)
-        assertEquals(AdaptiveTurnEnd.Decision(350, "smart_turn_complete"),
-            SmartTurnEndpointPolicy.referenceDecision(
-                CaptureEndpointDecision(CaptureEndpointState.COMPLETE, 8000), sane, 16000, 350, 7168))
+        assertEquals(AdaptiveTurnEnd.Decision(300, "smart_turn_complete"),
+            SmartTurnEndpointPolicy.deadlineDecision(
+                CaptureEndpointDecision(CaptureEndpointState.COMPLETE, 8000, .9f), sane, 16000, 7168,
+                vetoHoldActive = false))
+        // Uncertain, pending, fallback and verdict-free pauses all submit at
+        // the deadline under the deadline cue.
+        for (decision in listOf(
+            CaptureEndpointDecision(CaptureEndpointState.CONTINUE, 8000, .34f),
+            CaptureEndpointDecision(CaptureEndpointState.PENDING, 8000),
+            CaptureEndpointDecision(CaptureEndpointState.FALLBACK))) {
+            assertEquals(AdaptiveTurnEnd.Decision(300, "deadline"),
+                SmartTurnEndpointPolicy.deadlineDecision(decision, sane, 16000, 7168, vetoHoldActive = false))
+        }
+        // A COMPLETE that fails sanity (no speech; a snapshot ending before
+        // the speech span; a snapshot ahead of everything collected; no
+        // snapshot at all) still submits, under the deadline cue.
+        val complete = CaptureEndpointDecision(CaptureEndpointState.COMPLETE, 8000, .9f)
+        assertEquals(AdaptiveTurnEnd.Decision(300, "deadline"), SmartTurnEndpointPolicy.deadlineDecision(complete,
+            NativePauseEndpointPolicy.smartTurnSanity(false, 8000, 7168), 16000, 7168, vetoHoldActive = false))
+        assertEquals(AdaptiveTurnEnd.Decision(300, "deadline"), SmartTurnEndpointPolicy.deadlineDecision(complete,
+            NativePauseEndpointPolicy.smartTurnSanity(true, 8000, 9000), 16000, 9000, vetoHoldActive = false))
+        assertEquals(AdaptiveTurnEnd.Decision(300, "deadline"), SmartTurnEndpointPolicy.deadlineDecision(
+            CaptureEndpointDecision(CaptureEndpointState.COMPLETE, 9000, .9f), sane, 16000, 7168,
+            vetoHoldActive = false))
+        assertEquals(AdaptiveTurnEnd.Decision(300, "deadline"), SmartTurnEndpointPolicy.deadlineDecision(
+            CaptureEndpointDecision(CaptureEndpointState.COMPLETE, null, .9f), sane, 16000, 7168,
+            vetoHoldActive = false))
+        // A latched hold runs to 600ms under the veto cue, whatever the
+        // current verdict says by then.
+        assertEquals(AdaptiveTurnEnd.Decision(600, "smart_turn_veto_hold"),
+            SmartTurnEndpointPolicy.deadlineDecision(complete, sane, 16000, 7168, vetoHoldActive = true))
     }
 
-    @Test fun referenceDecisionLeavesEveryOtherStateToTheBackstop() {
+    @Test fun vetoQualifiesOnlyForAHighConfidenceUnfinishedVerdictUnderSanity() {
         val sane = NativePauseEndpointPolicy.smartTurnSanity(true, 8000, 7168)
-        val complete = CaptureEndpointDecision(CaptureEndpointState.COMPLETE, 8000)
-        // Anything but the analyzer's COMPLETE leaves the turn open.
-        assertNull(SmartTurnEndpointPolicy.referenceDecision(
-            CaptureEndpointDecision(CaptureEndpointState.CONTINUE, 8000), sane, 16000, 5000, 7168))
-        assertNull(SmartTurnEndpointPolicy.referenceDecision(
-            CaptureEndpointDecision(CaptureEndpointState.PENDING, 8000), sane, 16000, 5000, 7168))
-        assertNull(SmartTurnEndpointPolicy.referenceDecision(
-            CaptureEndpointDecision(CaptureEndpointState.FALLBACK), sane, 16000, 5000, 7168))
-        // Sanity failures: no speech, no snapshot, a snapshot ending before the
-        // speech span, a snapshot ahead of everything collected, a short pause,
-        // and a COMPLETE whose snapshot never arrived.
-        assertNull(SmartTurnEndpointPolicy.referenceDecision(complete,
-            NativePauseEndpointPolicy.smartTurnSanity(false, 8000, 7168), 16000, 5000, 7168))
-        assertNull(SmartTurnEndpointPolicy.referenceDecision(complete,
-            NativePauseEndpointPolicy.smartTurnSanity(true, null, 7168), 16000, 5000, 7168))
-        assertNull(SmartTurnEndpointPolicy.referenceDecision(complete,
-            NativePauseEndpointPolicy.smartTurnSanity(true, 8000, 9000), 16000, 5000, 9000))
-        assertNull(SmartTurnEndpointPolicy.referenceDecision(
-            CaptureEndpointDecision(CaptureEndpointState.COMPLETE, 9000), sane, 16000, 5000, 7168))
-        assertNull(SmartTurnEndpointPolicy.referenceDecision(complete, sane, 16000, 349, 7168))
-        assertNull(SmartTurnEndpointPolicy.referenceDecision(
-            CaptureEndpointDecision(CaptureEndpointState.COMPLETE, null), sane, 16000, 5000, 7168))
+        assertTrue(SmartTurnEndpointPolicy.vetoQualifies(
+            CaptureEndpointDecision(CaptureEndpointState.CONTINUE, 8000, .02f), sane, 16000, 7168))
+        assertTrue(SmartTurnEndpointPolicy.vetoQualifies(
+            CaptureEndpointDecision(CaptureEndpointState.CONTINUE, 8000, .01f), sane, 16000, 7168))
+        // A lean is not a veto: 0.34 (the build-1697 specimen) and anything
+        // above the 0.02 bar never hold. Neither does a verdict without a
+        // probability, a COMPLETE, or a sanity-failed CONTINUE.
+        assertFalse(SmartTurnEndpointPolicy.vetoQualifies(
+            CaptureEndpointDecision(CaptureEndpointState.CONTINUE, 8000, .34f), sane, 16000, 7168))
+        assertFalse(SmartTurnEndpointPolicy.vetoQualifies(
+            CaptureEndpointDecision(CaptureEndpointState.CONTINUE, 8000, .03f), sane, 16000, 7168))
+        assertFalse(SmartTurnEndpointPolicy.vetoQualifies(
+            CaptureEndpointDecision(CaptureEndpointState.CONTINUE, 8000), sane, 16000, 7168))
+        assertFalse(SmartTurnEndpointPolicy.vetoQualifies(
+            CaptureEndpointDecision(CaptureEndpointState.COMPLETE, 8000, .01f), sane, 16000, 7168))
+        assertFalse(SmartTurnEndpointPolicy.vetoQualifies(
+            CaptureEndpointDecision(CaptureEndpointState.CONTINUE, 8000, .01f),
+            NativePauseEndpointPolicy.smartTurnSanity(false, 8000, 7168), 16000, 7168))
+        assertFalse(SmartTurnEndpointPolicy.vetoQualifies(
+            CaptureEndpointDecision(CaptureEndpointState.CONTINUE, null, .01f), sane, 16000, 7168))
     }
 
     // The reply/barge-in capture (ReplyVoiceCapture) constructs AudioTurnCapture
-    // in exactly two shapes, both now under REFERENCE: the ASR-free Gemma shape
+    // in exactly two shapes, both now under DEADLINE: the ASR-free Gemma shape
     // (captionOnly, no final transcriber, 650ms window, 28s cap with
     // reject-at-limit, follow-up speech guard) and the recognition shape
     // (transcriber present, no fixed window, 25s cap). The gated input decides
     // only whether an interruption happened; these tests pin that the retained
     // speech's stop is judged like any conversation turn's.
 
-    @Test fun replyShapeCompleteBindsUnderReference() = runBlocking<Unit> {
-        val r = Rig(this, captions = false, native = true, fixed = 650, reference = true,
+    @Test fun replyShapeCompleteBindsUnderDeadline() = runBlocking<Unit> {
+        val r = Rig(this, captions = false, native = true, fixed = 650, deadline = true,
             guardFollowup = true, rejectAtLimit = true, maxDurationMs = 28_000)
         try {
-            r.startPause(); r.result(.9f, 765) // COMPLETE
+            r.startShortPause(); r.result(.9f, 465) // COMPLETE
             // LEGACY left this shape on the fixed window plus the native
-            // conjunction. REFERENCE binds the verdict at the decision point.
+            // conjunction. DEADLINE ends it at the deadline on sanity alone.
+            r.emit(.01f); r.emit(.01f)
             eventually { r.capture.endpointDecisionAtNs != null }
-            assertEquals(765_000_000L, r.capture.endpointDecisionAtNs)
+            assertEquals(600_000_000L, r.capture.endpointDecisionAtNs)
             assertTrue(r.logs.any { it.contains("endpointCue=smart_turn_complete") })
             r.completeWav()
         } finally { r.close() }
     }
 
-    @Test fun replyShapeContinueKeepsTheCaptureOpenUntilTheBackstopUnderReference() = runBlocking<Unit> {
-        val r = Rig(this, captions = false, native = true, fixed = 650, reference = true,
+    @Test fun replyShapeContinueSubmitsAtTheDeadlineUnderDeadline() = runBlocking<Unit> {
+        val r = Rig(this, captions = false, native = true, fixed = 650, deadline = true,
             guardFollowup = true, rejectAtLimit = true, maxDurationMs = 28_000)
         try {
-            r.startPause(); r.result(.1f, 765) // CONTINUE
-            while (r.samples / 16 < 1200) r.emit(.01f)
-            eventually { r.backend.calls.get() == 2 }; r.result(.1f, 1265) // CONTINUE again
-            // No 650ms fixed ending and no legacy CONTINUE cap: the capture
-            // stays open until the 5s turn-stop backstop.
-            while (r.samples / 16 < 4000) r.emit(.01f)
-            assertNull(r.capture.endpointDecisionAtNs)
-            while (r.samples / 16 < 5200) r.emit(.01f)
-            assertNull(r.capture.endpointDecisionAtNs)
+            r.startShortPause(); r.result(.1f, 465) // CONTINUE, nowhere near the veto bar.
+            // No 650ms fixed ending and no backstop: an uncertain verdict
+            // resolves to submission at the 300ms deadline.
+            r.emit(.01f); assertNull(r.capture.endpointDecisionAtNs)
             r.emit(.01f)
             eventually { r.capture.endpointDecisionAtNs != null }
-            assertEquals(5_300_000_000L, r.capture.endpointDecisionAtNs)
-            assertEquals(2, r.backend.calls.get())
-            assertTrue(r.logs.any { it.contains("endpointCue=turn_stop_timeout") })
+            assertEquals(600_000_000L, r.capture.endpointDecisionAtNs)
+            assertTrue(r.logs.any { it.contains("endpointCue=deadline") })
             r.completeWav()
         } finally { r.close() }
     }
 
-    @Test fun replyShapeWithoutAnObserverEndsOnTheReferenceSpeechTimeout() = runBlocking<Unit> {
-        val r = Rig(this, captions = false, native = true, fixed = 650, available = false, reference = true,
+    @Test fun replyShapeWithoutAnObserverEndsAtTheDeadline() = runBlocking<Unit> {
+        val r = Rig(this, captions = false, native = true, fixed = 650, available = false, deadline = true,
             guardFollowup = true, rejectAtLimit = true, maxDurationMs = 28_000)
         try {
             // No analyzer attached (setting off / model unavailable / comparison
-            // trial): the reference no-analyzer stop is this capture's own fixed
-            // speech-timeout window, under the speech_timeout cue — LEGACY
-            // recorded the same 650ms as the legacy fixed decision instead.
-            r.capture.start(); repeat(3) { r.emit(.99f) }; repeat(6) { r.emit(.01f) }
-            assertNull(r.capture.endpointDecisionAtNs) // 900ms wall: 600ms of silence, window is 650ms.
+            // trial): the deadline itself is the stop, 300ms after the speech
+            // ends. The capture's own 650ms fixed window no longer applies.
+            r.capture.start(); repeat(3) { r.emit(.99f) }; repeat(2) { r.emit(.01f) }
+            assertNull(r.capture.endpointDecisionAtNs) // 500ms wall: 200ms of silence.
             r.emit(.01f)
             eventually { r.capture.endpointDecisionAtNs != null }
-            assertEquals(1_000_000_000L, r.capture.endpointDecisionAtNs)
-            assertTrue(r.logs.any { it.contains("endpointCue=speech_timeout") && it.contains("targetSilenceMs=650") })
+            assertEquals(600_000_000L, r.capture.endpointDecisionAtNs)
+            assertTrue(r.logs.any { it.contains("endpointCue=deadline") && it.contains("targetSilenceMs=300") })
             r.completeWav()
         } finally { r.close() }
     }
 
-    @Test fun replyShapeCompleteBindsOnTheAsrRouteUnderReference() = runBlocking<Unit> {
+    @Test fun replyShapeCompleteBindsOnTheAsrRouteUnderDeadline() = runBlocking<Unit> {
         // The recognition shape (Whisper route and the accepted-action pump):
         // transcriber present, no fixed window, follow-up speech guard on.
-        val r = Rig(this, captions = true, native = false, reference = true, guardFollowup = true)
+        val r = Rig(this, captions = true, native = false, deadline = true, guardFollowup = true)
         try {
             r.caption = "no, use the other one"
-            r.startPause(); r.result(.9f, 765) // COMPLETE
+            r.startShortPause(); r.result(.9f, 465) // COMPLETE
+            r.emit(.01f); r.emit(.01f)
             eventually { r.capture.endpointDecisionAtNs != null }
-            assertEquals(765_000_000L, r.capture.endpointDecisionAtNs)
+            assertEquals(600_000_000L, r.capture.endpointDecisionAtNs)
             assertTrue(r.logs.any { it.contains("endpointCue=smart_turn_complete") })
             r.completeWav(); assertEquals(1, r.finalCalls)
+        } finally { r.close() }
+    }
+
+    // The build-1697 follow-up specimen (call ee63fa69, capture turn
+    // 502400fd): caption-only follow-up capture with the analyzer attached
+    // but never binding (the specimen's arbitration at the time was
+    // REFERENCE with its 5s backstop; under DEADLINE the 300ms deadline is
+    // the decider and the same finalization shape follows); the segmented
+    // recognizer fails on the speech it was given (blank segment commit ->
+    // unrecognized_segment). One queued hardware frame lands during the
+    // first finalization pass, so the endpoint defers with the finalization
+    // work sealed.
+    private suspend fun deferredFailingCaptionRig(scope: CoroutineScope): Rig {
+        val r = Rig(scope, captions = true, native = true, deadline = true,
+            guardFollowup = true, rejectAtLimit = true, maxDurationMs = 28_000,
+            failingSegmented = true)
+        r.finalizeLogHook = { r.hardwareBacklog = 100; r.finalizeLogHook = null }
+        r.capture.start()
+        repeat(4) { r.emit(.99f) }
+        while (r.samples / 16 < 5400) r.emit(.01f)
+        eventually { r.logs.any { it.contains("turn_endpoint_deferred reason=audio_arrived_during_finalization") } }
+        assertNull(r.capture.endpointDecisionAtNs)
+        return r
+    }
+
+    @Test fun weakNoiseDuringFinalizationCannotInvalidateOrLoopRecovery() = runBlocking<Unit> {
+        val r = deferredFailingCaptionRig(this)
+        try {
+            // Weak noise: raw VAD probability above the old 0.15 raw-risk
+            // threshold, confirmed decision non-speech. Before the fix this
+            // frame invalidated the pending endpoint as resumed_speech and
+            // discarded the sealed finalization; the turn then re-ran
+            // recovery on every pass until the 28s audio limit.
+            r.hardwareBacklog = 0; r.emit(.25f)
+            assertTrue(withTimeout(1000) { r.capture.awaitTurnCompletion() })
+            assertFalse(r.logs.any { it.contains("turn_endpoint_invalidated") })
+            assertEquals(1, r.segRecoveries)
+            assertTrue(r.logs.any { it.contains("asr_recovery_started reason=unrecognized_segment source=complete_turn attempt=1") })
+            assertTrue(r.logs.any { it.contains("capture_endpoint_timing") && it.contains("asrRecoveryAttempts=1") })
+            assertEquals("unrecognized_segment", r.capture.recognitionIssue)
+        } finally { r.close() }
+    }
+
+    @Test fun recoveryAttemptsAreBoundedPerCandidateAndTurnStillCompletes() = runBlocking<Unit> {
+        val r = deferredFailingCaptionRig(this)
+        try {
+            // Every recovery leaves one more queued frame behind it, so each
+            // recovered pass defers again on the recovery drain. The budget
+            // is per candidate and shared: two attempts, then the turn
+            // completes with its recognition issue recorded instead of
+            // re-decoding the retained audio forever.
+            r.segRecoverHook = { r.hardwareBacklog = 100 }
+            r.hardwareBacklog = 0; r.emit(.01f)
+            eventually { r.segRecoveries == 1 }
+            eventually { r.logs.count { it.contains("turn_endpoint_deferred reason=audio_arrived_during_recovery") } == 1 }
+            r.hardwareBacklog = 0; r.emit(.01f)
+            eventually { r.segRecoveries == 2 }
+            eventually { r.logs.count { it.contains("turn_endpoint_deferred reason=audio_arrived_during_recovery") } == 2 }
+            r.hardwareBacklog = 0; r.emit(.01f)
+            assertTrue(withTimeout(1000) { r.capture.awaitTurnCompletion() })
+            assertEquals(2, r.segRecoveries)
+            assertEquals(2, r.logs.count { it.contains("asr_recovery_started") })
+            assertTrue(r.logs.any { it.contains("asr_recovery_skipped reason=attempt_budget") })
+            assertEquals("unrecognized_segment", r.capture.recognitionIssue)
+        } finally { r.close() }
+    }
+
+    @Test fun confirmedSpeechDuringFinalizationStillInvalidatesWithEndpointObserver() = runBlocking<Unit> {
+        val r = deferredFailingCaptionRig(this)
+        try {
+            // Genuine resumption: confirmed speech while the endpoint is
+            // pending still invalidates exactly once and reopens the turn;
+            // the enlarged candidate then ends on the same backstop and
+            // completes through one bounded recovery.
+            repeat(2) { r.emit(.99f) }
+            eventually { r.logs.count { it.contains("turn_endpoint_invalidated") } == 1 }
+            r.hardwareBacklog = 0
+            while (r.samples / 16 < 10700) r.emit(.01f)
+            assertTrue(withTimeout(1000) { r.capture.awaitTurnCompletion() })
+            assertEquals(1, r.logs.count { it.contains("turn_endpoint_invalidated") })
+            assertEquals(1, r.segRecoveries)
+            assertEquals("unrecognized_segment", r.capture.recognitionIssue)
         } finally { r.close() }
     }
 }

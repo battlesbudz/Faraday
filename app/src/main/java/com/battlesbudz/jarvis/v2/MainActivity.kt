@@ -10,6 +10,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import com.battlesbudz.jarvis.v2.ui.JarvisApp
@@ -79,6 +80,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Issue #19: every screen is laid out against window insets
+        // (safeDrawingPadding / imePadding), which is only sound when the
+        // window itself never resizes for the keyboard. Left implicit, some
+        // devices resize the window AND deliver the IME inset, subtracting
+        // the keyboard height twice and leaving a keyboard-sized empty gap
+        // under the chat composer. Pin the insets model explicitly.
+        enableEdgeToEdge()
         val interruptedSession = runtime.sessionPreferences.getBoolean("sending", false)
         if (!runtime.voiceSessionArmed) runtime.shortTermContext.restoreSummary(
             if (interruptedSession) null else {
@@ -228,7 +236,11 @@ class MainActivity : ComponentActivity() {
     private fun copyDiagnostics() {
         // The runtime ring contains the latest call's ASR, inference and playback events.
         // Comparison archives and full chat histories do not belong in a call failure report.
-        val diagnostics = "Jarvis OS V2 — latest Voice Call diagnostics\n\n${runtime.diagnosticRecorder.snapshot()}\n\n${com.battlesbudz.jarvis.v2.voice.MicrophoneHandoff.diagnostics()}"
+        // The sandbox block (Phase 1 scope §12) rides along: install state,
+        // run bookkeeping and the engine probe answer most sandbox reports.
+        // The code block (code-and-export scope Unit 6) closes the paste:
+        // project fingerprints and the round/fix/export counters.
+        val diagnostics = "Jarvis OS V2 — latest Voice Call diagnostics\n\n${runtime.diagnosticRecorder.snapshot()}\n\n${com.battlesbudz.jarvis.v2.voice.MicrophoneHandoff.diagnostics()}\n\n${com.battlesbudz.jarvis.v2.sandbox.SandboxDiagnostics.snapshot(this)}\n\n${com.battlesbudz.jarvis.v2.code.CodeDiagnostics.snapshot(this)}"
         val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("Jarvis diagnostics", diagnostics))
     }

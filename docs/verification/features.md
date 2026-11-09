@@ -1,5 +1,125 @@
 # Feature and acceptance map
 
+## Deadline-first endpointing — 5 November 2026
+
+The REFERENCE turn-stop arbitration (PR #18) made Smart Turn a
+gatekeeper: only a COMPLETE verdict could end a conversation turn, so a
+CONTINUE verdict (build 1697 specimen: p=0.34), no verdict, or a pending
+verdict held the turn for the 5s turn-stop backstop. Deadline-first
+endpointing (Battles's design, approved 2026-11-05) replaces REFERENCE
+for every conversation capture (VoiceTurnCaptureFactory primary and
+follow-up captures, and the ReplyVoiceCapture barge-in shapes) with no
+carve-outs: the turn submits 300ms after the last speech by default.
+Smart Turn judging starts at the first quiet frame of the pause
+(`endpointPauseAdmissionMs = 0` for conversation captures) and runs
+alongside the deadline; it may hold the turn only when a CONTINUE
+verdict with completion probability at most 0.02 is in hand by the
+deadline, and that veto buys exactly one extra 300ms window
+(`smart_turn_veto_hold`). Resumed speech resets the clock and the
+latch. No verdict, a late verdict, an uncertain verdict and a COMPLETE
+verdict all resolve to submission at the deadline (cue `deadline`; a
+sane COMPLETE keeps the `smart_turn_complete` cue). With no analyzer
+the deadline itself decides. The Smart Turn model and inference are
+unchanged; the capture-loop recovery budget and the follow-up
+speech-evidence gate are untouched. Diagnostics: capture metrics now
+record the pause's actual verdict (state and probability) instead of
+the final frame's raw state, so a CONTINUE is exported as CONTINUE
+with its probability, never as "no verdict"; the endpointing summary
+renders the deadline and veto-hold endings. `SmartTurnAudioEndpointTest`
+pins the deadline on both routes and both reply shapes, the veto hold
+and its single extension, resumption resetting clock and latch, a late
+verdict not re-deciding a submitted turn, and the policy-level veto
+bar; `EndpointingSummaryTest` pins the new renderings. Device coverage
+owed: on the build carrying this, voice turns should end about 300ms
+after speech stops (about 600ms only when a veto hold fires), with the
+endpointing block showing cue `deadline` (or `smart_turn_veto_hold`)
+and the recorded verdict.
+
+## No-vision honesty guard, direct-audio admission — 4 November 2026
+
+The owed device coverage ran on build 1697 (voice call 443f75e8) and
+the guard failed it in native-audio (Gemma direct-audio) mode. Asked
+aloud "Can you tell me what you see?" with no visual input, the model
+answered "I see a picture of a very large, brightly coloured, somewhat
+abstract shape. It appears to be a complex, interwoven structure."; the
+follow-up "What do you see?" repeated it ("I see a large, abstract
+shape. It is complex and interwoven."). The export contains no guard
+line at all. Root cause, from the code: on a direct-audio turn the
+invocation prompt is the fixed audio instruction boilerplate
+(`GemmaAudioInputPolicy.REQUEST`, substituted by
+`FinalVoiceInputResolver`), so the guard's question detector — keyed
+on `invocation.prompt` at both stages — had no question to read and
+bailed silently; the turn's actual question sat in the submitted
+prompt's evidence block, which the guard never read, and the Gemma
+caption finalized only after the answer was generated. The claim
+detector itself caught both drafts verbatim, and the generation stage
+already ran after the invalid-tool retry, so the retry-born claim was
+checked and released by the question gate alone. The fix admits the
+guard by a shared test, `VisionPerceptionClaim.triggerFor`, at both
+stages: the original question trigger unchanged, plus a claim-side
+trigger for direct-audio turns — `assertsConcretePerception`, a
+narrower detector requiring a pictured, shaped or scened thing stated
+as seen, so metaphorical seeing ("I see what you mean", "I see the
+point") and content-free claims never fire it. A known, non-vision
+question is still never admitted by the claim side. Both stages now
+also record an `outcome=not_fired` diagnostics line (with the trigger
+named on firing lines) whenever a perception claim is evaluated but
+not acted on, ending the silent-bail gap. `VisionPerceptionClaimTest`
+gains the two build-1697 specimens verbatim at the detector, through
+the generation stage (including the tool-retry-born claim and the
+fabricated-history follow-up), and through the recovery backstop with
+the retained audio resubmitted. Device coverage is OPEN again and
+owed on the next main build: the same two spoken questions in
+native-audio mode must end honest, and the diagnostics must show the
+guard's `trigger=direct_audio_claim` outcome line.
+
+## Follow-up capture recovery loop — 4 November 2026
+
+On build 1697 (voice call ee63fa69) a follow-up capture ran 26,864 ms
+and never produced a Gemma submission. The finalization kept deferring
+on the recognition frontier drain; while the endpoint was pending, any
+frame whose RAW VAD probability reached 0.15 (or whose raw coverage
+was unclassified) invalidated it as `resumed_speech` even when the
+confirmed decision reported non-speech, so weak noise (raw 0.17-0.44,
+rms 0) discarded the sealed finalization over and over. Each new pass
+re-ran ASR recovery, a full re-decode of the whole retained recording
+(AsyncWhisperSession.recover, growing 6.9 s to 23.2 s of audio, eight
+attempts, 18,861 ms of final-decode time), and each invalidation closed
+and recreated the Whisper engine (model ownership uses 9 to 19). Two
+qualified 5,000 ms silence detections proposed the endpoint but could
+not seal it; the 28 s audio input limit was the only exit. The fix, in
+`AudioTurnCapture`: a pending endpoint is invalidated only by confirmed
+speech (`decision.isSpeech`); raw-risk or unclassified audio still
+holds the seal through the existing finalization drain
+(`requiresNativeEndpointDrain`) but no longer discards finalization
+work. ASR recovery attempts are bounded per candidate
+(`MAX_ASR_RECOVERY_ATTEMPTS` = 2, shared by the complete-turn and
+empty-stream sites, reset when a candidate is discarded or genuinely
+resumed speech reopens the endpoint); past the budget the turn
+completes with its recognition issue recorded, which downstream turns
+into the retained-audio submission on the caption route (the issue is
+suppressed for complete audio by `GemmaAudioInputPolicy`) or the
+existing clarify path on the ASR route. `capture_endpoint_timing` now
+carries `asrRecoveryAttempts`, and a spent budget logs
+`asr_recovery_skipped reason=attempt_budget`. Three JVM tests in
+`SmartTurnAudioEndpointTest` pin the shape with the specimen's arbitration
+state (REFERENCE, non-binding endpoint observer, caption-only
+follow-up, segmented recognizer failing on speech): weak noise during
+finalization cannot invalidate and recovery runs once;
+`recoveryAttemptsAreBoundedPerCandidateAndTurnStillCompletes` proves
+the budget terminates the turn; and
+`confirmedSpeechDuringFinalizationStillInvalidatesWithEndpointObserver`
+proves genuine resumption still reopens the endpoint. Status:
+LANDED on main on 4 November 2026 (production fix on top of the
+honesty-guard head 1a17e8b2). First CI execution of the three tests:
+all three pass, the full JVM suite is green (2,730 tests), and the
+Android APK pipeline is green on the landed head; the pipeline
+published main build 1714 from it. Device coverage
+owed on the next main build: repeat the ee63 pattern (ask, challenge
+the answer, keep talking past a reply, then go quiet) and confirm the
+follow-up turn submits instead of looping; the diagnostics must show
+at most 2 `asr_recovery_started` lines for the turn and no
+`turn_endpoint_invalidated` lines while the room is quiet.
 ## Memory RAG Unit 3 — nightly dream synthesis — 2 November 2026
 
 Ships on `feature/memory-rag` over Units 1/2 and the memory-disregard fix.
@@ -240,6 +360,44 @@ Fold 6 embedding latency/RSS beside a resident chat model, sync behavior
 under real conversation load, and the settings card's rendering are all
 device-side. On build 1648 there was no install path at all; this unit is
 what creates it.
+
+## No-vision honesty guard — 31 October 2026
+
+A voice call on build 1632 (a build with no vision input of any kind)
+answered "Can you tell me what you see?" with "I see a room with a window
+and a desk. This is the primary visual data I am currently processing." —
+a scene confabulated from nothing, stated as live perception; asked again,
+the model regenerated the identical text and the repetition guard shipped
+its generic fallback. The honesty guard mirrors the audio-access refusal
+guard's architecture. `VisionPerceptionClaim` holds two enumerated
+detectors: the user's turn is vision-directed (current-perception asks
+only; metaphorical "see" — "I see your point", "what do you see in this
+argument", "can you see why" — and follow-ups anchored to a photo the
+user supplied are pinned negatives), and the generated answer asserts
+perception (first-person/camera-subject perception claims, "visual data"
+processing claims, and bare scene-description openings; honest denials
+and references anchored to a supplied image never match). The guard acts
+only when the turn also had no visual input: no image attached to the
+turn's `ConversationInput` and no visual-context block injected
+(`ConversationAnswer.visualContextInjected`, the seam the video-call
+branch's live visual context will use unchanged). On a trip,
+`ConversationGeneration` regenerates once, tools off, with a correction
+naming the false claim; a second claim is replaced by the honest
+fallback "I can't see anything on this turn, sir — no camera image came
+through." `ConversationRecovery.discardVisionPerceptionClaim` is the
+publication backstop, running last with the same never-replace-accepted-
+sentences rule as the audio backstop, so a claim produced by a recovery
+regeneration cannot ship either. `VisionPerceptionClaimTest` pins both
+device sentences verbatim, the metaphorical and follow-up negatives,
+image-present and visual-context turns unguarded at both stages,
+regenerate-once-then-fallback, the direct-audio backstop resubmitting
+the retained audio, and consecutive vision questions both ending with
+the honest fallback; `VisionPerceptionClaimImageTurnTest` (Robolectric)
+pins the attached-image generation path. Device coverage is OPEN and
+owed: on the build carrying this guard, a voice call asking "Can you
+tell me what you see?" and then "Tell me what you see" again must answer
+honestly both times — no invented scene, no repetition-fallback dead
+end. No on-phone proof is claimed here.
 
 ## Voice memory capture fix + embeddings diagnostics line — 31 October 2026
 
@@ -4833,20 +4991,1149 @@ accessibility overlay behavior, R8 compatibility or a verified APK. Build 1256
 remains failed evidence; a fresh full release gate for the exact repaired
 revision is required.
 
-## Memory capture batch: no approval step, per-fact records, Save diagnostics JSON, abliterated catalog removal (2026-11-01)
+## Voice-call session persistence and prompt diet — 9 November 2026
 
-Accepted from Android run **41380537789** and nightly full-suite run **41380543882**, both green on branch head **2f59efe9a8ee8f1800fec658ef0dbec7d140b592** (`feature/memory-rag`). Prerelease **faraday-feature/memory-rag-build.1666**: compact APK **143,264,613 bytes**, full APK **213,245,381 bytes**. Two earlier heads record the repair trail: f72b0288 failed the named-contract check (journey renames not yet mirrored in `scripts/verification/scenarios.json`) and failed compilation on a dropped regex escape; e0d02f54's nightly ran 2,690 tests with exactly one failure (the extractor's traveled-to branch dropped the space in "I have traveled", so the acceptance message's middle segment extracted nothing on the explicit path). Both defects were in this batch's own diff and are fixed in 2f59efe9; the final nightly ran the full suite green.
+Build 1771's diagnostics (call f6233547, Gemma-4-E2B-it native audio)
+showed every answer submission running on a fresh native session —
+`nativePriorSubmissions=0` on all three turns, the session counter
+climbing 3, 8, 13 — so the full text prompt (2,796 / 3,207 / 3,404
+chars) was prefilled from zero every turn and time to first token
+ran 3,648 ms and 2,455 ms with decode healthy at ~30 tok/s. Battles
+approved the fix in writing on 9 November 2026: the call's static
+prefix prefilled once and kept loaded, and a prompt diet that
+removes bloat without changing behavior.
 
-What changed, in Battles's directives of 2026-11-01 after device-testing build 1655:
+Persistence rides the architecture that already existed: the engine
+lifecycle keeps the native conversation across cleanly completed
+turns and disposes it on cancel or failure, and chat turns already
+persisted this way. What forced per-turn rebuilds was the voice
+path itself — preparation reset the conversation at every turn and
+flipped tools off, generation flipped them back on (another reset),
+and the post-answer caption reset again. Now, for a direct-audio
+turn in a live call whose resident context provably belongs to that
+call (`VoiceDialogueContext.isCurrentCall`), preparation skips the
+reset, the tool flip, the early-preface preparation, and the
+speculative draft (all of which require a pristine conversation);
+generation assembles the full prompt for the guards and retries but
+submits only the current request — the persona, the dialogue so
+far, and the call-start supporting context are already resident in
+the native conversation (`nativeContextResident` in
+`ConversationPrompt`). The post-answer caption reuses the same
+resident conversation when the answer turn ended cleanly, so it no
+longer rebuilds either; a caption that was cancelled, failed, or
+emitted a tool call still resets, exactly as before.
 
-- **No user approval for captured memories** (decision recorded in the memory epic plan as D-6, superseding the earlier approval posture for the capture paths). `ConversationMemory` commits each captured record immediately (propose + approve, the shape `AutomaticMemory` already used); a replayed capture of a still-pending legacy record approves it too. Memory settings loses the Review tab and all approve/reject actions: manual adds and corrections commit on save, and settings is view / correct / organize / delete only. Receipt wording no longer describes an approval step: an approved receipt says "Saved to memory.", and the prompt-facing section still forbids claiming a save for an ignored, excluded, or failed capture. Evaluator thresholds (SAVE_RELEVANCE=30 / SAVE_CONFIDENCE=60), rules D45–D49, the anti-resurrection fence, restricted-content exclusion, the private-mode capture guard, the 500-record cap, and expiry/supersede machinery are unchanged; the `MemoryOs` propose → PENDING → approve/reject lifecycle remains as the storage primitive underneath.
-- **Multi-fact messages split into per-fact records.** New `MemoryFactSegmenter` splits a message at sentence boundaries and at clause-opening "and"s (conservative: "fish and chips" never splits). `ConversationMemory` extracts per segment; `AutomaticMemory` queues one candidate per segment of the user message, each with a position-derived event id so replays stay idempotent, and a single-segment message keeps the exact pre-existing blob candidate byte for byte. Every per-candidate guard (minimum length, fence, duplicate suppression, per-segment exclusion of questions/commands/restricted content) applies per fact, and a stored record's text is the fact itself, never the raw message. Acceptance case, Battles's actual device message — "My name is Justin Lee Battles and I have traveled to 27 countries and I like ice cream" — now lands as exactly three APPROVED records (PERSON name, FACT traveled to 27 countries, PREFERENCE likes ice cream) end-to-end on both production capture paths, proven by ConversationMemoryTest and AutomaticMemoryTest. Evaluator version 3 is pattern coverage only: the "traveled to" biography form joins the fact class in the evaluator and the extractor so a split-out travel segment reaches the unchanged thresholds on its own.
-- **Save diagnostics (JSON).** The call screen's diagnostics section gains a "Save diagnostics" button directly under "Copy diagnostics". It exports the same diagnostics as a genuine JSON document (`DiagnosticRecorder.snapshotJson()`: build, generatedAtMs, session, and the sections as structured arrays) inside an envelope carrying the microphone-handoff text, shared as a `.json` file through the existing benchmark-exports FileProvider and chooser. Recorder tests assert the JSON parses, carries the envelope fields, mirrors every text-export section entry, and encodes a missing live section as JSON null.
-- **Both abliterated catalog entries removed.** `Gemma-4-E2B-Abliterated` and `Gemma-4-E4B-Abliterated` descriptors, compatibility evidence, and listing slots are gone (Battles's verdict: the abliterated bundles are not good enough to keep, stock covers the need, and the E2B bundle lacks the hardware audio encoder whose absence killed audio-capable conversation creation on builds 1648/1649). A persisted selection naming either removed id falls back to the stock Gemma-4-E2B-it default through the existing `ModelCatalog.resolve` behavior, covered by a new catalog test; every other entry is untouched and the compatibility catalog count drops 74 → 72.
+Reuse falls back to the old fresh behaviour, invisibly in behaviour
+and visibly in metrics, when: the previous turn was barged,
+cancelled, or errored (the lifecycle already disposed the
+conversation); a turn produced a native tool plan (the conversation
+is rebuilt so the tool exchange cannot poison later answers — tool
+turns themselves behave exactly as before); a guard regenerates
+(it resets first, and its retry re-seeds the full prompt); the
+history budget compacts; a memory boundary is published mid-call
+(the resident packet is frozen at call start only for token changes
+explained by the turn's own capture or expiry, never for a real
+user edit); the user interjects with typed text mid-call; a
+comparison trial runs; the model is switched; or the call ends
+(the finalizer closes the models, and the next call's id never
+matches the resident one — nothing leaks across calls or into
+chat). Under reuse the metrics show `nativePriorSubmissions`
+counting up within one `nativeSession`, per-submission
+`promptChars` dropping to the request alone, and a
+`call_session_reuse=persistent_native_conversation` benchmark
+configuration beside the existing `gemma_final_caption_session`.
 
-Journey contract updates: test24 (Memory settings now has no review tab; captures and adds are searchable immediately; corrections supersede on save; the rejected-record block drives rejection through the MemoryOs lifecycle), test25 renamed to `test25_finalizedTextAndVoiceMemoryIsImmediatelyAvailableToPrompts`, test26 drops its double-approval of an already-committed capture, and test39 renamed to `test39_referencePdfExtractionAndSavedAcknowledgmentUseReleaseCode` expecting "Saved to memory." and immediate recall. `scripts/verification/scenarios.json` carries both renames. All five sandbox journey shards passed on the exact accepted head.
+The diet, measured on the shipped constants: the audio request
+boilerplate went 524 → 503 chars (the standalone confidence
+sentence merged into the tool-call sentence; every rule — respond
+to the spoken request, the audio is the request not a caption,
+native function calling with the full example list, accurate
+arguments, confidence condition, never claim success without a
+tool result — kept in substance and pinned by test). The voice
+memory packet is capped at 800 total chars (was 1,200) with each
+record capped at 240 chars, truncated with an explicit ellipsis
+and never dropped by the cap; retrieval ranking is untouched, so
+the top records still ride. The persona (752 chars), the
+supporting-context wrapper, the memory packet header, the
+continuity header, and the capture-acknowledgment wording were
+audited and kept verbatim: their sentences carry distinct
+behavioural rules that do not overlap, and under persistence the
+persona is prefilled once per call instead of per turn, which is
+where their cost went. A representative turn-1 prompt goes
+≈2,796 → ≈2,480 chars; turns 2+ go from 3,207 chars to the 503-char
+request alone.
 
-Not established by this entry: on-device behavior of the three changes (Battles's retest is the proof: the acceptance sentence spoken as one message yielding three separate approved memories; a plainly stated fact saving with no approval step anywhere; Save diagnostics producing a shareable JSON file; the model list showing neither abliterated entry, with a device that had one selected falling back to stock E2B-it). Emulator journeys and JVM tests are the release-candidate gate, not device proof.
+Pinned by tests: `ConversationCallSessionReuseTest` (a resident
+turn submits exactly the request with no tool flip and no reset; a
+fresh turn submits the full prompt; an audio-refusal retry and an
+invalid-tool-draft retry each reset and re-seed the full prompt; a
+text turn never uses the call delta), additions to
+`ConversationContextPreparationTest` (the capped voice budget is
+requested for direct-audio turns; a capture-explained token change
+keeps the resident context and is not a history invalidation; a
+real boundary still invalidates and resets), `MemoryRetrievalTest`
+(the per-record cap truncates with the marker, keeps both records
+in ranking order, and leaves the default packet byte-identical),
+`GemmaAudioInputPolicyTest` (every load-bearing request sentence
+present; length budget), and `ConversationPromptBuilderTest`
+(resident assembly returns only the current message; non-resident
+assembly unchanged).
+
+Not established by this entry: everything on a phone. Cross-turn
+reuse is bridge-supported for cleanly completed turns (the vendored
+LiteRT-LM patch's reuse guard forbids sends only after a cancelled
+or failed turn with projected audio), but a second audio message
+on a kept conversation is still device behaviour. The proof is
+Battles's to run on the Fold 6, on the build published from this
+head:
+
+1. Start a native-audio (Gemma) call on the stock E2B model and
+   ask two or three follow-up questions in one call.
+2. Copy Diagnostics and check: within one `nativeSession`,
+   `nativePriorSubmissions` counts up across the turns; the
+   per-turn `promptChars` drops to roughly 500 on turns 2+; and
+   time to first token on the follow-ups is visibly lower than
+   turn 1's.
+
+Until that proof passes, the latency fix is code-complete and
+nightly-green, not device-proven.
+
+## Code mode complete fix: destination UI, live build view, export/install, preview — 9 November 2026
+
+One consolidated fix for everything Battles's first device proof of
+code mode (build 1771, 2026-11-09) found broken, shipped as a single
+build at his instruction — no stacked partial fixes. The sandbox is
+not a dependency of any of it: projects live in the workspace folder
+the host owns (`files/sandbox/workspace/projects`), and the store's
+plain file IO works whether or not the sandbox rootfs is installed
+(his phone's sandbox read "not installed" after his Reset while he
+ran this whole proof; code mode neither needs it nor touches its
+Reset behaviour, which is a separate queued defect).
+
+**A — the Code destination is a destination.** On 1771 the Code
+screens were composed over the chat with no background of their own:
+the project list, the create form, and the project view's header,
+tabs, status, and input were transparent, so chat bubbles, the tasks
+header, and the chat composer bled through, collided with the code
+controls, changed the screens' appearance on every open, and stayed
+tappable (his screenshot shows the chat composer focused inside the
+Code screen). The preview WebView additionally painted the platform's
+white. Now the destination's root paints the theme's opaque dark
+background across the whole surface and consumes every pointer event
+that reaches it, so nothing beneath is visible or interactive while
+it is open; the preview WebView and the exported shell's WebView both
+paint the dark background color, and the starter page a new project
+begins with is styled dark to match.
+
+**B — the live build view.** A running round showed only a status
+line ("Writing index.html…"), with no view of the code and no way to
+tell working from frozen. Progress reporting now carries the file
+being written, the partial body of that file streamed so far
+(`CodeProgressExtractor.currentWrite`), the response's streamed
+character count, and the attempt in flight (tagged by the runner);
+while a round runs, the pane area shows the build view — the file,
+its code arriving (monospace, tail-capped, pinned to the newest
+text), attempt, character count, and an elapsed-seconds clock. A
+frozen generation stops the characters and the clock together.
+
+**C — export and install complete.** The install-permission detour
+lost the flow: the export state was plain `remember`, so returning
+from the unknown-sources settings could drop it (the Install row
+vanished), and nothing resumed the install. The export result is now
+saveable state, Install records a pending install before opening the
+settings, and a resume observer finishes the install automatically
+when Battles returns with the permission granted. Both paths —
+already granted and just granted — end at the system installer.
+
+**D — the exported APK installs.** Root cause of the 1771 failure
+("there is something wrong with this file" from Downloads, and the
+in-app Install failing the same way): the derived package name
+carried the project id slug verbatim, and a slug carries dashes —
+`com.battlesbudz.faraday.app.snake-game_c4f42a10` — but a dash is not
+a legal Android package-name character, so the installer refused the
+package at parse time. The JVM suite verified the same exports
+because ApkVerifier checks the signature, not the name's legality,
+and the fixtures' expected package strings were written sanitized by
+hand. The derivation now sanitizes the slug segment (dashes and any
+non-package character become underscores; a leading digit gains a
+letter), the exporter sanitizes a stored name from before the fix
+the same deterministic way (his existing on-device projects export
+installable packages without being recreated), and the final name is
+validated against Android's package rules before any bytes are
+assembled — an uninstallable export is now a refusal with the reason
+shown. Regression-pinned in `CodeApkExportRealShellTest
+.snakeGameExportsAValidInstallablePackage`: the exact device
+scenario over the real shell, asserting the name's legality, the
+manifest's package string read back from the binary XML, a full
+CRC-checked read of every zip entry, and v2 verification. The
+success signal is gated in the app as well as in tests: the
+diagnostics from the same phone test recorded exports: 5, last
+outcome "exported snake game as" the dashed name, last error: none
+— five successful reports for packages Android refused — so the
+exporter now verifies the signed file with ApkVerifier before
+renaming it into place, and `Exported` means verified on this
+phone.
+
+**E — the preview shows the built project.** Two layers, the
+deeper one proven by the same diagnostics paste: rounds: 0,
+retries: 0, fix rounds: 0. No round ever completed on the phone.
+The round ran in the project view's composition scope and the
+session release rode the same disposal, so when Battles stepped
+back to the project list mid-generation and re-entered — his
+screenshots show exactly that — the round was cancelled silently:
+nothing applied, nothing recorded, the project kept its starter
+page, and the preview honestly showed that page while the exports
+shipped the starter app. Rounds and exports now run on the Code
+destination's scope, which outlives the project view; the driver
+owns the in-flight round's state (`liveRound`), the session is not
+released under a round in flight, and re-entering a project
+mid-round shows the live build view still running. The second
+layer stands on its own in the code: the screen refreshed the
+WebView with `reload()`, which the WebView can answer from its own
+page cache without the asset handler re-reading the folder (the
+handler also sent no cache headers). The refresh path is now a
+fresh navigation with the cache cleared (`CodePreview.refresh`),
+the handler answers every file with `Cache-Control: no-store`, and
+the Reload button and rollback use the same re-navigation.
+
+Tests: additions to `CodeProjectStoreTest` (derivation always
+installable; legacy-name sanitizing), `CodeApkExporterTest` (a
+legacy dashed stored name exports repaired), `CodeApkExportRealShell
+Test` (the device regression above), `CodeProjectAssetHandlerTest`
+(the no-store headers), `CodeModeDriverTest` (the live round is set
+for the round's whole life and clears after), and a new
+`CodeProgressExtractorTest` (the in-flight write's path and partial
+body). No journey composes the Code UI (verified again by code
+search over `app/src/androidTest`), and no constructor signatures
+changed.
+
+Not established by this entry: everything on a phone. The proof is
+Battles's to run on the published build: create the snake game,
+watch its code write live, see it play in Preview, export, install
+from Downloads, and open the installed app in airplane mode.
+## Code-and-export Unit 4: WebView preview and the console-error loop — 7 November 2026
+
+Unit 4 gives code mode its eyes. Until now a round's only verdict
+was structural: the gate can prove a page is whole, never that it
+runs. The preview runs it — a WebView over the open project, its
+console captured — and the console-error loop feeds real runtime
+errors back through the same gated rounds that wrote the code, so a
+page that throws gets fixed by the machinery that produced it, under
+a bound. Decision A still stands: no approval step appears anywhere
+in the loop.
+
+One dependency is added: `androidx.webkit` 1.14.0, for
+`WebViewAssetLoader`. The browser-automation WebView in `actions/`
+does not use it and is not touched or reused; this is a separate,
+simpler WebView with a different job.
+
+`CodePreview` serves the open project on the fake HTTPS origin
+`https://appassets.androidplatform.net`, the asset loader's default
+domain, with a path handler rooted at the project folder. A real
+origin is what makes relative files, DOM storage, and normal page
+behavior work without file:// quirks. JavaScript and DOM storage are
+on — generated apps need both — and every file-access switch is off:
+general file access, content access, and both file-URL access flags.
+Navigation is locked down harder than serving alone would need: a
+main-frame navigation to anything but the appassets origin is
+refused, and an http or https subresource request to any other host
+is answered with an empty 403, so a previewed page has no network
+reach at all — the contract's offline rule enforced by the host, not
+trusted to the page. The WebView cache is disabled, deliberately: the
+fix loop's checks must read the files as they are now, and a cached
+pre-fix page would send the loop chasing errors the disk no longer
+contains.
+
+`CodeProjectAssetHandler` carries the path safety, at the handler
+level rather than delegated to the loader. A request path is
+resolved against the project root and canonicalized; anything whose
+canonical form is not the project folder or strictly inside it is
+refused — `..` segments, traversals that arrive decoded, and
+symlinks pointing out of the project all fail the same containment
+check. Directories and missing files are refused; only real project
+files are served. The bare root serves `index.html`. MIME types come
+from a small fixed table for the file kinds a web project carries.
+
+`CodeConsoleStore` is the console: bounded at 300 entries, oldest
+dropped first, fed by the chrome client's `onConsoleMessage` with
+level, message text, source id, and line number kept, each entry
+stamped with an arrival sequence. The Console pane (Unit 6) will
+read the entries themselves; the fix loop reads through a watermark
+instead, so every error is handed to it exactly once and merely
+displaying the console never re-feeds old errors as new ones. Because
+the watermark counts sequences rather than list positions, an error
+evicted under the bound before the loop's next check is gone for
+good — the bound is the scope's — and one still held is neither
+skipped nor repeated.
+
+`CodePreviewFixLoop` is the loop of section 4.5. The screen will
+call `afterRound` after an accepted round; the loop waits for the
+page to settle (4 seconds, Mochu's number, an injected seam in
+tests), reads the errors captured since the last check, and when
+there are errors runs a fix round whose prompt is the errors
+themselves, composed by `CodeConsolePrompt`: up to 4 distinct errors
+(distinct by text, source, and line — the same throw reported twice
+is one error), each flattened to one line and clipped at 300
+characters, its source shown as the file and line rather than the
+whole origin URL. A fix round is a full round through
+`CodeRoundRunner` — snapshot, contract, gate, version, write — and
+after one lands the preview reloads through the injected reload
+seam and the loop settles and checks again. Automatic passes are
+capped at 2 fix rounds since Battles's last own message;
+`onUserMessage` resets that budget. The manual `fixNow`, the
+controller behind the Console pane's Fix errors button in Unit 6,
+runs the same flow without the cap and does not spend the automatic
+budget. Uncapped cannot mean unbounded on a phone, so the manual
+flow also stops when an applied round leaves the error set
+unchanged — a model that keeps "fixing" without fixing is told apart
+from one still making progress. Both paths stop with the round's own
+outcome when a fix round does not land (failed the gate, refused by
+the budget, or answered with a plain reply): the errors were just
+put to the model and it could not or would not fix them, so looping
+would only repeat the attempt.
+
+Pinned by tests, all on the JVM: `CodeConsoleStoreTest` (the
+300-entry bound dropping the oldest, error-level filtering, the
+watermark handing each error over exactly once, an evicted error
+never resurrected, clear keeping later errors flowing, arrival
+sequences in order), `CodeProjectAssetHandlerTest` (the root serving
+the index page, nested files resolving, missing files and
+directories refused, `..` traversals refused, a symlink out of the
+project refused, the MIME table), `CodeConsolePromptTest` (error
+text and source position carried, duplicates collapsing under the
+4-error cap, a long error clipped and flattened, a source-less error
+shown bare), and `CodePreviewFixLoopTest` against the fake engine
+and a real store with a scripted console and reload (a clean console
+producing no round and no generation; one error producing exactly
+one fix round whose prompt is the error text, the fixed page on
+disk, the budget spent by one; the cap stopping at two rounds and
+reporting what remains; Battles's message resetting the cap and the
+next fix landing; a fix round that never lands stopping the loop
+after the runner's own four attempts; the manual flow running past
+a spent cap without touching the budget; the manual flow stopping
+when an applied round leaves the identical error set).
+
+Not established by this entry: an actual page rendering and its
+actual console. `CodePreview`'s WebView wiring — settings, clients,
+the loader — is exercised only on a device, and no JVM test here
+constructs it; what the JVM pins is everything around it (the
+handler's decisions, the store, the prompt, the loop's policy). The
+Code screen that mounts the preview, with the Console, Files, and
+Brief panes, the Fix errors button wired to `fixNow`, and the
+on-phone proof of the whole phase, is Unit 6. The exporter is
+Unit 5.
+
+## Code-and-export Unit 5: shell module and APK exporter — 7 November 2026
+
+Unit 5 gives code mode its exit door: a project becomes an
+installable APK, on the phone, with no Android toolchain anywhere in
+the loop. The mechanism is the placeholder-manifest trick the scope
+took from Mochu's exporter, rebuilt for Faraday's Gradle build.
+Decision B is in force here: Faraday's manifest gains
+`REQUEST_INSTALL_PACKAGES`, and the unit ships the install hand-off
+surface (`CodeApkInstaller`) the Code screen's Install button will
+call in Unit 6.
+
+The shell is a new Gradle module, `:webshell`: a complete minimal
+Android app whose whole UI is one WebView (`ShellActivity`, plain
+Java, no dependencies beyond the platform), serving its own
+`assets/www/` in answer to requests for the appassets origin — the
+same fake HTTPS origin the Unit 4 preview uses, with the same `..`
+guard and an extension-to-MIME table — and refusing navigation to
+any other host. It requests no permissions and uses the stock system
+icon, so an exported app is offline by construction. Its manifest is
+built with deliberate placeholders sized to be the longest values any
+export will ever need: a 64-character package name (the module's
+applicationId, `com.battlesbudz.faraday.app.p` plus filler digits)
+and a 48-character label. The activity's name is fully qualified on
+purpose, naming the real compiled class, so it does not move when
+the package placeholder is replaced. The module's release output is
+left unsigned — no signing config — and a `copyWebShell` task in
+`app/build.gradle.kts`, following the generated-assets precedent the
+whisper QNN runtime set, embeds it into the app as
+`assets/shell/webshell.apk` off `preBuild`. A `verifyWebShellAsset`
+task hangs off `assembleRelease` and fails the build unless the
+packaged release APK actually contains that asset, printing the
+shell's size so the CI log reports what it costs; no prebuilt binary
+is committed to the repo.
+
+The exporter (`CodeApkExporter.exportProjectApk`, in the code
+package) follows the scope's sequence exactly. It refuses early,
+with the reason: no `index.html` in the project, a project name over
+the 48-character label bound, or a derived package name over the
+64-character placeholder. It streams the shell entry by entry
+through `AlignedZipWriter`, dropping `META-INF/` entirely;
+`resources.arsc` is written STORED, and every STORED entry is
+4-byte aligned by a padding extra field, the zipalign way. The
+writer is hand-rolled for that guarantee (commons-compress stays
+unused here, as the scope directed), writes a fixed DOS date, and so
+produces byte-identical output for identical inputs — a property the
+tests pin. `BinaryXmlStringPoolPatcher` patches the manifest in
+place in its binary string pool, in both encodings aapt2 emits
+(UTF-16 and UTF-8): the placeholder package and label strings are
+replaced with the project's real ones, the remainder of each slot
+zero-filled, no offsets moved, and a replacement that would outgrow
+its slot refuses instead of truncating. The project files are
+injected under `assets/www/`, excluding the workshop: `versions/`
+never reaches the file list, `project.json` is machine state, and
+`BRIEF.md` and `rounds.log` are filtered by the exporter — the round
+log is Battles's own request history, and the scope's rule is that
+Faraday-side bookkeeping never ships inside an export. The result is
+signed with the apksig library (8.7.3, matched to the AGP pin; its
+notice sits with the other third-party notices in the app's license
+assets), APK Signature Scheme v2 only.
+
+The signing key is an RSA-2048 key generated once, on first export,
+into the AndroidKeyStore under the alias `faraday-code-export`,
+certificate subject `CN=Faraday Code export`, 30-year validity
+(`CodeExportSigningKey`), and reused for every export from that
+install. Stable key plus the store's deterministic per-project
+package name (at most 61 characters by Unit 1's derivation, inside
+the 64 placeholder) means re-exporting a project installs as an
+update of the same app. The known edge stands as the scope stated
+it: uninstalling Faraday or clearing its data destroys the key, and
+later exports will not update-install over earlier ones; the
+projects are unaffected. The finished APK lands in the app's
+`code-exports` cache folder, named after the project, and
+`CodeApkInstaller` hands it to the system installer through a
+matching FileProvider authority, with the can-install check and the
+unknown-sources settings intent beside it for Unit 6's button.
+
+Pinned by tests, all on the JVM: `BinaryXmlStringPoolPatcherTest`
+(byte fixtures of both pool encodings — replacements land in the
+right slots, an identity patch is byte-identical, a shorter
+replacement zero-fills its slot, an over-long one is refused, a
+missing placeholder is refused, non-binary input is refused),
+`AlignedZipWriterTest` (entries round-trip through ZipFile, STORED
+entries start on 4-byte boundaries, methods are preserved, output
+is deterministic), `CodeApkExporterTest` (an end-to-end export over
+a fixture shell and a real project folder: the entry list is exact,
+the manifest strings are the project's package name and name, the
+workshop files never ship, META-INF is gone, resources.arsc is
+STORED and aligned in the signed output, and apksig's own verifier
+accepts the result as v2-signed; the same over a UTF-8-pool shell;
+both refusals; the derivation fitting the placeholders with the
+longest package at 61 of 64; package names stable per project and
+distinct across projects; the unsigned build deterministic; a
+re-export keeping its package and verifying again), and
+`CodeApkExportRealShellTest`, which runs the same export over the
+actual CI-built shell the app embeds — its placeholders must match
+the exporter's constants, and the export must verify — so shell and
+exporter cannot drift apart silently. The signing tests use a
+throwaway PKCS12 fixture key generated for the test resources only;
+the production key path is the AndroidKeyStore and is not
+JVM-exercisable.
+
+Not established by this entry: an exported APK actually installing
+and running on a phone. That is device behavior — the install
+hand-off, the keystore key generation, the shell serving a real
+project inside an installed export, in airplane mode — and it is
+Unit 6's on-phone proof, with the Code screen, the Install and
+Export buttons, the diagnostics block, and the phase's six-item
+Fold 6 script.
+
+## Code-and-export Unit 6: the Code screen, diagnostics, and the phase's device proof — 7 November 2026
+
+Unit 6 is the phase's face: the Code destination the earlier units
+were building toward, wired over their surfaces without rebuilding
+any of their logic. Decision C is in force — code mode is its own
+destination with a project list, not a mode inside a chat thread —
+and it is reached from the Settings dialog's new Code projects
+section, opening over the conversation the way the Memory screen
+does, with chat composed beneath. `JarvisApp`'s signature does not
+change (the release journeys construct it), and the header band
+keeps exactly its six settled buttons; the settings door is the one
+new surface.
+
+The project list renders the store's contents: create, open, rename
+(through `project.json`; the id, folder, and derived package name
+never move, so earlier exports still update-install), and delete
+behind a confirmation. Creating asks for a name (optional — a blank
+name falls back to the first request's opening words) and the first
+request, and the first round starts as soon as the project exists.
+The project view carries the request box and the round status,
+including the file being written as the response streams; the
+Preview, Console, Files, and Brief panes; the Fix errors button in
+the Console pane; the Export APK button; and the rollback picker
+over the saved versions, which names the version a rollback itself
+saves before it restores. The preview stays composed under the
+other panes, so switching tabs never destroys the WebView or loses
+the page. The Console pane re-reads its store when it is opened,
+when an operation completes, and on Clear — no polling loop watches
+the WebView.
+
+The wiring is one new class over the landed machinery,
+`CodeModeDriver`: it owns a single session — a
+`CodeSessionController`, a `CodeRoundRunner`, and a
+`CodePreviewFixLoop` bound to the borrowed engine, the open
+project, and that project's console store — and drives the round
+flow. Battles's message runs a gated round; an applied round
+reloads the preview before the loop's first check, so the check
+reads the page Battles is looking at, and then the bounded
+automatic fix pass runs; the Fix errors button runs the same loop
+uncapped. Decision A holds throughout: no approval step exists
+anywhere in the flow. Switching projects on the same engine
+releases the old session first; leaving the destination releases
+inside a borrow when one is available, and a skipped release is
+safe because the engine's reset discipline exits code mode before
+any ordinary generation.
+
+Rounds generate on the one shared engine, borrowed through
+`JarvisRuntime.withCodeModeEngine` under the model-operation lease
+chat replies, voice turns, and the reliability check already
+respect, so a code round can never interleave with a chat reply or
+a call. The resident engine is used as-is; when none is resident,
+one is created for the selected model exactly as a plain
+conversation turn creates it (no attachments, so no vision or
+audio encoders) and becomes the resident engine, with the context
+accounting cleared as on any creation, and the conversation
+layer's native-quarantine guard mirrored. While a chat reply or a
+voice call holds the model, the borrow refuses and the status line
+says the round did not run; Battles's words stay in the request box
+for the retry.
+
+Export finishes the loop on the screen: Export APK runs Unit 5's
+exporter, and the exported APK then offers Install (Decision B,
+over `CodeApkInstaller`'s hand-off, with the unknown-sources
+settings intent first when Android has not allowed installs), Save
+(through the system document picker), and Share, all from the same
+exported file. An applied round or a rollback clears the export
+offer, since the files it was built from have moved on. The Clear
+workspace settings copy gains the section 3.1 clause naming code
+projects.
+
+The diagnostics block follows the sandbox block's shape and closes
+the Copy Diagnostics paste (one append in `MainActivity`): a `code:`
+title line, then the projects count with each project's
+12-character fingerprint short form, rounds, retries, fix rounds,
+exports, and the last outcome and last error. The counters live in
+`CodeStatsStore`, one small file in the workspace root, so Clear
+workspace clears them with the projects they describe and Reset
+keeps them. Retries are measured, not estimated: the session
+controller appends exactly one round-log entry per generation
+attempt, and the driver counts an operation's attempts from the
+log's growth.
+
+Pinned by tests: `CodeModeDriverTest` against the real store,
+runner, and fix loop over the fake engine (an applied round
+reloading the preview and running the automatic fix pass to clean;
+retries counted from the round log at one and at the runner's
+four-attempt cap; a reply round writing nothing and running no fix
+pass; a budget-refused round recorded with its reason; a refused
+borrow running and recording nothing; the manual pass recorded as
+its own outcome; project switches and releases ending the right
+sessions), `CodeStatsStoreTest` (the counters' arithmetic,
+persistence across a recreated store, single-line bounded outcomes,
+a torn file reading as zeroes), `CodeDiagnosticsTest` (the block's
+exact layout, empty and populated, an unknown fingerprint), and
+`CodeScreenTest`, Robolectric screen tests with a stubbed preview
+pane (the list rendering store contents, the empty state, the
+creating a project opening it with the preview mounted, every
+pane mounting in the project view, rename changing only the listed
+name, delete asking first). No instrumentation journey composes
+the Code UI — verified against the androidTest sources — so no new
+R8 keeps were needed; `VoiceCallScreen` gained only a trailing
+defaulted parameter, and no journey constructs it either.
+
+Not established by this entry: everything on a phone. The screen's
+life against a real WebView, a real model driving rounds on
+Gemma-4-E4B (Decision D's proof model), the install hand-off, and
+an exported game running offline are device behavior, and the
+phase's proof is Battles's to run on the Fold 6, on the build
+published from this unit's head:
+
+1. Fresh project from one request ("a snake game"): preview runs
+   it, no console errors after any automatic fix rounds.
+2. Iterate: a change request ("make it faster, add a score") lands
+   as edits, preview still clean, brief shows the decision.
+3. Cohesion past context: force a fresh conversation (leave code
+   mode, chat normally, come back, or switch models and back) and
+   make another change. The round starts from snapshot and brief,
+   the app still works, nothing from the chat leaks in.
+4. Break it on purpose through a request, watch a fix round run,
+   and roll back one version from the picker; the app returns to
+   the pre-break state.
+5. Export the APK, install it from the saved file, open it in
+   airplane mode: the game plays, fully offline. (Decision B's
+   in-app Install button is the same install without the Files
+   detour; Save is there for the from-file path.)
+6. Copy Diagnostics shows the code block with counters matching
+   what just happened.
+
+Until that proof passes, the code-and-export phase is
+code-complete and nightly-green, not device-proven.
+
+## Sandbox exec runs land in the persistent workspace — 6 November 2026
+
+Codex review on PR #25 (P2): a sandbox exec run asked for /workspace as
+its working directory, but `UserlandRootfs.buildCommand` resolved that
+directory against the rootfs tree alone, before the workspace bind was
+added to the engine command line. The bundled rootfs contains no
+/workspace — the workspace is a host directory of its own, bound over
+the mount point at runtime — so resolution failed and the run fell back
+to the identity home inside the rootfs. Commands using relative paths
+therefore wrote into the disposable rootfs instead of the persistent
+workspace, and those files were lost on Reset, breaking decision D2.
+
+`buildCommand` now creates the guest-side mount point of every bind
+(`ensureBindMountPoints`) before the working directory is resolved:
+each `host:guest` spec's guest path is normalized textually, proven to
+stay inside the rootfs by canonical path, and created when absent; an
+existing target is left untouched, and a spec that would escape the
+rootfs creates nothing. With the mount point present, /workspace
+validates, the run starts there, and the bind covers the empty mount
+point with the real workspace. Login sessions (no binds) are
+unchanged, and a working directory that genuinely does not exist
+still falls back to the identity home, then "/".
+
+`UserlandRootfsExecWorkDirTest` pins the resolution end to end (a
+bound /workspace is the run's --work-dir; a missing directory still
+falls back to /root; a bind-less login command creates nothing and
+keeps its home working directory), `UserlandRootfsBindMountPointTest`
+pins the mount-point creation rules (nested targets, malformed and
+escaping specs, symlink escapes, existing targets untouched), and
+`SandboxStoreResetTest` pins the D2 contract the fix serves (Reset
+removes the rootfs; the workspace survives).
+
+Not established by this entry: on-device behavior. The device proof
+still owed is a relative-path sandbox write surviving a Reset: run a
+sandbox command that writes a file by a relative path, Reset the
+rootfs from settings, reinstall, and read the file back from
+/workspace.
+
+## Audio-access refusal detector hears the build-1706 phrasing — 6 November 2026
+
+Battles's build-1706 battery call (video branch, call dd1e17f1): on a
+tools-enabled voice call he asked for his battery, barged in mid-reply,
+and the follow-up turn — whose only audio was the barge — answered "As
+I am currently unable to hear the audio, I require you to provide it so
+that I may assist you with your request." The audio-access refusal
+guard ran on that turn, but the claim matched neither detector family:
+"hear" was not among the direct-denial verbs, and the demand that the
+user hand over the audio matched no access-denial pattern, so the
+false claim shipped. The video branch fixed the detector (commit
+e3669487, shipped in build 1727); main's `AudioAccessRefusal.kt` was
+byte-identical to the branch's pre-fix file, so main carried the same
+miss, and this entry ports the fix unchanged.
+
+The detector now treats a hearing denial as the same false claim
+("hear" joins respond to / answer / process / access in the
+direct-denial pattern), and a new provide-demand pattern
+(require / requires / need / needs + "you to" + provide / send /
+upload / share / give) counts as a refusal when the audio anchor
+gates it, exactly like the access-denial family. Honest difficulty
+stays untouched: "I could barely hear the audio, but you asked about
+your battery level" does not fire, and a provide-demand with no audio
+anchor is an ordinary request.
+
+`AudioAccessRefusalTest` grows from 10 to 16 tests, ported with the
+detector: the verbatim SPECIMEN_1706 detector cases, the
+hearing-difficulty near-miss negatives, generation-side and
+recovery-backstop replays of the specimen (regenerate once with the
+same audio; a repeated specimen falls back to the honest
+repeat-request), and `directAudioBatteryCallReachesExecution`, which
+pins that a completed direct-audio `read_battery` call reaches the
+executor — in its corrected form, where the single-step plan
+completes from the executor receipt with no follow-up generation.
+
+Not established by this entry: on-device behavior. The device proof
+rides the same battery retest as build 1727, run on this main build:
+a tools-on voice call that asks for the battery and lets her finish
+(the tool runs and the level is reported), then one barge-in
+mid-reply whose follow-up must not claim she cannot hear.
+
+## Code-and-export Unit 1: the project memory core — 6 November 2026
+
+The code-and-export phase (scope of 5 November 2026) rests on one
+decision of Battles's: a project stays cohesive across rounds and past
+the model's context limit because the project files on disk are the
+memory, not the chat. Unit 1 builds that memory core — the `code`
+package — and nothing else: no model calls, no UI, no tool-catalog
+entries, no manifest changes. Units 2 to 6 consume the store's surface;
+none of them reaches around it into raw files.
+
+`CodeProjectStore` owns one folder per project under the sandbox
+workspace (`files/sandbox/workspace/projects/<projectId>/`, the same
+folder as the guest's `/workspace/projects/<id>`), with plain host-side
+file IO — the sandbox engine is never in the path, so the store works
+whether or not the rootfs is installed, and the workspace's lifecycle
+is inherited rather than reimplemented: a rootfs Reset leaves projects
+untouched, Clear workspace deletes them with everything else (decision
+D2). A project is its content files (`index.html` plus any split
+files), `BRIEF.md`, `project.json` machine state (id, name, created and
+updated stamps, round counter, and the deterministic export package
+name of scope section 5.2, derived at creation), the persisted round
+log, and `versions/` snapshots. Creation seeds a working starter page
+and a brief whose Goal is Battles's first request. Project ids are
+app-generated slugs; `resolvePath` resolves model-supplied paths
+inside the project folder with the scope's escape check (absolute
+paths, `..` segments anywhere, and canonical escapes are refused;
+backslashes count as separators).
+
+`ProjectSnapshot` rebuilds the model's whole view from disk in the
+scope's order under one budget: the brief in full, the file map,
+`index.html` capped at half the snapshot budget with head and tail kept
+and the middle dropped (the snapshot says so), the remaining files in
+file-map order capped per file until the budget runs out (the rest are
+listed by name and size only), and the last five round-log entries,
+clipped. `CodeBudget` derives every number from the chat layer's own
+limit — `ConversationPrompt.contextLimit`, whose fallback for the
+current Gemma bundles is `ConversationPolicy`'s compaction limit —
+never from Mochu's: the reply reserve is half the limit capped at
+12,000 chars, the snapshot budget is what remains after the reserve
+and the code system prompt, floored at 4,000 chars, and the round is
+refused only when even that floored snapshot plus the prompt cannot
+fit under the limit. The brief cap and per-file caps are quarters of
+the snapshot budget (the index cap a half), so the proportions hold on
+any model.
+
+`ProjectBrief` is the one owner of the `BRIEF.md` format: five fixed
+sections (Goal, Files, Decisions, Known problems, Next steps), a parse
+that fails when any section is missing, and cap validation that fails
+an oversized update with the reason instead of truncating it. The
+Files section is machine-owned — the store regenerates it from the
+real folder, overwriting whatever was written there. `ProjectFingerprint`
+is the content hash the session-reuse rule keys on: SHA-256 over the
+sorted (path, size, content hash) list of every project file, the
+brief included, `versions/` and `project.json` excluded. Version
+snapshots copy the project before an accepted round writes and prune
+to the last ten; rollback restores a version byte-for-byte and takes a
+snapshot of the state it replaces first, so a rollback can itself be
+rolled back.
+
+Pinned by tests: `CodeBudgetTest` (the constants against
+`ConversationPolicy` and the `contextLimit` formula, the floor, the
+refusal boundary), `CodeProjectStoreTest` (create/write/reopen/delete
+round-trips, slug uniqueness and fallback, name escaping through
+`project.json`, path-escape refusals, the round log, Files-section
+regeneration over a bogus entry), `ProjectBriefTest` (render/parse
+round-trips, missing-section refusal, cap validation),
+`ProjectSnapshotTest` (section order, budget adherence, the
+head-and-tail rule, listed-only files when the budget is spent, the
+five-entry clipped round log), `ProjectFingerprintTest` (stability,
+one-byte sensitivity, versions and `project.json` excluded), and
+`CodeVersionsTest` (snapshot contents, byte-exact rollback, pruning).
+
+Not established by this entry: everything above the store. There is no
+code mode to open yet — generation, the contract, the gate, the
+preview, the exporter, and the Code screen are Units 2 to 6, and the
+device proof for the whole phase is Unit 6's script on Battles's
+phone.
+
+## Code-and-export Unit 2: code mode session, contract, and action parsing — 6 November 2026
+
+Unit 2 gives the memory core of Unit 1 its voice: the code system
+prompt, the engine seam that prepares the one shared conversation for
+code mode, the session controller that runs rounds under the
+fingerprint reuse rule, the strict action parser with its write
+recovery chain, and truncation continuation. There is still no code
+screen and nothing is applied to a project yet — the gate and the
+atomic apply are Unit 3 — so a round today ends in a parsed action
+set, proven against the fake engine, and the project on disk is
+exactly what it was before the round.
+
+`CodeSystemPrompt` is a reviewed constant carrying the contract of
+section 4.1: exactly four verbs (`write_file`, `edit_file`,
+`update_brief`, `reply`) in the XML envelope Mochu proved, and the
+house rules that do the product design work — one self-contained
+`index.html` by default, fully offline, phone layout, complete code,
+never stop inside an action. Its char count feeds `CodeBudget` on
+every round. The sampler check the scope required is settled in code:
+the reviewed 0.16 bridge's `ConversationConfig` does expose a
+per-conversation `samplerConfig` (the JNI layer reads topK, topP,
+temperature, and seed off it), so code mode samples at the
+Mochu-derived values in `CodeSampling` (topK 20, topP 0.9, temperature
+0.35, seed 0) through a new `codeConversationConfig` beside the
+existing conversation config — no bridge patch, and the known-limit
+fallback the scope allowed for was not needed.
+
+The engine seam is `CodeModeEngine`, implemented by `LiteRtLmEngine`
+and mirrored by `FakeModelEngine` for tests. Preparing code mode
+resets the shared conversation, after which the next conversation is
+created from the code configuration: tools disabled, the code prompt
+as system instruction, the code sampler. The seam exposes the
+conversation generation (the engine's native session count, which
+increments on every reset) and releases the conversation when code
+mode is left; every ordinary reset also leaves code mode, so a chat
+turn, a voice turn, a tool-policy change, or a model switch between
+rounds is visible to the controller as a moved generation and a
+dropped code-mode flag. Ordinary-conversation preparation now releases
+code mode first, the same way it already undid the voice preface.
+There is no second engine and no second KV cache.
+
+`CodeSessionController` runs a round. It reuses the live conversation
+— sending only Battles's request plus the contract's reminder line —
+only when the same project is open, the fingerprint on disk still
+equals the session fingerprint, the generation is unchanged, and the
+estimated remaining room covers the short prompt plus the reply
+reserve; otherwise it re-prepares and sends a fresh full snapshot
+from Unit 1's builder. Two bookkeeping rules keep the fingerprint
+honest, and both are stated on the controller: the round log is
+fingerprint content and the controller appends one line per round, so
+after a round that wrote nothing the session fingerprint is refreshed
+past the app's own append (the conversation lived that round); and a
+round carrying any write verb invalidates the session fingerprint
+outright, because section 3.5's rule is that a write round changes
+the fingerprint by definition and the next turn always re-snapshots.
+While a round streams, the file being written is extracted live from
+the partial response for the round status Unit 6 will show. Each
+round appends exactly one round-log entry with its one-line outcome;
+Unit 3's apply outcomes ride that entry rather than adding a second.
+
+Generation runs the parser only on the stitched whole:
+`CodeContinuation` treats a response as cut off when an action
+envelope was opened and never closed, when Mochu's long-with-no-
+closing-tag rule fires, or when a written HTML file never closes its
+`</html>` tag, and then asks for continuation from the exact next
+character — up to six times, on the same conversation — stitching
+with an overlap de-dup of up to 1,000 chars and stripping a re-emitted
+action header. `CodeActionParser` splits the thinking channel off
+first (reasoning that mentions an action tag is never parsed), takes
+complete well-formed envelopes literally — when any write action is
+present the writes define the round and a riding `reply` is dropped —
+and, only when the strict parse finds nothing, runs the recovery
+chain: a bare `<content>` block containing HTML, then a Markdown
+html fence, then a raw HTML document anywhere in the text (the fence
+is checked before the raw scan because the scan would otherwise
+claim every fenced document first and the fence recovery could
+never fire for the input it names), each becoming a `write_file`
+for `index.html`. File bodies are byte-exact
+except for one envelope rule, stated on the parser: a single line
+break directly inside a `<content>`, `<find>`, or `<replace>` tag
+(and one before its close) belongs to the envelope, not the file. The
+parser produces data and nothing else; it never touches disk.
+
+Pinned by tests: `CodeSystemPromptTest` (the four verb envelopes and
+house rules present, the prompt fitting the fallback budget beside
+the floored snapshot, the sampler constants at the scope's values),
+`CodeActionParserTest` (one fixture per verb; pairs in order; riding
+reply dropped; prose around an envelope; thinking mentioning action
+tags never parsed, including an unclosed think before an action;
+unknown verb, missing content, and missing pairs named as malformed;
+unclosed envelope; one fixture per recovery shape; byte-exact
+interiors), `CodeContinuationTest` (the three cut-off signals and
+their negatives, the continuation prompt quoting the ending, plain
+and overlapping stitches, the overlap cap, both re-emitted-header
+shapes, a stitched stream parsing into one coherent write),
+`CodeSessionControllerTest` (a scripted fake-engine drive: first
+round sends the full snapshot and returns the parsed write; unchanged
+project reuses with the short prompt; write round, external file
+change, engine reset, project switch, and room exhaustion each force
+a fresh snapshot; truncated-then-continued round stitches into one
+action; continuation stops at the cap of six; budget refusal sends
+nothing; generation failure fails the round and the next round
+re-prepares; release forgets the session; the round log records
+parsed and failed rounds; progress names the file being written), and
+`ModelConversationConfigTest` (the code configuration carries no
+tools, no automatic tool calling, the code instruction, and the code
+sampler on both the Gemma bundles and a community bundle).
+`FakeModelEngine` gained the `CodeModeEngine` surface for these
+tests, with LiteRtLmEngine's semantics: preparing resets into code
+mode, every reset bumps the generation and leaves code mode, and
+releasing is a no-op when code mode is not active.
+
+Not established by this entry: everything that makes a round change
+a project. The normalizers, the completeness gate, the all-or-nothing
+apply with its version snapshot, and brief application are Unit 3;
+the preview and console loop are Unit 4; the exporter is Unit 5; the
+Code screen and the on-phone proof are Unit 6.
+
+## Code-and-export Unit 3: repair, completeness gate, and atomic apply — 6 November 2026
+
+Unit 3 makes rounds land. Unit 2 ended with a parsed action set and
+a project exactly as it was; Unit 3 adds the Mochu repair layer, the
+completeness gate, the 4-attempt retry loop, and the apply step that
+writes — atomically, and only after everything has passed. Decision
+A stands in code: there is no per-round approval anywhere in a
+round. Writes are confined to the open project's folder, checked by
+the gate, and snapshotted before they land.
+
+`CodeNormalizer` carries the four repairs of section 4.3, applied to
+every parsed or recovered write. Path cleanup normalizes separators,
+strips leading slashes, and gives `index.htm` its `.html` extension;
+escape attempts are deliberately not cleaned away, so the store's
+resolution refuses them and the round fails with that reason. Body
+cleaning strips a Markdown fence or a CDATA section only when it
+wraps the whole body. The CSS/JS un-mix cuts JavaScript out of a
+written css file — line signals in Mochu's shape, brace tracking so a
+function body travels with its opening line, whole script blocks
+lifted out — into `app.js`, and `index.html` gains the script
+reference when it does not already carry it. Single-file
+consolidation inlines a round's referenced css/js writes back into
+its `index.html` and drops the separate writes, unless Battles asked
+for a split; where Mochu keyed "unrequested" off the generated HTML,
+the runner here holds Battles's actual request and reads it, which
+is the better signal.
+
+`CodeEditApplier` is Mochu's edit protocol: exact substring match
+first (first occurrence), then a line-by-line match that ignores
+indentation, pairs applied in order against the running result, in
+memory first and all-or-nothing — one unmatched find fails the
+attempt with the snippet recorded. `CodeCompletenessGate` checks
+what a round writes: an HTML file must open with a doctype or an
+html tag, close its html tag, carry no unclosed script or style tag,
+and not end with an open bracket or angle character; a split script
+file's braces must balance, scanned string- and comment-aware so a
+brace inside a string does not unbalance it. Files a round only
+edited are exempt — they were already whole, and a surgical edit is
+not re-judged for its file's pre-existing state.
+
+`CodeRoundRunner` runs the round. Each attempt goes through the
+Unit 2 controller, then normalization, in-memory application, and
+the gate; a failed attempt retries with specific feedback as the
+next attempt's prompt — what was incomplete, which find text was not
+found (with the instruction to return a full write instead), why a
+brief was refused — up to 4 attempts total, each retry on a reset
+conversation with a fresh snapshot. The commit is the only code path
+that touches the project, and it runs only after the full action set
+has passed, in the scope's order: the version snapshot of the
+pre-round state, then the file writes (temp-then-rename, as the
+store writes), then the brief update with its Files section
+regenerated (the regeneration also follows any round that changed
+files, since that section is machine-owned), then the round counter.
+An `update_brief` is validated on the way in — all five sections
+present, under the brief cap — and fails the attempt with the reason
+when it is not. Model writes to `BRIEF.md`, `project.json`,
+`rounds.log`, or anything under `versions/` fail the attempt with
+feedback naming the right channel: section 3.3 makes `update_brief`
+the brief's one door, and the rest are the app's bookkeeping.
+
+Because a failed attempt writes nothing, takes no version, and bumps
+no counter, a fully failed round leaves every project file
+byte-identical to before the round. The one exception is the round
+log, which gains exactly one entry per attempt from the controller:
+the log is the scope's designated carrier of round outcomes —
+section 3.2 names "failed" as one of them — so its growth is the
+record of the failure, not a change to the project the gate
+protects. Per Unit 2's design the apply outcomes ride the
+controller's entry; the runner appends no round-log entries of its
+own.
+
+Pinned by tests: `CodeNormalizerTest` (path cleanup including the
+preserved escape, fence and CDATA stripping including a fence around
+CDATA and untouched interior fences, the un-mix in three shapes —
+block of JavaScript, a pure-JavaScript css file, a lifted script
+block — consolidation inlining referenced files and leaving
+unreferenced ones, script-reference injection, split detection from
+the request text), `CodeEditApplierTest` (first-occurrence exact
+match, ordered pairs, the indentation-insensitive line match, an
+unmatched find carrying its snippet, one bad pair failing the whole
+edit, the empty find), `CodeCompletenessGateTest` (one fixture per
+HTML rule and per brace outcome, braces in strings and comments not
+counted, routing by extension), and `CodeRoundRunnerTest` against
+the fake engine and a real store in a temp folder (a passing write
+asserting the written bytes, the version snapshot's starter page,
+and the regenerated brief Files entry; exact and
+differently-indented edits; a second round snapshotting the first
+round's result; a reply round changing nothing; the unrequested
+split consolidated to one file and the requested split left split;
+JavaScript un-mixed out of a css file into `app.js` with the
+reference injected; fenced and CDATA bodies stored clean; an
+unmatched find retrying with the targeted feedback and exactly one
+version taken; an incomplete page retrying with its specific
+problem named; an escaping path refused with the retry staying
+inside the project; unbalanced JavaScript failing the gate and
+retrying; an edited pre-existing broken file exempt from the gate;
+a brief update landing with its Files section regenerated over a
+bogus model-written entry; brief failures naming the missing section
+and the cap; a direct write to `BRIEF.md` refused with the
+`update_brief` channel named; and the unit's reason to exist — all
+4 attempts failing, after which every project file is asserted
+byte-identical, no version exists, the round counter never moved,
+and the round log holds exactly the four attempt entries).
+
+Not established by this entry: anything the user can see. The
+preview and the console-error loop are Unit 4, the exporter is
+Unit 5, and the Code screen with the on-phone proof is Unit 6.
+
+## Chat display fixes: keyboard clearance, Markdown replies, tail scrolling — 5 November 2026
+
+An external tester on build 1568 (Pixel 6a, GrapheneOS) filed issues #19
+and #20 against the chat screen. Every layout file involved is
+byte-identical between build 1568 and the fix, so each item was judged
+against the current code, not the report's age.
+
+Issue #19 (a keyboard-sized empty gap under the composer while typing,
+gone when the keyboard closes): the whole UI is laid out against window
+insets (`safeDrawingPadding` / `imePadding`), which is only sound when
+the window never resizes for the keyboard. `MainActivity` never
+configured its window, so on the reporter's device the window resized
+AND the chat root padded for the same IME inset, subtracting the
+keyboard height twice (the screenshot's content height is the screen
+minus two keyboard heights). `MainActivity.onCreate` now calls
+`enableEdgeToEdge()` before `setContent`, pinning the insets model
+every screen already assumes; on devices that were already edge-to-edge
+nothing changes. No JVM check can prove window behavior; this is
+device-class coverage, owed on a device that resizes for the IME.
+
+Issue #20 item 1 (assistant replies showed raw Markdown): replies were
+rendered with a plain `Text`. They now render through
+`AssistantMarkdownText`: the maintained CommonMark parser
+(`org.commonmark:commonmark`, pure JVM, no transitive dependencies)
+produces a tree that `chat/AssistantMarkdown` projects onto a small
+block/span model (paragraphs, headings, bullet/ordered lists with
+markers and nesting depth, code blocks, quotes, dividers; bold, italic,
+inline code and links inline), rendered with Material3 `Text` so the
+existing SelectionContainer behavior is unchanged. User messages keep
+the plain rendering; the blank-reply fallback is unchanged; a streamed
+partial reply parses as whatever is complete so far, an unclosed marker
+degrading to literal text. `AssistantMarkdownTest` pins the projection,
+including the reporter's exact list format from the screenshot, and
+`AssistantMarkdownComposeTest` pins the rendered surface (formatted
+text present, no literal `**`).
+
+Issue #20 item 2 (the view did not go to the end of a finished reply):
+the transcript's auto-scroll landed on the last item's START, so a
+reply taller than the viewport kept its end off-screen, and it fired on
+every streamed chunk, dragging a reader who had scrolled up back down.
+The scroll now lands on the END of the last item (maximal item offset,
+clamped to the list end) and only while the reader is parked at the
+tail: `ui/ChatScrollPolicy` holds the stickiness rules (reaching the
+tail sticks; a user drag away from the tail unsticks; programmatic
+scrolls and streamed growth change nothing), a send re-sticks, and
+`ChatScrollPolicyTest` pins the transitions.
+
+Issue #20 item 3 ("top menu too low", uneven menu fonts): not
+identifiable as a concrete defect in the current code, and no change
+was made for it. The header rows are uniform Material3 TextButtons in
+vertically centered rows; the menu sits below the wisp presence header
+by design, and the perceived font offset matches the intentional
+title-versus-label type scale. The issue reply says this plainly
+instead of claiming a fix.
+
+Not established by this entry: on-device behavior. The keyboard
+clearance and the rendered Markdown/scroll behavior want a device pass
+on the published build carrying these changes (open a long Markdown
+reply, confirm it renders formatted and lands at its end; open the
+keyboard on a device that resizes for it, confirm no gap).
+
+## Chat header beside the wisp — 5 November 2026
+
+The chat header no longer stacks under the wisp presence. The three
+rows that sat below it (JARVIS title with Memory and Settings;
+Conversations, Private and New; Metrics and Copy metrics) are replaced
+by `ui/ChatHeaderBand` in the app frame's presence band: Memory,
+Conversations and Metrics stacked on the left of the wisp, Settings,
+Private and New on the right, in the same Material3 TextButton style,
+with the one-line ellipsizing label contract the old second row used.
+The wisp itself — graphic, size, centered position, status pill — is
+untouched, and the transcript starts immediately below the band. The
+JARVIS title text is removed (header only; no other label changes),
+and Copy metrics is removed: the conversation report was too large to
+copy reliably, and the Metrics destination (`PipelineBenchmarkScreen`)
+already carries the full export surface (Copy report, Save TXT,
+Share TXT, per-format copy/save/share). The band is stateless;
+JarvisApp hoists the settings/history/error/input-busy/benchmark
+state holders and shares them with ConversationScreen, so every
+button keeps its exact previous callback, destination and enabled
+rules, and every existing test tag (`memory_open`, `new_private_chat`,
+`conversation_metrics_open`) is preserved on the same action. The
+private-mode indicator keeps its text, style and tag as a full-width
+strip at the top of the transcript. `ConversationMetricsControls` is
+deleted; `ConversationMetricsExport` itself is unchanged and remains
+covered by its own test and the benchmark screen's copy actions.
+
+Not established by this entry: on-device behavior. The band's geometry
+wants the release layout and journey suites on the build carrying
+these changes — in particular the wisp centering and
+above-the-transcript assertions, the narrow-width (320 dp) large-font
+layout pass, the call-state wisp expansion ratios, and a check that
+the side labels (notably Conversations) stay legible on a
+cover-screen-width device — plus Battles's own pass on his phone:
+the six actions beside the wisp, no JARVIS title, no Copy metrics,
+and the transcript starting directly under the band.
+
+## Sandbox command fidelity — November 2, 2026
+
+Follow-up to the Phase 2 tool binding, from Battles's build 1668 device
+proof: the approval machinery worked exactly as specified (counters
+proposed=2 approved=1 denied=1 runs=1 lastExit=0; the denied command never
+ran), but the model recomposed a literally dictated command — "Run echo
+phase2-ok in the sandbox" was proposed as `echo "phase-ok" > phase2ok`
+(different text, redirected into a file) and the approved run exited 0
+with no output. A dictated command is now extracted deterministically:
+when the request that arms the intent marker carries a literal span
+between the run/execute verb and the "in the sandbox" anchor,
+`ActionRequestText.sandboxLiteralCommand` returns that span verbatim
+(case and internal punctuation preserved, surrounding whitespace trimmed,
+one layer of user-typed quotes stripped), and `ActionTurnRunner`
+substitutes it for the model's recomposition before the proposal parks —
+one dictated command parks once per batch. Description-style requests
+("use the sandbox to add these numbers", "run something that lists the
+files") and mere mentions dictate no span and keep the model-composition
+path unchanged, under the same exact-approval gate; the marker, the
+eligibility ladder, the counters and the Phase 1 runner are untouched.
+Routing diagnostics record the extracted span when one is found.
+
+`SandboxPhase2ToolTest` additionally pins verbatim extraction (including
+the two build 1668 proof commands), one-layer quote stripping, fallback
+for descriptions, mentions and negations, batch-level substitution of the
+dictated command for the mangled composed one, runNative parking of the
+dictated command, and unchanged composed parking when nothing was
+dictated.
+
+Not established by this entry: on-device behavior of the substitution.
+That requires Battles's Fold 6 proof on the published build — dictate
+"Run echo phase2-ok in the sandbox" and confirm the approval card shows
+exactly `echo phase2-ok`, then approve and hear exit 0 with output
+`phase2-ok`. The direct-audio path is unchanged: it has no pre-model
+text, so nothing is extracted there.
+
+## Silence admission for follow-up turns — November 2, 2026
+
+From Battles's build 1669 device diagnostics: a follow-up turn on which he
+said nothing was admitted as speech — `followup_speech_evidence
+accepted=true strongAudioMs=704 liveWords=false quietCorroborated=false` —
+Whisper recognized zero words, the ASR recovery attempts were rejected, and
+the clarify fallback ("I couldn't retain that whole request reliably.
+Please repeat it in shorter parts, sir.") was spoken to an empty room.
+Where the transcript is the request, `FollowupSpeechEvidence.accepts()` no
+longer admits on sustained strong audio alone (the removed
+`strongMs >= 240` clause). Admission requires evidence of words: at least
+96 ms of confirmed strong audio with live partial words, or quiet-speech
+corroboration — the two paths that already admitted real speech. A
+wordless, uncorroborated candidate is rejected by the existing silent
+discard in `AudioTurnCapture`: microphone kept open, no transcript
+artifact, no recognition issue, no ASR recovery loop, no clarify reply.
+
+Boundary: the evidence gate is consulted only when the capture plan sets
+`guardFollowupSpeech` — reply listening (`ReplyVoiceCapture`), capture-first
+follow-ups, and turns prepared from a follow-up boundary
+(`VoiceTurnPreparation`). A call's first turn is prepared with the guard
+off and is unchanged. Inside the guard, the word-evidence rule binds only
+where the transcript is the request (`captionOnly=false`, the
+"authoritative_asr" path). Where the retained audio itself is the request
+(`captionOnly=true` — direct-audio turns whose recognition is Gemma
+hearing the audio, with at most a display-only caption alongside),
+`acceptsAudioOnly()` keeps the historical sustained-audio admission: there
+may be no transcriber to produce live words at all, and a caption's ASR
+issue is suppressed downstream when the retained audio is complete
+(`GemmaAudioInputPolicy.retainedAudioIssue`), so the ASR recovery /
+clarify chain never sees those turns. Speech whose live partials produced
+words is admitted exactly as before on both paths, so a final-ASR failure
+on real speech still reaches the existing clarify path; the gate reads
+live evidence, never the ASR outcome.
+
+`FollowupSpeechEvidenceTest` pins the exact 704 ms specimen (diagnostic
+string included) against both rules — rejected for ASR-authoritative
+turns, admitted for audio-only turns — plus sustained speech with live
+words, sustained speech with corroboration, and live-words admission ahead
+of any ASR outcome, alongside the pre-existing short-command and
+corroborated-whisper cases. `AudioTurnCaptureTest` gains
+`sustainedWordlessFollowupSoundDiesSilentlyAndNextSpeechSurvives` (800 ms
+of wordless strong audio under the follow-up guard on an ASR-authoritative
+capture logs `followup_speech_evidence accepted=false strongAudioMs=800
+liveWords=false quietCorroborated=false` and `followup_candidate_rejected`,
+the transcriber is never finished or recovered, no transcript or
+recognition issue is produced, and the next real utterance is captured on
+the same open microphone) and
+`sustainedWordlessAudioOnlyFollowupStillReachesGemma` (the same audio on a
+captionOnly capture is admitted as a complete audio-only turn).
+
+Not established by this entry: on-device behavior. That requires Battles's
+Fold 6 proof on the first published main build containing the fix — during
+a voice call, stay silent at a follow-up prompt and nothing happens at all;
+then mumble genuine unintelligible speech and the clarify reply still fires.
 
 ## Save diagnostics actually saves: Downloads write replaces the share chooser (2026-11-02)
 
@@ -4877,3 +6164,55 @@ What changed:
 Infra note for the Android run: attempt 1 was green everywhere except "Verify full-E2B native audio quality", whose hosted Bazel probe compile stalled (`Hosted compiler did not complete within its bounded resources`, exit code 2) — an infrastructure signature in a job this diff does not touch (no SDK, probe, or native code changed). The one sanctioned failed-jobs re-run (attempt 2) completed that job and the run finished green, publishing build 1677.
 
 Not established by this entry: on-device behavior (Battles's proof is the check, on build 1677 with his existing memories present: "what's my name" answered as Justin Lee Battles from the record; "what are some things I have done?" answered from the records, e.g. traveled to 27 countries / wakeboarding in Dubai; no no-access claim on either). Emulator journeys and JVM tests are the release-candidate gate, not device proof.
+## Linux sandbox tool binding (Sandbox Phase 2) — November 1, 2026
+
+`run_in_sandbox` joins the native catalog as a fifteenth tool (after
+post_notification). Gemma proposes one shell command per call in voice
+(direct-audio guard) and chat/Whisper turns (explicit sandbox-request
+intent arms the channel; the plan step is an empty-command marker that can
+never dispatch). Every proposal parks in the durable task ledger and runs
+only after the user's exact approval of the verbatim command text in the
+phone tasks panel; denial cancels the attempt with nothing executed. The
+tool is never routine-eligible, is dispatch-eligible only under an exact
+approval, is hard-denied to external agents, and cannot appear in workflow
+definitions. Execution goes through the Phase 1 SandboxRunner unchanged
+(chroot-ng, D4 limits: 120 s default / 600 s ceiling, 64 KB capture ring,
+8,000-char surfaced output with the truncation marker; stdin is EOF —
+runs are non-interactive; networking follows the settings toggle only and
+the tool can never enable it). The receipt reports the real exit code,
+timed-out state, or the runner's typed start error (for example not
+installed — installation stays a settings action; nothing auto-installs).
+
+`SandboxPhase2ToolTest` pins registration and the voice+chat declaration
+source, strict decoding, verbatim/8,000-char/NUL validation, batch parking,
+runNative parking with and without an approval handler, the eligibility
+ladder, ledger admission with claim refusal before approval, both voice
+guards, the intent detector (including the negation screen), receipt
+shaping (exit code, truncation, timeout, not-installed), and the agent
+counters. The diagnostics `Sandbox (chroot-ng, Alpine 3.24.3):` block gains
+an `agent runs:` line (proposed/approved/denied/runs/failed/timedOut/
+lastExit) persisted in the sandbox state dir, so a copied diagnostics
+paste proves the gate from the device: a denied command increments denied
+with no matching run.
+
+Not established by this entry: real-model command quality, on-device
+end-to-end approval-to-output behavior, and physical-device timing. Those
+require Battles's Fold 6 proof on the published build (one approved run
+whose output is reported back; one denied run verified through the
+diagnostics counters).
+
+## Memory capture batch: no approval step, per-fact records, Save diagnostics JSON, abliterated catalog removal (2026-11-01)
+
+Accepted from Android run **41380537789** and nightly full-suite run **41380543882**, both green on branch head **2f59efe9a8ee8f1800fec658ef0dbec7d140b592** (`feature/memory-rag`). Prerelease **faraday-feature/memory-rag-build.1666**: compact APK **143,264,613 bytes**, full APK **213,245,381 bytes**. Two earlier heads record the repair trail: f72b0288 failed the named-contract check (journey renames not yet mirrored in `scripts/verification/scenarios.json`) and failed compilation on a dropped regex escape; e0d02f54's nightly ran 2,690 tests with exactly one failure (the extractor's traveled-to branch dropped the space in "I have traveled", so the acceptance message's middle segment extracted nothing on the explicit path). Both defects were in this batch's own diff and are fixed in 2f59efe9; the final nightly ran the full suite green.
+
+What changed, in Battles's directives of 2026-11-01 after device-testing build 1655:
+
+- **No user approval for captured memories** (decision recorded in the memory epic plan as D-6, superseding the earlier approval posture for the capture paths). `ConversationMemory` commits each captured record immediately (propose + approve, the shape `AutomaticMemory` already used); a replayed capture of a still-pending legacy record approves it too. Memory settings loses the Review tab and all approve/reject actions: manual adds and corrections commit on save, and settings is view / correct / organize / delete only. Receipt wording no longer describes an approval step: an approved receipt says "Saved to memory.", and the prompt-facing section still forbids claiming a save for an ignored, excluded, or failed capture. Evaluator thresholds (SAVE_RELEVANCE=30 / SAVE_CONFIDENCE=60), rules D45–D49, the anti-resurrection fence, restricted-content exclusion, the private-mode capture guard, the 500-record cap, and expiry/supersede machinery are unchanged; the `MemoryOs` propose → PENDING → approve/reject lifecycle remains as the storage primitive underneath.
+- **Multi-fact messages split into per-fact records.** New `MemoryFactSegmenter` splits a message at sentence boundaries and at clause-opening "and"s (conservative: "fish and chips" never splits). `ConversationMemory` extracts per segment; `AutomaticMemory` queues one candidate per segment of the user message, each with a position-derived event id so replays stay idempotent, and a single-segment message keeps the exact pre-existing blob candidate byte for byte. Every per-candidate guard (minimum length, fence, duplicate suppression, per-segment exclusion of questions/commands/restricted content) applies per fact, and a stored record's text is the fact itself, never the raw message. Acceptance case, Battles's actual device message — "My name is Justin Lee Battles and I have traveled to 27 countries and I like ice cream" — now lands as exactly three APPROVED records (PERSON name, FACT traveled to 27 countries, PREFERENCE likes ice cream) end-to-end on both production capture paths, proven by ConversationMemoryTest and AutomaticMemoryTest. Evaluator version 3 is pattern coverage only: the "traveled to" biography form joins the fact class in the evaluator and the extractor so a split-out travel segment reaches the unchanged thresholds on its own.
+- **Save diagnostics (JSON).** The call screen's diagnostics section gains a "Save diagnostics" button directly under "Copy diagnostics". It exports the same diagnostics as a genuine JSON document (`DiagnosticRecorder.snapshotJson()`: build, generatedAtMs, session, and the sections as structured arrays) inside an envelope carrying the microphone-handoff text, shared as a `.json` file through the existing benchmark-exports FileProvider and chooser. Recorder tests assert the JSON parses, carries the envelope fields, mirrors every text-export section entry, and encodes a missing live section as JSON null.
+- **Both abliterated catalog entries removed.** `Gemma-4-E2B-Abliterated` and `Gemma-4-E4B-Abliterated` descriptors, compatibility evidence, and listing slots are gone (Battles's verdict: the abliterated bundles are not good enough to keep, stock covers the need, and the E2B bundle lacks the hardware audio encoder whose absence killed audio-capable conversation creation on builds 1648/1649). A persisted selection naming either removed id falls back to the stock Gemma-4-E2B-it default through the existing `ModelCatalog.resolve` behavior, covered by a new catalog test; every other entry is untouched and the compatibility catalog count drops 74 → 72.
+
+Journey contract updates: test24 (Memory settings now has no review tab; captures and adds are searchable immediately; corrections supersede on save; the rejected-record block drives rejection through the MemoryOs lifecycle), test25 renamed to `test25_finalizedTextAndVoiceMemoryIsImmediatelyAvailableToPrompts`, test26 drops its double-approval of an already-committed capture, and test39 renamed to `test39_referencePdfExtractionAndSavedAcknowledgmentUseReleaseCode` expecting "Saved to memory." and immediate recall. `scripts/verification/scenarios.json` carries both renames. All five sandbox journey shards passed on the exact accepted head.
+
+Not established by this entry: on-device behavior of the three changes (Battles's retest is the proof: the acceptance sentence spoken as one message yielding three separate approved memories; a plainly stated fact saving with no approval step anywhere; Save diagnostics producing a shareable JSON file; the model list showing neither abliterated entry, with a device that had one selected falling back to stock E2B-it). Emulator journeys and JVM tests are the release-candidate gate, not device proof.
+

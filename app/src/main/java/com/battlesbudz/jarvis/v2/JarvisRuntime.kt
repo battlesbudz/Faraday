@@ -10,10 +10,17 @@ import com.battlesbudz.jarvis.v2.actions.ExternalAgentAccess
 import com.battlesbudz.jarvis.v2.actions.ExternalAgentGrant
 import com.battlesbudz.jarvis.v2.actions.ExternalAgentProvider
 import com.battlesbudz.jarvis.v2.actions.ToolTaskLedger
+import com.battlesbudz.jarvis.v2.actions.MobileActionToolDefinitions
+import com.battlesbudz.jarvis.v2.ai.CodeModeEngine
 import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngine
+import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngineFactory
+import com.battlesbudz.jarvis.v2.ai.ModelCatalog
 import com.battlesbudz.jarvis.v2.ai.ModelStore
 import com.battlesbudz.jarvis.v2.ai.ReferenceGroundingClient
 import com.battlesbudz.jarvis.v2.chat.ShortTermConversationContext
+import com.battlesbudz.jarvis.v2.code.CodeEngineAccess
+import com.battlesbudz.jarvis.v2.code.CodeProjectStore
+import com.battlesbudz.jarvis.v2.code.CodeStatsStore
 import com.battlesbudz.jarvis.v2.conversation.ConversationActions
 import com.battlesbudz.jarvis.v2.conversation.ConversationCallbacks
 import com.battlesbudz.jarvis.v2.conversation.ConversationContextPreparation
@@ -70,6 +77,7 @@ import com.battlesbudz.jarvis.v2.runtime.turn.VoiceTurnRequest
 import com.battlesbudz.jarvis.v2.runtime.turn.VoiceTurnRunner
 import com.battlesbudz.jarvis.v2.runtime.turn.VoiceTypedInputOwnership
 import com.battlesbudz.jarvis.v2.vision.VisionServerSettings
+import com.battlesbudz.jarvis.v2.sandbox.SandboxStore
 import com.battlesbudz.jarvis.v2.voice.AudioTurnCapture
 import com.battlesbudz.jarvis.v2.voice.PiperVoiceOutput
 import com.battlesbudz.jarvis.v2.voice.SharedPreferencesVoiceCallStore
@@ -126,6 +134,78 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         set(value) { voiceCallState.acceptedSession = value }
     internal lateinit var modelStore: ModelStore
     internal var conversationEngine: LiteRtLmEngine? = null
+
+    /** The code projects' store (code-and-export Unit 1), rooted in the sandbox workspace. */
+    internal val codeProjectStore: CodeProjectStore by lazy {
+        CodeProjectStore(SandboxStore(applicationContext).workspaceDir)
+    }
+
+    /** The code-mode counters the Copy Diagnostics block reads (Unit 6). */
+    internal val codeStatsStore: CodeStatsStore by lazy {
+        CodeStatsStore(SandboxStore(applicationContext).workspaceDir)
+    }
+
+    /** The Code screen's borrow of the shared engine; see [withCodeModeEngine]. */
+    internal val codeEngineAccess: CodeEngineAccess = object : CodeEngineAccess {
+        override suspend fun <T> withEngine(
+            block: suspend (engine: CodeModeEngine, contextTokens: Int?) -> T
+        ): T? = withCodeModeEngine(block)
+    }
+
+    /**
+     * Borrows the one shared model engine for a single code-mode
+     * operation (code-and-export Unit 6), under the same
+     * model-operation lease chat replies, voice turns, and the tool
+     * reliability check already respect — so a code round can never
+     * interleave with a chat reply or a call. The resident engine is
+     * used as-is; when none is resident, one is created for the
+     * selected model exactly as a plain conversation turn creates it
+     * (no attachments, so no vision or audio encoders) and becomes
+     * the resident engine, with the context accounting cleared the
+     * way `ConversationModelSession` clears it on creation. Returns
+     * null when the lease is held, the selected model is not usable,
+     * or engine creation fails; the lease is released on every path.
+     *
+     * Sharing is safe in the other direction too: the engine's own
+     * reset discipline exits code mode before any ordinary
+     * generation, so chat can never generate into a code
+     * conversation a code round left behind.
+     */
+    internal suspend fun <T> withCodeModeEngine(
+        block: suspend (engine: CodeModeEngine, contextTokens: Int?) -> T
+    ): T? {
+        if (!modelStore.tryBeginModelOperation()) return null
+        try {
+            // The conversation layer's quarantine guard, mirrored: a
+            // quarantined engine is never reused until restart.
+            if (conversationEngine?.isNativeQuarantined == true) return null
+            val engine = conversationEngine ?: run {
+                val spec = modelStore.selectedModel()
+                if (!modelStore.isUsable(spec)) return null
+                val created = withContext(Dispatchers.IO) {
+                    runCatching {
+                        LiteRtLmEngineFactory.createInitialized(
+                            modelId = spec.id,
+                            modelPath = modelStore.fileFor(spec).path,
+                            cacheDir = modelStore.engineCacheRoot().path,
+                            useGpu = spec.recommendedGpu,
+                            tools = if (spec.supportsTools) MobileActionToolDefinitions.all() else emptyList(),
+                            visionEnabled = false,
+                            audioEnabled = false,
+                        )
+                    }.getOrNull()
+                } ?: return null
+                conversationEngine = created
+                nativeConversationHasContext = false
+                conversationCharacters = 0
+                created
+            }
+            return block(engine, ModelCatalog.resolve(engine.modelId).contextTokens)
+        } finally {
+            modelStore.endModelOperation()
+        }
+    }
+
     internal var conversationJob: Job? = null
     internal var conversationCharacters = 0
     // The full transcript and rolling summary live in the app. This flag only
@@ -224,7 +304,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             isDeviceLocked = { getSystemService(android.app.KeyguardManager::class.java)?.isDeviceLocked == true },
             createExecutor = {
                 browserRuntime.decorate(AndroidMobileActionExecutor(this, canLaunchDirectly = { activityVisible },
-                    onDiagnostic = diagnosticRecorder::recordImportant))
+                    onDiagnostic = diagnosticRecorder::recordImportant,
+                    sandboxRun = ::runSandboxToolCommand))
             },
             conversationExists = { id -> conversationHistory.list().any { it.id == id } },
             projectReply = { conversationId, replyId, text, receipts ->
@@ -308,6 +389,42 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     internal fun parkBrowseSubmitForApproval(request: com.battlesbudz.jarvis.v2.actions.ActionRequest,
         conversationId: String): com.battlesbudz.jarvis.v2.actions.ExecutionResult =
         phoneTaskCoordinator.parkBrowseSubmitForApproval(request, conversationId)
+    /**
+     * Sandbox Phase 2: a model-proposed run_in_sandbox command never
+     * auto-dispatches. Park it in the ledger awaiting the user's explicit
+     * approval of the exact command text.
+     */
+    internal fun parkSandboxRunForApproval(request: com.battlesbudz.jarvis.v2.actions.ActionRequest,
+        conversationId: String): com.battlesbudz.jarvis.v2.actions.ExecutionResult =
+        phoneTaskCoordinator.parkSandboxRunForApproval(request, conversationId)
+
+    // -- Sandbox Phase 2: the executor bridge behind run_in_sandbox --------
+    // A dedicated manager/runner pair on the application context, the same
+    // shape the settings section composes for its proof console; all state
+    // is file-backed in the store, so instances agree on install state and
+    // counters. The bridge blocks for the run's duration — the action
+    // pipeline always invokes the executor off the main thread.
+    private val sandboxToolManager by lazy {
+        com.battlesbudz.jarvis.v2.sandbox.SandboxManager(applicationContext)
+    }
+    private val sandboxToolRunner by lazy {
+        com.battlesbudz.jarvis.v2.sandbox.SandboxRunner(applicationContext, sandboxToolManager)
+    }
+
+    /**
+     * Runs one Battles-approved sandbox command through the Phase 1 runner
+     * (D4 limits, M-1..M-7 mitigations, settings-only networking) and
+     * returns the shaped receipt. Never installs the sandbox: installation
+     * stays a settings action, and the runner's own typed error says so.
+     */
+    internal fun runSandboxToolCommand(command: String):
+        com.battlesbudz.jarvis.v2.actions.ExecutionResult {
+        val result = sandboxToolRunner.runShellCommand(command)
+        val receipt = com.battlesbudz.jarvis.v2.sandbox.SandboxRunReceipt.format(result)
+        sandboxToolManager.store.recordAgentRun(
+            exitCode = result.exitCode, timedOut = result.timedOut, failed = !receipt.succeeded)
+        return com.battlesbudz.jarvis.v2.actions.ExecutionResult(receipt.succeeded, receipt.message)
+    }
     // -- M2 reusable workflows / M3 ecosystem providers / reminders --------
     private val workflowCoordinator by lazy {
         WorkflowCoordinator(
@@ -591,6 +708,14 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
                             if (tokensPerSecond != null && tokensPerSecond.isFinite()) updated = updated.copy(estimatedTokensPerSecond = tokensPerSecond)
                             updated
                         }
+                    },
+                    // Discarded-turn signal (M7): the turn persisted
+                    // nothing, so close out its in-flight reply row
+                    // instead of leaving a permanently incomplete entry.
+                    onTurnDiscarded = {
+                        conversationHistory.updateReply(threadId, replyId,
+                            synchronized(response) { response.toString() }
+                                .ifBlank { "The response was interrupted. Please try again." }, true)
                     })
                 conversationJob?.join()
             } catch (error: Exception) {
@@ -658,8 +783,9 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     private val pendingTypedHandoff get() = voiceCallState.pendingTypedHandoff
     private val preparingTypedInput get() = voiceCallState.preparingTypedInput
     private val resumeCommandCue get() = voiceCallState.resumeCommandCue
-    internal fun freshMemoryTurnContext(query: String, maxChars: Int): MemoryTurnContext? =
-        memoryCoordinator.freshMemoryTurnContext(query, maxChars)
+    internal fun freshMemoryTurnContext(query: String, maxChars: Int,
+                                        maxEntryChars: Int = Int.MAX_VALUE): MemoryTurnContext? =
+        memoryCoordinator.freshMemoryTurnContext(query, maxChars, maxEntryChars)
     internal fun adoptMemoryState(context: MemoryTurnContext): Boolean = memoryCoordinator.adoptMemoryState(context)
     internal fun isMemoryTurnCurrent(context: MemoryTurnContext): Boolean = memoryCoordinator.isMemoryTurnCurrent(context)
     internal fun consumeMemoryHistoryCutoff(): Boolean = memoryCoordinator.consumeMemoryHistoryCutoff()
@@ -749,6 +875,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         val memory = object : ConversationMemoryAccess {
             override val deliveryFence get() = memoryDeliveryFence
             override fun approvedSnapshot(query: String, maxChars: Int) = freshMemoryTurnContext(query, maxChars)
+            override fun approvedSnapshotCapped(query: String, maxChars: Int, maxEntryChars: Int) =
+                freshMemoryTurnContext(query, maxChars, maxEntryChars)
             override fun adopt(context: MemoryTurnContext) = adoptMemoryState(context)
             override fun clearNativeToken() { nativeMemoryStateToken = null }
             override fun isCurrent(context: MemoryTurnContext) = isMemoryTurnCurrent(context)
@@ -778,8 +906,11 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
                 onNeedsApproval = { request ->
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                         val conversationId = conversationHistory.current.value.id
-                        if (request.name == "browse_submit") parkBrowseSubmitForApproval(request, conversationId)
-                        else parkScreenTaskForApproval(request)
+                        when {
+                            request.name == "browse_submit" -> parkBrowseSubmitForApproval(request, conversationId)
+                            request.name == "run_in_sandbox" -> parkSandboxRunForApproval(request, conversationId)
+                            else -> parkScreenTaskForApproval(request)
+                        }
                     }
                 }),
             ConversationRecovery(models::reset, references, factualityVerifier, turnOrchestrator::automaticFallbackQuery, diagnostics),
@@ -787,7 +918,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             turnOrchestrator::recordResponse,
             createActions = { id, onResult -> ConversationActions(
                 executor = { browserRuntime.decorate(AndroidMobileActionExecutor(this, canLaunchDirectly = { activityVisible },
-                    onDiagnostic = diagnosticRecorder::recordImportant)) },
+                    onDiagnostic = diagnosticRecorder::recordImportant,
+                    sandboxRun = ::runSandboxToolCommand)) },
                 admit = ::admitPhoneTask, execute = ::executePhoneAction, cancelUnfinished = ::cancelPhoneTask,
                 conversationId = id, onActionResult = onResult) },
             createBenchmark = { id, channel -> pipelineBenchmarks.create(id, channel) },
@@ -888,7 +1020,9 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         callOwned: Boolean = false,
         /** Binds an ordinary answer's exact voice output to its mutation/expiry delivery ticket. */
         onMemoryBound: (com.battlesbudz.jarvis.v2.memory.MemoryDeliveryFence.Ticket, MemoryTurnContext) -> Unit = { _, _ -> },
-        benchmarkCapture: com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkCapture? = null
+        benchmarkCapture: com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkCapture? = null,
+        /** Discarded-turn signal (M7): the turn ended with nothing persisted. */
+        onTurnDiscarded: () -> Unit = {}
     ): Job? {
         // M6: automatic memory capture, fire-and-forget. Comparison trials are
         // not real user turns and are never captured.
@@ -908,7 +1042,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             ConversationInvocation(prompt, history, imageUri, incrementalVoice, voiceAudio, voiceAudioIsComplete,
                 directVoiceAudio, replyIdentity, conversationIdentity, callIdentity, comparison, audioUri,
                 frozenActionPlan, frozenVoiceFinal, callOwned, benchmarkCapture),
-            ConversationCallbacks(onToken, autoMemoryOnComplete, onLatency, onLiveInference, onActionResult, onPhonePlanFinished, onMemoryBound))
+            ConversationCallbacks(onToken, autoMemoryOnComplete, onLatency, onLiveInference, onActionResult, onPhonePlanFinished, onMemoryBound,
+                onTurnDiscarded = onTurnDiscarded))
     }
 
     /**

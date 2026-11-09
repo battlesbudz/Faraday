@@ -68,6 +68,9 @@ private fun ActionRequest.description() = when (name) {
     "browse_submit" -> "Submit the form"
     "browse_handoff" -> "Open the page in your browser"
     "browse_login" -> "Fill the login with your password manager"
+    // Sandbox Phase 2: the approval card shows the exact command text —
+    // Battles approves what he can read, never a paraphrase.
+    "run_in_sandbox" -> "Run in the sandbox: ${arguments["command"] ?: ""}"
     else -> name
 }
 private fun ToolTaskState.description() = when (this) {

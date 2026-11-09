@@ -126,6 +126,71 @@ internal object ActionRequestText {
                 .matchEntire(text)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
     }
 
+    /**
+     * Sandbox Phase 2 intent: the user explicitly asks for sandbox work
+     * ("run this in the sandbox", "use the sandbox to add these numbers").
+     * Deliberately narrow — the word "sandbox" plus an execution verb — so
+     * talk *about* the sandbox ("what is the sandbox?", "is the sandbox
+     * installed?") never arms the model-proposal channel. Whether the
+     * request also dictates the command literally is decided by
+     * [sandboxLiteralCommand]; either way the exact text parks for
+     * Battles's approval before anything runs.
+     */
+    fun sandboxRunRequest(text: String): Boolean {
+        val normalized = text.lowercase()
+        if (!normalized.contains("sandbox")) return false
+        // Same negation screen as ActionTurnPlan.parse: negated speech must
+        // never become an action channel.
+        if (Regex("""\b(?:don't|do not|never)\b""").containsMatchIn(normalized)) return false
+        return Regex("""\b(?:run|execute|running|use|using)\b""").containsMatchIn(normalized)
+    }
+
+    /**
+     * Sandbox command fidelity: when the request dictates the command
+     * literally — "run <command> in the sandbox" — return the span between
+     * the run/execute verb and the "in the sandbox" anchor VERBATIM. The
+     * span is taken from the user's own text (case and internal punctuation
+     * preserved) after trimming surrounding whitespace and stripping one
+     * layer of quotes the user typed around it; the sentence punctuation
+     * after "sandbox" is outside the span and never part of the command.
+     * A dictated command must never be recomposed by the model: on build
+     * 1668, "Run echo phase2-ok in the sandbox" came back proposed as
+     * `echo "phase-ok" > phase2ok` — different text, redirected into a
+     * file — and the approved run exited 0 with no output.
+     *
+     * Returns null when the request carries no literal span:
+     * description-style requests ("use the sandbox to add these numbers",
+     * "run something that lists the files") and mere mentions dictate no
+     * command, so those keep the model-composition path under the same
+     * approval gate. Only fires where [sandboxRunRequest] arms, so talk
+     * about the sandbox and negated requests extract nothing.
+     */
+    fun sandboxLiteralCommand(text: String): String? {
+        if (!sandboxRunRequest(text)) return null
+        val match = Regex("""(?i)\b(?:run|execute)\s+(.+?)\s+in\s+the\s+sandbox\b""")
+            .find(text) ?: return null
+        var span = match.groupValues[1].trim()
+        // One layer of user-typed quotes around the whole command is
+        // punctuation, not content.
+        if (span.length >= 2) {
+            val first = span.first()
+            val last = span.last()
+            if ((first == '"' && last == '"') || (first == '\'' && last == '\'') ||
+                (first == '“' && last == '”'))
+                span = span.substring(1, span.length - 1).trim()
+        }
+        if (span.isBlank() || span.length > MAX_SANDBOX_COMMAND_CHARS) return null
+        // Description-shaped spans are not commands: a leading determiner or
+        // pronoun ("run something that lists the files", "run this") or a
+        // relative clause means the user described work instead of dictating
+        // it — leave those to the model-composition path.
+        val firstWord = span.takeWhile { !it.isWhitespace() }.lowercase()
+        if (firstWord in setOf("this", "that", "it", "these", "those", "something",
+                "anything", "a", "an", "the", "some")) return null
+        if (Regex("""(?i)\b(?:that|which)\b""").containsMatchIn(span)) return null
+        return span
+    }
+
     /** Bounded natural-language forms for observing the phone screen. Mutations stay model-path only: targets must come from a fresh observation. */
     fun screenObserveRequest(clause: String): Boolean {
         val text = clause.lowercase().trim()
