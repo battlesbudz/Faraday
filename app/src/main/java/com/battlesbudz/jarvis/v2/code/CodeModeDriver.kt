@@ -3,6 +3,9 @@ package com.battlesbudz.jarvis.v2.code
 import com.battlesbudz.jarvis.v2.ai.CodeModeEngine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /** What one Code screen operation did, in the shape the screen renders. */
 sealed interface CodeOperationReport {
@@ -75,6 +78,47 @@ class CodeModeDriver(
     private var session: Session? = null
 
     /**
+     * The round in flight, owned here rather than by any screen: on
+     * build 1771 a round lived in the project view's composition
+     * scope, so when Battles navigated back and re-entered mid-round
+     * — reasonably, to see whether it was still working — the view's
+     * disposal cancelled the round silently. Nothing was applied and
+     * nothing was recorded (his diagnostics showed rounds: 0 after a
+     * generation he had watched stream), the project kept its starter
+     * page, and the preview honestly showed that page forever. The
+     * screen now launches operations on a scope that outlives the
+     * project view and renders this state, so leaving and returning
+     * shows the round still running, with its live progress.
+     */
+    data class LiveRound(val projectId: String, val progress: CodeRoundProgress?)
+
+    private val _liveRound = MutableStateFlow<LiveRound?>(null)
+
+    /** The round currently in flight and its streamed progress, or null. */
+    val liveRound: StateFlow<LiveRound?> = _liveRound.asStateFlow()
+
+    /** True while a round is running for [projectId]. */
+    fun roundInFlightFor(projectId: String): Boolean = _liveRound.value?.projectId == projectId
+
+    private fun beginLiveRound(projectId: String) {
+        _liveRound.value = LiveRound(projectId, null)
+    }
+
+    private fun updateLiveProgress(projectId: String, progress: CodeRoundProgress) {
+        val current = _liveRound.value
+        if (current != null && current.projectId == projectId) {
+            _liveRound.value = current.copy(progress = progress)
+        }
+    }
+
+    private fun endLiveRound(projectId: String) {
+        val current = _liveRound.value
+        if (current != null && current.projectId == projectId) {
+            _liveRound.value = null
+        }
+    }
+
+    /**
      * Runs one of Battles's rounds: the message goes to the round
      * runner, an applied round reloads the preview and runs the
      * automatic fix pass, and the whole operation is recorded.
@@ -89,30 +133,39 @@ class CodeModeDriver(
         onProgress: (CodeRoundProgress) -> Unit = {},
     ): CodeOperationReport {
         val attemptsBefore = roundLogEntries(project)
-        val borrowed = try {
-            engineAccess.withEngine { engine, contextTokens ->
-                val active = sessionFor(engine, project, consoleErrors, reloadPreview, contextTokens)
-                active.loop.onUserMessage()
-                val outcome = active.runner.runRound(project, request, onProgress)
-                val roundAttempts = roundLogEntries(project) - attemptsBefore
-                var fixResult: CodeFixLoopResult? = null
-                if (outcome is CodeRoundOutcome.Applied) {
-                    // The new files reach the preview before the loop's
-                    // first check, so the check reads the page Battles
-                    // is looking at, not the one the round replaced.
-                    reloadPreview()
-                    fixResult = active.loop.afterRound(project, onProgress)
-                }
-                val fixAttempts = roundLogEntries(project) - attemptsBefore - roundAttempts
-                recordRound(project, outcome, fixResult, roundAttempts, fixAttempts)
-                CodeOperationReport.Round(outcome, fixResult, roundLogEntries(project) - attemptsBefore)
-            }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (failure: Throwable) {
-            return CodeOperationReport.FailedToRun(failure.message ?: failure.javaClass.simpleName)
+        beginLiveRound(project.id)
+        val liveProgress: (CodeRoundProgress) -> Unit = { update ->
+            updateLiveProgress(project.id, update)
+            onProgress(update)
         }
-        return borrowed ?: CodeOperationReport.Unavailable(UNAVAILABLE_REASON)
+        try {
+            val borrowed = try {
+                engineAccess.withEngine { engine, contextTokens ->
+                    val active = sessionFor(engine, project, consoleErrors, reloadPreview, contextTokens)
+                    active.loop.onUserMessage()
+                    val outcome = active.runner.runRound(project, request, liveProgress)
+                    val roundAttempts = roundLogEntries(project) - attemptsBefore
+                    var fixResult: CodeFixLoopResult? = null
+                    if (outcome is CodeRoundOutcome.Applied) {
+                        // The new files reach the preview before the loop's
+                        // first check, so the check reads the page Battles
+                        // is looking at, not the one the round replaced.
+                        reloadPreview()
+                        fixResult = active.loop.afterRound(project, liveProgress)
+                    }
+                    val fixAttempts = roundLogEntries(project) - attemptsBefore - roundAttempts
+                    recordRound(project, outcome, fixResult, roundAttempts, fixAttempts)
+                    CodeOperationReport.Round(outcome, fixResult, roundLogEntries(project) - attemptsBefore)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                return CodeOperationReport.FailedToRun(failure.message ?: failure.javaClass.simpleName)
+            }
+            return borrowed ?: CodeOperationReport.Unavailable(UNAVAILABLE_REASON)
+        } finally {
+            endLiveRound(project.id)
+        }
     }
 
     /** The Fix errors button: the console loop's manual pass over the preview's current errors. */
@@ -123,21 +176,30 @@ class CodeModeDriver(
         onProgress: (CodeRoundProgress) -> Unit = {},
     ): CodeOperationReport {
         val attemptsBefore = roundLogEntries(project)
-        val borrowed = try {
-            engineAccess.withEngine { engine, contextTokens ->
-                val active = sessionFor(engine, project, consoleErrors, reloadPreview, contextTokens)
-                val result = active.loop.fixNow(project, onProgress)
-                val attempts = roundLogEntries(project) - attemptsBefore
-                if (result.roundsRun > 0 || attempts > 0) stats.recordFixRounds(result.roundsRun, attempts)
-                stats.recordOutcome(fixOutcomeLine(project, result), fixErrorLine(result))
-                CodeOperationReport.Fix(result, attempts)
-            }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (failure: Throwable) {
-            return CodeOperationReport.FailedToRun(failure.message ?: failure.javaClass.simpleName)
+        beginLiveRound(project.id)
+        val liveProgress: (CodeRoundProgress) -> Unit = { update ->
+            updateLiveProgress(project.id, update)
+            onProgress(update)
         }
-        return borrowed ?: CodeOperationReport.Unavailable(UNAVAILABLE_REASON)
+        try {
+            val borrowed = try {
+                engineAccess.withEngine { engine, contextTokens ->
+                    val active = sessionFor(engine, project, consoleErrors, reloadPreview, contextTokens)
+                    val result = active.loop.fixNow(project, liveProgress)
+                    val attempts = roundLogEntries(project) - attemptsBefore
+                    if (result.roundsRun > 0 || attempts > 0) stats.recordFixRounds(result.roundsRun, attempts)
+                    stats.recordOutcome(fixOutcomeLine(project, result), fixErrorLine(result))
+                    CodeOperationReport.Fix(result, attempts)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                return CodeOperationReport.FailedToRun(failure.message ?: failure.javaClass.simpleName)
+            }
+            return borrowed ?: CodeOperationReport.Unavailable(UNAVAILABLE_REASON)
+        } finally {
+            endLiveRound(project.id)
+        }
     }
 
     /**

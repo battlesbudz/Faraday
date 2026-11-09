@@ -5764,25 +5764,47 @@ shown. Regression-pinned in `CodeApkExportRealShellTest
 .snakeGameExportsAValidInstallablePackage`: the exact device
 scenario over the real shell, asserting the name's legality, the
 manifest's package string read back from the binary XML, a full
-CRC-checked read of every zip entry, and v2 verification.
+CRC-checked read of every zip entry, and v2 verification. The
+success signal is gated in the app as well as in tests: the
+diagnostics from the same phone test recorded exports: 5, last
+outcome "exported snake game as" the dashed name, last error: none
+— five successful reports for packages Android refused — so the
+exporter now verifies the signed file with ApkVerifier before
+renaming it into place, and `Exported` means verified on this
+phone.
 
-**E — the preview shows the built project.** After a completed round
-the 1771 preview kept showing the starter page: the screen refreshed
-the WebView with `reload()`, which the WebView can answer from its
-own page cache without the asset handler re-reading the folder (the
-handler also sent no cache headers). The refresh path is now a fresh
-navigation with the cache cleared (`CodePreview.refresh`), the
-handler answers every file with `Cache-Control: no-store`, and the
-Reload button and rollback use the same re-navigation.
+**E — the preview shows the built project.** Two layers, the
+deeper one proven by the same diagnostics paste: rounds: 0,
+retries: 0, fix rounds: 0. No round ever completed on the phone.
+The round ran in the project view's composition scope and the
+session release rode the same disposal, so when Battles stepped
+back to the project list mid-generation and re-entered — his
+screenshots show exactly that — the round was cancelled silently:
+nothing applied, nothing recorded, the project kept its starter
+page, and the preview honestly showed that page while the exports
+shipped the starter app. Rounds and exports now run on the Code
+destination's scope, which outlives the project view; the driver
+owns the in-flight round's state (`liveRound`), the session is not
+released under a round in flight, and re-entering a project
+mid-round shows the live build view still running. The second
+layer stands on its own in the code: the screen refreshed the
+WebView with `reload()`, which the WebView can answer from its own
+page cache without the asset handler re-reading the folder (the
+handler also sent no cache headers). The refresh path is now a
+fresh navigation with the cache cleared (`CodePreview.refresh`),
+the handler answers every file with `Cache-Control: no-store`, and
+the Reload button and rollback use the same re-navigation.
 
 Tests: additions to `CodeProjectStoreTest` (derivation always
 installable; legacy-name sanitizing), `CodeApkExporterTest` (a
 legacy dashed stored name exports repaired), `CodeApkExportRealShell
 Test` (the device regression above), `CodeProjectAssetHandlerTest`
-(the no-store headers), and a new `CodeProgressExtractorTest` (the
-in-flight write's path and partial body). No journey composes the
-Code UI (verified again by code search over `app/src/androidTest`),
-and no constructor signatures changed.
+(the no-store headers), `CodeModeDriverTest` (the live round is set
+for the round's whole life and clears after), and a new
+`CodeProgressExtractorTest` (the in-flight write's path and partial
+body). No journey composes the Code UI (verified again by code
+search over `app/src/androidTest`), and no constructor signatures
+changed.
 
 Not established by this entry: everything on a phone. The proof is
 Battles's to run on the published build: create the snake game,

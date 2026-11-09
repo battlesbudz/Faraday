@@ -2,6 +2,7 @@ package com.battlesbudz.jarvis.v2.code
 
 import android.content.Context
 import com.android.apksig.ApkSigner
+import com.android.apksig.ApkVerifier
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -40,6 +41,12 @@ import java.util.zip.ZipInputStream
  *    the install's stable key ([CodeExportSigningKey] on device).
  *    Stable key plus the store's deterministic per-project package
  *    name means re-exporting a project installs as an update.
+ * 6. Verify the signed bytes with the same library before reporting
+ *    success: [Result.Exported] means the package on disk passed
+ *    verification on this phone, so the stats' "exported" outcome is
+ *    a claim about an installable file, not about bytes written
+ *    (the build 1771 exports were counted successful five times
+ *    while Android refused every one of them).
  *
  * The result is written into the app's `code-exports` cache folder,
  * named after the project, ready for [CodeApkInstaller] (Decision B)
@@ -136,6 +143,24 @@ class CodeApkExporter(
             val outFile = File(outputDir, project.id + ".apk")
             val tmp = File(outputDir, project.id + ".apk.tmp")
             tmp.writeBytes(signed)
+            // The success signal is gated on verification, here on the
+            // device that produced the bytes: on build 1771 the stats
+            // recorded five "exported" outcomes with no error while
+            // every produced package was one Android refused to
+            // install, so an unverified file must never be reported
+            // as an export. The temp file is verified as written;
+            // only a verified package is renamed into place.
+            val verification = try {
+                ApkVerifier.Builder(tmp).setMinCheckedPlatformVersion(SHELL_MIN_SDK).build().verify()
+            } catch (e: Exception) {
+                tmp.delete()
+                return Result.Refused("The exported APK could not be verified (${e.message}).")
+            }
+            if (!verification.isVerified || !verification.isVerifiedUsingV2Scheme) {
+                tmp.delete()
+                val detail = verification.errors.firstOrNull()?.toString() ?: "signature verification failed"
+                return Result.Refused("The exported APK failed verification on this phone: $detail")
+            }
             if (!tmp.renameTo(outFile)) {
                 outFile.writeBytes(signed)
                 tmp.delete()

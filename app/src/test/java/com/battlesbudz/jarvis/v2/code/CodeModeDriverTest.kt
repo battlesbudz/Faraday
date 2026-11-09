@@ -134,6 +134,27 @@ class CodeModeDriverTest {
         assertTrue(stats.snapshot().lastOutcome!!.contains("model replied on Snake"))
     }
 
+    @Test fun theLiveRoundTracksTheRoundInFlightAndClearsAfter() {
+        // The state the Code screen renders while a round runs (and
+        // re-renders on re-entry): owned by the driver, set for the
+        // round's whole life, cleared when it ends. Build 1771 kept
+        // this in the project view, whose disposal cancelled the
+        // round silently — rounds: 0 in Battles's diagnostics after a
+        // generation he watched stream.
+        fake.enqueueReply(writeAction("index.html", fixedPage))
+        val seenInFlight = mutableListOf<String?>()
+        val report = runBlocking {
+            driver.sendUserRound(project, "make the snake game", console, plainReload) {
+                seenInFlight += driver.liveRound.value?.projectId
+            }
+        }
+        assertTrue(report is CodeOperationReport.Round)
+        assertTrue(seenInFlight.isNotEmpty())
+        assertTrue(seenInFlight.all { it == project.id })
+        assertTrue(driver.liveRound.value == null)
+        assertTrue(!driver.roundInFlightFor(project.id))
+    }
+
     @Test fun aRoundThatNeverLandsRecordsTheFailureAndItsRetries() {
         repeat(CodeRoundRunner.MAX_ATTEMPTS) { fake.enqueueReply("no actions here") }
         val report = send("make the snake game")

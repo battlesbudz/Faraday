@@ -32,6 +32,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -134,6 +135,14 @@ internal fun CodeScreen(
     val openProject = openProjectId?.let { id -> projects.firstOrNull { it.id == id } }
 
     fun releaseSession() {
+        // A round in flight for the open project keeps its session:
+        // releasing the engine conversation mid-generation would kill
+        // the round (the build 1771 silent-cancellation bug). The
+        // driver's sessionFor rebinds safely when another project
+        // runs, and leaving the destination still ends code mode
+        // through the engine's reset discipline.
+        val open = openProjectId
+        if (open != null && driver.roundInFlightFor(open)) return
         CoroutineScope(Dispatchers.IO).launch {
             engineAccess.withEngine { engine, _ -> driver.releaseSession(engine) }
         }
@@ -218,6 +227,13 @@ internal fun CodeScreen(
                 statsStore = statsStore,
                 driver = driver,
                 engineAccess = engineAccess,
+                // Rounds and exports run on the destination's scope,
+                // not the project view's: the view is disposed when
+                // Battles steps back to the list, and on build 1771
+                // that disposal silently cancelled the round he was
+                // watching. This scope lives as long as the
+                // destination does.
+                operationScope = scope,
                 initialProject = openProject,
                 roundsEnabled = roundsEnabled,
                 initialRequest = pendingFirstRequest?.takeIf { it.second == openProject.id }?.first,
@@ -424,6 +440,7 @@ private fun CodeProjectView(
     statsStore: CodeStatsStore,
     driver: CodeModeDriver,
     engineAccess: CodeEngineAccess,
+    operationScope: CoroutineScope,
     initialProject: CodeProjectStore.CodeProject,
     roundsEnabled: Boolean,
     initialRequest: String?,
@@ -445,9 +462,14 @@ private fun CodeProjectView(
     var preview by remember(projectId) { mutableStateOf<CodePreview?>(null) }
     var requestText by rememberSaveable(projectId) { mutableStateOf("") }
     var busy by remember(projectId) { mutableStateOf(false) }
-    // The round in flight, streamed from the session: the live build
-    // view renders this (file, its code arriving, character count).
-    var progress by remember(projectId) { mutableStateOf<CodeRoundProgress?>(null) }
+    // The round in flight belongs to the driver, not to this view:
+    // leaving and re-entering the project mid-round shows the round
+    // still running, with its streamed progress (build 1771 lost the
+    // round entirely at exactly this point).
+    val liveRound by driver.liveRound.collectAsState()
+    val roundInFlight = liveRound?.projectId == projectId
+    val roundProgress = if (roundInFlight) liveRound?.progress else null
+    val working = busy || roundInFlight
     // A one-line label for non-round busy work (an export in flight).
     var busyNote by remember(projectId) { mutableStateOf<String?>(null) }
     var statusText by remember(projectId) { mutableStateOf<String?>(null) }
@@ -480,16 +502,12 @@ private fun CodeProjectView(
             Unit
         }
     }
-    val onProgress = remember(projectId) {
-        { update: CodeRoundProgress -> progress = update }
-    }
-
     // The busy clock: while anything runs, the elapsed seconds tick,
     // so a working round and a frozen one are distinguishable at a
     // glance even before the first streamed character lands.
-    LaunchedEffect(busy, projectId) {
+    LaunchedEffect(working, projectId) {
         elapsedSeconds = 0
-        if (busy) {
+        if (working) {
             val startedAt = System.currentTimeMillis()
             while (true) {
                 delay(500)
@@ -526,10 +544,14 @@ private fun CodeProjectView(
     }
 
     fun launchOperation(onReport: (CodeOperationReport) -> Unit = {}, block: suspend () -> CodeOperationReport) {
-        if (busy) return
+        if (busy || roundInFlight) return
         busy = true
-        progress = null
-        scope.launch {
+        // On the destination's scope, not this view's: stepping back
+        // to the project list disposes this view, and the operation
+        // must land anyway — its report application below writes this
+        // instance's states when it is still composed, and the
+        // project refresh reaches the list either way.
+        operationScope.launch {
             val (report, fresh) = withContext(Dispatchers.IO) {
                 val result = block()
                 result to store.loadProject(projectId)
@@ -540,16 +562,15 @@ private fun CodeProjectView(
             paneRefresh++
             onProjectsChanged()
             busy = false
-            progress = null
         }
     }
 
     fun send(text: String) {
         val request = text.trim()
-        if (request.isEmpty() || busy) return
+        if (request.isEmpty() || busy || roundInFlight) return
         requestText = ""
         launchOperation(
-            block = { driver.sendUserRound(project, request, consoleStore, reloadPreview, onProgress) },
+            block = { driver.sendUserRound(project, request, consoleStore, reloadPreview) },
             onReport = { report ->
                 // A round that never ran keeps Battles's words in the box.
                 if (report is CodeOperationReport.Unavailable || report is CodeOperationReport.FailedToRun) {
@@ -566,10 +587,10 @@ private fun CodeProjectView(
     }
 
     fun exportApk() {
-        if (busy) return
+        if (working) return
         busy = true
         busyNote = "Exporting…"
-        scope.launch {
+        operationScope.launch {
             val result = withContext(Dispatchers.IO) {
                 val exportedResult = CodeApkExporter.forContext(context.applicationContext, store)
                     .exportProjectApk(project)
@@ -642,7 +663,7 @@ private fun CodeProjectView(
     ) { uri ->
         val info = exported
         if (uri != null && info != null) {
-            scope.launch {
+            operationScope.launch {
                 val saved = withContext(Dispatchers.IO) {
                     runCatching {
                         val stream = context.contentResolver.openOutputStream(uri, "wt")
@@ -685,10 +706,10 @@ private fun CodeProjectView(
             )
             TextButton(
                 onClick = { showVersions = true },
-                enabled = !busy,
+                enabled = !working,
                 modifier = Modifier.testTag("code_versions"),
             ) { Text("Versions") }
-            Button(onClick = ::exportApk, enabled = !busy, modifier = Modifier.testTag("code_export")) { Text("Export APK") }
+            Button(onClick = ::exportApk, enabled = !working, modifier = Modifier.testTag("code_export")) { Text("Export APK") }
         }
 
         exported?.let { info ->
@@ -732,9 +753,9 @@ private fun CodeProjectView(
                 CodePane.CONSOLE -> CodeConsolePane(
                     consoleStore = consoleStore,
                     tick = consoleTick + paneRefresh,
-                    busy = busy,
+                    busy = working,
                     onFixErrors = {
-                        launchOperation { driver.fixErrors(project, consoleStore, reloadPreview, onProgress) }
+                        launchOperation { driver.fixErrors(project, consoleStore, reloadPreview) }
                     },
                     onClear = { consoleStore.clear(); consoleTick++ },
                 )
@@ -746,17 +767,17 @@ private fun CodeProjectView(
             // build 1771 a small status line was the only sign of life,
             // and a frozen generation was indistinguishable from a
             // working one.
-            if (busy && busyNote == null) {
-                CodeLiveBuildView(progress = progress, elapsedSeconds = elapsedSeconds)
+            if (working && busyNote == null) {
+                CodeLiveBuildView(progress = roundProgress, elapsedSeconds = elapsedSeconds)
             }
         }
 
         lastReply?.let { reply ->
             Text(reply, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp).testTag("code_reply"))
         }
-        if (busy) {
+        if (working) {
             Text(
-                busyNote ?: progress?.writingFilePath?.let { "Writing $it…" } ?: "Working…",
+                busyNote ?: roundProgress?.writingFilePath?.let { "Writing $it…" } ?: "Working…",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 8.dp).testTag("code_status"),
             )
@@ -776,13 +797,13 @@ private fun CodeProjectView(
                 value = requestText,
                 onValueChange = { requestText = it },
                 label = { Text("What should Faraday build or change?") },
-                enabled = !busy,
+                enabled = !working,
                 modifier = Modifier.weight(1f).testTag("code_request_input"),
             )
             Spacer(Modifier.width(8.dp))
             Button(
                 onClick = { send(requestText) },
-                enabled = !busy && requestText.isNotBlank(),
+                enabled = !working && requestText.isNotBlank(),
                 modifier = Modifier.padding(top = 8.dp).testTag("code_send"),
             ) { Text("Send") }
         }
@@ -829,7 +850,7 @@ private fun CodeProjectView(
                     onClick = {
                         rollbackTarget = null
                         showVersions = false
-                        scope.launch {
+                        operationScope.launch {
                             val result = withContext(Dispatchers.IO) {
                                 runCatching {
                                     val rolled = store.rollback(project, target, System.currentTimeMillis())
