@@ -39,7 +39,7 @@ class MemoryRetrievalTest {
         // Both records still ride, in ranking order; the long one is cut at
         // the cap with an explicit ellipsis instead of crowding the packet.
         assertEquals(listOf("long", "short"), capped.memories.map { it.memory.id })
-        assertTrue(capped.text.contains("…</memory>"))
+        assertTrue(capped.text.contains("…\"</memory>"))
         assertFalse(capped.text.contains("x".repeat(150)))
         // The default (uncapped) packet keeps full record content.
         val full = MemoryRetrieval.packetFromRetrieved(rows, 2_000)
