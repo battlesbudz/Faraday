@@ -454,6 +454,8 @@ internal class ConversationRecovery(
                 "trigger=$triggerName")
             cleaned
         }
+    }
+    /**
      * Publication backstop for memory turns, mirroring the generation
      * stage's guard in [ConversationGeneration]: a cleaned response that
      * disregards records this turn actually injected (see [MemoryDisregard])

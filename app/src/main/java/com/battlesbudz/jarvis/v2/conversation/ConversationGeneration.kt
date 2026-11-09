@@ -532,6 +532,7 @@ internal class ConversationGeneration(
             regenerated
         }
     }
+    /**
      * Final generation-stage check on a turn whose prompt carried memory
      * records. The draft may still disregard them — claiming no access to
      * the user's history, or deflecting a question about the user with a
