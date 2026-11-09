@@ -37,17 +37,25 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.battlesbudz.jarvis.v2.code.CodeApkExporter
 import com.battlesbudz.jarvis.v2.code.CodeApkInstaller
 import com.battlesbudz.jarvis.v2.code.CodeConsoleStore
@@ -67,6 +75,7 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -146,7 +155,22 @@ internal fun CodeScreen(
         onDispose { releaseSession() }
     }
 
-    Column(modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
+    // A destination, not an overlay (Battles, build 1771: the list and
+    // project screens rendered transparently over the chat, so chat
+    // bubbles, the tasks header, and the chat composer bled through,
+    // collided with the code screens' own controls, and stayed
+    // tappable). The root paints the theme's opaque background across
+    // the whole surface and consumes every pointer event that reaches
+    // it, so nothing of the chat beneath is visible or interactive
+    // while the destination is open; the screens look the same every
+    // time they are opened.
+    Column(
+        modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .blockPointerFallThrough()
+            .semantics { testTagsAsResourceId = true }
+    ) {
         if (openProject == null) {
             val renaming = renameTarget
             when {
@@ -232,6 +256,22 @@ internal fun CodeScreen(
             },
             dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } },
         )
+    }
+}
+
+/**
+ * Consumes every pointer event that reaches this layer in the main
+ * pass. Children are hit-tested first (the main pass runs bottom-up),
+ * so the destination's own controls keep working; consuming here
+ * stops the event travelling on to whatever is composed beneath the
+ * destination — the chat and its composer.
+ */
+private fun Modifier.blockPointerFallThrough(): Modifier = pointerInput(Unit) {
+    awaitPointerEventScope {
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Main)
+            event.changes.forEach { change -> if (!change.isConsumed) change.consume() }
+        }
     }
 }
 
@@ -373,6 +413,11 @@ private enum class CodePane { PREVIEW, CONSOLE, FILES, BRIEF }
 
 private data class ExportedInfo(val filePath: String, val packageName: String, val label: String)
 
+private val ExportedInfoSaver = listSaver<ExportedInfo?, String>(
+    save = { info -> info?.let { listOf(it.filePath, it.packageName, it.label) } ?: emptyList() },
+    restore = { parts -> if (parts.size == 3) ExportedInfo(parts[0], parts[1], parts[2]) else null },
+)
+
 @Composable
 private fun CodeProjectView(
     store: CodeProjectStore,
@@ -400,10 +445,22 @@ private fun CodeProjectView(
     var preview by remember(projectId) { mutableStateOf<CodePreview?>(null) }
     var requestText by rememberSaveable(projectId) { mutableStateOf("") }
     var busy by remember(projectId) { mutableStateOf(false) }
-    var writingFile by remember(projectId) { mutableStateOf<String?>(null) }
+    // The round in flight, streamed from the session: the live build
+    // view renders this (file, its code arriving, character count).
+    var progress by remember(projectId) { mutableStateOf<CodeRoundProgress?>(null) }
+    // A one-line label for non-round busy work (an export in flight).
+    var busyNote by remember(projectId) { mutableStateOf<String?>(null) }
     var statusText by remember(projectId) { mutableStateOf<String?>(null) }
     var lastReply by remember(projectId) { mutableStateOf<String?>(null) }
-    var exported by remember(projectId) { mutableStateOf<ExportedInfo?>(null) }
+    // Saveable on purpose: the install-permission detour can restart
+    // the activity, and losing the export on return is what made
+    // Export look dead on build 1771 — the Install row vanished and
+    // the flow had to start over.
+    var exported by rememberSaveable(projectId, saver = ExportedInfoSaver) { mutableStateOf<ExportedInfo?>(null) }
+    // Set when Install sent Battles to the unknown-sources settings;
+    // the resume observer below finishes the install on return.
+    var pendingInstall by rememberSaveable(projectId) { mutableStateOf(false) }
+    var elapsedSeconds by remember(projectId) { mutableIntStateOf(0) }
     var showVersions by remember(projectId) { mutableStateOf(false) }
     var rollbackTarget by remember(projectId) { mutableStateOf<Int?>(null) }
     var paneRefresh by remember(projectId) { mutableIntStateOf(0) }
@@ -412,14 +469,33 @@ private fun CodeProjectView(
     // polling loop watches the WebView.
     var consoleTick by remember(projectId) { mutableIntStateOf(0) }
 
+    // A completed round refreshes the preview by re-navigating to the
+    // project's page, never by WebView reload: a reload can be served
+    // from the page cache without the asset handler re-reading the
+    // folder, which is how the build 1771 preview stayed on the
+    // starter page after rounds had already rewritten the files.
     val reloadPreview: suspend () -> Unit = remember(projectId) {
         suspend {
-            withContext(Dispatchers.Main) { preview?.reload() }
+            withContext(Dispatchers.Main) { preview?.refresh(store.projectDir(projectId)) }
             Unit
         }
     }
     val onProgress = remember(projectId) {
-        { progress: CodeRoundProgress -> writingFile = progress.writingFilePath }
+        { update: CodeRoundProgress -> progress = update }
+    }
+
+    // The busy clock: while anything runs, the elapsed seconds tick,
+    // so a working round and a frozen one are distinguishable at a
+    // glance even before the first streamed character lands.
+    LaunchedEffect(busy, projectId) {
+        elapsedSeconds = 0
+        if (busy) {
+            val startedAt = System.currentTimeMillis()
+            while (true) {
+                delay(500)
+                elapsedSeconds = ((System.currentTimeMillis() - startedAt) / 1000).toInt()
+            }
+        }
     }
 
     fun applyReport(report: CodeOperationReport) {
@@ -452,7 +528,7 @@ private fun CodeProjectView(
     fun launchOperation(onReport: (CodeOperationReport) -> Unit = {}, block: suspend () -> CodeOperationReport) {
         if (busy) return
         busy = true
-        writingFile = null
+        progress = null
         scope.launch {
             val (report, fresh) = withContext(Dispatchers.IO) {
                 val result = block()
@@ -464,7 +540,7 @@ private fun CodeProjectView(
             paneRefresh++
             onProjectsChanged()
             busy = false
-            writingFile = null
+            progress = null
         }
     }
 
@@ -492,6 +568,7 @@ private fun CodeProjectView(
     fun exportApk() {
         if (busy) return
         busy = true
+        busyNote = "Exporting…"
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 val exportedResult = CodeApkExporter.forContext(context.applicationContext, store)
@@ -512,17 +589,12 @@ private fun CodeProjectView(
                 is CodeApkExporter.Result.Refused -> statusText = "Export refused: ${result.reason}"
             }
             busy = false
+            busyNote = null
         }
     }
 
-    fun installExport() {
+    fun openInstaller() {
         val info = exported ?: return
-        if (!CodeApkInstaller.canInstallPackages(context)) {
-            runCatching { context.startActivity(CodeApkInstaller.unknownAppSourcesIntent(context).withNewTaskIfNeeded(context)) }
-            statusText = "Android needs Faraday allowed to install apps first. Allow it on the screen " +
-                "that just opened, come back, and tap Install again."
-            return
-        }
         val failure = runCatching {
             context.startActivity(CodeApkInstaller.installIntent(context, File(info.filePath)).withNewTaskIfNeeded(context))
         }.exceptionOrNull()
@@ -531,6 +603,38 @@ private fun CodeProjectView(
         } else {
             "The installer could not open: ${failure.message}"
         }
+    }
+
+    fun installExport() {
+        if (exported == null) return
+        if (!CodeApkInstaller.canInstallPackages(context)) {
+            // The permission detour (Decision B): remember the pending
+            // install, and the resume observer below finishes it when
+            // Battles comes back — on build 1771 the return path lost
+            // the export and the flow died here.
+            pendingInstall = true
+            runCatching { context.startActivity(CodeApkInstaller.unknownAppSourcesIntent(context).withNewTaskIfNeeded(context)) }
+            statusText = "Android needs Faraday allowed to install apps first. Allow it on the screen " +
+                "that just opened, then come back — the install starts on its own."
+            return
+        }
+        openInstaller()
+    }
+
+    // Returning from the unknown-sources settings with the permission
+    // granted completes a pending install without another tap.
+    val installLifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(installLifecycleOwner, projectId) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && pendingInstall &&
+                CodeApkInstaller.canInstallPackages(context)
+            ) {
+                pendingInstall = false
+                openInstaller()
+            }
+        }
+        installLifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { installLifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     val saveExportLauncher = rememberLauncherForActivityResult(
@@ -613,7 +717,10 @@ private fun CodeProjectView(
                 }
             }
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = { preview?.reload() }, modifier = Modifier.testTag("code_reload_preview")) { Text("Reload") }
+            TextButton(
+                onClick = { scope.launch { reloadPreview() } },
+                modifier = Modifier.testTag("code_reload_preview"),
+            ) { Text("Reload") }
         }
 
         Box(Modifier.fillMaxWidth().weight(1f)) {
@@ -634,6 +741,14 @@ private fun CodeProjectView(
                 CodePane.FILES -> CodeFilesPane(store = store, projectId = projectId, refreshKey = paneRefresh)
                 CodePane.BRIEF -> CodeBriefPane(store = store, project = project, refreshKey = paneRefresh)
             }
+            // While a round runs, the build is the view: the file being
+            // written, its code arriving, and the working signals. On
+            // build 1771 a small status line was the only sign of life,
+            // and a frozen generation was indistinguishable from a
+            // working one.
+            if (busy && busyNote == null) {
+                CodeLiveBuildView(progress = progress, elapsedSeconds = elapsedSeconds)
+            }
         }
 
         lastReply?.let { reply ->
@@ -641,7 +756,7 @@ private fun CodeProjectView(
         }
         if (busy) {
             Text(
-                writingFile?.let { "Writing $it…" } ?: "Working…",
+                busyNote ?: progress?.writingFilePath?.let { "Writing $it…" } ?: "Working…",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 8.dp).testTag("code_status"),
             )
@@ -733,7 +848,7 @@ private fun CodeProjectView(
                                     statusText = "Rolled back to v$target. The state before the rollback is saved as v$savedAs."
                                     paneRefresh++
                                     onProjectsChanged()
-                                    preview?.reload()
+                                    preview?.refresh(store.projectDir(projectId))
                                 },
                                 onFailure = { failure ->
                                     statusText = "The rollback failed: ${failure.message}"
@@ -748,6 +863,66 @@ private fun CodeProjectView(
         )
     }
 }
+
+/**
+ * The live build view, shown over the panes while a round runs: the
+ * file being written with its code arriving as the model streams it,
+ * plus the working signals — attempt, streamed character count, and
+ * elapsed seconds. A frozen generation is visible at a glance: the
+ * characters and the clock both stop. The streamed text is a display
+ * of the partial response, capped to its tail so a long file cannot
+ * grow the composition without bound.
+ */
+@Composable
+private fun CodeLiveBuildView(progress: CodeRoundProgress?, elapsedSeconds: Int) {
+    val content = progress?.writingContent.orEmpty()
+    val shown = if (content.length > LIVE_CONTENT_TAIL_CHARS) {
+        content.substring(content.length - LIVE_CONTENT_TAIL_CHARS)
+    } else {
+        content
+    }
+    val scrollState = rememberScrollState()
+    LaunchedEffect(shown.length) { scrollState.scrollTo(scrollState.maxValue) }
+    Column(
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)
+            .padding(12.dp).testTag("code_live_view")
+    ) {
+        val headline = buildString {
+            append(progress?.writingFilePath?.let { "Writing $it" } ?: "Working")
+            if (progress != null && progress.attempt > 0) {
+                append(" · attempt ${progress.attempt} of ${progress.maxAttempts}")
+            }
+            append(" · ${progress?.streamedChars ?: 0} characters")
+            append(" · ${elapsedSeconds}s")
+        }
+        Text(
+            headline,
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.testTag("code_live_status"),
+        )
+        Spacer(Modifier.height(8.dp))
+        if (shown.isEmpty()) {
+            Text(
+                "Waiting for the model's first file…",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        } else {
+            Column(Modifier.fillMaxSize().verticalScroll(scrollState)) {
+                Text(
+                    shown,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                    ),
+                    modifier = Modifier.testTag("code_live_content"),
+                )
+            }
+        }
+    }
+}
+
+/** How much of the streaming file body the live view keeps on screen. */
+private const val LIVE_CONTENT_TAIL_CHARS = 12_000
 
 /** The automatic fix pass's verdict, as one status sentence. */
 private fun fixSummary(fixResult: CodeFixLoopResult?): String = when (fixResult) {

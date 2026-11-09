@@ -69,6 +69,9 @@ public final class ShellActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         WebView webView = new WebView(this);
+        // Dark surface behind the page, matching Faraday's preview:
+        // an exported app must not open on a white flash.
+        webView.setBackgroundColor(0xFF1C1B1F);
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);

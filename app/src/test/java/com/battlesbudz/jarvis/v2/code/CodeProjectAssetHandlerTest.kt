@@ -71,6 +71,14 @@ class CodeProjectAssetHandlerTest {
         assertNull(handler.fileFor("/link.txt"))
     }
 
+    @Test fun servedFilesCarryNoStoreHeaders() {
+        // A round rewrites project files under the same URLs; a
+        // cacheable response is a stale preview (build 1771 showed
+        // the starter page after completed rounds).
+        assertEquals("no-store", CodeProjectAssetHandler.NO_STORE_HEADERS["Cache-Control"])
+        assertEquals("no-cache", CodeProjectAssetHandler.NO_STORE_HEADERS["Pragma"])
+    }
+
     @Test fun mimeTypesFollowTheExtension() {
         assertEquals("text/html", CodeProjectAssetHandler.mimeTypeFor("/index.html"))
         assertEquals("text/css", CodeProjectAssetHandler.mimeTypeFor("/style.css"))

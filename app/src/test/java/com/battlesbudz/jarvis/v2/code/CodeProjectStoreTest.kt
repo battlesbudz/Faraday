@@ -48,7 +48,11 @@ class CodeProjectStoreTest {
 
     @Test fun exportPackageNameIsDerivedDeterministically() {
         val project = store.createProject("Snake Game", "goal", nowMillis = 1)
-        assertTrue(project.exportPackageName.startsWith("com.battlesbudz.faraday.app.snake-game_"))
+        // The slug's dash is sanitized out: a dash is not a legal
+        // package-name character and Android's installer refuses such
+        // a package outright (device-proven 2026-11-09).
+        assertTrue(project.exportPackageName.startsWith("com.battlesbudz.faraday.app.snake_game_"))
+        assertTrue(CodeProjectStore.isValidPackageName(project.exportPackageName))
         assertTrue("package names must fit the 64-char export placeholder",
             project.exportPackageName.length <= 64)
         val otherStore = CodeProjectStore(File(tmp.root, "other-workspace"))
@@ -56,6 +60,31 @@ class CodeProjectStoreTest {
         assertEquals(project.exportPackageName, same.exportPackageName)
         val different = store.createProject("Other Game", "goal", nowMillis = 3)
         assertTrue(different.exportPackageName != project.exportPackageName)
+    }
+
+    @Test fun derivedPackageNamesAreAlwaysInstallable() {
+        // Every name shape Battles might give a project must derive a
+        // package Android accepts: dashes, leading digits, symbols.
+        for (name in listOf("Snake Game", "2049 Tank Battle", "a", "My Cool App!", "x_y", "Café Racer")) {
+            val project = store.createProject(name, "goal", nowMillis = 1)
+            assertTrue(
+                "\"$name\" derived ${project.exportPackageName}",
+                CodeProjectStore.isValidPackageName(project.exportPackageName)
+            )
+        }
+    }
+
+    @Test fun sanitizingAStoredDashedNameIsDeterministic() {
+        val legacy = "com.battlesbudz.faraday.app.snake-game_c4f42a10"
+        assertEquals(
+            "com.battlesbudz.faraday.app.snake_game_c4f42a10",
+            CodeProjectStore.sanitizePackageName(legacy)
+        )
+        assertEquals(
+            CodeProjectStore.sanitizePackageName(legacy),
+            CodeProjectStore.sanitizePackageName(legacy)
+        )
+        assertTrue(CodeProjectStore.isValidPackageName(CodeProjectStore.sanitizePackageName(legacy)))
     }
 
     @Test fun idsAreSlugsMadeUnique() {

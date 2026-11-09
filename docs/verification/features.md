@@ -5696,3 +5696,95 @@ head:
 
 Until that proof passes, the latency fix is code-complete and
 nightly-green, not device-proven.
+
+## Code mode complete fix: destination UI, live build view, export/install, preview — 9 November 2026
+
+One consolidated fix for everything Battles's first device proof of
+code mode (build 1771, 2026-11-09) found broken, shipped as a single
+build at his instruction — no stacked partial fixes. The sandbox is
+not a dependency of any of it: projects live in the workspace folder
+the host owns (`files/sandbox/workspace/projects`), and the store's
+plain file IO works whether or not the sandbox rootfs is installed
+(his phone's sandbox read "not installed" after his Reset while he
+ran this whole proof; code mode neither needs it nor touches its
+Reset behaviour, which is a separate queued defect).
+
+**A — the Code destination is a destination.** On 1771 the Code
+screens were composed over the chat with no background of their own:
+the project list, the create form, and the project view's header,
+tabs, status, and input were transparent, so chat bubbles, the tasks
+header, and the chat composer bled through, collided with the code
+controls, changed the screens' appearance on every open, and stayed
+tappable (his screenshot shows the chat composer focused inside the
+Code screen). The preview WebView additionally painted the platform's
+white. Now the destination's root paints the theme's opaque dark
+background across the whole surface and consumes every pointer event
+that reaches it, so nothing beneath is visible or interactive while
+it is open; the preview WebView and the exported shell's WebView both
+paint the dark background color, and the starter page a new project
+begins with is styled dark to match.
+
+**B — the live build view.** A running round showed only a status
+line ("Writing index.html…"), with no view of the code and no way to
+tell working from frozen. Progress reporting now carries the file
+being written, the partial body of that file streamed so far
+(`CodeProgressExtractor.currentWrite`), the response's streamed
+character count, and the attempt in flight (tagged by the runner);
+while a round runs, the pane area shows the build view — the file,
+its code arriving (monospace, tail-capped, pinned to the newest
+text), attempt, character count, and an elapsed-seconds clock. A
+frozen generation stops the characters and the clock together.
+
+**C — export and install complete.** The install-permission detour
+lost the flow: the export state was plain `remember`, so returning
+from the unknown-sources settings could drop it (the Install row
+vanished), and nothing resumed the install. The export result is now
+saveable state, Install records a pending install before opening the
+settings, and a resume observer finishes the install automatically
+when Battles returns with the permission granted. Both paths —
+already granted and just granted — end at the system installer.
+
+**D — the exported APK installs.** Root cause of the 1771 failure
+("there is something wrong with this file" from Downloads, and the
+in-app Install failing the same way): the derived package name
+carried the project id slug verbatim, and a slug carries dashes —
+`com.battlesbudz.faraday.app.snake-game_c4f42a10` — but a dash is not
+a legal Android package-name character, so the installer refused the
+package at parse time. The JVM suite verified the same exports
+because ApkVerifier checks the signature, not the name's legality,
+and the fixtures' expected package strings were written sanitized by
+hand. The derivation now sanitizes the slug segment (dashes and any
+non-package character become underscores; a leading digit gains a
+letter), the exporter sanitizes a stored name from before the fix
+the same deterministic way (his existing on-device projects export
+installable packages without being recreated), and the final name is
+validated against Android's package rules before any bytes are
+assembled — an uninstallable export is now a refusal with the reason
+shown. Regression-pinned in `CodeApkExportRealShellTest
+.snakeGameExportsAValidInstallablePackage`: the exact device
+scenario over the real shell, asserting the name's legality, the
+manifest's package string read back from the binary XML, a full
+CRC-checked read of every zip entry, and v2 verification.
+
+**E — the preview shows the built project.** After a completed round
+the 1771 preview kept showing the starter page: the screen refreshed
+the WebView with `reload()`, which the WebView can answer from its
+own page cache without the asset handler re-reading the folder (the
+handler also sent no cache headers). The refresh path is now a fresh
+navigation with the cache cleared (`CodePreview.refresh`), the
+handler answers every file with `Cache-Control: no-store`, and the
+Reload button and rollback use the same re-navigation.
+
+Tests: additions to `CodeProjectStoreTest` (derivation always
+installable; legacy-name sanitizing), `CodeApkExporterTest` (a
+legacy dashed stored name exports repaired), `CodeApkExportRealShell
+Test` (the device regression above), `CodeProjectAssetHandlerTest`
+(the no-store headers), and a new `CodeProgressExtractorTest` (the
+in-flight write's path and partial body). No journey composes the
+Code UI (verified again by code search over `app/src/androidTest`),
+and no constructor signatures changed.
+
+Not established by this entry: everything on a phone. The proof is
+Battles's to run on the published build: create the snake game,
+watch its code write live, see it play in Preview, export, install
+from Downloads, and open the installed app in airplane mode.

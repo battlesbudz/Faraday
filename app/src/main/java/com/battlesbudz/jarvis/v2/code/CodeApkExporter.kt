@@ -82,7 +82,21 @@ class CodeApkExporter(
                     "$LABEL_PLACEHOLDER_CHARS. Rename the project to export it."
             )
         }
-        val packageName = project.exportPackageName
+        // Projects created before the store's derivation was sanitized
+        // carry a dashed package name in their state, and a dash is not
+        // a legal package-name character: Android's installer refuses
+        // such a package with a parse error (device-proven 2026-11-09).
+        // The stored name is sanitized deterministically here so those
+        // projects export installable packages too, and the final name
+        // is validated outright — an export that cannot install is a
+        // refusal with the reason shown, never a file that fails later
+        // in Downloads.
+        val packageName = CodeProjectStore.sanitizePackageName(project.exportPackageName)
+        if (!CodeProjectStore.isValidPackageName(packageName)) {
+            return Result.Refused(
+                "The derived package name \"$packageName\" is not a package name Android will install."
+            )
+        }
         if (packageName.length > PACKAGE_PLACEHOLDER_CHARS) {
             return Result.Refused(
                 "The derived package name is ${packageName.length} characters; the shell's placeholder " +

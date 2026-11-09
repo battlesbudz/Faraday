@@ -28,7 +28,18 @@ class CodeProjectAssetHandler(private val projectDir: File) : WebViewAssetLoader
         val file = fileFor(path) ?: return null
         val mime = mimeTypeFor(path)
         return try {
-            WebResourceResponse(mime, if (isTextMime(mime)) "utf-8" else null, file.inputStream())
+            // no-store, always: a round rewrites these files under the
+            // same URLs, and a cached pre-round page is a stale preview
+            // (the build 1771 starter-page bug). The WebView must come
+            // back to this handler for every load.
+            WebResourceResponse(
+                mime,
+                if (isTextMime(mime)) "utf-8" else null,
+                200,
+                "OK",
+                NO_STORE_HEADERS,
+                file.inputStream()
+            )
         } catch (e: IOException) {
             null
         }
@@ -52,6 +63,16 @@ class CodeProjectAssetHandler(private val projectDir: File) : WebViewAssetLoader
     }
 
     companion object {
+        /**
+         * The response headers every served file carries: no-store,
+         * so the preview can never be handed a cached pre-round page
+         * (the build 1771 starter-page bug). A named constant because
+         * the JVM tests pin it — `WebResourceResponse` itself is an
+         * Android type they cannot construct.
+         */
+        val NO_STORE_HEADERS: Map<String, String> =
+            mapOf("Cache-Control" to "no-store", "Pragma" to "no-cache")
+
         /** Extension-to-MIME for the file kinds a generated web project carries. */
         fun mimeTypeFor(path: String): String =
             when (path.substringAfterLast('.', "").lowercase()) {

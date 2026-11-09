@@ -53,6 +53,11 @@ class CodePreview(context: Context, val consoleStore: CodeConsoleStore = CodeCon
     val consoleErrors: CodeConsoleErrors get() = consoleStore
 
     init {
+        // The WebView's own surface paints before (and, for an
+        // unstyled page, behind) the page: dark like the app, never
+        // the platform's white — on build 1771 the starter page's
+        // white surface read as a broken off-theme screen.
+        webView.setBackgroundColor(PREVIEW_BACKGROUND)
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -114,6 +119,21 @@ class CodePreview(context: Context, val consoleStore: CodeConsoleStore = CodeCon
         webView.loadUrl(INDEX_URL)
     }
 
+    /**
+     * Re-reads the project's current files after a round rewrote
+     * them. This is a fresh navigation, not [reload]: a WebView
+     * reload can be answered from the WebView's own page cache
+     * without re-running the asset handler, which is how the build
+     * 1771 preview kept showing the starter page after a completed
+     * round had already rewritten `index.html` on disk. A fresh
+     * loadUrl plus a cleared cache always re-reads the folder (and
+     * the handler's `no-store` responses keep later loads honest).
+     */
+    fun refresh(projectDir: File) {
+        webView.clearCache(true)
+        loadProject(projectDir)
+    }
+
     /** Reloads the current page; after a fix round this re-reads the rewritten files. */
     fun reload() {
         webView.reload()
@@ -139,6 +159,9 @@ class CodePreview(context: Context, val consoleStore: CodeConsoleStore = CodeCon
     }
 
     companion object {
+        /** The preview surface's dark background (the Material dark scheme's background). */
+        const val PREVIEW_BACKGROUND: Int = 0xFF1C1B1F.toInt()
+
         /** The fake HTTPS origin the project is served on (the asset loader's default domain). */
         const val ASSETS_DOMAIN: String = WebViewAssetLoader.DEFAULT_DOMAIN
 

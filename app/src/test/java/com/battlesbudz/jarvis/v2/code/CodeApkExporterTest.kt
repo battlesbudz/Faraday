@@ -96,6 +96,32 @@ class CodeApkExporterTest {
     }
 
     @Test
+    fun exportRepairsALegacyDashedPackageName() {
+        // A project created before the derivation was sanitized (the
+        // on-device snake-game project from build 1771) carries the
+        // dashed form in its saved state. Its export must come out
+        // under the sanitized name — the name the manifest is patched
+        // with and the name the result reports.
+        val store = newStore()
+        val created = snakeProject(store)
+        val legacy = created.copy(
+            exportPackageName = "com.battlesbudz.faraday.app.snake-game_0123abcd"
+        )
+        store.saveProject(legacy)
+        val project = store.loadProject(legacy.id)!!
+        val exported = exporter(store, fixtureShellApk()).exportProjectApk(project)
+            as CodeApkExporter.Result.Exported
+        assertEquals("com.battlesbudz.faraday.app.snake_game_0123abcd", exported.packageName)
+        assertTrue(CodeProjectStore.isValidPackageName(exported.packageName))
+        ZipFile(exported.apkFile).use { zip ->
+            val manifestBytes = zip.getInputStream(zip.getEntry("AndroidManifest.xml")).use { it.readBytes() }
+            val strings = BinaryXmlStringPoolPatcher.stringsOf(manifestBytes)
+            assertTrue(strings.contains(exported.packageName))
+            assertFalse(strings.contains(legacy.exportPackageName))
+        }
+    }
+
+    @Test
     fun exportRefusesAProjectWithoutIndexHtml() {
         val store = newStore()
         val project = store.createProject("Empty App", "nothing yet", 1_000L)

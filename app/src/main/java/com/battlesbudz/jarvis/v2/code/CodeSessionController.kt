@@ -3,8 +3,21 @@ package com.battlesbudz.jarvis.v2.code
 import com.battlesbudz.jarvis.v2.ai.CodeModeEngine
 import kotlinx.coroutines.CancellationException
 
-/** Progress of a round in flight: the file being written right now, or null. */
-data class CodeRoundProgress(val writingFilePath: String?)
+/**
+ * Progress of a round in flight, for the code screen's live build
+ * view: the file being written right now (null between writes), the
+ * partial body of that file streamed so far, the response's total
+ * streamed characters (the unambiguous working signal — it grows
+ * while generation is alive), and, once [CodeRoundRunner] tags it,
+ * the attempt in flight out of the round's maximum.
+ */
+data class CodeRoundProgress(
+    val writingFilePath: String?,
+    val writingContent: String? = null,
+    val streamedChars: Int = 0,
+    val attempt: Int = 0,
+    val maxAttempts: Int = 0,
+)
 
 /** The outcome of one code round, as [CodeSessionController.runRound] returns it. */
 sealed interface CodeRoundResult {
@@ -136,10 +149,20 @@ class CodeSessionController(
 
         val live = StringBuilder()
         var continuations = 0
+        val reportProgress = {
+            val write = CodeProgressExtractor.currentWrite(live.toString())
+            onProgress(
+                CodeRoundProgress(
+                    writingFilePath = write?.path,
+                    writingContent = write?.contentSoFar,
+                    streamedChars = live.length,
+                )
+            )
+        }
         val raw: String = try {
             var text = engine.generate(prompt) { token ->
                 live.append(token)
-                onProgress(CodeRoundProgress(CodeProgressExtractor.currentWritePath(live.toString())))
+                reportProgress()
             }.text
             sessionChars += prompt.length + text.length
             while (continuations < CodeContinuation.MAX_CONTINUATIONS &&
@@ -148,7 +171,7 @@ class CodeSessionController(
                 val continuationPrompt = CodeContinuation.continuationPrompt(text)
                 val next = engine.generate(continuationPrompt) { token ->
                     live.append(token)
-                    onProgress(CodeRoundProgress(CodeProgressExtractor.currentWritePath(live.toString())))
+                    reportProgress()
                 }.text
                 sessionChars += continuationPrompt.length + next.length
                 text = CodeContinuation.appendContinuation(text, next)

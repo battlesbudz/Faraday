@@ -352,7 +352,8 @@ class CodeProjectStore(private val workspaceDir: File) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>New app</title>
 <style>
-  body { font-family: sans-serif; margin: 2em auto; max-width: 32em; padding: 0 1em; text-align: center; }
+  body { font-family: sans-serif; margin: 2em auto; max-width: 32em; padding: 0 1em; text-align: center;
+         background: #1c1b1f; color: #e6e1e5; }
 </style>
 </head>
 <body>
@@ -384,12 +385,56 @@ class CodeProjectStore(private val workspaceDir: File) {
          * the fixed prefix, the id slug (at most 24 chars), an
          * underscore, and 8 hex digits of the id's SHA-256. At most 61
          * chars — inside the exporter's 64-char placeholder.
+         *
+         * The slug segment is passed through [sanitizePackageSegment]:
+         * project ids are slugs and may carry dashes ("snake-game"),
+         * but a dash is not a legal Android package-name character —
+         * a package built with one is refused by the installer with a
+         * parse error (device-proven 2026-11-09: the snake-game export
+         * from build 1771 could not be installed from Downloads or
+         * from the in-app Install button, while the JVM exporter tests
+         * verified the same bytes because nothing in them checked the
+         * name against Android's package rules). The sanitized form is
+         * what `project.json` now carries.
          */
         fun exportPackageName(id: String): String {
             val digest = MessageDigest.getInstance("SHA-256").digest(id.toByteArray(Charsets.UTF_8))
             val hash = ProjectFingerprint.toHex(digest).substring(0, 8)
-            return PACKAGE_PREFIX + id.take(24) + "_" + hash
+            return PACKAGE_PREFIX + sanitizePackageSegment(id.take(24)) + "_" + hash
         }
+
+        /** Android's package-name shape: dot-separated segments, each a letter followed by letters, digits, or underscores. */
+        val PACKAGE_NAME_REGEX = Regex("[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+")
+
+        /** True when [name] is a package name Android's installer will accept. */
+        fun isValidPackageName(name: String): Boolean = PACKAGE_NAME_REGEX.matches(name)
+
+        /**
+         * One package-name segment made legal: every character that is
+         * not a letter, digit, or underscore becomes an underscore, and
+         * a segment that would start with a digit gains a leading "a".
+         * Deterministic — the same input always yields the same segment.
+         */
+        fun sanitizePackageSegment(segment: String): String {
+            val mapped = segment.map { c ->
+                if (c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9' || c == '_') c else '_'
+            }.joinToString("")
+            val body = if (mapped.isEmpty()) "app" else mapped
+            return if (body.first() in '0'..'9') "a$body" else body
+        }
+
+        /**
+         * A stored package name made installable, segment by segment.
+         * Projects created before the derivation was sanitized carry
+         * the old dashed form in `project.json` (Battles's on-device
+         * snake-game project among them); the exporter runs the stored
+         * name through this so those projects export a package Android
+         * accepts, deterministically — the same stored name always
+         * sanitizes to the same package, so re-exports still
+         * update-install over each other.
+         */
+        fun sanitizePackageName(name: String): String =
+            name.split('.').joinToString(".") { sanitizePackageSegment(it) }
 
         /** The `versions/` folder name for a version number: v001, v002, … */
         fun versionDirName(number: Int): String = "v" + number.toString().padStart(3, '0')

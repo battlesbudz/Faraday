@@ -110,7 +110,12 @@ class CodeRoundRunner(
         var prompt = request
         while (true) {
             attempts++
-            when (val result = controller.runRound(project, prompt, onProgress)) {
+            // The live build view names the attempt in flight; the
+            // controller reports the stream, the runner owns the count.
+            val attemptProgress: (CodeRoundProgress) -> Unit = { progress ->
+                onProgress(progress.copy(attempt = attempts, maxAttempts = MAX_ATTEMPTS))
+            }
+            when (val result = controller.runRound(project, prompt, attemptProgress)) {
                 is CodeRoundResult.Refused -> return CodeRoundOutcome.Refused(result.reason)
                 is CodeRoundResult.Failed -> {
                     if (attempts >= MAX_ATTEMPTS) {
