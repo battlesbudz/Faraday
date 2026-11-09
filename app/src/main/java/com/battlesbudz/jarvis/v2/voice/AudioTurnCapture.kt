@@ -107,6 +107,13 @@ class AudioTurnCapture(
         private set
     @Volatile var captionFinalizationReason: String = "not_attempted"
         private set
+    /** A guarded follow-up candidate accepted with no word evidence (sustained
+     * strong audio alone; see FollowupSpeechEvidence.hasWordEvidence). Such a
+     * turn may not be answered until recognition confirms real words by
+     * transcription. Set only on the accepted candidate; a discarded candidate
+     * resets it together with its evidence. */
+    @Volatile var followupAdmittedWithoutLiveWords: Boolean = false
+        private set
     private var lastPartial = ""
     private var partialUpdates = 0
     private var firstSpeechAt: Long? = null
@@ -534,6 +541,9 @@ class AudioTurnCapture(
                         if (guardFollowupSpeech && hasSpeech && !pendingEndpoint) {
                             log("followup_speech_evidence accepted=$acousticAccepted ${followupEvidence.diagnostic()}")
                         }
+                        if (guardFollowupSpeech && hasSpeech && acousticAccepted) {
+                            followupAdmittedWithoutLiveWords = !followupEvidence.hasWordEvidence()
+                        }
                         currentCoroutineContext().ensureActive()
                         if (turnCompleted.isCompleted) return@collect
                         if (!acousticAccepted) {
@@ -546,7 +556,7 @@ class AudioTurnCapture(
                             nativePause?.invalidate(NativePauseInvalidation.CANDIDATE_DISCARDED)
                             if (nativePause?.encoderFrozen != true) retainedPcmObserver?.onCandidateDiscarded()
                             retainedPreRollSampleCount = null
-                            followupEvidence.reset(); initialEvidenceAvailable = false; recoveryAudio.clear(); asrRecoveryAttempts = 0
+                            followupEvidence.reset(); followupAdmittedWithoutLiveWords = false; initialEvidenceAvailable = false; recoveryAudio.clear(); asrRecoveryAttempts = 0
                             lastVerdictState = null; lastVerdictProbability = null; deadlineVetoHold = false
                             pendingEndpoint = false; finalNativeEndpointGuard = null; retiredCaptionAtPendingEndpoint = false; skippedSmartCaptionAtPendingEndpoint = false
                             pendingAudio.clear(); recognitionIssue = null
@@ -784,6 +794,7 @@ class AudioTurnCapture(
                                 asrRecoveryAttempts = 0
                                 turnEnd.reset()
                                 followupEvidence.reset()
+                                followupAdmittedWithoutLiveWords = false
                                 initialEvidenceAvailable = false
                                 quietEvidence.reset()
                                 quietEvidenceUsed = false

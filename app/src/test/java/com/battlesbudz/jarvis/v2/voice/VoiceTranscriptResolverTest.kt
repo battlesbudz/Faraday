@@ -42,6 +42,15 @@ class VoiceTranscriptResolverTest {
         assertFalse(VoiceTranscriptResolver.hasTranscript(text))
         assertFalse(VoiceTranscriptResolver.hasTranscript(VoiceTranscriptResolver.UNTRANSCRIBED))
     }
+    @Test fun wordConfirmationAcceptsOnlyRealWords() {
+        // The predicate the follow-up word confirmation gates on: an
+        // explicit no-speech result, an empty transcription and sound-only
+        // captions confirm nothing; actual words confirm.
+        assertFalse(VoiceTranscriptResolver.hasTranscript("[NO_SPEECH]"))
+        assertFalse(VoiceTranscriptResolver.hasTranscript(""))
+        assertFalse(VoiceTranscriptResolver.hasTranscript("(coughing)"))
+        assertTrue(VoiceTranscriptResolver.hasTranscript("what time is it"))
+    }
     @Test fun noSpeechIsNotRetriedAndExceptionsAreNotSwallowed() = runBlocking {
         var calls = 0
         assertEquals("[NO_SPEECH]", VoiceTranscriptResolver.retryEmptyAudio { calls++; "[NO_SPEECH]" })

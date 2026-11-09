@@ -166,6 +166,28 @@ class AudioTurnCaptureTest {
             assertEquals("", fixture.capture.finalTranscript)
             assertTrue(fixture.capture.audioIsComplete)
             assertEquals(null, fixture.capture.recognitionIssue)
+            // Admission rested on strong audio alone: recognition must
+            // confirm real words by transcription before this turn may be
+            // answered (the build 1771 garble specimen, call c25a14ef).
+            assertTrue(fixture.capture.followupAdmittedWithoutLiveWords)
+        } finally { fixture.capture.stop() }
+    }
+
+    @Test fun wordedAudioOnlyFollowupAdmissionCarriesLiveWords() = runBlocking<Unit> {
+        // Same captionOnly follow-up shape, but the caption transcriber
+        // produced live partial words while capturing: the admission carries
+        // word evidence, so no transcription confirmation gate applies and
+        // the fast path is unchanged.
+        val fixture = CaptureFixture(this, factory = { FakeTranscriber("what time is it", "what time is it") },
+            allowAudioOnlyTurns = true, guardFollowupSpeech = true, captionOnly = true)
+        fixture.capture.start()
+        try {
+            val completion = async(start = CoroutineStart.UNDISPATCHED) { fixture.capture.awaitTurnCompletion() }
+            repeat(8) { fixture.emit(100L + it * 100, 1500, speech = true, samples = 1600) }
+            fixture.emit(2200, 0, samples = 1600)
+            assertTrue(withTimeout(1000) { completion.await() })
+            assertTrue(fixture.events.any { it == "followup_speech_evidence accepted=true strongAudioMs=800 liveWords=true quietCorroborated=false" })
+            assertFalse(fixture.capture.followupAdmittedWithoutLiveWords)
         } finally { fixture.capture.stop() }
     }
 
