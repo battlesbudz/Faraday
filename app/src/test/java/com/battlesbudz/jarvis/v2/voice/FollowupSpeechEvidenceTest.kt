@@ -59,4 +59,20 @@ class FollowupSpeechEvidenceTest {
         e.observe(3200, 0.9f, "No", false, true); assertTrue(e.accepts())
         e.reset(); e.observe(3200, 0.2f, "Please stop", true, false); assertTrue(e.accepts())
     }
+    @Test fun sustainedStrongAudioAloneHasNoWordEvidence() {
+        // The build 1771 garble specimen: an audio-only follow-up admitted on
+        // strong audio alone carries no word evidence, so recognition must
+        // confirm real words by transcription before it can be answered.
+        val e = FollowupSpeechEvidence()
+        e.observe(22_528, 0.9f, null, false, true)
+        assertTrue(e.acceptsAudioOnly())
+        assertFalse(e.hasWordEvidence())
+    }
+    @Test fun liveWordsOrCorroborationAreWordEvidence() {
+        val e = FollowupSpeechEvidence()
+        e.observe(8000, 0.8f, "what time is it", false, true); assertTrue(e.hasWordEvidence())
+        e.reset(); assertFalse(e.hasWordEvidence())
+        e.observe(8000, 0.8f, null, true, true); assertTrue(e.hasWordEvidence())
+        e.reset(); assertFalse(e.hasWordEvidence())
+    }
 }

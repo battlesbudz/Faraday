@@ -32,6 +32,13 @@ internal class FollowupSpeechEvidence {
     // clarify chain never sees these turns. Sustained strong audio keeps
     // its historical admission on that path.
     fun acceptsAudioOnly() = strongMs >= 240 || (strongMs >= 96 && liveWords) || quietCorroborated
+    // Whether any word evidence was observed while this candidate was
+    // captured: live partial words, or the corroborated stable-whisper
+    // path. A guarded follow-up admitted with neither rested on sustained
+    // strong audio alone, so nothing has yet confirmed that a person
+    // actually said words; recognition must confirm real words by
+    // transcription before such a turn may be answered.
+    fun hasWordEvidence() = liveWords || quietCorroborated
     fun reset() { strongMs = 0; strongBytes = 0; liveWords = false; quietCorroborated = false }
     fun diagnostic() = "strongAudioMs=$strongMs liveWords=$liveWords quietCorroborated=$quietCorroborated"
 }

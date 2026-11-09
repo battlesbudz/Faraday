@@ -6216,3 +6216,61 @@ Journey contract updates: test24 (Memory settings now has no review tab; capture
 
 Not established by this entry: on-device behavior of the three changes (Battles's retest is the proof: the acceptance sentence spoken as one message yielding three separate approved memories; a plainly stated fact saving with no approval step anywhere; Save diagnostics producing a shareable JSON file; the model list showing neither abliterated entry, with a device that had one selected falling back to stock E2B-it). Emulator journeys and JVM tests are the release-candidate gate, not device proof.
 
+## Follow-up word confirmation for strong-audio admissions — 9 November 2026
+
+Build 1771's diagnostics (call c25a14ef) showed the remaining half of
+the follow-up problem. After Battles went quiet, two follow-up turns
+were admitted on strong audio alone — `followup_speech_evidence
+accepted=true liveWords=false quietCorroborated=false`, strongAudioMs
+768 and 480 — and both were answered. The admission itself is by
+design on the captionOnly (direct-audio) route: the retained audio is
+the request and Gemma judges it. What was missing is any transcription
+check afterwards. The Smart Turn fast path skipped the final caption
+decode outright (`finalAsrStatus=skipped_smart_turn_caption`), the
+live partials had produced no words, and direct-audio resolution
+short-circuits to the audio request without a transcription ever
+running, so no [NO_SPEECH] gate stood between the noise and the answer
+model. The answer pass captioned the noise ("और मुझे लगता है") and
+answered it: "I am ready to assist you." and "I will respond to the
+audio."
+
+The fix keeps the admission and gates the answer. The capture now
+records whether an accepted guarded follow-up carried any word
+evidence (`FollowupSpeechEvidence.hasWordEvidence`: live partial
+words, or the corroborated stable-whisper path) and exposes it as
+`AudioTurnCapture.followupAdmittedWithoutLiveWords`; discarded
+candidates reset it with their evidence. `VoiceTurnRecognition`
+passes it to `FinalVoiceInputResolver` as `requireWordConfirmation`.
+A flagged direct-audio turn is no longer authorized from its retained
+audio until a transcription confirms real words: an existing final
+ASR transcript confirms with no new decode, and otherwise the
+resolver's bounded Gemma transcription — tools disabled, the same
+pass the ASR route already falls back to, now shared by both — runs
+as the confirmation. Confirmed words proceed as an ordinary
+direct-audio turn, the audio still the request. No words — an empty
+result, an explicit [NO_SPEECH], or a sound-only caption — set the
+existing `audio_fallback_empty` issue, which is the existing clarify
+path: "I couldn't make out that request, sir. Please say it again.",
+tools disabled, no answer generation. Turns admitted with live words
+are untouched — no flag, no confirmation, no extra decode — so the
+session-persistence fast path is exactly as before; the confirmation
+decode runs only on the no-word-evidence path, where today no
+transcription runs at all.
+
+Tests: additions to `FollowupSpeechEvidenceTest` (sustained strong
+audio alone has no word evidence; live words and corroboration are
+word evidence), `AudioTurnCaptureTest` (the specimen-shaped
+captionOnly follow-up reports `followupAdmittedWithoutLiveWords`;
+the same admission with live partial words does not), and
+`VoiceTranscriptResolverTest` (the confirmation predicate accepts
+only real words). No constructor signatures changed and no journey
+composes the changed classes.
+
+Not established by this entry: everything on a phone. The proof is
+Battles's to run on the published build: in a call, go quiet, make a
+noise, and get the clarify instead of an answer to the noise, while a
+real spoken follow-up still answers directly. One honest limit: the
+confirmation is a transcription, and a transcription that
+hallucinated words on pure noise would pass the gate; Whisper
+producing nothing is corroborating evidence, not a veto — the same
+trust the ASR route's fallback already runs on.
