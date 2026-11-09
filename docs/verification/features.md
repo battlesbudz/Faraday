@@ -5589,3 +5589,110 @@ published from this unit's head:
 
 Until that proof passes, the code-and-export phase is
 code-complete and nightly-green, not device-proven.
+
+## Voice-call session persistence and prompt diet — 9 November 2026
+
+Build 1771's diagnostics (call f6233547, Gemma-4-E2B-it native audio)
+showed every answer submission running on a fresh native session —
+`nativePriorSubmissions=0` on all three turns, the session counter
+climbing 3, 8, 13 — so the full text prompt (2,796 / 3,207 / 3,404
+chars) was prefilled from zero every turn and time to first token
+ran 3,648 ms and 2,455 ms with decode healthy at ~30 tok/s. Battles
+approved the fix in writing on 9 November 2026: the call's static
+prefix prefilled once and kept loaded, and a prompt diet that
+removes bloat without changing behavior.
+
+Persistence rides the architecture that already existed: the engine
+lifecycle keeps the native conversation across cleanly completed
+turns and disposes it on cancel or failure, and chat turns already
+persisted this way. What forced per-turn rebuilds was the voice
+path itself — preparation reset the conversation at every turn and
+flipped tools off, generation flipped them back on (another reset),
+and the post-answer caption reset again. Now, for a direct-audio
+turn in a live call whose resident context provably belongs to that
+call (`VoiceDialogueContext.isCurrentCall`), preparation skips the
+reset, the tool flip, the early-preface preparation, and the
+speculative draft (all of which require a pristine conversation);
+generation assembles the full prompt for the guards and retries but
+submits only the current request — the persona, the dialogue so
+far, and the call-start supporting context are already resident in
+the native conversation (`nativeContextResident` in
+`ConversationPrompt`). The post-answer caption reuses the same
+resident conversation when the answer turn ended cleanly, so it no
+longer rebuilds either; a caption that was cancelled, failed, or
+emitted a tool call still resets, exactly as before.
+
+Reuse falls back to the old fresh behaviour, invisibly in behaviour
+and visibly in metrics, when: the previous turn was barged,
+cancelled, or errored (the lifecycle already disposed the
+conversation); a turn produced a native tool plan (the conversation
+is rebuilt so the tool exchange cannot poison later answers — tool
+turns themselves behave exactly as before); a guard regenerates
+(it resets first, and its retry re-seeds the full prompt); the
+history budget compacts; a memory boundary is published mid-call
+(the resident packet is frozen at call start only for token changes
+explained by the turn's own capture or expiry, never for a real
+user edit); the user interjects with typed text mid-call; a
+comparison trial runs; the model is switched; or the call ends
+(the finalizer closes the models, and the next call's id never
+matches the resident one — nothing leaks across calls or into
+chat). Under reuse the metrics show `nativePriorSubmissions`
+counting up within one `nativeSession`, per-submission
+`promptChars` dropping to the request alone, and a
+`call_session_reuse=persistent_native_conversation` benchmark
+configuration beside the existing `gemma_final_caption_session`.
+
+The diet, measured on the shipped constants: the audio request
+boilerplate went 524 → 503 chars (the standalone confidence
+sentence merged into the tool-call sentence; every rule — respond
+to the spoken request, the audio is the request not a caption,
+native function calling with the full example list, accurate
+arguments, confidence condition, never claim success without a
+tool result — kept in substance and pinned by test). The voice
+memory packet is capped at 800 total chars (was 1,200) with each
+record capped at 240 chars, truncated with an explicit ellipsis
+and never dropped by the cap; retrieval ranking is untouched, so
+the top records still ride. The persona (752 chars), the
+supporting-context wrapper, the memory packet header, the
+continuity header, and the capture-acknowledgment wording were
+audited and kept verbatim: their sentences carry distinct
+behavioural rules that do not overlap, and under persistence the
+persona is prefilled once per call instead of per turn, which is
+where their cost went. A representative turn-1 prompt goes
+≈2,796 → ≈2,480 chars; turns 2+ go from 3,207 chars to the 503-char
+request alone.
+
+Pinned by tests: `ConversationCallSessionReuseTest` (a resident
+turn submits exactly the request with no tool flip and no reset; a
+fresh turn submits the full prompt; an audio-refusal retry and an
+invalid-tool-draft retry each reset and re-seed the full prompt; a
+text turn never uses the call delta), additions to
+`ConversationContextPreparationTest` (the capped voice budget is
+requested for direct-audio turns; a capture-explained token change
+keeps the resident context and is not a history invalidation; a
+real boundary still invalidates and resets), `MemoryRetrievalTest`
+(the per-record cap truncates with the marker, keeps both records
+in ranking order, and leaves the default packet byte-identical),
+`GemmaAudioInputPolicyTest` (every load-bearing request sentence
+present; length budget), and `ConversationPromptBuilderTest`
+(resident assembly returns only the current message; non-resident
+assembly unchanged).
+
+Not established by this entry: everything on a phone. Cross-turn
+reuse is bridge-supported for cleanly completed turns (the vendored
+LiteRT-LM patch's reuse guard forbids sends only after a cancelled
+or failed turn with projected audio), but a second audio message
+on a kept conversation is still device behaviour. The proof is
+Battles's to run on the Fold 6, on the build published from this
+head:
+
+1. Start a native-audio (Gemma) call on the stock E2B model and
+   ask two or three follow-up questions in one call.
+2. Copy Diagnostics and check: within one `nativeSession`,
+   `nativePriorSubmissions` counts up across the turns; the
+   per-turn `promptChars` drops to roughly 500 on turns 2+; and
+   time to first token on the follow-ups is visibly lower than
+   turn 1's.
+
+Until that proof passes, the latency fix is code-complete and
+nightly-green, not device-proven.

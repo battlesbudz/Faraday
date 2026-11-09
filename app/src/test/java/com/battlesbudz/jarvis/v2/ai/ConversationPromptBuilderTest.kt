@@ -48,6 +48,23 @@ class ConversationPromptBuilderTest {
         }
     }
 
+    @Test fun residentVoicePromptSubmitsOnlyTheCurrentMessage() {
+        val builder = ConversationPromptBuilder(ShortTermConversationContext())
+        val history = listOf(com.battlesbudz.jarvis.v2.ChatEntry("You", "I like apricots"))
+        val resident = builder.buildGemmaPrompt("What fruit do I like?", null, history, false,
+            voice = true, memoryContext = "PACKET", continuityContext = "CONTINUITY",
+            captureContext = "CAPTURE", nativeContextResident = true)
+        // Persona, packet, continuity and capture sections are resident in
+        // the native conversation; none of them is re-submitted.
+        assertEquals("What fruit do I like?", resident)
+        // The same call without the resident flag assembles the full prompt.
+        val full = builder.buildGemmaPrompt("What fruit do I like?", null, history, false,
+            voice = true, memoryContext = "PACKET", continuityContext = "CONTINUITY",
+            captureContext = "CAPTURE")
+        assertTrue(full.contains("PACKET")); assertTrue(full.contains("CONTINUITY"))
+        assertTrue(full.contains("CAPTURE")); assertTrue(full.contains("What fruit do I like?"))
+    }
+
     @Test fun compactVoiceSharesItsActualInstructionPrefixAndKeepsCurrentCorrections() {
         val builder = ConversationPromptBuilder(ShortTermConversationContext())
         val history = listOf(com.battlesbudz.jarvis.v2.ChatEntry("You", "I like apricots"))

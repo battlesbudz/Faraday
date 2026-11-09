@@ -138,7 +138,8 @@ class MemoryOs(private val store: MemoryPersistence, private val clock: () -> Lo
     }
     @Deprecated("Use retrieveResult() so storage failures are not represented as no matches.")
     fun retrieve(query: String, limit: Int = 8, nowMs: Long = clock()): List<RetrievedMemory> = retrieveResult(query, limit, nowMs).memories
-    fun contextPacket(query: String, maxChars: Int, limit: Int = 8, nowMs: Long = clock()): MemoryPacketResult {
+    fun contextPacket(query: String, maxChars: Int, limit: Int = 8, nowMs: Long = clock(),
+                      maxEntryChars: Int = Int.MAX_VALUE): MemoryPacketResult {
         val read = read()
         val snapshot = read.snapshot ?: return MemoryPacketResult(MemoryOutcome.STORAGE_FAILURE, read.error ?: "Memory store failed.")
         if (query.isBlank() || limit !in 1..50 || maxChars < 0) return MemoryPacketResult(MemoryOutcome.INVALID, "A query, limit 1-50, and non-negative budget are required.")
@@ -148,7 +149,7 @@ class MemoryOs(private val store: MemoryPersistence, private val clock: () -> Lo
             .mapNotNull { it.expiresAtMs }
             .filter { it > nowMs }
             .minOrNull()
-        return MemoryPacketResult(null, "ok", MemoryRetrieval.packetFromRetrieved(candidates, maxChars), MemoryRetrieval.approvedStateToken(snapshot.memories, nowMs), nextApprovedExpiryMs)
+        return MemoryPacketResult(null, "ok", MemoryRetrieval.packetFromRetrieved(candidates, maxChars, maxEntryChars), MemoryRetrieval.approvedStateToken(snapshot.memories, nowMs), nextApprovedExpiryMs)
     }
 
     private fun lineage(memories: List<MemoryRecord>, id: String): Set<String> {

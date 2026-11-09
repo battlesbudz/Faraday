@@ -13,13 +13,21 @@ internal class ConversationPrompt(
 ) {
     var continuityContext = ""
     var captureContext = ""
+    /**
+     * True when the native conversation already holds this turn's persona,
+     * supporting context and dialogue (a persistent voice-call conversation):
+     * assembly then emits only the current message, so the resident context
+     * is not re-prefilled. Set per turn by generation; never persisted.
+     */
+    var nativeContextResident = false
 
     fun build(userPrompt: String, actionResultContext: String?, history: List<ChatEntry>,
               seedContext: Boolean): String = builder.buildGemmaPrompt(
         userPrompt, actionResultContext, history, seedContext,
         voice = voice, compactInstructions = (contextTokens() ?: 4096) < 2048,
         memoryContext = memoryContext()?.takeIf { it.isCurrent() }?.promptSection(),
-        continuityContext = continuityContext, captureContext = captureContext)
+        continuityContext = continuityContext, captureContext = captureContext,
+        nativeContextResident = nativeContextResident)
 
     fun pendingSize(prompt: String, actionContext: String?, history: List<ChatEntry>,
                     referenceContext: String?): Int = maxOf(

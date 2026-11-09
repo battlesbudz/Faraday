@@ -126,8 +126,29 @@ internal class ConversationGeneration(
                 }
             } else null
         } else null
+        // Persistent voice-call conversation: a direct-audio turn whose
+        // native conversation already holds this call's persona, call-start
+        // memory packet and dialogue submits only the current request; the
+        // resident context is not re-prefilled. The tool-policy accounting
+        // above has already cleared hasContext when anything this turn reset
+        // or flipped the conversation, so hasContext here means the resident
+        // context is exactly this call's own.
+        val reuseNativeContext = invocation.directVoiceAudio && invocation.comparison == null &&
+            modelSession.hasContext
+        // Guard and retry paths below reset before regenerating, so they
+        // must re-seed from the full prompt; assemble it before switching
+        // this turn's assembly to resident mode.
+        val fullPromptText = if (reuseNativeContext) {
+            turnPrompt.nativeContextResident = false
+            turnPrompt.assemble(invocation.prompt, visionContext, promptHistory, true,
+                routed.plan.activeSubject, routed.plan.resolvedQuestion, prepared.referenceContext, contextLimit).text
+        } else null
+        turnPrompt.nativeContextResident = reuseNativeContext
         val submission = turnPrompt.assemble(invocation.prompt, visionContext, promptHistory, !modelSession.hasContext,
             routed.plan.activeSubject, routed.plan.resolvedQuestion, prepared.referenceContext, contextLimit)
+        if (reuseNativeContext) diagnostics.summary("Voice session reuse: resident_native_context=true " +
+            "promptChars=${submission.text.length} fullPromptChars=${fullPromptText?.length ?: submission.text.length} " +
+            "policy=delta_only")
         validatePrompt(invocation, routed, prepared, promptHistory, turnPrompt, submission, contextLimit)
         val directAudio = invocation.directVoiceAudio || invocation.comparison?.request?.path == LiveComparison.Path.GEMMA_DIRECT
         check(invocation.sealedVoiceAudio == null || invocation.voiceAudioIsComplete) { "Incomplete native audio cannot be submitted" }
@@ -185,7 +206,7 @@ internal class ConversationGeneration(
                 // recover here, where the tool policy and the input routes
                 // are owned, instead of surfacing a generation failure.
                 if (!com.battlesbudz.jarvis.v2.ai.ToolCallParseFailure.isFailure(error)) throw error
-                recoverFromToolCallParseFailure(engine, input, submission.text, onToken, error,
+                recoverFromToolCallParseFailure(engine, input, fullPromptText ?: submission.text, onToken, error,
                     routedPlanSteps = (routed.actionPlan as? ActionTurnPlan.Ready)?.steps?.size ?: 0,
                     turnOwnership = turnOwnership)
             }
@@ -220,9 +241,10 @@ internal class ConversationGeneration(
         // reset-and-retry guard against its replacement's session.
         turnOwnership?.checkCurrent()
         executeNativeActions(draft, phoneActions)
-        retryInvalidToolDraft(draft, input)
-        guardAudioAccessRefusal(draft, input)
-        guardVisionPerceptionClaim(draft, input, hasVisualInput)
+        val retryPromptBase = fullPromptText ?: submission.text
+        retryInvalidToolDraft(draft, input, retryPromptBase)
+        guardAudioAccessRefusal(draft, input, retryPromptBase)
+        guardVisionPerceptionClaim(draft, input, hasVisualInput, retryPromptBase)
         return draft
     }
 
@@ -389,7 +411,8 @@ internal class ConversationGeneration(
         return input.retry(engine, retryPrompt, onToken)
     }
 
-    private suspend fun retryInvalidToolDraft(draft: ConversationDraft, input: ConversationInput) {
+    private suspend fun retryInvalidToolDraft(draft: ConversationDraft, input: ConversationInput,
+                                              fullPrompt: String) {
         draft.answer.turnOwnership?.checkCurrent()
         if (draft.generated.toolCalls.isEmpty() || draft.actionResultMessage != null ||
             AssistantText.forDisplay(draft.generated.text).isNotBlank()) return
@@ -397,10 +420,10 @@ internal class ConversationGeneration(
         modelSession.reset()
         answer.engine.setToolsEnabled(false)
         diagnostics.summary("Rejected tool response reason=does_not_match_current_intent retryToolsEnabled=false")
-        val prompt = answer.submittedPrompt + "\nThe previous output contained an invalid tool call. Answer the user's current message directly as normal text. Do not call a tool."
+        val prompt = fullPrompt + "\nThe previous output contained an invalid tool call. Answer the user's current message directly as normal text. Do not call a tool."
         answer.engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
         draft.generated = input.retry(answer.engine, prompt, answer.streamFilter::accept)
-        answer.telemetry.record("invalid tool retry", draft.generated, answer.submittedPrompt.length)
+        answer.telemetry.record("invalid tool retry", draft.generated, fullPrompt.length)
     }
 
     /**
@@ -417,7 +440,8 @@ internal class ConversationGeneration(
      * same authoritative audio. If the model refuses again, substitute the
      * honest fallback rather than let the turn be answered with the claim.
      */
-    private suspend fun guardAudioAccessRefusal(draft: ConversationDraft, input: ConversationInput) {
+    private suspend fun guardAudioAccessRefusal(draft: ConversationDraft, input: ConversationInput,
+                                                fullPrompt: String) {
         draft.answer.turnOwnership?.checkCurrent()
         if (!input.carriesAudioInput || draft.actionResultMessage != null) return
         if (!AudioAccessRefusal.isRefusal(AssistantText.forDisplay(draft.generated.text))) return
@@ -425,9 +449,9 @@ internal class ConversationGeneration(
         modelSession.reset()
         answer.engine.setToolsEnabled(false)
         answer.engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
-        val prompt = answer.submittedPrompt + AudioAccessRefusal.CORRECTION
+        val prompt = fullPrompt + AudioAccessRefusal.CORRECTION
         val regenerated = input.retry(answer.engine, prompt, answer.streamFilter::accept)
-        answer.telemetry.record("audio refusal retry", regenerated, answer.submittedPrompt.length)
+        answer.telemetry.record("audio refusal retry", regenerated, fullPrompt.length)
         draft.generated = if (AudioAccessRefusal.isRefusal(AssistantText.forDisplay(regenerated.text))) {
             diagnostics.summary("Audio access refusal guard outcome=fallback stage=generation " +
                 "reason=regeneration_refused_again")
@@ -463,7 +487,8 @@ internal class ConversationGeneration(
     private suspend fun guardVisionPerceptionClaim(
         draft: ConversationDraft,
         input: ConversationInput,
-        hasVisualInput: Boolean
+        hasVisualInput: Boolean,
+        fullPrompt: String
     ) {
         draft.answer.turnOwnership?.checkCurrent()
         if (hasVisualInput || draft.actionResultMessage != null) return
@@ -491,9 +516,9 @@ internal class ConversationGeneration(
         modelSession.reset()
         answer.engine.setToolsEnabled(false)
         answer.engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
-        val prompt = answer.submittedPrompt + VisionPerceptionClaim.CORRECTION
+        val prompt = fullPrompt + VisionPerceptionClaim.CORRECTION
         val regenerated = input.retry(answer.engine, prompt, answer.streamFilter::accept)
-        answer.telemetry.record("vision claim retry", regenerated, answer.submittedPrompt.length)
+        answer.telemetry.record("vision claim retry", regenerated, fullPrompt.length)
         draft.generated = if (VisionPerceptionClaim.assertsPerception(
                 AssistantText.forDisplay(regenerated.text))) {
             diagnostics.summary("Vision perception claim guard outcome=fallback stage=generation " +

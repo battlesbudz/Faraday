@@ -272,5 +272,9 @@ internal class ConversationCoordinator(
             "raw=${draft.generated.text.take(4_000)}\nrepeatedFragment=${final.repeatedFragment}\n" +
             "conversationCharacters=${modelSession.characters}")
         answer.reply.postFinish(final.text)
+        // A direct-audio turn that produced a native tool plan ends
+        // call-session reuse: the next call turn re-establishes a fresh
+        // conversation instead of appending behind a tool exchange.
+        if (answer.directAudio && draft.actionName != null) modelSession.reset()
     }
 }

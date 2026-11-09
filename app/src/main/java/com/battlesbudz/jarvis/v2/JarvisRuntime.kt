@@ -760,8 +760,9 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     private val pendingTypedHandoff get() = voiceCallState.pendingTypedHandoff
     private val preparingTypedInput get() = voiceCallState.preparingTypedInput
     private val resumeCommandCue get() = voiceCallState.resumeCommandCue
-    internal fun freshMemoryTurnContext(query: String, maxChars: Int): MemoryTurnContext? =
-        memoryCoordinator.freshMemoryTurnContext(query, maxChars)
+    internal fun freshMemoryTurnContext(query: String, maxChars: Int,
+                                        maxEntryChars: Int = Int.MAX_VALUE): MemoryTurnContext? =
+        memoryCoordinator.freshMemoryTurnContext(query, maxChars, maxEntryChars)
     internal fun adoptMemoryState(context: MemoryTurnContext): Boolean = memoryCoordinator.adoptMemoryState(context)
     internal fun isMemoryTurnCurrent(context: MemoryTurnContext): Boolean = memoryCoordinator.isMemoryTurnCurrent(context)
     internal fun consumeMemoryHistoryCutoff(): Boolean = memoryCoordinator.consumeMemoryHistoryCutoff()
@@ -834,6 +835,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         val memory = object : ConversationMemoryAccess {
             override val deliveryFence get() = memoryDeliveryFence
             override fun approvedSnapshot(query: String, maxChars: Int) = freshMemoryTurnContext(query, maxChars)
+            override fun approvedSnapshotCapped(query: String, maxChars: Int, maxEntryChars: Int) =
+                freshMemoryTurnContext(query, maxChars, maxEntryChars)
             override fun adopt(context: MemoryTurnContext) = adoptMemoryState(context)
             override fun clearNativeToken() { nativeMemoryStateToken = null }
             override fun isCurrent(context: MemoryTurnContext) = isMemoryTurnCurrent(context)

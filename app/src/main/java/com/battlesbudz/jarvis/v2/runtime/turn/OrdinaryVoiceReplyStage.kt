@@ -243,6 +243,12 @@ internal class OrdinaryVoiceReplyStage(
                         val ticket = call.controller.captionTicket(prepared.expectedCallId, request.asrTurnId,
                             com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy.PENDING_TRANSCRIPT)
                         var finalCaptionPublished = false
+                        // Caption/session reconciliation state: written by the
+                        // generate lambda, read by checkedReset, which always
+                        // runs after a started caption.
+                        var captionReusedConversation = false
+                        var captionCompletedCleanly = false
+                        var captionEmittedToolCalls = false
                         try {
                             val result = com.battlesbudz.jarvis.v2.voice.PostAnswerCaptionContinuation.run(
                                 isCurrent = { ticket != null && ownsCaption() },
@@ -251,15 +257,45 @@ internal class OrdinaryVoiceReplyStage(
                                     observation.benchmark.mark("gemma_final_caption_started")
                                     prepared.engine.onInferenceProgress = {}
                                     prepared.engine.benchmarkPurpose = com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkPurpose.TRANSCRIPTION_FALLBACK
-                                    conversation.reset()
-                                    prepared.engine.setToolsEnabled(false)
-                                    prepared.engine.generateAudio(com.battlesbudz.jarvis.v2.voice.VoiceTranscriptResolver.instructions, finalized.audioBytes, {})
+                                    // Persistent call conversation: when the
+                                    // resident conversation cleanly holds this
+                                    // call's turns, the caption transcribes on
+                                    // it directly — no reset, no tool-policy
+                                    // flip — and the transcribe exchange joins
+                                    // the call's native history. Any doubt
+                                    // about the resident state takes the
+                                    // original reset path unchanged.
+                                    captionReusedConversation = !prepared.engine.isNativeClosed &&
+                                        prepared.engine.nativeResourcesSafeToRelease &&
+                                        !prepared.engine.isNativeQuarantined &&
+                                        !prepared.engine.requiresConfirmedHistoryRebuild &&
+                                        prepared.engine.hasNativeConversationHistory
+                                    observation.benchmark.configuration("gemma_final_caption_session",
+                                        if (captionReusedConversation) "resident_call_conversation" else "fresh_conversation")
+                                    if (!captionReusedConversation) {
+                                        conversation.reset()
+                                        prepared.engine.setToolsEnabled(false)
+                                    }
+                                    val heard = prepared.engine.generateAudio(com.battlesbudz.jarvis.v2.voice.VoiceTranscriptResolver.instructions, finalized.audioBytes, {})
+                                    captionEmittedToolCalls = heard.toolCalls.isNotEmpty()
+                                    captionCompletedCleanly = true
+                                    heard
                                 },
                                 checkedReset = {
                                     check(prepared.engine.nativeResourcesSafeToRelease && !prepared.engine.isNativeQuarantined) {
                                         "Caption native drain failed; model ownership retained, reuse disabled"
                                     }
-                                    conversation.reset()
+                                    // Keep the resident conversation only when
+                                    // the caption reused it AND completed
+                                    // cleanly without emitting tool calls: an
+                                    // unanswered tool call, or a cancelled /
+                                    // failed generation (whose conversation
+                                    // the lifecycle already disposed), would
+                                    // leave the next send malformed, so
+                                    // re-establish from confirmed history.
+                                    if (!captionReusedConversation || !captionCompletedCleanly ||
+                                        captionEmittedToolCalls || prepared.engine.requiresConfirmedHistoryRebuild)
+                                        conversation.reset()
                                 },
                                 observe = { event -> observation.benchmark.mark(event) }
                             )

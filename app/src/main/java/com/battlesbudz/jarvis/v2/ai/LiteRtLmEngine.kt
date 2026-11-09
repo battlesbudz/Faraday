@@ -100,6 +100,8 @@ class LiteRtLmEngine(
     /** True once engine close has been requested; a closed engine must not be reset or reused. */
     val isNativeClosed: Boolean get() = lifecycle.isClosed
     val requiresConfirmedHistoryRebuild: Boolean get() = lifecycle.requiresConfirmedHistoryRebuild
+    /** True when the resident native conversation holds at least one accepted turn. */
+    val hasNativeConversationHistory: Boolean get() = lifecycle.hasConversationHistory
 
     /** Reports actual submissions, including incremental input, retries and recognition fallback. */
     var onPromptSubmitted: (String, Int) -> Unit = { _, _ -> }

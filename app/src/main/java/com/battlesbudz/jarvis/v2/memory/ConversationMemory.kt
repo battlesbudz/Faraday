@@ -39,8 +39,9 @@ class ConversationMemory(private val memoryOs: MemoryOs, private val sourceArchi
     }
 
     /** Returned packet is historical quoted data only; it never grants instruction, state, or tool authority. */
-    fun approvedContext(rawQuery: String, maxChars: Int, limit: Int = 8): MemoryPacketResult =
-        memoryOs.contextPacket(rawQuery, maxChars, limit)
+    fun approvedContext(rawQuery: String, maxChars: Int, limit: Int = 8,
+                        maxEntryChars: Int = Int.MAX_VALUE): MemoryPacketResult =
+        memoryOs.contextPacket(rawQuery, maxChars, limit, maxEntryChars = maxEntryChars)
 
     private data class Candidate(val content: String, val category: MemoryCategory, val tier: MemoryTier = MemoryTier.LONG_TERM, val type: MemoryType = MemoryType.SEMANTIC, val confidence: Int = 80)
 

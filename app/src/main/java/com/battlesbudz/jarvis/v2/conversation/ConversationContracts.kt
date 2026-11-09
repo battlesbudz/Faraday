@@ -58,6 +58,14 @@ internal data class ConversationCallbacks(
 internal interface ConversationMemoryAccess {
     val deliveryFence: MemoryDeliveryFence
     fun approvedSnapshot(query: String, maxChars: Int): MemoryTurnContext?
+    /**
+     * Snapshot with each record's quoted content capped at [maxEntryChars]
+     * (direct-audio voice turns, whose packet budget is deliberately small).
+     * The default keeps the uncapped snapshot; the runtime override plumbs
+     * the cap through to packet construction.
+     */
+    fun approvedSnapshotCapped(query: String, maxChars: Int, maxEntryChars: Int): MemoryTurnContext? =
+        approvedSnapshot(query, maxChars)
     fun adopt(context: MemoryTurnContext): Boolean
     fun clearNativeToken()
     fun isCurrent(context: MemoryTurnContext): Boolean
