@@ -33,11 +33,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -429,9 +431,9 @@ private enum class CodePane { PREVIEW, CONSOLE, FILES, BRIEF }
 
 private data class ExportedInfo(val filePath: String, val packageName: String, val label: String)
 
-private val ExportedInfoSaver = listSaver<ExportedInfo?, String>(
-    save = { info -> info?.let { listOf(it.filePath, it.packageName, it.label) } ?: emptyList() },
-    restore = { parts -> if (parts.size == 3) ExportedInfo(parts[0], parts[1], parts[2]) else null },
+private val ExportedInfoSaver: Saver<MutableState<ExportedInfo?>, Any> = listSaver(
+    save = { state -> state.value?.let { listOf(it.filePath, it.packageName, it.label) } ?: emptyList() },
+    restore = { parts -> mutableStateOf(if (parts.size == 3) ExportedInfo(parts[0], parts[1], parts[2]) else null) },
 )
 
 @Composable
