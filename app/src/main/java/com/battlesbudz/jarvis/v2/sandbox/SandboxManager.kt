@@ -196,17 +196,24 @@ class SandboxManager(private val context: Context) {
     }
 
     /**
-     * Reset (decision D2): closes all sessions, then removes the rootfs
-     * only — the workspace survives. The state machine returns to
-     * NOT_INSTALLED; the next run installs fresh.
+     * Reset (decision D2, preservation fix): closes all sessions, removes
+     * the rootfs layer only — the workspace (the persistent store, where
+     * relative-path writes land) survives untouched — then installs the
+     * bundled rootfs fresh through the normal install path, so the
+     * sandbox is installed and usable again the moment Reset finishes;
+     * there is no separate reinstall step. The end state is READY, or
+     * FAILED with the install error kept when the fresh install cannot
+     * complete (settings then offers Install again). Blocking — call off
+     * the main thread.
      */
     fun reset() {
         closeAllSessions()
         store.resetRootfs()
-        // The probe described the old tree; the next install re-captures it.
+        // The probe described the old tree; the fresh install re-captures it.
         probeFile.delete()
-        installState = if (store.isInstalled()) InstallState.FAILED else InstallState.NOT_INSTALLED
+        installState = InstallState.NOT_INSTALLED
         lastInstallError = null
+        ensureInstalled()
     }
 
     /** Clear workspace (decision D2): empties /workspace, keeps the rootfs. */

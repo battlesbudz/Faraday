@@ -6676,3 +6676,61 @@ conversation, tap the message field so the keyboard opens, and
 confirm the composer sits directly above the keyboard with no
 keyboard-height gap under it; then dismiss the keyboard and
 confirm the composer rests where it always did.
+
+## Sandbox Reset keeps the workspace and leaves the sandbox installed — 10 November 2026
+
+Battles's build-1771 proof (call ac22a2a2): after a Settings
+Reset, the sandbox was gone — the rootfs was removed, the state
+read "not installed", and the sandbox had to be installed again
+from scratch before any command would run. Decision D2 as
+Battles holds it is narrower: Reset resets the rootfs layer
+only. The persistent store (the workspace, where relative-path
+writes land since the work-dir fix of 6 November) survives, and
+the sandbox itself stays installed and usable.
+
+Root cause: the removal half was already right —
+`SandboxStore.resetRootfs` removes the rootfs and its staging
+and nothing else, and the workspace was never touched — but
+`SandboxManager.reset` stopped there. It returned the state
+machine to NOT_INSTALLED and left the fresh install to a
+separate manual step, so every Reset read as a wiped install
+and the runner refused commands ("Sandbox is not installed")
+until Battles installed again by hand.
+
+`SandboxManager.reset` now performs both halves: close all
+sessions, remove the rootfs layer, then immediately install
+the bundled rootfs fresh through the same path the Install
+button uses (the store's space pre-check, the settings
+networking toggle applied to the guest defaults, the engine
+probe re-captured for the fresh tree). It ends READY when the
+fresh tree is usable, or FAILED with the install error kept
+when the fresh install cannot complete, and settings then
+offers Install again as before. The settings copy says the
+system is replaced right away, and the post-Reset message
+reports the fresh install — or its failure — instead of
+claiming success unconditionally. The store's removal, the
+reset counter, and Clear workspace are unchanged.
+
+Pinned by `SandboxStoreResetTest`: the pre-existing test still
+pins the removal half (rootfs gone, workspace file kept and
+readable, the reset counted), and a new test performs the exact
+composition the manager performs — `resetRootfs` then
+`installIfNeeded` against the real bundled tarball — and pins
+that the old tree's guest state is gone, the fresh tree carries
+the bundled version stamp, the workspace file is still there
+and readable, and a fresh store (what the next run constructs)
+reports the sandbox installed and usable, which is
+`SandboxRunner`'s only install gate. No instrumentation journey
+composes the sandbox settings section or constructs these
+classes (verified against the androidTest sources), and no
+composable or constructor signature changed, so no new ProGuard
+keeps were needed.
+
+Not established by this entry: everything on a phone, including
+a command actually executing after Reset (the engine is native;
+no JVM test runs one). The proof is Battles's to run on the
+published build, as one task: in the sandbox settings command
+field run `echo hello > note.txt`, then Reset the sandbox from
+settings and confirm, then run `cat note.txt` — the contents
+come back and the command runs, with no install step in
+between.

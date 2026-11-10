@@ -104,9 +104,12 @@ class SandboxStore(private val context: Context) {
     }
 
     /**
-     * Reset (decision D2): removes the rootfs and any install staging only.
-     * The workspace is deliberately untouched — it survives and is re-bound
-     * into the fresh rootfs on the next install.
+     * Reset (decision D2), the removal half: removes the rootfs and any
+     * install staging only. The workspace is deliberately untouched — it
+     * survives and is re-bound into the fresh rootfs. SandboxManager.reset
+     * reinstalls the bundled rootfs immediately after this removal, so a
+     * user-facing Reset never leaves the sandbox uninstalled; this
+     * function on its own is only the removal.
      */
     fun resetRootfs() {
         deleteTree(rootfsDir())

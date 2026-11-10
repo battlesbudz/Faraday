@@ -28,8 +28,9 @@ import kotlinx.coroutines.launch
  * Lives in the Settings dialog in [VoiceCallScreen], next to the other
  * sections. Everything here is user-operated: installing, the networking
  * toggle (decision D3 — settings-only, default off, never per-command and
- * never model-controlled), Reset (rootfs only; the workspace survives),
- * and the separate Clear workspace action (decision D2).
+ * never model-controlled), Reset (the rootfs is wiped and reinstalled
+ * fresh in place; the workspace survives), and the separate Clear
+ * workspace action (decision D2).
  */
 @Composable
 internal fun SandboxSettingsSection(enabled: Boolean) {
@@ -118,7 +119,7 @@ internal fun SandboxSettingsSection(enabled: Boolean) {
             ) { Text("Reset sandbox") }
         } else {
             Text(
-                "Reset removes the Linux system and starts fresh. Your workspace files are kept.",
+                "Reset replaces the Linux system with a fresh one right away. Your workspace files are kept.",
                 style = MaterialTheme.typography.bodySmall
             )
             TextButton(
@@ -131,7 +132,14 @@ internal fun SandboxSettingsSection(enabled: Boolean) {
                         manager.reset()
                         busy = false
                         refresh++
-                        message = "Sandbox reset. The workspace was kept."
+                        message = if (manager.installState == SandboxManager.InstallState.READY ||
+                            manager.installState == SandboxManager.InstallState.BUSY
+                        ) {
+                            "Sandbox reset: fresh system installed. The workspace was kept."
+                        } else {
+                            "Sandbox reset, but the fresh install failed: " +
+                                (manager.lastInstallError ?: "unknown error")
+                        }
                     }
                 }
             ) { Text("Reset — keep workspace") }
