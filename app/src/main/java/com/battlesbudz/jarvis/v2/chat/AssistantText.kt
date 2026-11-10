@@ -21,7 +21,11 @@ internal object AssistantText {
             )
             .replace(Regex("""(?i)<\|tool_call\|>|<end_function_call>|<\|end_function_call\|>"""), "")
             .trim()
-        return cleaned
+        // The bare legacy form (`call:<name>{...}` with no wrapper tags)
+        // survives the regexes above; it is the same protocol text and is
+        // removed for the same reason, so no markup shape can be the
+        // published answer.
+        return ToolCallMarkup.strip(cleaned).trim()
     }
 
 }

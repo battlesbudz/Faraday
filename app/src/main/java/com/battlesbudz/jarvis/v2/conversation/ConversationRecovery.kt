@@ -5,6 +5,7 @@ import com.battlesbudz.jarvis.v2.ai.GenerationResult
 import com.battlesbudz.jarvis.v2.ai.TurnKind
 import com.battlesbudz.jarvis.v2.chat.AnswerQualityPolicy
 import com.battlesbudz.jarvis.v2.chat.AssistantText
+import com.battlesbudz.jarvis.v2.chat.ToolCallMarkup
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkPurpose
 import com.battlesbudz.jarvis.v2.voice.VoiceRepetitionGuard
 import com.battlesbudz.jarvis.v2.voice.VoiceRepetitionRepair
@@ -126,8 +127,8 @@ internal class ConversationRecovery(
 
     private suspend fun discardControlContext(draft: ConversationDraft) {
         draft.answer.turnOwnership?.checkCurrent()
-        draft.rawControlOutput = draft.generated.toolCalls.isNotEmpty() || draft.generated.text.contains("tool_call>") ||
-            draft.generated.text.contains("start_function_call")
+        draft.rawControlOutput = draft.generated.toolCalls.isNotEmpty() ||
+            ToolCallMarkup.contains(draft.generated.text)
         if (draft.rawControlOutput) {
             // Do not carry protocol text into the next turn.
             resetNative()

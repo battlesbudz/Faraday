@@ -214,6 +214,23 @@ class SandboxPhase2ToolTest {
         assertFalse(ActionRequestText.sandboxRunRequest("run a mile for me"))
     }
 
+    @Test fun intentDetectorArmsSandboxContentReads() {
+        // Build 1771, session 903e25c2: Battles typed this read-back in
+        // chat and it stayed a knowledge question — no run verb, so the
+        // channel never armed, tools stayed off, and the model emitted
+        // legacy tool markup as text instead of proposing the command.
+        assertTrue(ActionRequestText.sandboxRunRequest("In the sandbox, show me what is in note.txt"))
+        assertTrue(ActionRequestText.sandboxRunRequest("read note.txt in the sandbox"))
+        assertTrue(ActionRequestText.sandboxRunRequest("read note.txt from the sandbox"))
+        assertTrue(ActionRequestText.sandboxRunRequest("list the files in the sandbox"))
+        assertTrue(ActionRequestText.sandboxRunRequest("what is in the sandbox"))
+        // Talk about the sandbox itself still never arms, and the
+        // negation screen covers the new verb set too.
+        assertFalse(ActionRequestText.sandboxRunRequest("show me the sandbox settings"))
+        assertFalse(ActionRequestText.sandboxRunRequest("check the sandbox"))
+        assertFalse(ActionRequestText.sandboxRunRequest("don't show me note.txt in the sandbox"))
+    }
+
     // -- Command fidelity: dictated commands are extracted verbatim ---------
 
     @Test fun literalExtractionReturnsDictatedCommandsVerbatim() {
@@ -247,6 +264,9 @@ class SandboxPhase2ToolTest {
         // Talk about the sandbox never extracts (and never arms).
         assertNull(ActionRequestText.sandboxLiteralCommand("what is the sandbox?"))
         assertNull(ActionRequestText.sandboxLiteralCommand("is the sandbox installed?"))
+        // A content read arms the channel but dictates no literal span:
+        // the model composes the read command under the same approval gate.
+        assertNull(ActionRequestText.sandboxLiteralCommand("In the sandbox, show me what is in note.txt"))
         // Negated requests never extract.
         assertNull(ActionRequestText.sandboxLiteralCommand("don't run echo hi in the sandbox"))
     }

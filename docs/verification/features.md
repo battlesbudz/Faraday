@@ -6543,3 +6543,63 @@ approval card appears right in the conversation showing the exact
 command; tap Approve and confirm the command runs; then ask again,
 tap Deny on the new card, and confirm nothing runs and no approval
 is waiting in the Phone tasks panel.
+
+## Typed sandbox requests route to the tool; legacy tool markup can never end a turn — 10 November 2026
+
+A sandbox request typed in chat now reaches the run_in_sandbox tool the
+way a spoken one does. The deterministic arming predicate
+(ActionRequestText.sandboxRunRequest) used to require an execution verb
+(run, execute, use), so a typed read-back — "In the sandbox, show me
+what is in note.txt" (build 1771, session 903e25c2) — stayed a
+knowledge question: tools stayed off, and the model emitted the legacy
+text form of a tool call as its answer, which cleaned to empty and
+degenerated through the lookup retries into canned failures. The
+predicate now also arms on read/show requests aimed at sandbox
+contents (a read verb with the sandbox named as the location, a named
+file target, or the contents-question form), so the turn arms the same
+intent-marker plan a spoken request gets and the model's proposed
+command parks for Battles's exact approval on the inline card. Talk
+about the sandbox itself ("what is the sandbox?", "show me the
+sandbox settings") and negated requests still never arm, and a
+content read dictates no literal command span — the model composes
+the read under the same approval gate.
+
+The second half is a guarantee about the text channel itself: a
+legacy tool-markup emission can never be a turn's final outcome. A
+shared detector (chat/ToolCallMarkup) locates the bare
+`call:<name>{...}` form the display cleaner used to miss. In
+ConversationGeneration, a draft whose text is a strict-parsing
+run_in_sandbox call converts to that native call and validates
+through the normal machinery — parking for exact approval — whether
+or not the turn was armed (run_in_sandbox is the only tool admitted
+this way, because a proposal can only park; any other tool named in
+markup forms no plan). A draft still carrying markup after that
+regenerates once with tools disabled, and a second markup emission
+substitutes an empty draft so the finalizer's blank-answer fallback
+ends the turn. AssistantText.forDisplay now strips the bare form
+alongside the wrapped forms, and recovery's control-output discard
+uses the shared detector, so markup text is also kept out of the next
+turn's native context.
+
+Established by the JVM suite: SandboxPhase2ToolTest pins the widened
+arming (the device specimen verbatim, read/list variants, and the
+about-the-sandbox and negated negatives) and that a content read
+extracts no literal span; ConversationGenerationTest pins the
+conversion (a bare run_in_sandbox markup emission on an unarmed text
+turn parks with the model's exact command and the parked receipt is
+the final answer), the specimen's unparseable emission (one tool-less
+regeneration, plain answer wins), a non-sandbox markup call (no plan
+forms; a repeat emission ends in the blank-answer fallback), and
+ordinary prose about a call passing untouched; ToolCallMarkupTest
+pins the locator/stripper and that forDisplay never publishes a bare
+block.
+
+Not established by this entry: everything on a phone. The proof is
+Battles's to run on the published build, as one task: with the sandbox
+installed, ask in chat to run "echo hello > note.txt" in the sandbox
+and approve the card in the conversation; then TYPE "In the sandbox,
+show me what is in note.txt" and confirm a new approval card appears
+in the conversation proposing a read of the file (for example
+"cat note.txt") — not an error, not markup text; approve it and
+confirm the reply reports the file's contents, then paste Copy
+Diagnostics.

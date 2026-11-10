@@ -13,6 +13,7 @@ import com.battlesbudz.jarvis.v2.ai.TurnKind
 import com.battlesbudz.jarvis.v2.chat.AnswerQualityPolicy
 import com.battlesbudz.jarvis.v2.chat.AssistantStreamFilter
 import com.battlesbudz.jarvis.v2.chat.AssistantText
+import com.battlesbudz.jarvis.v2.chat.ToolCallMarkup
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkPurpose
 import com.battlesbudz.jarvis.v2.vision.NativeVision
 import com.battlesbudz.jarvis.v2.vision.PhoneVisionClient
@@ -243,6 +244,7 @@ internal class ConversationGeneration(
         executeNativeActions(draft, phoneActions)
         val retryPromptBase = fullPromptText ?: submission.text
         retryInvalidToolDraft(draft, input, retryPromptBase)
+        guardLegacyMarkupDraft(draft, input, retryPromptBase)
         guardAudioAccessRefusal(draft, input, retryPromptBase)
         guardVisionPerceptionClaim(draft, input, hasVisualInput, retryPromptBase)
         guardMemoryDisregard(draft, input, turnPrompt)
@@ -346,6 +348,54 @@ internal class ConversationGeneration(
         return FinalVoiceToolGuard.allows(recognized, request.name, request.arguments)
     }
 
+    /**
+     * Converts a legacy text-form tool call in a text turn's draft into
+     * the draft's native call, so [executeNativeActions] runs it through
+     * the normal validation and approval machinery instead of the markup
+     * becoming the turn's answer. On build 1771 (session 903e25c2) a
+     * typed sandbox read-back with tools disabled ended as exactly this
+     * emission. Conversion is deliberately narrow: the block must
+     * strict-parse (the salvage parser's exact `call:` shape), decode
+     * against the strict tool schema, and name run_in_sandbox with a
+     * command [AudioToolGuard] admits as sane. run_in_sandbox is the only
+     * tool admitted, for the [nativeToolIntentAllows] reason: a proposed
+     * sandbox call never dispatches from a plan — it parks for Battles's
+     * exact approval of the command text, which is its verification. Any
+     * other markup stays text and is [guardLegacyMarkupDraft]'s problem.
+     */
+    private fun recoverLegacyMarkupCall(draft: ConversationDraft) {
+        val invocation = draft.answer.invocation
+        if (invocation.directVoiceAudio || draft.generated.toolCalls.isNotEmpty()) return
+        val block = ToolCallMarkup.callBlock(draft.generated.text) ?: return
+        val call = com.battlesbudz.jarvis.v2.ai.MalformedToolCallSalvage.parse(block) ?: return
+        val request = NativeActionDecoder.decodeStrict(call) ?: return
+        if (request.name != "run_in_sandbox" || !AudioToolGuard.allows(request)) return
+        draft.generated = GenerationResult("", -1L, null, toolCalls = listOf(call))
+        diagnostics.summary("Legacy tool markup recovered call=run_in_sandbox " +
+            "policy=converted_to_native_call_for_validation_and_approval")
+    }
+
+    /**
+     * The plan for a call [recoverLegacyMarkupCall] converted on a text
+     * turn whose routed plan armed nothing: the same empty-command intent
+     * marker [com.battlesbudz.jarvis.v2.conversation.ConversationRouting]
+     * builds for an explicit sandbox request, with the user's own prompt
+     * as the source clause. The marker can never dispatch; the converted
+     * call validates as a proposal against it and parks for exact
+     * approval, exactly as a native proposal on an armed turn does. Only
+     * reachable when the draft's sole call is a converted run_in_sandbox
+     * call and neither a routed nor an audio plan exists.
+     */
+    private fun legacyMarkupPlan(draft: ConversationDraft): ActionTurnPlan.Ready? {
+        val invocation = draft.answer.invocation
+        if (invocation.directVoiceAudio) return null
+        val call = draft.generated.toolCalls.singleOrNull() ?: return null
+        val request = NativeActionDecoder.decodeStrict(call) ?: return null
+        if (request.name != "run_in_sandbox") return null
+        return ActionTurnPlan.Ready(listOf(ActionTurnPlan.Step(
+            ActionRequest("run_in_sandbox", mapOf("command" to "")), invocation.prompt)))
+    }
+
     private suspend fun executeNativeActions(draft: ConversationDraft, phoneActions: ConversationActions) {
         val answer = draft.answer
         val invocation = answer.invocation
@@ -353,8 +403,9 @@ internal class ConversationGeneration(
         // native state: a still-running speculative draft invalidates and
         // drains first. Harmless after a successful promote (already drained).
         invocation.nativeSpeculation?.beforeNativeMutation()
+        recoverLegacyMarkupCall(draft)
         val plan = answer.routed.actionPlan as? ActionTurnPlan.Ready
-            ?: audioPlanFromCalls(draft) ?: return
+            ?: audioPlanFromCalls(draft) ?: legacyMarkupPlan(draft) ?: return
         if (draft.generated.toolCalls.isEmpty()) {
             draft.actionResultMessage = "I couldn't verify the requested phone actions."
             return
@@ -462,6 +513,45 @@ internal class ConversationGeneration(
         answer.engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
         draft.generated = input.retry(answer.engine, prompt, answer.streamFilter::accept)
         answer.telemetry.record("invalid tool retry", draft.generated, fullPrompt.length)
+    }
+
+    /**
+     * Final generation-stage check for legacy tool markup on a text turn.
+     * A draft that carries a tool call as ordinary text — the wrapped
+     * `<|tool_call>` form, or a bare `call:<name>{...}` block — has not
+     * answered the user, and markup must never be the turn's outcome:
+     * [recoverLegacyMarkupCall] already converted the one shape that may
+     * become a plan, so anything still carrying markup here named a tool
+     * that forms no plan from text, or did not parse at all. Regenerate
+     * once with tools disabled, mirroring [retryInvalidToolDraft]; if the
+     * regeneration emits markup again, substitute an empty result so the
+     * finalizer's blank-answer fallback — never the markup — ends the
+     * turn. Direct-audio turns never reach here: their calls are native
+     * and their text is a caption/answer the audio guards own.
+     */
+    private suspend fun guardLegacyMarkupDraft(draft: ConversationDraft, input: ConversationInput,
+                                               fullPrompt: String) {
+        draft.answer.turnOwnership?.checkCurrent()
+        val answer = draft.answer
+        if (answer.invocation.directVoiceAudio || draft.actionResultMessage != null ||
+            draft.generated.toolCalls.isNotEmpty()) return
+        if (!ToolCallMarkup.contains(draft.generated.text)) return
+        modelSession.reset()
+        answer.engine.setToolsEnabled(false)
+        answer.engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
+        diagnostics.summary("Legacy tool markup in text draft policy=regenerate_without_tools")
+        val prompt = fullPrompt + "\nThe previous output contained tool-call markup instead of an answer. " +
+            "Answer the user's current message directly as normal text. Do not call a tool."
+        val regenerated = input.retry(answer.engine, prompt, answer.streamFilter::accept)
+        answer.telemetry.record("legacy markup retry", regenerated, fullPrompt.length)
+        draft.generated = if (ToolCallMarkup.contains(regenerated.text) || regenerated.toolCalls.isNotEmpty()) {
+            diagnostics.summary("Legacy tool markup guard outcome=fallback stage=generation " +
+                "reason=regeneration_emitted_markup_again")
+            GenerationResult("", -1L, null)
+        } else {
+            diagnostics.summary("Legacy tool markup guard outcome=regenerated stage=generation")
+            regenerated
+        }
     }
 
     /**

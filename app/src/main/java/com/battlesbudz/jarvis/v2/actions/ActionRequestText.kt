@@ -142,7 +142,31 @@ internal object ActionRequestText {
         // Same negation screen as ActionTurnPlan.parse: negated speech must
         // never become an action channel.
         if (Regex("""\b(?:don't|do not|never)\b""").containsMatchIn(normalized)) return false
-        return Regex("""\b(?:run|execute|running|use|using)\b""").containsMatchIn(normalized)
+        if (Regex("""\b(?:run|execute|running|use|using)\b""").containsMatchIn(normalized)) return true
+        return sandboxContentRequest(normalized)
+    }
+
+    /**
+     * Read/show requests aimed at sandbox *contents* arm the same channel:
+     * "in the sandbox, show me what is in note.txt" carries no run verb,
+     * but the work it asks for can only be done by a sandbox command (the
+     * build-1771 typed read-back defect: the request stayed a knowledge
+     * question with tools off, and the model emitted legacy tool markup
+     * as text instead of proposing the command). The sandbox must be
+     * named as the location of the contents ("in the sandbox") or a file
+     * target must be named, so talk *about* the sandbox itself ("what is
+     * the sandbox?", "show me the sandbox settings") never arms. Either
+     * way the composed command still parks for Battles's exact approval
+     * before anything runs.
+     */
+    private fun sandboxContentRequest(normalized: String): Boolean {
+        // "What is in the sandbox" asks for the contents listing itself.
+        if (Regex("""\bwhat(?:'s| is)?\b[^.?!]*\bin(?:side)?\s+the\s+sandbox\b""")
+                .containsMatchIn(normalized)) return true
+        if (!Regex("""\b(?:show|read|list|cat|print|display)\b""").containsMatchIn(normalized)) return false
+        if (normalized.contains("in the sandbox")) return true
+        // A named file target: "read note.txt from the sandbox".
+        return Regex("""\b[\w./-]+\.[a-z0-9]{1,6}\b""").containsMatchIn(normalized)
     }
 
     /**
