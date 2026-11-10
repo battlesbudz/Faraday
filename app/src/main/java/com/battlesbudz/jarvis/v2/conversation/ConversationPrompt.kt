@@ -29,6 +29,10 @@ internal class ConversationPrompt(
         continuityContext = continuityContext, captureContext = captureContext,
         nativeContextResident = nativeContextResident)
 
+    /** Contents of the memory records this turn's packet actually injected; empty when none were. */
+    fun injectedMemoryContents(): List<String> =
+        memoryContext()?.takeIf { it.isCurrent() }?.injectedContents ?: emptyList()
+
     fun pendingSize(prompt: String, actionContext: String?, history: List<ChatEntry>,
                     referenceContext: String?): Int = maxOf(
         build(prompt, actionContext, history, false).length,

@@ -26,6 +26,8 @@ import com.battlesbudz.jarvis.v2.ai.ModelCatalog
 import com.battlesbudz.jarvis.v2.ai.ModelStore
 import com.battlesbudz.jarvis.v2.code.CodeModeDriver
 import com.battlesbudz.jarvis.v2.code.ConversationCodeController
+import com.battlesbudz.jarvis.v2.memory.AndroidMemoryDream
+import com.battlesbudz.jarvis.v2.memory.AndroidMemoryEmbeddings
 import com.battlesbudz.jarvis.v2.memory.AndroidMemoryOs
 
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
@@ -63,6 +65,7 @@ fun JarvisApp(
     onDiscardModelDownload: (com.battlesbudz.jarvis.v2.ai.LocalModelSpec, (String) -> Unit) -> Unit = { _, _ -> },
     onImportModel: (Uri, com.battlesbudz.jarvis.v2.ai.LocalModelSpec, (String) -> Unit) -> Unit,
     onCopyDiagnostics: (List<ChatEntry>) -> Unit,
+    onSaveDiagnostics: ((String) -> Unit) -> Unit = {},
     agentActivity: kotlinx.coroutines.flow.StateFlow<com.battlesbudz.jarvis.v2.presentation.AgentActivitySnapshot?>? = null,
     phoneTasks: kotlinx.coroutines.flow.StateFlow<com.battlesbudz.jarvis.v2.actions.ToolTaskJournal?>? = null,
     phoneTaskError: kotlinx.coroutines.flow.StateFlow<String?>? = null,
@@ -94,6 +97,7 @@ fun JarvisApp(
 
         val phoneContext = androidx.compose.ui.platform.LocalContext.current
         val memoryOs = remember(phoneContext.applicationContext) { AndroidMemoryOs.get(phoneContext.applicationContext) }
+        val embeddingSetup = remember(phoneContext.applicationContext) { AndroidMemoryEmbeddings.setupController(phoneContext.applicationContext) }
         val activeVoiceCall by com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.armed.collectAsState()
         val activeVoiceStatus by com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.status.collectAsState()
         // Chat header state, hoisted out of ConversationScreen: the header
@@ -269,6 +273,7 @@ fun JarvisApp(
                                             onVoiceTurn = onVoiceTurn,
                                             onEndVoiceCall = onEndVoiceCall,
                                             onCopyDiagnostics = onCopyDiagnostics,
+                                            onSaveDiagnostics = onSaveDiagnostics,
                                             silentWork = silentWork,
                                             onSilentWork = onSilentWork,
                                             workflowSettings = workflowSettings,
@@ -293,6 +298,8 @@ fun JarvisApp(
                                 onEndCall = onEndVoiceCall,
                                 onOpenChat = { memoryReturnToVoice = false; memoryReturnToChat = true; showingMemory = false },
                                 onOpenVoice = { memoryReturnToChat = false; memoryReturnToVoice = true; showingMemory = false },
+                                embeddingSetup = embeddingSetup,
+                                dreamJournalProvider = { AndroidMemoryDream.journalState(phoneContext).entries },
                             )
                         // Code mode's picker and preview viewer overlay the
                         // same way; the working surface is the conversation
@@ -319,6 +326,8 @@ fun JarvisApp(
                             onEndCall = onEndVoiceCall,
                             onOpenChat = { memoryReturnToVoice = false; memoryReturnToChat = true; showingMemory = false },
                             onOpenVoice = { memoryReturnToChat = false; memoryReturnToVoice = true; showingMemory = false },
+                            embeddingSetup = embeddingSetup,
+                            dreamJournalProvider = { AndroidMemoryDream.journalState(phoneContext).entries },
                         )
                     } else if (!setup.modelsReady && !showingFullSetup) {
                         // First run: no usable model on the device. One-tap install

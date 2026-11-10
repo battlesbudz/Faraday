@@ -105,7 +105,7 @@ class RuntimeMemoryCoordinatorTest {
         val record = f.os.propose(MemoryProposal("I prefer tea", MemorySource("manual", "expiring-tea", f.now),
             expiresAtMs = f.now + 60_000)).memory!!
         f.os.approve(record.id)
-        val context = f.coordinator.freshMemoryTurnContext("tea", 500)!!
+        val context = f.coordinator.freshMemoryTurnContext("tea", 700)!!
         assertTrue(context.hasApprovedMemories)
         assertTrue(f.coordinator.isMemoryTurnCurrent(context))
         // Advance only the store's clock: the context's own epoch and wall-clock deadline

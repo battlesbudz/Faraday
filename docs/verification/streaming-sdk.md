@@ -3,7 +3,7 @@
 The existing Android APK workflow has a source SDK producer prerequisite.
 A successful SDK producer starts APK assembly and full-E2B host quality in
 parallel; neither early assembly nor signing establishes final verification.
-It uses the exact upstream/source patch under `third_party/litert-lm-0.16.0`.
+It uses the exact upstream/source patch under `third_party/litert-lm-0.18.0`.
 Implementation and commands are in [the helper guide](../../scripts/streaming-sdk/README.md).
 
 ## Observable acceptance checks
@@ -34,7 +34,7 @@ failed producer forbids fallback to an older successful artifact. The matching p
 `jarvis-streaming-sdk-consumer`; the consolidated release receipt also verifies
 both APKs embed exactly that provenance and retains the SDK and successful
 weightless quality evidence. The full producer/source/ELF evidence is retained
-separately. New source cannot silently fall back to Maven0.16.0.
+separately. New source cannot silently fall back to Maven 0.18.0.
 
 The SDK producer has45minutes and the independent quality job115minutes,
 preserving the combined160-minute ceiling. Quality's internal compiler budget is

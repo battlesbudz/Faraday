@@ -245,6 +245,8 @@ internal class ConversationGeneration(
         retryInvalidToolDraft(draft, input, retryPromptBase)
         guardAudioAccessRefusal(draft, input, retryPromptBase)
         guardVisionPerceptionClaim(draft, input, hasVisualInput, retryPromptBase)
+        guardMemoryDisregard(draft, input, turnPrompt)
+        guardMemoryCompleteness(draft, input, turnPrompt)
         return draft
     }
 
@@ -528,6 +530,105 @@ internal class ConversationGeneration(
             diagnostics.summary("Vision perception claim guard outcome=regenerated stage=generation " +
                 "trigger=$triggerName")
             regenerated
+        }
+    }
+    /**
+     * Final generation-stage check on a turn whose prompt carried memory
+     * records. The draft may still disregard them — claiming no access to
+     * the user's history, or deflecting a question about the user with a
+     * model-identity statement — even though the records were included with
+     * the submission (see [MemoryDisregard]). That claim is always false on
+     * such a turn, so regenerate once, mirroring [guardAudioAccessRefusal]'s
+     * reset and tool policy, with a correction that names the disregard; the
+     * regeneration resubmits the same prompt, records included. If the model
+     * disregards again, substitute the honest fallback rendered from the
+     * injected records rather than let the turn be answered with the claim.
+     * A turn that injected no records never reaches the check: claiming no
+     * access is honest there.
+     */
+    private suspend fun guardMemoryDisregard(draft: ConversationDraft, input: ConversationInput,
+                                             turnPrompt: ConversationPrompt) {
+        if (draft.actionResultMessage != null) return
+        val contents = turnPrompt.injectedMemoryContents()
+        if (contents.isEmpty()) return
+        val userPrompt = draft.answer.invocation.prompt
+        if (!MemoryDisregard.isDisregard(AssistantText.forDisplay(draft.generated.text), userPrompt)) return
+        val answer = draft.answer
+        modelSession.reset()
+        answer.engine.setToolsEnabled(false)
+        answer.engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
+        val prompt = answer.submittedPrompt + MemoryDisregard.CORRECTION
+        val regenerated = input.retry(answer.engine, prompt, answer.streamFilter::accept)
+        answer.telemetry.record("memory disregard retry", regenerated, answer.submittedPrompt.length)
+        draft.generated = if (MemoryDisregard.isDisregard(AssistantText.forDisplay(regenerated.text), userPrompt)) {
+            diagnostics.summary("Memory disregard guard outcome=fallback stage=generation " +
+                "reason=regeneration_disregarded_again")
+            GenerationResult(MemoryDisregard.fallback(contents), -1L, null)
+        } else {
+            diagnostics.summary("Memory disregard guard outcome=regenerated stage=generation")
+            regenerated
+        }
+    }
+
+    /**
+     * Final generation-stage check on a turn whose prompt carried memory
+     * records, after the disregard guard. The draft may answer honestly but
+     * partially — two facts of five records, then a stop (see
+     * [MemoryCompleteness]) — so regenerate once, mirroring
+     * [guardMemoryDisregard]'s reset and tool policy, with a correction
+     * that names what was left out. The two memory guards together
+     * regenerate at most twice per turn: disregard keeps priority, and this
+     * guard evaluates whatever draft the disregard guard left, including
+     * its regeneration. Unlike disregard there is no replacement fallback:
+     * a regeneration that is still partial is published as-is, because a
+     * partial but honest answer beats a stitched one. The one exception is
+     * a regeneration that disregards the records — there the disregard
+     * fallback governs, exactly as if the disregard guard had caught it.
+     */
+    private suspend fun guardMemoryCompleteness(draft: ConversationDraft, input: ConversationInput,
+                                                turnPrompt: ConversationPrompt) {
+        if (draft.actionResultMessage != null) return
+        val contents = turnPrompt.injectedMemoryContents()
+        if (contents.isEmpty()) return
+        val userPrompt = draft.answer.invocation.prompt
+        val assessment = MemoryCompleteness.assess(userPrompt, contents,
+            AssistantText.forDisplay(draft.generated.text))
+        val uncovered = assessment.uncovered
+        if (uncovered.isEmpty()) return
+        val answer = draft.answer
+        modelSession.reset()
+        answer.engine.setToolsEnabled(false)
+        answer.engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
+        // A large packet on a broad question corrects toward the most
+        // important facts (at most ten, woven in), not toward a recital of
+        // every record; every other turn corrects toward full coverage.
+        val correctionText = if (assessment.largePacket) {
+            MemoryCompleteness.topFactsCorrection(uncovered, assessment.topFactsCovered)
+        } else {
+            MemoryCompleteness.correction(uncovered)
+        }
+        val prompt = answer.submittedPrompt + correctionText
+        val regenerated = input.retry(answer.engine, prompt, answer.streamFilter::accept)
+        answer.telemetry.record("memory completeness retry", regenerated, answer.submittedPrompt.length)
+        val regeneratedText = AssistantText.forDisplay(regenerated.text)
+        draft.generated = when {
+            MemoryDisregard.isDisregard(regeneratedText, userPrompt) -> {
+                diagnostics.summary("Memory completeness guard outcome=fallback stage=generation " +
+                    "reason=regeneration_disregarded uncovered=${uncovered.size}")
+                GenerationResult(MemoryDisregard.fallback(contents), -1L, null)
+            }
+            else -> {
+                val remaining = MemoryCompleteness.uncoveredRecords(userPrompt, contents, regeneratedText)
+                if (remaining.isEmpty()) {
+                    diagnostics.summary("Memory completeness guard outcome=regenerated stage=generation " +
+                        "uncovered=${uncovered.size}")
+                } else {
+                    diagnostics.summary("Memory completeness guard outcome=still_partial stage=generation " +
+                        "reason=regeneration_still_partial uncovered=${uncovered.size} " +
+                        "remaining=${remaining.size}")
+                }
+                regenerated
+            }
         }
     }
 }

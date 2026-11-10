@@ -14,8 +14,8 @@
   run: |
     python scripts/streaming-quality/prepare_sdk_source.py \
       --android-receipt "$GITHUB_WORKSPACE/streaming-sdk-input/source-receipt.json" \
-      --patch third_party/litert-lm-0.16.0/PATCH.diff \
-      --reviewed-source third_party/litert-lm-0.16.0/reviewed-source.json \
+      --patch third_party/litert-lm-0.18.0/PATCH.diff \
+      --reviewed-source third_party/litert-lm-0.18.0/reviewed-source.json \
       --sdk "$RUNNER_TEMP/streaming-sdk/sdk" \
       --bazel "$RUNNER_TEMP/streaming-sdk/downloads/bazel-7.6.1-linux-x86_64"
 - name: Build bounded hosted native quality probes
@@ -25,7 +25,7 @@
     python scripts/streaming-quality/build_probes.py \
       --sdk "$RUNNER_TEMP/streaming-sdk/sdk" \
       --android-receipt "$GITHUB_WORKSPACE/streaming-sdk-input/source-receipt.json" \
-      --patch third_party/litert-lm-0.16.0/PATCH.diff \
+      --patch third_party/litert-lm-0.18.0/PATCH.diff \
       --bazel "$RUNNER_TEMP/streaming-sdk/downloads/bazel-7.6.1-linux-x86_64" \
       --bazel-root "$RUNNER_TEMP/streaming-sdk/bazel" \
       --out "$RUNNER_TEMP/streaming-quality-build"

@@ -29,20 +29,24 @@ internal object BenchmarkExportFiles {
             .use { it.write(payload.toByteArray(Charsets.UTF_8)) }
     }
 
-    fun share(context: Context, format: BenchmarkExportFormat, payload: String): Intent {
+    fun share(context: Context, format: BenchmarkExportFormat, payload: String): Intent =
+        share(context, format, payload, "jarvis-pipeline-benchmarks")
+
+    /** Same share transport with a caller-chosen file-name prefix (e.g. the diagnostics export). */
+    fun share(context: Context, format: BenchmarkExportFormat, payload: String, namePrefix: String): Intent {
         val directory = File(context.cacheDir, "benchmark-exports")
         check(directory.isDirectory || directory.mkdirs())
         // A new share must not evict the preceding share while its receiver still reads it.
         val expiry = System.currentTimeMillis() - 24L * 60 * 60 * 1000
         directory.listFiles()?.filter { it.isFile && it.lastModified() < expiry }?.forEach { it.delete() }
-        val file = File(directory, filename(format))
+        val file = File(directory, "$namePrefix-${UUID.randomUUID()}.${format.extension}")
         file.writeText(payload, Charsets.UTF_8)
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.benchmark-exports", file)
         return Intent(Intent.ACTION_SEND).apply {
             type = format.mime
             putExtra(Intent.EXTRA_STREAM, uri)
             putExtra(Intent.EXTRA_TITLE, file.name)
-            clipData = ClipData.newRawUri("Jarvis pipeline benchmark report", uri)
+            clipData = ClipData.newRawUri(file.name, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }

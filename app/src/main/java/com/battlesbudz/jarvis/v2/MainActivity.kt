@@ -184,6 +184,7 @@ class MainActivity : ComponentActivity() {
                 onDiscardModelDownload = modelSetup::discardDownload,
                 onImportModel = modelSetup::importModel,
                 onCopyDiagnostics = { _ -> copyDiagnostics() },
+                onSaveDiagnostics = { onResult -> saveDiagnostics(onResult) },
             )
         }
     }
@@ -242,6 +243,28 @@ class MainActivity : ComponentActivity() {
         val diagnostics = "Jarvis OS V2 — latest Voice Call diagnostics\n\n${runtime.diagnosticRecorder.snapshot()}\n\n${com.battlesbudz.jarvis.v2.voice.MicrophoneHandoff.diagnostics()}\n\n${com.battlesbudz.jarvis.v2.sandbox.SandboxDiagnostics.snapshot(this)}\n\n${com.battlesbudz.jarvis.v2.code.CodeDiagnostics.snapshot(this)}"
         val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("Jarvis diagnostics", diagnostics))
+    }
+
+    private fun saveDiagnostics(onResult: (String) -> Unit) {
+        // Same content as Copy diagnostics, as a structured JSON file — written
+        // to the phone's Downloads folder, not a share chooser (the chooser
+        // never saved anything; Battles's device report on build 1666). The
+        // diagnostics section shows the outcome line until the next action.
+        val payload = com.battlesbudz.jarvis.v2.diagnostics.DiagnosticsDownloadsSave.payload(
+            runtime.diagnosticRecorder,
+            com.battlesbudz.jarvis.v2.voice.MicrophoneHandoff.diagnostics(),
+            System.currentTimeMillis())
+        val buildNumber = runCatching {
+            packageManager.getPackageInfo(packageName, 0).longVersionCode.toString()
+        }.getOrDefault("unknown")
+        val destination = com.battlesbudz.jarvis.v2.diagnostics.DiagnosticsDownloadsSave.downloads(this)
+        lifecycleScope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                com.battlesbudz.jarvis.v2.diagnostics.DiagnosticsDownloadsSave.save(
+                    destination, buildNumber, payload, System.currentTimeMillis())
+            }
+            onResult(com.battlesbudz.jarvis.v2.diagnostics.DiagnosticsDownloadsSave.message(outcome))
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

@@ -92,10 +92,46 @@ class DiagnosticRecorder(
         return restored
     }
 
+    /**
+     * Live section appended to every [snapshot], supplied by the composition root
+     * (JarvisRuntime binds the memory-embeddings probe). It is computed at snapshot
+     * time, so an export always carries current values instead of a state stamped
+     * when some earlier event happened to be recorded; both standard Copy
+     * Diagnostics assembly sites build on [snapshot], so both inherit it. A
+     * failing probe degrades to the plain snapshot rather than breaking the export.
+     */
+    @Volatile var liveSection: (() -> String?)? = null
+
     fun snapshot(): String {
-        return synchronized(entries) {
+        val body = synchronized(entries) {
             "Running build: $buildLabel\n$sessionLabel\n\nExact Gemma prompt submissions (latest 24; includes drafts and retries):\n${inferencePrompts.joinToString("\n\n")}\n\nRetained turn evidence (up to 12 turns):\n${turnEvidence.values.joinToString("\n\n")}\n\nTiming and recognition summaries:\n${summaries.joinToString("\n\n")}\n\nCall actions and turns:\n${important.joinToString("\n\n")}\n\nRecent audio events:\n" + entries.takeLast(100).joinToString("\n\n")
                 .ifBlank { "No runtime events in this session yet." }
+        }
+        val section = runCatching { liveSection?.invoke() }.getOrNull()?.takeIf { it.isNotBlank() }
+        return if (section == null) body else "$body\n\n$section"
+    }
+
+    /**
+     * Structured twin of [snapshot] for the Save diagnostics export: the same
+     * sections and the same entry strings, as genuine JSON (build, generation
+     * time, session, and one array per snapshot section) instead of flattened
+     * text. The live section rides as its own field, exactly as the text
+     * export appends it.
+     */
+    fun snapshotJson(): org.json.JSONObject {
+        val section = runCatching { liveSection?.invoke() }.getOrNull()?.takeIf { it.isNotBlank() }
+        return synchronized(entries) {
+            org.json.JSONObject().apply {
+                put("build", buildLabel)
+                put("generatedAtMs", System.currentTimeMillis())
+                put("session", sessionLabel)
+                put("inferencePrompts", JSONArray().also { array -> inferencePrompts.forEach(array::put) })
+                put("turnEvidence", JSONArray().also { array -> turnEvidence.values.forEach(array::put) })
+                put("summaries", JSONArray().also { array -> summaries.forEach(array::put) })
+                put("callActionsAndTurns", JSONArray().also { array -> important.forEach(array::put) })
+                put("recentAudioEvents", JSONArray().also { array -> entries.takeLast(100).forEach(array::put) })
+                put("liveSection", section ?: org.json.JSONObject.NULL)
+            }
         }
     }
 

@@ -34,7 +34,7 @@ internal class PipelineBenchmarks(
     fun create(turnId: String, channel: String, asr: AsrEngine? = null, tts: TtsEngine? = null): PipelineBenchmarkCapture {
         val input = inputs()
         val selected = input.selectedModel
-        val models = linkedMapOf("llm" to PipelineBenchmarkModel(selected.id, "LiteRT-LM", "0.16.0",
+        val models = linkedMapOf("llm" to PipelineBenchmarkModel(selected.id, "LiteRT-LM", "0.18.0",
             if (selected.recommendedGpu) "GPU_requested" else "CPU_requested", selected.expectedSha256))
         asr?.let { models["asr"] = PipelineBenchmarkModel(it.id,
             if (it == AsrEngine.WHISPER_NPU) "QNN HTP / Sherpa-ONNX fallback" else "Sherpa-ONNX",
