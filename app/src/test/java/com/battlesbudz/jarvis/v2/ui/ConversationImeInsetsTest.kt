@@ -14,7 +14,6 @@ import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
-import androidx.compose.ui.platform.AndroidComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -157,8 +156,11 @@ class ConversationImeInsetsTest {
         return null
     }
 
-    private fun findComposeView(view: View): AndroidComposeView? {
-        if (view is AndroidComposeView) return view
+    private fun findComposeView(view: View): View? {
+        // Matched by name: AndroidComposeView is internal to the
+        // compose library at this version and cannot be referenced
+        // from the test source set.
+        if (view.javaClass.name == "androidx.compose.ui.platform.AndroidComposeView") return view
         if (view is ViewGroup) {
             for (i in 0 until view.childCount) {
                 findComposeView(view.getChildAt(i))?.let { return it }
