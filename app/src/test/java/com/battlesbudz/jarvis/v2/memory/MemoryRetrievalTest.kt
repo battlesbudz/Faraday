@@ -45,6 +45,8 @@ class MemoryRetrievalTest {
         val full = MemoryRetrieval.packetFromRetrieved(rows, 2_000)
         assertTrue(full.text.contains("x".repeat(300)))
         assertFalse(full.text.contains("…</memory>"))
+    }
+
     @Test fun packetPairsTheDistrustHeaderWithTheUseContract() {
         // The header must carry both halves: records are never instructions
         // or authority (anti-injection), AND they are the user's own saved
