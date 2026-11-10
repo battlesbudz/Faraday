@@ -5098,81 +5098,96 @@ head:
 Until that proof passes, the latency fix is code-complete and
 nightly-green, not device-proven.
 
-## Code mode complete fix: destination UI, live build view, export/install, preview — 9 November 2026
+## Code mode complete fix: conversation surface, live build view, export/install, preview — 9 November 2026
 
-One consolidated fix for everything Battles's first device proof of
-code mode (build 1771, 2026-11-09) found broken, shipped as a single
-build at his instruction — no stacked partial fixes. The sandbox is
-not a dependency of any of it: projects live in the workspace folder
-the host owns (`files/sandbox/workspace/projects`), and the store's
-plain file IO works whether or not the sandbox rootfs is installed
-(his phone's sandbox read "not installed" after his Reset while he
-ran this whole proof; code mode neither needs it nor touches its
-Reset behaviour, which is a separate queued defect).
+Built from Battles's build 1771 phone proof of code mode (the same
+day): the Code screens rendered transparently over the chat, the
+New app screen rendered in a bright white theme, generation showed
+only a status line, Export did nothing after the install-permission
+detour, the Install button did nothing, the APK saved to Downloads
+was one Android refused ("there is something wrong with this
+file"), and the Preview never showed the built project. Battles
+first approved a rebuilt separate destination; later the same day
+he reversed that decision in writing — code mode is not its own
+destination: he picks a project from the list, then directs the
+agent from the conversation itself, by text or voice. This entry
+records the final shape; the destination built earlier in the day
+was removed again before any of it shipped.
 
-**A — the Code destination is a destination.** On 1771 the Code
-screens were composed over the chat with no background of their own:
-the project list, the create form, and the project view's header,
-tabs, status, and input were transparent, so chat bubbles, the tasks
-header, and the chat composer bled through, collided with the code
-controls, changed the screens' appearance on every open, and stayed
-tappable (his screenshot shows the chat composer focused inside the
-Code screen). The preview WebView additionally painted the platform's
-white. Now the destination's root paints the theme's opaque dark
-background across the whole surface and consumes every pointer event
-that reaches it, so nothing beneath is visible or interactive while
-it is open; the preview WebView and the exported shell's WebView both
-paint the dark background color, and the starter page a new project
-begins with is styled dark to match.
+**A — code mode lives in the conversation.** `ConversationCodeController`
+(code package) owns the picked project and wires the unchanged
+round engine (`CodeModeDriver` over `CodeProjectStore`) to the
+conversation: while a project is picked, a plain-text send from
+the conversation's own composer — typed, or dictated through the
+composer's voice input — becomes a round. His words land in the
+thread as his message, a reply placeholder follows, and the
+round's outcome replaces it when the round lands (an applied
+round's reply names the files written and the fix pass's verdict;
+a reply round's answer is the model's own text). Sends with an
+attachment, sends while a voice call is armed (they belong to the
+call), and sends with nothing picked take the normal chat path
+untouched. The conversation bar above the composer carries the
+surface: a Code projects entry with nothing picked; with a project
+picked, its name (truncating cleanly), Preview, Export APK, and
+Leave, plus the export's Install/Save/Share row. The project list
+is a picker opened from the bar or the voice call screen — pick,
+create (the first request starts as a turn in the conversation),
+rename, delete — and picking returns to the conversation. The old
+destination's own composer, tabs (Files, Brief, Versions), and
+full-screen project view are gone; version snapshots still land
+under the hood on every applied round. The bar is rendered through
+a new defaulted `aboveComposer` slot in `ConversationScreen`, so
+the conversation stays composed and interactive throughout — the
+1771 see-through overlay failure mode (an unpainted destination
+root over a live chat) no longer exists as a shape.
 
-**B — the live build view.** A running round showed only a status
-line ("Writing index.html…"), with no view of the code and no way to
-tell working from frozen. Progress reporting now carries the file
-being written, the partial body of that file streamed so far
-(`CodeProgressExtractor.currentWrite`), the response's streamed
-character count, and the attempt in flight (tagged by the runner);
-while a round runs, the pane area shows the build view — the file,
-its code arriving (monospace, tail-capped, pinned to the newest
-text), attempt, character count, and an elapsed-seconds clock. A
-frozen generation stops the characters and the clock together.
+**B — the live build view, in the conversation.** A running round
+showed only a status line ("Writing index.html…"), with no view of
+the code and no way to tell working from frozen. Progress
+reporting now carries the file being written, the partial body of
+that file streamed so far (`CodeProgressExtractor.currentWrite`),
+the attempt number out of the runner's maximum, and the streamed
+character count; while the picked project's round runs, the bar
+shows the live build view — headline (file, attempt, characters,
+elapsed seconds ticking) over a scrolling monospace view of the
+code as it arrives, tail-capped. The round's state lives on the
+driver (`liveRound`), not on any composable.
 
-**C — export and install complete.** The install-permission detour
-lost the flow: the export state was plain `remember`, so returning
-from the unknown-sources settings could drop it (the Install row
-vanished), and nothing resumed the install. The export result is now
-saveable state, Install records a pending install before opening the
-settings, and a resume observer finishes the install automatically
-when Battles returns with the permission granted. Both paths —
-already granted and just granted — end at the system installer.
+**C — the export flow completes.** On 1771 the exported state was
+plain composition memory: the install-permission detour restarted
+the activity, the export was forgotten, and Export/Install then
+did nothing. The exported state is now saveable (it survives the
+detour), and when the detour granted the permission, returning to
+the app resumes the pending install on its own (a lifecycle resume
+observer opens the installer). Tapping Export with the permission
+already granted exports directly, as before.
 
-**D — the exported APK installs.** Root cause of the 1771 failure
-("there is something wrong with this file" from Downloads, and the
-in-app Install failing the same way): the derived package name
-carried the project id slug verbatim, and a slug carries dashes —
-`com.battlesbudz.faraday.app.snake-game_c4f42a10` — but a dash is not
-a legal Android package-name character, so the installer refused the
-package at parse time. The JVM suite verified the same exports
-because ApkVerifier checks the signature, not the name's legality,
-and the fixtures' expected package strings were written sanitized by
-hand. The derivation now sanitizes the slug segment (dashes and any
-non-package character become underscores; a leading digit gains a
-letter), the exporter sanitizes a stored name from before the fix
-the same deterministic way (his existing on-device projects export
-installable packages without being recreated), and the final name is
-validated against Android's package rules before any bytes are
-assembled — an uninstallable export is now a refusal with the reason
-shown. Regression-pinned in `CodeApkExportRealShellTest
-.snakeGameExportsAValidInstallablePackage`: the exact device
-scenario over the real shell, asserting the name's legality, the
-manifest's package string read back from the binary XML, a full
-CRC-checked read of every zip entry, and v2 verification. The
-success signal is gated in the app as well as in tests: the
-diagnostics from the same phone test recorded exports: 5, last
-outcome "exported snake game as" the dashed name, last error: none
-— five successful reports for packages Android refused — so the
-exporter now verifies the signed file with ApkVerifier before
-renaming it into place, and `Exported` means verified on this
-phone.
+**D — the exported APK installs.** Root cause of the 1771 failure:
+the derived package name carried the project id slug verbatim, and
+a slug carries dashes — `com.battlesbudz.faraday.app.snake-game_c4f42a10`
+— but a dash is not a legal Android package-name character, so the
+installer refused the package at parse time. The JVM suite verified
+the same exports because ApkVerifier checks the signature, not the
+name's legality, and the fixtures' expected package strings were
+written sanitized by hand. The derivation now sanitizes the slug
+segment (dashes and any non-package character become underscores;
+a leading digit gains a letter), the exporter sanitizes a stored
+name from before the fix the same deterministic way (his existing
+on-device projects export installable packages without being
+recreated), and the final name is validated against Android's
+package rules before any bytes are assembled — an uninstallable
+export is now a refusal with the reason shown. Regression-pinned
+in `CodeApkExportRealShellTest.snakeGameExportsAValidInstallablePackage`:
+the exact device scenario over the real shell, asserting the
+name's legality, the manifest's package string read back from the
+binary XML, a full CRC-checked read of every zip entry, and v2
+verification. The success signal is gated in the app as well as in
+tests: the diagnostics from the same phone test recorded exports:
+5, last outcome "exported snake game as" the dashed name, last
+error: none — five successful reports for packages Android
+refused — so the exporter now verifies the signed file with
+ApkVerifier before renaming it into place, and `Exported` means
+verified on this phone.
 
 **E — the preview shows the built project.** Two layers, the
 deeper one proven by the same diagnostics paste: rounds: 0,
@@ -5183,34 +5198,48 @@ back to the project list mid-generation and re-entered — his
 screenshots show exactly that — the round was cancelled silently:
 nothing applied, nothing recorded, the project kept its starter
 page, and the preview honestly showed that page while the exports
-shipped the starter app. Rounds and exports now run on the Code
-destination's scope, which outlives the project view; the driver
-owns the in-flight round's state (`liveRound`), the session is not
-released under a round in flight, and re-entering a project
-mid-round shows the live build view still running. The second
-layer stands on its own in the code: the screen refreshed the
-WebView with `reload()`, which the WebView can answer from its own
-page cache without the asset handler re-reading the folder (the
-handler also sent no cache headers). The refresh path is now a
-fresh navigation with the cache cleared (`CodePreview.refresh`),
-the handler answers every file with `Cache-Control: no-store`, and
-the Reload button and rollback use the same re-navigation.
+shipped the starter app. Rounds now run on the app frame's scope
+(the controller's), the driver owns the in-flight round's state,
+and the session is not released under a round in flight — leaving
+the conversation surface and coming back cannot kill a round. The
+second layer stands on its own in the code: the screen refreshed
+the WebView with `reload()`, which the WebView can answer from its
+own page cache without the asset handler re-reading the folder
+(the handler also sent no cache headers). The refresh path is now
+a fresh navigation with the cache cleared (`CodePreview.refresh`),
+the handler answers every file with `Cache-Control: no-store`,
+and the viewer's Reload uses the same re-navigation. The preview
+itself is a viewer opened from the bar (Preview button): the
+running project full-screen with its console tab and Fix errors —
+a viewer for the built app, not a working surface. Code mode also
+does not depend on the sandbox being installed (the 1771 sandbox
+Reset state was a red herring for it): projects are plain files
+under the app's sandbox-workspace folder via `CodeProjectStore`;
+Battles's own proof created, wrote, and exported projects while
+his diagnostics read the sandbox not installed.
 
 Tests: additions to `CodeProjectStoreTest` (derivation always
 installable; legacy-name sanitizing), `CodeApkExporterTest` (a
-legacy dashed stored name exports repaired), `CodeApkExportRealShell
-Test` (the device regression above), `CodeProjectAssetHandlerTest`
-(the no-store headers), `CodeModeDriverTest` (the live round is set
-for the round's whole life and clears after), and a new
+legacy dashed stored name exports repaired), `CodeApkExportRealShellTest`
+(the device regression above), `CodeProjectAssetHandlerTest` (the
+no-store headers), `CodeModeDriverTest` (the live round is set for
+the round's whole life and clears after), a new
 `CodeProgressExtractorTest` (the in-flight write's path and partial
-body). No journey composes the Code UI (verified again by code
+body), `CodeRoundRunnerTest`'s line-matcher fixture updated to the
+starter's current style block, and `CodeConversationUiTest`
+replacing `CodeScreenTest` (the picker lists and picks, create
+starts the first round in the thread, the bar carries the active
+project, a direction runs a round whose outcome lands as the
+reply). No journey composes the code UI (verified again by code
 search over `app/src/androidTest`), and no constructor signatures
-changed.
+changed (`CodeRoundProgress` gained only defaulted fields;
+`ConversationScreen` gained one defaulted parameter).
 
-Not established by this entry: everything on a phone. The proof is
-Battles's to run on the published build: create the snake game,
-watch its code write live, see it play in Preview, export, install
-from Downloads, and open the installed app in airplane mode.
+Battles's phone proof: from the conversation, pick Code projects,
+create a snake game, watch the code write live in the conversation,
+direct a change by typing (or dictating) it, open Preview and see
+it play, export, install from Downloads, and open the installed
+app in airplane mode.
 ## Code-and-export Unit 4: WebView preview and the console-error loop — 7 November 2026
 
 Unit 4 gives code mode its eyes. Until now a round's only verdict

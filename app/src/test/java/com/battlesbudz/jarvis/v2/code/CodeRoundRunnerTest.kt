@@ -116,8 +116,13 @@ class CodeRoundRunnerTest {
     }
 
     @Test fun differentlyIndentedEditAppliesViaTheLineMatcher() {
+        // The find block quotes the starter page's style block as it
+        // stands on main (the complete fix appended the dark-theme
+        // colors, wrapping the body rule across two lines) at a
+        // different indentation than the file carries it.
         val find = "<style>\n" +
-            "body { font-family: sans-serif; margin: 2em auto; max-width: 32em; padding: 0 1em; text-align: center; }\n" +
+            "body { font-family: sans-serif; margin: 2em auto; max-width: 32em; padding: 0 1em; text-align: center;\n" +
+            "background: #1c1b1f; color: #e6e1e5; }\n" +
             "</style>"
         val replace = "<style>\nbody { font-family: monospace; }\n</style>"
         fake.enqueueReply(editAction("index.html", find to replace))
