@@ -33,7 +33,15 @@ internal data class ConversationInvocation(
     /** Immutable, complete native encoder result; never provisional action authority. */
     val sealedVoiceAudio: com.google.ai.edge.litertlm.Content.SealedAudioEmbeddings? = null,
     /** Candidate output is still held until exact final prompt/input and ordinary routing match. */
-    val nativeSpeculation: com.battlesbudz.jarvis.v2.voice.NativeVoiceSpeculation? = null
+    val nativeSpeculation: com.battlesbudz.jarvis.v2.voice.NativeVoiceSpeculation? = null,
+    /**
+     * This turn's final ASR transcript, when one exists. On a direct-audio
+     * turn [prompt] is the audio boilerplate rather than the spoken words,
+     * so this is the only text form of the recognized request the native
+     * tool-intent gate can check a model-emitted plan against. Null or
+     * blank when no transcript exists for the turn.
+     */
+    val asrTranscript: String? = null
 )
 
 internal data class ConversationCallbacks(

@@ -299,7 +299,11 @@ internal class ConversationGeneration(
      * Builds an action plan from the model's native tool calls in direct-audio
      * mode, where no transcript exists for the deterministic router. Each call
      * is strictly decoded and audio-guard validated; invalid calls are dropped.
-     * Returns null when no valid calls remain.
+     * A call the turn carries a final ASR transcript for must additionally
+     * pass the intent check in [nativeToolIntentAllows]: an allowlisted call
+     * whose action the recognized request never asked for is dropped here,
+     * before any plan exists, so nothing downstream can execute it. Returns
+     * null when no valid calls remain.
      */
     private fun audioPlanFromCalls(draft: ConversationDraft): ActionTurnPlan.Ready? {
         val invocation = draft.answer.invocation
@@ -307,11 +311,39 @@ internal class ConversationGeneration(
         val steps = draft.generated.toolCalls.mapNotNull { call ->
             val request = NativeActionDecoder.decodeStrict(call) ?: return@mapNotNull null
             if (!AudioToolGuard.allows(request)) return@mapNotNull null
+            if (!nativeToolIntentAllows(invocation, request)) {
+                diagnostics.summary("Audio-native tool plan rejected step=${request.name} " +
+                    "reason=does_not_match_current_intent")
+                return@mapNotNull null
+            }
             ActionTurnPlan.Step(request, "[audio input]")
         }.take(3)
         if (steps.isEmpty()) return null
         diagnostics.summary("Audio-native tool plan steps=${steps.map { it.request.name }}")
         return ActionTurnPlan.Ready(steps)
+    }
+
+    /**
+     * The intent half of the direct-audio native gate — the tool-intent hard
+     * block. [AudioToolGuard] compares a model's call only against an
+     * allowlist and its own arguments, never against what the turn actually
+     * asked for: on build 1771 (call 83164c01) a media_control play plan
+     * passed it and executed on a turn whose recognized request was "What
+     * is the capital of Idaho?", and the playback then stole the call's
+     * audio focus. When the turn carries a final ASR transcript,
+     * [FinalVoiceToolGuard] — the same spoken-request check routed and
+     * frozen voice plans already pass — must also admit the step before it
+     * may execute. Two bounds are deliberate. run_in_sandbox is exempt: a
+     * model-proposed sandbox call never dispatches from the plan (see
+     * [AudioToolGuard]); it parks for Battles's exact approval of the
+     * command text, which is its verification. And with no transcript
+     * there is no recognized text to match against, so the allowlist
+     * policy stands alone, exactly as before.
+     */
+    private fun nativeToolIntentAllows(invocation: ConversationInvocation, request: ActionRequest): Boolean {
+        if (request.name == "run_in_sandbox") return true
+        val recognized = invocation.asrTranscript?.takeIf { it.isNotBlank() } ?: return true
+        return FinalVoiceToolGuard.allows(recognized, request.name, request.arguments)
     }
 
     private suspend fun executeNativeActions(draft: ConversationDraft, phoneActions: ConversationActions) {
@@ -328,10 +360,14 @@ internal class ConversationGeneration(
             return
         }
         val allowed = if (invocation.directVoiceAudio) {
-            // Audio-native path: no transcript exists, so FinalVoiceToolGuard's
-            // spoken-argument verification cannot run. AudioToolGuard applies
-            // the allowlist + argument sanity policy instead.
-            plan.steps.all { AudioToolGuard.allows(it.request) }
+            // Audio-native path: AudioToolGuard applies the allowlist +
+            // argument sanity policy, and nativeToolIntentAllows applies the
+            // spoken-request intent check whenever the turn carries a final
+            // ASR transcript. Plans formed in audioPlanFromCalls already
+            // passed both; this re-verifies any plan that reached execution
+            // by another route, so no native step executes on a direct-audio
+            // turn without the intent check having run on it.
+            plan.steps.all { AudioToolGuard.allows(it.request) && nativeToolIntentAllows(invocation, it.request) }
         } else {
             (invocation.voiceAudio == null && !invocation.frozenVoiceFinal) || plan.steps.all { step ->
                 FinalVoiceToolGuard.allows(step.sourceClause, step.request.name, step.request.arguments)

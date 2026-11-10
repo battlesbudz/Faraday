@@ -6422,3 +6422,74 @@ totally disagreed must instead show the "Voice transcript
 disagreement: result=hard_block" line, with that turn's recorded
 text standing as "[Voice message — transcription unavailable]" and
 no `gemma_final_caption` evidence for it.
+
+## Tool-intent hard block — 9 November 2026
+
+Build 1771's diagnostics (call 83164c01) showed a native tool plan
+executing against a request it did not match. On a clean turn whose
+Whisper transcript was "What is the capital of Idaho?", the model
+planned media_control {action=play} and it executed — the receipt
+reads "Sent play command to the active media session" — after which
+the playback stole the call's audio focus (duplex_audio_focus_lost),
+the barge listener yielded and restarted, and the rest of the call
+degraded. An earlier barge turn in the same call had a plan rejected
+with does_not_match_current_intent, which made the guard look
+intermittent. It was not intermittent; there was no intent check on
+this path at all. The rejection that fired came from the invalid-tool
+retry, which triggers only when model tool calls fail to form any
+executable plan and the draft text is blank. Whether a mismatched
+plan was "rejected" depended entirely on whether the allowlist
+happened to drop it first.
+
+The gap was coverage. Routed and frozen voice plans pass
+FinalVoiceToolGuard, which re-parses the spoken request and requires
+the planned tool and arguments to match it. Direct-audio native plans
+never did: plan formation in ConversationGeneration (audioPlanFromCalls)
+and the execution gate both consulted only AudioToolGuard — an
+allowlist plus argument-sanity policy that media_control passes with
+any non-blank action. The block closes that path. A direct-audio turn
+now carries its final ASR transcript on the invocation (on such a
+turn the prompt is the audio boilerplate, so the transcript is the
+only text form of the recognized request), and every native step must
+pass FinalVoiceToolGuard against that transcript in addition to
+AudioToolGuard — at plan formation, where a failing step is dropped
+with a diagnostics line ("Audio-native tool plan rejected
+step=<tool> reason=does_not_match_current_intent"), and again at the
+execution gate, so no plan reaches execution unchecked by another
+route. When every step drops, no plan forms and the turn falls
+through to the existing invalid-tool retry, which regenerates the
+turn as text under the same does_not_match_current_intent evidence
+as before.
+
+The bounds are deliberate and pinned. A plan that matches the
+recognized request executes exactly as today ("play some music"
+plays; "what's my battery?" reads the battery). run_in_sandbox is
+exempt from the transcript check: a model-proposed sandbox call never
+dispatches from the plan — it parks for Battles's exact approval of
+the command text, which is its verification — and the check would
+otherwise kill the voice sandbox flow, since FinalVoiceToolGuard
+admits only the empty-command routing marker for that tool. And when
+a turn carries no ASR transcript there is no recognized text to match
+against, so the allowlist policy stands alone, exactly as before.
+read_battery and show_schedule keep FinalVoiceToolGuard's existing
+semantics (argument-free and read-only, admitted on any transcript);
+the block's teeth are on the tools the guard verifies — media_control,
+set_volume, open_app, create_reminder, post_notification.
+
+Tests: ToolIntentHardBlockTest pins the verbatim specimen (build
+1771 / call 83164c01: the Idaho question rejects the media play
+before execution, with both diagnostics lines present and the turn
+answering as text), the two spoken-request executions, the sandbox
+proposal bound, and the no-transcript bound. No journey composes the
+changed classes; the one constructor change is a defaulted trailing
+property on the internal ConversationInvocation, which no
+instrumentation probe constructs.
+
+Not established by this entry: everything on a phone. The proof is
+Battles's to run on the published build, as one task: make a short
+voice call, ask "What is the capital of Idaho?" and confirm no music
+starts playing and the question is answered as a question, then ask
+to play some music and confirm it plays, then paste Copy
+Diagnostics. The Idaho turn must show no media execution receipt;
+if the model attempted a media plan there, the diagnostics show the
+"Audio-native tool plan rejected step=media_control" line instead.
