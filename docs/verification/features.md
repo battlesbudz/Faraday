@@ -5897,3 +5897,61 @@ confirmation is a transcription, and a transcription that
 hallucinated words on pure noise would pass the gate; Whisper
 producing nothing is corroborating evidence, not a veto — the same
 trust the ASR route's fallback already runs on.
+
+## No-vision honesty guard hears the build-1771 phrasing — 9 November 2026
+
+Build 1771's diagnostics (call c9a59a9f) showed a fabricated visual
+claim shipping untouched on an audio-only call. Asked aloud "What can
+you see right now?", Jarvis answered: "I see your phone screen. It is
+currently displaying a settings screen." The Turn record shows
+cleaned == raw and no honesty instruction in the prompt. The
+diagnosis is a pattern gap, not a wiring gap: the generation stage
+and the recovery backstop both run the shared
+`VisionPerceptionClaim.triggerFor` on every draft, direct-audio
+turns included, and the admission test ran — the detector simply
+said no claim, so not even the not-fired evaluation line was
+written. Both sentences evaded the enumeration in their own way.
+The "I see" object set deliberately excludes possessives, which
+protects "I see your point" but exempted "I see your phone screen"
+with them; and the display patterns anchor on named subjects ("the
+camera shows", "the image displays"), so the pronoun-subject "It is
+currently displaying a settings screen" walked past.
+
+Two enumerated patterns join `claimPatterns`, shared by
+`assertsPerception` and `assertsConcretePerception` (the concrete
+detector still additionally requires visual content in the
+sentence): a first-person seeing verb with a possessive-led object
+whose scene noun lands within two words of the possessive ("I see
+your phone screen", "I can see your screen"), and an it/this subject
+presenting a concrete thing as currently displayed or shown ("It is
+currently displaying a settings screen", "It shows a map"). The
+two-word reach is the precision bound, pinned as negatives: "I see
+your point about the budget" names no scene noun inside it, "I see
+your message about the screen repair" and "I can see your reasoning
+on the window replacement" keep theirs three words out, and
+data-display sentences ("It is currently showing the quarterly
+results", "This shows the way the totals break down") name none
+after the article. Turns with an attached image or an injected
+visual-context block are still never guarded, honest denials still
+pass untouched, and the correction and honest fallback are
+unchanged.
+
+Tests: `VisionPerceptionClaimTest` gains the verbatim specimen as a
+companion constant (`SPECIMEN_PHONE_SCREEN`, build 1771 / call
+c9a59a9f), pinned at the detector level per sentence and as a whole,
+admitted as a direct-audio trigger, regenerated once at the
+generation stage, replaced by the honest fallback when the
+regeneration claims again, and caught by the recovery backstop —
+plus the possessive/display precision negatives above. No
+constructor signatures changed and no journey composes the changed
+classes.
+
+Not established by this entry: everything on a phone. The proof is
+Battles's to run on the published build, as one task: start an
+audio-only voice call and ask aloud "What can you see right now?"
+Jarvis must answer honestly that it can't see on this turn and
+describe no scene; if the model attempts the claim again, Copy
+Diagnostics for the call shows a "Vision perception claim guard"
+line (outcome=regenerated or outcome=fallback,
+trigger=direct_audio_claim). A picture question with an image
+actually attached must still be answered from the image, untouched.

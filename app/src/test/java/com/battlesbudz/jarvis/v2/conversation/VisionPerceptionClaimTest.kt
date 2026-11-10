@@ -54,6 +54,16 @@ class VisionPerceptionClaimTest {
             "somewhat abstract shape. It appears to be a complex, interwoven structure."
         /** Verbatim fabricated answer, same call, turn 2. */
         const val SPECIMEN_TWO = "I see a large, abstract shape. It is complex and interwoven."
+        /**
+         * Verbatim fabricated answer, build 1771 call c9a59a9f: an
+         * audio-only call, no image attached, asked aloud "What can you
+         * see right now?" The guard was wired in and ran; both sentences
+         * evaded the claim patterns — the possessive-led object of
+         * "I see your…" and the pronoun-subject "It is currently
+         * displaying…" — so the claim shipped with no guard line at all.
+         */
+        const val SPECIMEN_PHONE_SCREEN = "I see your phone screen. " +
+            "It is currently displaying a settings screen."
     }
 
     // ---- question detector ----
@@ -458,6 +468,43 @@ class VisionPerceptionClaimTest {
             "A room with a window and a desk."))
     }
 
+    @Test fun detectorsCatchThe1771PhoneScreenSpecimenVerbatim() {
+        // Each sentence of the build-1771 specimen carries its own
+        // evasion, so each is pinned on its own as well as together.
+        assertTrue(VisionPerceptionClaim.assertsPerception(SPECIMEN_PHONE_SCREEN))
+        assertTrue(VisionPerceptionClaim.assertsConcretePerception(SPECIMEN_PHONE_SCREEN))
+        assertTrue(VisionPerceptionClaim.assertsPerception("I see your phone screen."))
+        assertTrue(VisionPerceptionClaim.assertsConcretePerception("I see your phone screen."))
+        assertTrue(VisionPerceptionClaim.assertsPerception(
+            "It is currently displaying a settings screen."))
+        assertTrue(VisionPerceptionClaim.assertsConcretePerception(
+            "It is currently displaying a settings screen."))
+        assertEquals(VisionPerceptionClaim.Trigger.DIRECT_AUDIO_CLAIM,
+            VisionPerceptionClaim.triggerFor(GemmaAudioInputPolicy.REQUEST, true,
+                SPECIMEN_PHONE_SCREEN))
+    }
+
+    @Test fun detectorsLeavePossessiveAndDisplayNonClaimsAlone() {
+        val negatives = listOf(
+            // The possessive widening reaches only a concrete thing
+            // seen: "your point" names none, and in "your message about
+            // the screen repair" the scene noun sits three words out.
+            "I see your point about the budget.",
+            "I see your message about the screen repair.",
+            "I can see your reasoning on the window replacement.",
+            // A pronoun-subject display sentence about data, not a
+            // perceived scene: no scene noun follows the article.
+            "It is currently showing the quarterly results.",
+            "This shows the way the totals break down."
+        )
+        for (answer in negatives) {
+            assertFalse("expected no perception claim: $answer",
+                VisionPerceptionClaim.assertsPerception(answer))
+            assertFalse("expected no concrete perception claim: $answer",
+                VisionPerceptionClaim.assertsConcretePerception(answer))
+        }
+    }
+
     @Test fun concreteDetectorLeavesMetaphoricalSeeAlone() {
         val negatives = listOf(
             // Metaphorical seeing carries no visual content noun.
@@ -598,6 +645,31 @@ class VisionPerceptionClaimTest {
             "trigger=direct_audio_claim") })
     }
 
+    @Test fun directAudio1771SpecimenIsRegeneratedWithTheClaimNamed() = runBlocking {
+        val lines = mutableListOf<String>()
+        val backend = ScriptedBackend(listOf(
+            GenerationResult(SPECIMEN_PHONE_SCREEN, 1, null),
+            GenerationResult(HONEST_REGEN, 1, null)))
+        val draft = generateDirectAudio(backend, summaryLines = lines)
+        assertEquals(2, backend.requests.size)
+        assertTrue(backend.requests.last().prompt.contains("cannot see anything right now"))
+        assertEquals(HONEST_REGEN, draft.generated.text)
+        assertTrue(lines.any { it.contains("outcome=regenerated stage=generation " +
+            "trigger=direct_audio_claim") })
+    }
+
+    @Test fun directAudio1771SpecimenRepeatedClaimFallsBack() = runBlocking {
+        val lines = mutableListOf<String>()
+        val backend = ScriptedBackend(listOf(
+            GenerationResult(SPECIMEN_PHONE_SCREEN, 1, null),
+            GenerationResult(SPECIMEN_PHONE_SCREEN, 1, null)))
+        val draft = generateDirectAudio(backend, summaryLines = lines)
+        assertEquals(2, backend.requests.size)
+        assertEquals(VisionPerceptionClaim.FALLBACK, draft.generated.text)
+        assertTrue(lines.any { it.contains("outcome=fallback stage=generation " +
+            "trigger=direct_audio_claim") })
+    }
+
     @Test fun directAudioMetaphoricalSeePassesUntouched() = runBlocking {
         val backend = ScriptedBackend(listOf(
             GenerationResult("I see what you mean, sir.", 1, null)))
@@ -641,6 +713,19 @@ class VisionPerceptionClaimTest {
         assertEquals(1, f.backend.requests.size)
         assertEquals(VisionPerceptionClaim.FALLBACK, draft.cleanedResponse)
         assertTrue(f.diagnosticLines.any { it.contains("outcome=fallback stage=recovery " +
+            "trigger=direct_audio_claim") })
+    }
+
+    @Test fun recoveryBackstopFiresOnDirectAudio1771Specimen() = runBlocking {
+        val audio = byteArrayOf(3, 2, 1)
+        val f = RecoveryFixture(GemmaAudioInputPolicy.REQUEST, directAudio = true, voiceAudio = audio)
+        f.backend.outputs += GenerationResult(HONEST_REGEN, 1L, null)
+        val draft = f.draft(SPECIMEN_PHONE_SCREEN)
+        f.recovery.recover(draft)
+        assertEquals(1, f.backend.requests.size)
+        assertSame(audio, f.backend.requests.single().audio)
+        assertEquals(HONEST_REGEN, draft.cleanedResponse)
+        assertTrue(f.diagnosticLines.any { it.contains("outcome=regenerated stage=recovery " +
             "trigger=direct_audio_claim") })
     }
 

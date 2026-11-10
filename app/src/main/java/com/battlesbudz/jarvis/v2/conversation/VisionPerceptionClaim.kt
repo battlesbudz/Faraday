@@ -49,6 +49,20 @@ package com.battlesbudz.jarvis.v2.conversation
  * concrete-claim detector is narrower than the general claim detector
  * on purpose: metaphorical seeing ("I see what you mean", "I see the
  * point") carries no visual content noun and never fires it.
+ *
+ * A build-1771 device call (c9a59a9f) exposed a pure pattern gap in
+ * that claim side — the wiring already ran on the native-audio path,
+ * but the answer "I see your phone screen. It is currently displaying
+ * a settings screen." matched nothing and left no guard line at all.
+ * Both sentences evaded the enumeration: the "I see" object set
+ * deliberately excludes possessives (which protects "I see your
+ * point"), exempting a possessive-led concrete object with them; and
+ * the display patterns anchor on named subjects ("the camera", "the
+ * image"), so a pronoun-subject "It is currently displaying…" walked
+ * past. The two patterns added for that specimen require the concrete
+ * scene noun within two words of the possessive or the displayed
+ * article, so "I see your point about the budget" and "I see your
+ * message about the screen repair" still never match.
  */
 internal object VisionPerceptionClaim {
     const val FALLBACK = "I can't see anything on this turn, sir — no camera image came through."
@@ -165,6 +179,20 @@ internal object VisionPerceptionClaim {
         // point" never match.
         Regex("(?i)\\bi see $objectAfterSee\\b"),
         Regex("(?i)\\bi can see $objectAfterSee\\b"),
+        // The build-1771 specimen's first sentence: "I see your phone
+        // screen." A possessive-led object is a perception claim when
+        // the thing seen is concrete — a scene noun within two words of
+        // the possessive. "I see your point about the budget" names no
+        // scene noun there, and "I see your message about the screen
+        // repair" keeps its scene noun three words out; both stay safe.
+        Regex("(?i)\\bi (see|can see) your (\\w+ ){0,2}?$sceneNoun\\b"),
+        // The specimen's second sentence: "It is currently displaying
+        // a settings screen." A pronoun subject presenting a concrete
+        // thing as currently displayed is the named-subject display
+        // claim below with the subject worn down to "it"/"this".
+        Regex("(?i)\\b(it|this)('s| is) (currently |now )?(displaying|showing) " +
+            "(a|an|the) (\\w+ ){0,2}?$sceneNoun\\b"),
+        Regex("(?i)\\b(it|this) (displays|shows) (a|an|the) (\\w+ ){0,2}?$sceneNoun\\b"),
         Regex("(?i)\\bi('m| am) (seeing|looking at)\\b"),
         Regex("(?i)\\bwhat i (see|can see|am seeing|'m seeing) is\\b"),
         Regex("(?i)\\bthe camera (shows|sees|is showing|displays)\\b"),
