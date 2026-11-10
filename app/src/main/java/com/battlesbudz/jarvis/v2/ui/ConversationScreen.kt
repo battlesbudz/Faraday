@@ -90,6 +90,12 @@ internal fun ConversationScreen(
     val voiceState by callState.collectAsState()
     val taskJournal by (phoneTasks?.collectAsState() ?: remember { mutableStateOf<com.battlesbudz.jarvis.v2.actions.ToolTaskJournal?>(null) })
     val taskError by (phoneTaskError?.collectAsState() ?: remember { mutableStateOf<String?>(null) })
+    // Inline approval cards (2026-11-10): approvals requested in this
+    // conversation render as items in its thread, after the messages,
+    // and are decided in place; the phone-tasks panel no longer holds
+    // them. The tail-scroll accounting below counts them as items.
+    val approvalCards = inlineApprovalCards(taskJournal, thread.id)
+    val approvalTailKey = approvalCards.joinToString(",") { it.approval.id }
     var hadCall by remember { mutableStateOf(false) }
     var voiceVisible by rememberSaveable { mutableStateOf(false) }
     // The End-call control must be available for the whole live session, not
@@ -198,7 +204,9 @@ internal fun ConversationScreen(
             }
         }
     }
-    val currentLastIndex = rememberUpdatedState(thread.messages.lastIndex)
+    val currentLastIndex = rememberUpdatedState(
+        thread.messages.size + approvalCards.size +
+            (if (armed && liveTranscript.isNotBlank()) 1 else 0) - 1)
     LaunchedEffect(listState, thread.id) {
         snapshotFlow {
             val info = listState.layoutInfo
@@ -214,11 +222,11 @@ internal fun ConversationScreen(
             }
         }
     }
-    LaunchedEffect(thread.id, thread.messages.lastOrNull()?.id, thread.messages.lastOrNull()?.text, liveTranscript, armed) {
-        if (armed && liveTranscript.isNotBlank()) {
-            if (stickToBottom) listState.animateScrollToItem(thread.messages.size, Int.MAX_VALUE)
-        } else if (thread.messages.isNotEmpty() && stickToBottom) {
-            listState.animateScrollToItem(thread.messages.lastIndex, Int.MAX_VALUE)
+    LaunchedEffect(thread.id, thread.messages.lastOrNull()?.id, thread.messages.lastOrNull()?.text, liveTranscript, armed, approvalTailKey) {
+        val lastIndex = thread.messages.size + approvalCards.size +
+            (if (armed && liveTranscript.isNotBlank()) 1 else 0) - 1
+        if (lastIndex >= 0 && stickToBottom) {
+            listState.animateScrollToItem(lastIndex, Int.MAX_VALUE)
         }
     }
     Column(Modifier.fillMaxSize().safeDrawingPadding()) {
@@ -285,6 +293,9 @@ internal fun ConversationScreen(
                                         Text("Reply interrupted or not fully spoken", style = MaterialTheme.typography.labelSmall)
                                 }
                             }
+                        }
+                        items(approvalCards, key = { "approval-${it.attempt.id}" }) { card ->
+                            InlineApprovalCard(card, onPhoneTaskAction)
                         }
                         if (armed && liveTranscript.isNotBlank()) item(key = "live_voice_transcript") {
                             Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {

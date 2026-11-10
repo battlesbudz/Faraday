@@ -1963,12 +1963,13 @@ class ReleaseJourneyTest {
             clickFixedMemoryControl(By.res("memory_nav_chat"))
             assertNotNull(find(By.res("chat_composer")))
             assertEquals("The parent Memory-to-Chat route must preserve an active call", callsBeforeRoute, ends.get())
-            clickEnabled(By.res("phone_tasks_open"))
+            // Approvals render inline in the conversation thread now —
+            // no tasks-panel trip. The card shows the exact action.
+            assertNotNull(find(By.res("inline_approval_${combinedChoice.task.id}")))
             assertNotNull(find(By.text("Set media volume to 25%")))
             assertNotNull(find(By.text("Waiting for your approval")))
             clickEnabled(By.res("task_deny_${combinedChoice.task.id}"))
             assertEquals(ToolTaskState.CANCELLED, combinedLedger.get(combinedChoice.task.id)?.state)
-            clickEnabled(By.text("Done"))
             assertNotNull(find(By.res("voice_call_overlay")))
             assertEquals("Task approval UI must not end the active call", callsBeforeRoute, ends.get())
             assertNotNull(find(By.res("voice_call_overlay")))
@@ -2664,7 +2665,7 @@ class ReleaseJourneyTest {
     }
 
     @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
-    @Test fun test42_taskPanelShowsExactChoiceAndReconcilesWithoutRetry() {
+    @Test fun test42_inlineApprovalShowsExactChoiceAndPanelReconcilesWithoutRetry() {
         val file = File(context.cacheDir, "release-task-panel.json").apply { delete() }
         val ledger = ToolTaskLedger(FileToolTaskStore(file))
         val approvals = ActionApprovalStore(FileToolTaskStore(file))
@@ -2693,10 +2694,12 @@ class ReleaseJourneyTest {
             activity.onActivity { host -> host.setContent {
                 MaterialTheme { Surface(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
                     val snapshot by journal.collectAsState()
-                    com.battlesbudz.jarvis.v2.ui.PhoneTaskPanel(snapshot, "panel-thread", null, decide)
+                    Column {
+                        com.battlesbudz.jarvis.v2.ui.InlineApprovalCards(snapshot, "panel-thread", decide)
+                        com.battlesbudz.jarvis.v2.ui.PhoneTaskPanel(snapshot, "panel-thread", null, decide)
+                    }
                 } }
             } }
-            find(By.res("phone_tasks_open")).click()
             assertNotNull(find(By.text("Set media volume to 25%")))
             assertEquals(0, effects.get())
             captureEvidence("phone_task_approval")
@@ -2706,6 +2709,7 @@ class ReleaseJourneyTest {
             ))
             assertEquals(1, effects.get())
             assertEquals(ToolTaskState.SUCCEEDED, ledger.get(pending.task.id)?.state)
+            find(By.res("phone_tasks_open")).click()
             clickEnabled(By.res("task_checked_${unknown.id}"))
             assertTrue("Reconciliation must finish before reopening the ledger", device.wait(
                 Until.gone(By.res("task_checked_${unknown.id}")), 15_000
@@ -2720,6 +2724,7 @@ class ReleaseJourneyTest {
             val declined = ledger.admit(listOf(ActionRequest("read_battery")), "panel-thread", ToolAuthority.EXACT_APPROVAL)
             val choice = gate.prepare(checkNotNull(ledger.get(declined.attemptIds.single())))
             journal.value = ledger.journal()
+            clickEnabled(By.text("Done"))
             clickEnabled(By.res("task_deny_${choice.task.id}"))
             assertTrue("Decline must finish before reopening the ledger", device.wait(
                 Until.gone(By.res("task_deny_${choice.task.id}")), 15_000
@@ -4718,9 +4723,9 @@ class ReleaseJourneyTest {
     // M1d task/conversation scheduling journeys.
 
     @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
-    @Test fun test59_panelApprovalAdmitsScreenSessionAndDispatchesExactly() {
-        // M1d approval-UI wiring (T07): approving a screen task in the task
-        // panel admits the screen-control session grant for its group, and the
+    @Test fun test59_inlineApprovalAdmitsScreenSessionAndDispatchesExactly() {
+        // M1d approval-UI wiring (T07): approving a screen task on the
+        // inline approval card admits the screen-control session grant for its group, and the
         // ledger claim consumes the approval atomically with dispatch
         // eligibility. A changed target invalidates the prior approval (D13).
         val file = File(context.cacheDir, "release-m1d-approval.json").apply { delete() }
@@ -4740,7 +4745,7 @@ class ReleaseJourneyTest {
         // ...so the stale approval cannot admit the session.
         assertTrue("changed target must invalidate the prior approval",
             admission.admitForApproval(checkNotNull(ledger.get(changedOnce.id)), pending.approval) is AdmitResult.Denied)
-        // Fresh approval for the current action goes through the panel.
+        // Fresh approval for the current action goes through the inline card.
         val changedBack = checkNotNull(ledger.revise(changedOnce.id, changedOnce.generation, tapRequest("n0")))
         val fresh = ledger.requestApproval(changedBack.id, changedBack.generation, "native", MobileToolCatalog.VERSION)
         val journal = MutableStateFlow<ToolTaskJournal?>(ledger.journal())
@@ -4750,7 +4755,7 @@ class ReleaseJourneyTest {
             if (a != null && command == "approve") {
                 val approval = a.approvalId?.let { approvals.get(it) }
                 if (approval != null) {
-                    // The M1d approval wiring: the panel approval admits the
+                    // The M1d approval wiring: the inline approval admits the
                     // session grant for this group before the ledger claim.
                     admission.admitForApproval(a, approval)
                     JournaledActionPipeline(ledger, executor).executeAttempt(a, approval)
@@ -4764,15 +4769,14 @@ class ReleaseJourneyTest {
             activity.onActivity { host -> host.setContent {
                 MaterialTheme { Surface(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
                     val snapshot by journal.collectAsState()
-                    com.battlesbudz.jarvis.v2.ui.PhoneTaskPanel(snapshot, "panel-thread", null, decide)
+                    com.battlesbudz.jarvis.v2.ui.InlineApprovalCards(snapshot, "panel-thread", decide)
                 } }
             } }
-            find(By.res("phone_tasks_open")).click()
             captureEvidence("m1d_screen_approval")
             find(By.res("task_approve_${fresh.task.id}")).click()
             // The tap is only an intermediate effect: the UI callback still has
             // to save its receipt, show Stop and publish the journal afterward.
-            assertTrue("Panel approval callback must complete within the UI deadline",
+            assertTrue("Inline approval callback must complete within the UI deadline",
                 approvalCompleted.await(10, java.util.concurrent.TimeUnit.SECONDS))
             activity.onActivity {
                 assertEquals("approved tap must dispatch exactly once", listOf("n0"), bridge.tapped.map { it.id })

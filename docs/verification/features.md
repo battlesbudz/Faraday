@@ -6493,3 +6493,53 @@ to play some music and confirm it plays, then paste Copy
 Diagnostics. The Idaho turn must show no media execution receipt;
 if the model attempted a media plan there, the diagnostics show the
 "Audio-native tool plan rejected step=media_control" line instead.
+
+## Inline approval cards in the conversation — 10 November 2026
+
+Approvals that used to park in the phone-tasks panel (the button above
+the transcript, then a dialog) now render as cards inside the
+conversation thread itself. When an action parks for approval during a
+conversation — a sandbox command, a screen tap, a browser submit, an
+exact-approval phone action — a card appears in that conversation's
+message list showing the exact action (for run_in_sandbox, the exact
+command text, never a paraphrase), with Approve and Deny in place. The
+card fires the same (attempt id, generation, command) callback the
+panel used, so the decision path is unchanged: the approval is still
+consumed atomically with the dispatch claim, screen and browser
+session admissions still ride the approval, a denial still cancels
+the attempt with nothing executed, and a deferred approval (resource
+queue, screen lease held) stays parked and decidable. A card exists
+only while its approval is unconsumed and its attempt belongs to the
+open conversation, so deciding removes the card on the next journal
+snapshot and a card raised in one conversation never appears in
+another. The parked-action receipts now point at "the conversation"
+instead of "the phone tasks panel". The panel itself remains for the
+journal's non-approval bookkeeping only: task status rows, the
+journal error line, unknown-outcome reconciliation ("I've checked
+this") and cancelling queued work; WAITING_APPROVAL attempts no
+longer appear in it at all. No approval gate, grant, or exact-action
+rule changed, and no constructor signature on a probe-touched class
+changed (ConversationScreen and PhoneTaskPanel keep their signatures;
+the cards are new composables), so no new ProGuard keeps were needed.
+
+Established by the JVM suite: the new InlineApprovalCardsTest mounts
+the shipping ConversationScreen against a real ledger and approval
+store — a sandbox card shows the exact command, the tasks panel does
+not open for it, Approve executes the parked action exactly once and
+the card is gone; a set_volume card's Deny cancels the attempt with
+zero executions; switching to a new conversation hides the card while
+the approval stays parked for its own conversation. The release
+journeys were updated to the new surface: test42 decides the exact
+choice on the inline card and still reconciles/cancels through the
+panel, test59's screen-session admission rides the inline approval,
+and the JarvisApp route journey denies from the inline card without
+ending the active call.
+
+Not established by this entry: everything on a phone. The proof is
+Battles's to run on the published build, as one task: in a
+conversation, ask Jarvis to run a harmless command in the sandbox
+(for example, "run echo hello in the sandbox") and confirm an
+approval card appears right in the conversation showing the exact
+command; tap Approve and confirm the command runs; then ask again,
+tap Deny on the new card, and confirm nothing runs and no approval
+is waiting in the Phone tasks panel.

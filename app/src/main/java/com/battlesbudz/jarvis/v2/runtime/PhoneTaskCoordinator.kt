@@ -231,7 +231,7 @@ internal class PhoneTaskCoordinator(
             recordDiagnostic("Screen task parked for approval: ${request.name} group=${group.id}")
             ExecutionResult(false,
                 "I need your approval before I control the screen. " +
-                    "Approve \"${request.describeForOverlay()}\" in the phone tasks panel to continue.")
+                    "Approve \"${request.describeForOverlay()}\" in the conversation to continue.")
         } catch (_: ToolTaskStorageException) {
             ExecutionResult(false,
                 "I couldn't save the screen action, so I didn't start it.")
@@ -267,7 +267,7 @@ internal class PhoneTaskCoordinator(
             ExecutionResult(false,
                 "I need your approval before I submit this form" +
                     (dest?.let { " to $it" } ?: "") +
-                    ". Approve \"Submit the form\" in the phone tasks panel to continue.")
+                    ". Approve \"Submit the form\" in the conversation to continue.")
         } catch (_: ToolTaskStorageException) {
             ExecutionResult(false,
                 "I couldn't save the browser submission, so I didn't start it.")
@@ -298,7 +298,7 @@ internal class PhoneTaskCoordinator(
             recordDiagnostic("Sandbox command parked for approval: group=${group.id}")
             ExecutionResult(false,
                 "I need your approval before I run that command in the sandbox. " +
-                    "Approve \"${request.describeForOverlay()}\" in the phone tasks panel to continue.")
+                    "Approve \"${request.describeForOverlay()}\" in the conversation to continue.")
         } catch (_: ToolTaskStorageException) {
             ExecutionResult(false,
                 "I couldn't save the sandbox command, so I didn't run it.")

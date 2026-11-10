@@ -16,7 +16,8 @@ import com.battlesbudz.jarvis.v2.actions.ActionRequest
  * Phase 2): its argument is a free-form command that no transcript check
  * could verify anyway, and it can never dispatch from this path — the
  * model call only ever parks for Battles's exact approval of the command
- * text in the phone tasks panel, which is the verification step.
+ * text on the inline approval card in the conversation, which is the
+ * verification step.
  */
 object AudioToolGuard {
     /**
