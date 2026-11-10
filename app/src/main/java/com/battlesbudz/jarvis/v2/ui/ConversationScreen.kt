@@ -64,6 +64,10 @@ internal fun ConversationScreen(
     inputBusyState: MutableState<Boolean>? = null,
     benchmarksOpenState: MutableState<Boolean>? = null,
     benchmarkReplyState: MutableState<String?>? = null,
+    // Optional in-conversation content rendered in the column directly
+    // above the composer (code mode's project bar lives there, so the
+    // conversation stays the working surface). Empty by default.
+    aboveComposer: @Composable () -> Unit = {},
     voiceContent: @Composable (visible: Boolean, settingsOpen: Boolean, dismissSettings: () -> Unit, startRequest: Long) -> Unit
 ) {
     val thread by history.current.collectAsState()
@@ -315,6 +319,8 @@ internal fun ConversationScreen(
                 if (preparingAttachment) Text("Preparing attachment…", modifier = Modifier.padding(horizontal = 16.dp))
                 if (armed) Text("Attachments are unavailable during a voice call. End the call to add one.",
                     style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
+
+                aboveComposer()
 
                 key(thread.id) {
                     ChatVoiceInput(enabled = !sending && !effectiveVoiceVisible && !armed && !preparingAttachment,

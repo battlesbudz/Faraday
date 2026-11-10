@@ -16,6 +16,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -23,6 +24,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import com.battlesbudz.jarvis.v2.ai.ModelCatalog
 import com.battlesbudz.jarvis.v2.ai.ModelStore
+import com.battlesbudz.jarvis.v2.code.CodeModeDriver
+import com.battlesbudz.jarvis.v2.code.ConversationCodeController
 import com.battlesbudz.jarvis.v2.memory.AndroidMemoryOs
 
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
@@ -80,7 +83,8 @@ fun JarvisApp(
         var pickerModelId by rememberSaveable { mutableStateOf<String?>(null) }
         var showingVoiceCalls by rememberSaveable { mutableStateOf(false) }
         var showingMemory by rememberSaveable { mutableStateOf(false) }
-        var showingCode by rememberSaveable { mutableStateOf(false) }
+        var showingCodePicker by rememberSaveable { mutableStateOf(false) }
+        var showingCodePreview by rememberSaveable { mutableStateOf(false) }
         var memoryReturnToVoice by rememberSaveable { mutableStateOf(false) }
         var memoryReturnToChat by rememberSaveable { mutableStateOf(false) }
         var showingFullSetup by rememberSaveable { mutableStateOf(false) }
@@ -107,7 +111,37 @@ fun JarvisApp(
         // The band shows only while the chat destination is the visible
         // content (never over Memory, the voice-call list/detail, or setup).
         val chatDestination = setup.modelsReady && setup.smokeTestPassed &&
-            selectedVoiceCall == null && !showingVoiceCalls && !showingMemory && !showingCode
+            selectedVoiceCall == null && !showingVoiceCalls && !showingMemory
+        // Code mode in the conversation (Battles, 2026-11-09: the
+        // separate code destination is reversed). The controller owns
+        // the picked project; plain-text sends while a project is
+        // picked become code rounds in the thread, everything else —
+        // attachments, sends during a voice call (they belong to the
+        // call), sends with nothing picked — takes the normal chat
+        // path untouched.
+        val codeScope = rememberCoroutineScope()
+        val codeDriver = remember(codeAccess) {
+            CodeModeDriver(codeAccess.store, codeAccess.statsStore, codeAccess.engineAccess)
+        }
+        val codeController = remember(codeAccess, conversationHistory) {
+            ConversationCodeController(
+                store = codeAccess.store,
+                statsStore = codeAccess.statsStore,
+                driver = codeDriver,
+                engineAccess = codeAccess.engineAccess,
+                history = conversationHistory,
+                scope = codeScope,
+            )
+        }
+        val onSendRouted: (String, com.battlesbudz.jarvis.v2.chat.ChatAttachment?) -> String? = { text, attachment ->
+            if (attachment == null && text.isNotBlank() && !activeVoiceCall &&
+                codeController.activeProjectId.value != null
+            ) {
+                codeController.sendDirection(text.trim())
+            } else {
+                onSendChat(text, attachment)
+            }
+        }
         val modelSelector: @Composable (Boolean) -> Unit = { enabled ->
             ModelSelectionSection(setup, enabled, benchmarkStore, onOpenMemory = { showingMemory = true })
         }
@@ -193,7 +227,7 @@ fun JarvisApp(
                                         }
                                     )
                                     else -> ConversationScreen(
-                                        history = conversationHistory, busy = chatBusy, callState = callState, onSend = onSendChat,
+                                        history = conversationHistory, busy = chatBusy, callState = callState, onSend = onSendRouted,
                                         phoneTasks = phoneTasks, phoneTaskError = phoneTaskError, onPhoneTaskAction = onPhoneTaskAction,
                                         selectedModel = setup.selectedModel,
                                         onSelectConversation = onSelectConversation,
@@ -216,7 +250,14 @@ fun JarvisApp(
                                         headerErrorState = chatHeaderError,
                                         inputBusyState = chatInputBusy,
                                         benchmarksOpenState = chatBenchmarksOpen,
-                                        benchmarkReplyState = chatBenchmarkReply
+                                        benchmarkReplyState = chatBenchmarkReply,
+                                        aboveComposer = {
+                                            CodeConversationBar(
+                                                controller = codeController,
+                                                onOpenPicker = { showingCodePicker = true },
+                                                onOpenPreview = { showingCodePreview = true },
+                                            )
+                                        }
                                     ) { visible, settingsOpen, dismissSettings, startRequest ->
                                         VoiceCallScreen(
                                             visible = visible, settingsOpen = settingsOpen, memoryOpen = showingMemory,
@@ -234,7 +275,7 @@ fun JarvisApp(
                                             onWorkflowSetEnabled = onWorkflowSetEnabled,
                                             onConnectMcpServer = onConnectMcpServer,
                                             callEvidenceActions = callEvidence,
-                                            onOpenCodeProjects = { showingCode = true },
+                                            onOpenCodeProjects = { showingCodePicker = true },
                                         )
                                     }
                                 }
@@ -253,17 +294,20 @@ fun JarvisApp(
                                 onOpenChat = { memoryReturnToVoice = false; memoryReturnToChat = true; showingMemory = false },
                                 onOpenVoice = { memoryReturnToChat = false; memoryReturnToVoice = true; showingMemory = false },
                             )
-                        // The Code destination (code-and-export Unit 6) overlays the
-                        // same way: chat stays composed beneath, and rounds borrow
-                        // the shared engine through the injected lease.
-                        if (showingCode) {
-                            CodeScreen(
-                                store = codeAccess.store,
-                                statsStore = codeAccess.statsStore,
-                                engineAccess = codeAccess.engineAccess,
-                                roundsEnabled = !chatSending && !activeVoiceCall,
-                                onBack = { showingCode = false },
-                                modifier = Modifier.fillMaxSize(),
+                        // Code mode's picker and preview viewer overlay the
+                        // same way; the working surface is the conversation
+                        // itself (the bar above its composer and the turns
+                        // in the thread), not a destination.
+                        if (showingCodePicker) {
+                            CodeProjectsPicker(
+                                controller = codeController,
+                                onDismiss = { showingCodePicker = false },
+                            )
+                        }
+                        if (showingCodePreview) {
+                            CodePreviewViewer(
+                                controller = codeController,
+                                onDismiss = { showingCodePreview = false },
                             )
                         }
                     } else if (showingMemory) {
