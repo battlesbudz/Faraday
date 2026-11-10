@@ -361,7 +361,15 @@ internal fun ConversationScreen(
                             draft = if (draft.isBlank()) text else draft.trimEnd() + " " + text
                             error = null
                         }, onError = { error = it }) { voiceButton ->
-                        Row(Modifier.fillMaxWidth().imePadding().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        // No imePadding on this row: the root column's
+                        // safeDrawingPadding already applies the IME
+                        // inset once (safeDrawing includes ime) and
+                        // nothing between here and the root consumes
+                        // it, so padding for it again lifted the
+                        // composer a second keyboard height and left a
+                        // keyboard-sized gap under it (issue #19's
+                        // gap, the in-code half its window fix missed).
+                        Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                             OutlinedTextField(value = draft, onValueChange = { draft = it }, placeholder = { Text("Message Jarvis") },
                                 modifier = Modifier.weight(1f).testTag("chat_composer"), maxLines = 5, enabled = !sending && !inputBusy && (!effectiveVoiceVisible || armed),

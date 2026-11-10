@@ -91,7 +91,12 @@ internal fun ChatVoiceInput(enabled: Boolean, canSendAudio: Boolean, audioUnavai
     }
     BackHandler(enabled = recording) { cancel() }
     if (recording) {
-        Surface(modifier = Modifier.fillMaxWidth().imePadding().padding(12.dp),
+        // No imePadding on this surface either: it takes the composer
+        // row's slot in the same conversation column, whose root
+        // safeDrawingPadding already applies the IME inset once
+        // (safeDrawing includes ime). Padding for it here lifted the
+        // dictation bar a second keyboard height, same as the row.
+        Surface(modifier = Modifier.fillMaxWidth().padding(12.dp),
             shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh) {
             Column(Modifier.padding(4.dp)) {

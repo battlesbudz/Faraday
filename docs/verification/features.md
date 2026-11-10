@@ -6625,3 +6625,54 @@ style: `-keep class com.battlesbudz.jarvis.v2.ui.InlineApprovalCardsKt { *; }`.
 ConversationScreenKt and PhoneTaskPanelKt were already kept, and the
 action types in the composable's signature are covered by the
 existing ToolTask** keep, so this one line restores the link.
+
+## Keyboard: the IME inset is applied once, by the conversation root — 10 November 2026
+
+Battles's build-1771 proof found the chat composer floating about
+one keyboard height above the open keyboard, with a keyboard-sized
+stretch of dead space under it. Issue #19's fix had pinned the
+window side (enableEdgeToEdge, so the window never both resizes
+for the keyboard and delivers its inset), but a second, in-code
+double application survived it. Traced end to end, the bottom
+inset chain on the conversation surface is: the edge-to-edge
+window delivers the IME inset; JarvisApp's surface and the wisp
+frame apply none of it at the bottom (the frame pads only
+safeDrawing's top side); ConversationScreen's root column pads by
+WindowInsets.safeDrawing, which already includes the IME inset;
+and the composer row then padded by imePadding on top of that.
+Nothing in between consumes the inset — the repo has no
+consumeWindowInsets anywhere — so the keyboard height landed
+twice and the composer hung a full keyboard height too high. The
+dictation surface that takes the composer's slot while recording
+carried the same extra imePadding and floated the same way.
+
+The composer row and the dictation surface no longer pad for the
+IME. The root column's safeDrawingPadding is the single owner of
+the inset on this surface, so the composer hugs the keyboard.
+With the keyboard closed the IME inset is zero and the geometry
+is exactly what it was: the composer rests above the navigation
+bar on the root's system-bar padding alone.
+
+ConversationImeInsetsTest pins the accounting on the mounted
+ConversationScreen: it dispatches real window insets at the host
+window and measures the composer's bottom edge — one 600 px IME
+inset (plus the row's own 12 dp padding) above the root's bottom
+with the keyboard open, and the unchanged navigation-bar resting
+gap with it closed. No composable signature changed, so no new
+ProGuard keeps were needed; ConversationScreenKt, the one surface
+here the journeys compose directly, was already kept.
+
+The same double application exists on two surfaces this change
+does not touch, being outside its approved scope: ModelBrowser's
+root column chains safeDrawingPadding().imePadding() on one
+element, and a bottom-end column in VoiceCallScreen pads by
+imePadding under the same safeDrawing root, so a keyboard opened
+over the call UI double-lifts it too. Both are one-line removals
+of the same shape whenever they are chartered.
+
+Not established by this entry: everything on a phone. The proof
+is Battles's to run on the published build, as one task: open a
+conversation, tap the message field so the keyboard opens, and
+confirm the composer sits directly above the keyboard with no
+keyboard-height gap under it; then dismiss the keyboard and
+confirm the composer rests where it always did.
