@@ -2709,7 +2709,17 @@ class ReleaseJourneyTest {
             ))
             assertEquals(1, effects.get())
             assertEquals(ToolTaskState.SUCCEEDED, ledger.get(pending.task.id)?.state)
-            find(By.res("phone_tasks_open")).click()
+            // The fixture parks the panel button at the window's top edge,
+            // under the status bar, and a plain click() taps its center: on
+            // the foldable the status bar is 74px tall, so that center tap
+            // lands in the SystemUI strip and is swallowed before the panel
+            // dialog can open (on the phone profiles the 63px bar leaves the
+            // center 1px inside the app window). Tap near the button's lower
+            // edge instead — inside the app window on every profile.
+            val panelButton = find(By.res("phone_tasks_open"))
+            assertTrue("Panel button tap must inject",
+                device.click(panelButton.visibleBounds.centerX(), panelButton.visibleBounds.bottom - 16))
+            device.waitForIdle()
             clickEnabled(By.res("task_checked_${unknown.id}"))
             assertTrue("Reconciliation must finish before reopening the ledger", device.wait(
                 Until.gone(By.res("task_checked_${unknown.id}")), 15_000
