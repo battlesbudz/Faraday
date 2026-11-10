@@ -302,7 +302,25 @@ internal class OrdinaryVoiceReplyStage(
                             observation.benchmark.configuration("gemma_final_caption_result", result.end.name.lowercase())
                             val heard = result.value
                             val finalCaption = heard?.let { com.battlesbudz.jarvis.v2.voice.TranscriptContent.speech(it.text).trim() }.orEmpty()
-                            if (heard != null && heard.toolCalls.isEmpty() && com.battlesbudz.jarvis.v2.voice.VoiceTranscriptResolver.hasTranscript(finalCaption) &&
+                            // Transcript-disagreement hard block (Battles, 2026-11-09):
+                            // when Whisper and this Gemma caption share no words and
+                            // differ in script, neither is the user's words (build
+                            // 1771, call 83164c01: "and it does not matter." against
+                            // "प्रस्थान मेरा है" — both engines invented words on the
+                            // same audio, and the caption was still committed into
+                            // dialogue history and request evidence). Commit neither:
+                            // no caption commit, no turn evidence, no memory capture.
+                            // Leaving finalCaptionPublished false routes the turn to
+                            // the same dropped outcome as a failed caption — the
+                            // finally below commits UNTRANSCRIBED in place of either
+                            // text, so nothing downstream can plan from them.
+                            val disagreementBlocked = com.battlesbudz.jarvis.v2.voice.TranscriptDisagreement.hardBlock(finalized.asrTranscript, finalCaption)
+                            if (disagreementBlocked) {
+                                observation.benchmark.configuration("gemma_final_caption_result", "disagreement_hard_block")
+                                diagnosticRecorder.recordImportant("Voice transcript disagreement: result=hard_block action=commit_neither evidence=none memory_capture=false " +
+                                    "whisperChars=${finalized.asrTranscript.length} gemmaChars=${finalCaption.length}")
+                            }
+                            if (heard != null && !disagreementBlocked && heard.toolCalls.isEmpty() && com.battlesbudz.jarvis.v2.voice.VoiceTranscriptResolver.hasTranscript(finalCaption) &&
                                 !com.battlesbudz.jarvis.v2.voice.TranscriptContent.isSoundOnly(finalCaption)) {
                                 val farewell = com.battlesbudz.jarvis.v2.voice.VoiceCallPolicy.isGoodbye(finalCaption)
                                 var committed: com.battlesbudz.jarvis.v2.voice.VoiceSessionController.CaptionCommit? = null
@@ -330,7 +348,7 @@ internal class OrdinaryVoiceReplyStage(
                                     // Call-scoped cleanup runs outside publication/queue/controller locks.
                                     if (published && farewell) call.events.returnToWake(prepared.expectedCallId)
                                 }
-                            } else if (heard != null) observation.benchmark.configuration("gemma_final_caption_result", "empty_or_invalid")
+                            } else if (heard != null && !disagreementBlocked) observation.benchmark.configuration("gemma_final_caption_result", "empty_or_invalid")
                         } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
                         catch (error: Throwable) {
                             if (error is com.battlesbudz.jarvis.v2.voice.PostAnswerCaptionContinuation.NativeReleaseFailure ||

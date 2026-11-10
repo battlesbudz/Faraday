@@ -5955,3 +5955,64 @@ Diagnostics for the call shows a "Vision perception claim guard"
 line (outcome=regenerated or outcome=fallback,
 trigger=direct_audio_claim). A picture question with an image
 actually attached must still be answered from the image, untouched.
+
+## Transcript-disagreement hard block — 9 November 2026
+
+Build 1771's diagnostics (call 83164c01) showed the pipeline trusting
+the wrong recognizer on a barge turn. Whisper's line for the turn was
+"and it does not matter."; Gemma's final caption for the same audio
+was "प्रस्थान मेरा है" (Hindi). Battles confirmed he said neither —
+both engines invented words on the same audio, and the two inventions
+shared nothing — yet the caption was committed as his words all the
+same: `commitCaption` wrote it into the call's dialogue history, the
+turn's `gemma_final_caption` evidence recorded it, memory capture fed
+on it, and the next barge turn ran a stale tool plan built from it.
+His ruling on the case: "that needs to be a hard block."
+
+The block sits at the seam where a direct-audio turn's words are
+committed — the final-caption gate in `OrdinaryVoiceReplyStage`, the
+only place a caption can become the recorded user text. A new pure
+check, `TranscriptDisagreement.hardBlock`, compares the turn's
+Whisper transcript with the Gemma final caption: when the two share
+no words at all AND their dominant letter scripts differ, the turn
+has no trustworthy transcript. Neither text is committed, no
+`gemma_final_caption` evidence is recorded, nothing is captured to
+memory, and a blocked caption cannot act as a farewell. The turn
+falls through to the existing dropped outcome for a caption that
+cannot be used: the stage's finally commits
+`VoiceTranscriptResolver.UNTRANSCRIBED` in place of either text, so
+nothing downstream — history, request evidence, or a later turn's
+planning — can build on the inventions. Diagnostics record the block
+by name: a "Voice transcript disagreement: result=hard_block
+action=commit_neither evidence=none memory_capture=false" line, and
+the benchmark configuration `gemma_final_caption_result` reads
+`disagreement_hard_block` for the turn.
+
+The bounds are deliberate and pinned. Any single shared word is
+agreement enough and the caption commits exactly as before;
+same-script total disagreement ("turn it up" against "increase the
+volume") is ordinary ASR noise and untouched; and a turn where only
+one recognizer produced words has nothing to disagree with — that
+case stays with the follow-up word-confirmation gate, not this
+block. Script is judged by the dominant Unicode script of each
+text's letters, so a stray foreign word inside an otherwise English
+caption changes nothing.
+
+Tests: `TranscriptDisagreementTest` pins the verbatim specimen pair
+(build 1771 / call 83164c01) in both argument orders, agreement and
+partial-overlap passes, the same-script total-disagreement negative,
+single-recognizer and blank turns, `[NO_SPEECH]` and sound-caption
+markers as non-words, and the dominant-script mixed-caption case.
+No constructor signatures changed and no journey composes the
+changed classes.
+
+Not established by this entry: everything on a phone. The proof is
+Battles's to run on the published build, as one task: make a voice
+call, ask for the battery level twice (both should answer and record
+normally), talk over one reply with a mumbled half-sentence in
+between, then paste Copy Diagnostics. Normal turns must show their
+usual `gemma_final_caption` evidence; any turn whose two transcripts
+totally disagreed must instead show the "Voice transcript
+disagreement: result=hard_block" line, with that turn's recorded
+text standing as "[Voice message — transcription unavailable]" and
+no `gemma_final_caption` evidence for it.
