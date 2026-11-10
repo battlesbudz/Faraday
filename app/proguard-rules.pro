@@ -126,6 +126,12 @@
 # header landing's rewrite); without this keep the app build renames
 # ChatHeaderBand while the test DEX links it by its source name.
 -keep class com.battlesbudz.jarvis.v2.ui.ChatHeaderBandKt { *; }
+# test42/test59 also compose the inline approval cards directly from
+# the test DEX (the inline-approval-cards landing); without this keep
+# the app build renames InlineApprovalCards while the test DEX links
+# it by its source name, and the journey process dies with
+# NoSuchMethodError before the Smart Turn probe can run.
+-keep class com.battlesbudz.jarvis.v2.ui.InlineApprovalCardsKt { *; }
 -keep class com.battlesbudz.jarvis.v2.ui.MemoryScreenKt { *; }
 -keep class com.battlesbudz.jarvis.v2.ai.LocalModelSpec { *; }
 # Release instrumentation seeds the shipping parent through ModelCatalog; retain its Kotlin object INSTANCE ABI.

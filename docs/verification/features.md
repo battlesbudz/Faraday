@@ -6603,3 +6603,25 @@ in the conversation proposing a read of the file (for example
 "cat note.txt") — not an error, not markup text; approve it and
 confirm the reply reports the file's contents, then paste Copy
 Diagnostics.
+
+## Correction: the inline approval cards needed a ProGuard keep — 10 November 2026
+
+The inline-approval-cards entry above closed by saying no new
+ProGuard keeps were needed, on the grounds that no constructor
+signature on a probe-touched class changed. That reasoning missed
+the second half of the rule: test42 and test59 compose the new
+InlineApprovalCards composable directly from the instrumentation
+DEX, so the app build's R8 renaming broke the link even though no
+signature changed. Every release journey that booted died in test42
+with NoSuchMethodError (InlineApprovalCards, in the renamed
+InlineApprovalCardsKt class), the crash ended the instrumentation
+process before the Smart Turn probe step could run, and no build
+after 1805 could publish. The JVM suite never saw it: Robolectric
+does not run R8, so all 3,225 unit tests passed over a release-only
+break.
+
+The fix is one keep in app/proguard-rules.pro, in the header fix's
+style: `-keep class com.battlesbudz.jarvis.v2.ui.InlineApprovalCardsKt { *; }`.
+ConversationScreenKt and PhoneTaskPanelKt were already kept, and the
+action types in the composable's signature are covered by the
+existing ToolTask** keep, so this one line restores the link.
