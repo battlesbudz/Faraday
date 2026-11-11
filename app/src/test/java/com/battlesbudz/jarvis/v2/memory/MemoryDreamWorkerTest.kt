@@ -56,7 +56,13 @@ class MemoryDreamWorkerTest {
         try {
             val result = runBlocking { AndroidMemoryDream.runScheduledPass(context) }
             assertTrue(result is ListenableWorker.Result.Retry)
-            val entry = AndroidMemoryDream.journalState(context).entries.single { it.outcome == DreamRunOutcome.SKIPPED_CONTENTION }
+            // Filter by the note as well as the outcome: the journal is
+            // shared app storage, and other dream tests journal their own
+            // contention skips (engine_resident / voice_session_active)
+            // into the same file when they share a Robolectric sandbox.
+            val entry = AndroidMemoryDream.journalState(context).entries.single {
+                it.outcome == DreamRunOutcome.SKIPPED_CONTENTION && it.note == "model_busy"
+            }
             assertEquals("model_busy", entry.note)
             assertTrue(entry.outputs.isEmpty())
         } finally {

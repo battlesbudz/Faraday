@@ -87,6 +87,13 @@ class MemoryDreamSharedSlotTest {
 
     @Test fun emptySlotLoadsTheJudgeRunsThePassAndLeavesNothingResident() {
         dummyModelPresent()
+        // The full pass reaches AndroidMemoryOs, whose first-touch wiring
+        // enqueues periodic work; Robolectric never runs the manifest's
+        // WorkManager initializer, so initialize it the manual way the
+        // WorkManager error message names.
+        if (runCatching { androidx.work.WorkManager.getInstance(context) }.isFailure) {
+            androidx.work.WorkManager.initialize(context, androidx.work.Configuration.Builder().build())
+        }
         val slot = FakeSlot()
         withSlot(slot) {
             val result = runBlocking { AndroidMemoryDream.runScheduledPass(context) }
