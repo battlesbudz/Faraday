@@ -38,7 +38,9 @@ internal class LiteRtFinalVoiceTranscriptionEngine(
     override var benchmarkPurpose: PipelineBenchmarkPurpose
         get() = delegate.benchmarkPurpose
         set(value) { delegate.benchmarkPurpose = value }
-    override suspend fun setToolsEnabled(enabled: Boolean) = delegate.setToolsEnabled(enabled)
+    override suspend fun setToolsEnabled(enabled: Boolean) {
+        delegate.setToolsEnabled(enabled)
+    }
     override suspend fun generateAudio(prompt: String, audioPcm: ByteArray,
         onStreamToken: (String) -> Unit): GenerationResult =
         delegate.generateAudio(prompt, audioPcm, onStreamToken)

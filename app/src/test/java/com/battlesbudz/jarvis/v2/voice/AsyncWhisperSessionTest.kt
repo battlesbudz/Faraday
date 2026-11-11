@@ -99,7 +99,7 @@ class AsyncWhisperSessionTest {
     @Test fun speechEndBoundaryDecodeIsReusedByFinishDespiteTrailingSilence() {
         val boundaryDone = CountDownLatch(1)
         val clips = mutableListOf<ByteArray>()
-        val s = AsyncWhisperSession({ pcm -> clips.add(pcm); "Complete question." },
+        val s = AsyncWhisperSession({ pcm -> clips.add(pcm); "Complete question." }, {},
             log = { if (it.startsWith("whisper_partial")) boundaryDone.countDown() })
         try {
             s.observeSpeech(true)
@@ -123,7 +123,7 @@ class AsyncWhisperSessionTest {
         val s = AsyncWhisperSession({ pcm ->
             clips.add(pcm)
             if (clips.size == 1) "First part" else "First part and the rest."
-        }, log = { if (it.startsWith("whisper_partial")) firstDone.countDown() })
+        }, {}, log = { if (it.startsWith("whisper_partial")) firstDone.countDown() })
         try {
             s.observeSpeech(true)
             s.accept(ByteArray(96000), false)
