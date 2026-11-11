@@ -12,6 +12,9 @@ import com.battlesbudz.jarvis.v2.actions.ExternalAgentProvider
 import com.battlesbudz.jarvis.v2.actions.ToolTaskLedger
 import com.battlesbudz.jarvis.v2.ai.CodeModeEngine
 import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngine
+import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngineFactory
+import com.battlesbudz.jarvis.v2.ai.LocalModelEngine
+import com.battlesbudz.jarvis.v2.ai.LocalModelSpec
 import com.battlesbudz.jarvis.v2.ai.ModelCatalog
 import com.battlesbudz.jarvis.v2.ai.createResidentEngine
 import com.battlesbudz.jarvis.v2.ai.ModelStore
@@ -1220,5 +1223,60 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
          * whole runtime just to learn that no engine is resident.
          */
         fun peekInstance(): JarvisRuntime? = instance
+
+        init {
+            // The dream pass reaches the shared engine slot only through
+            // this narrow bridge (composition owns runtime access).
+            EngineSlot.access = RuntimeEngineSlotAccess
+        }
+    }
+}
+
+/**
+ * The dream pass's bridge to this runtime's engine slot; see [EngineSlot].
+ * Reads resolve the live instance without creating one; only an actual
+ * judge load builds the runtime, because the loaded engine has to live
+ * in its slot.
+ */
+private object RuntimeEngineSlotAccess : EngineSlot.Access {
+    override fun engineLoaded(): Boolean =
+        JarvisRuntime.peekInstance()?.conversationEngine != null
+
+    override fun sessionActive(): Boolean {
+        val runtime = JarvisRuntime.peekInstance() ?: return false
+        return runtime.voiceSessionArmed || runtime.voiceSessionController.currentCallId() != null
+    }
+
+    override suspend fun loadJudgeEngine(
+        app: android.content.Context,
+        spec: LocalModelSpec,
+        store: ModelStore,
+    ): LocalModelEngine {
+        val runtime = JarvisRuntime.get(app)
+        check(runtime.conversationEngine == null) { "dream_engine_slot_occupied" }
+        val engine = LiteRtLmEngineFactory.createInitialized(
+            modelId = spec.id,
+            modelPath = store.fileFor(spec).path,
+            cacheDir = store.engineCacheRoot().path,
+            useGpu = spec.recommendedGpu,
+            tools = emptyList(),
+            visionEnabled = false,
+            audioEnabled = false,
+        )
+        runtime.conversationEngine = engine
+        runtime.nativeConversationHasContext = false
+        runtime.conversationCharacters = 0
+        return engine
+    }
+
+    override suspend fun unloadJudgeEngine() {
+        val runtime = JarvisRuntime.peekInstance() ?: return
+        val engine = runtime.conversationEngine ?: return
+        // Clear the slot before closing, so nothing can pick up an
+        // engine that is already on its way down.
+        runtime.conversationEngine = null
+        runtime.nativeConversationHasContext = false
+        runtime.conversationCharacters = 0
+        runCatching { engine.close() }
     }
 }

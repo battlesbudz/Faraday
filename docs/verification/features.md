@@ -6960,7 +6960,13 @@ transient probe engines they build.
 
 Dream rule (Battles, 2026-11-10): the scheduled dream pass no
 longer builds a private engine. It reads the app's shared slot
-(`memory/DreamEngineSlot.kt`). With no engine resident it loads
+(`memory/DreamEngineSlot.kt`) through the narrow `EngineSlot`
+bridge the runtime installs — process-runtime access stays with
+composition, per the architecture boundary check. (In a cold
+WorkManager process where the app runtime was never constructed,
+nothing is resident and nothing can be disturbed, so that one
+pass runs on a temporary engine, the pre-redesign shape, and
+closes it on the way out.) With no engine resident it loads
 the judge model into the slot — E4B when installed, else the
 selected model, the historical OD-1 choice, built with the
 judge's historical tool-free configuration so the judge never

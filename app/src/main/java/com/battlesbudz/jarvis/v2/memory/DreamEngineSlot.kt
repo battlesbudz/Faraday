@@ -1,7 +1,7 @@
 package com.battlesbudz.jarvis.v2.memory
 
 import android.content.Context
-import com.battlesbudz.jarvis.v2.JarvisRuntime
+import com.battlesbudz.jarvis.v2.EngineSlot
 import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngineFactory
 import com.battlesbudz.jarvis.v2.ai.LocalModelEngine
 import com.battlesbudz.jarvis.v2.ai.LocalModelSpec
@@ -12,8 +12,8 @@ import com.battlesbudz.jarvis.v2.ai.ModelStore
  * (single-engine redesign, 2026-11-10; dream rule in Battles's words the
  * same day).
  *
- * The pass no longer builds a private engine. It borrows the shared
- * slot under a strict rule:
+ * The pass no longer builds a private engine when the app is alive. It
+ * borrows the shared slot under a strict rule:
  *
  * - No engine resident: the judge model is loaded into the slot for the
  *   pass and unloaded again afterwards, leaving nothing behind.
@@ -21,6 +21,14 @@ import com.battlesbudz.jarvis.v2.ai.ModelStore
  *   does not touch the slot at all. A resident engine and its loaded
  *   model are left exactly as they are — never swapped, never shut
  *   down for the dream — and the pass defers to a later night.
+ *
+ * Runtime access itself belongs to composition: this class talks to
+ * the slot only through the narrow [EngineSlot] bridge the runtime
+ * installs. When no bridge is installed, no runtime has been
+ * constructed in this process (a cold WorkManager start): nothing is
+ * resident and nothing can be disturbed, so the pass falls back to a
+ * temporary engine for that one pass — the pre-redesign shape — and
+ * closes it on the way out.
  */
 internal interface DreamEngineSlot {
     /** True while the shared slot holds an engine, whatever it is doing. */
@@ -40,45 +48,41 @@ internal interface DreamEngineSlot {
     suspend fun unloadJudgeEngine()
 }
 
-/** The production slot: [JarvisRuntime.conversationEngine] and its accounting. */
+/** The production slot: the shared engine, reached through [EngineSlot]. */
 internal class RuntimeDreamEngineSlot(private val app: Context) : DreamEngineSlot {
-    override fun engineLoaded(): Boolean =
-        JarvisRuntime.peekInstance()?.conversationEngine != null
+    /** Cold-process fallback only; see the class doc. */
+    private var temporaryEngine: LocalModelEngine? = null
 
-    override fun sessionActive(): Boolean {
-        val runtime = JarvisRuntime.peekInstance() ?: return false
-        return runtime.voiceSessionArmed || runtime.voiceSessionController.currentCallId() != null
-    }
+    override fun engineLoaded(): Boolean =
+        EngineSlot.access?.engineLoaded() ?: false
+
+    override fun sessionActive(): Boolean =
+        EngineSlot.access?.sessionActive() ?: false
 
     override suspend fun loadJudgeEngine(spec: LocalModelSpec, store: ModelStore): LocalModelEngine {
-        // Building the runtime is acceptable only on this path: the pass
-        // is actually running, and the engine it loads has to live in the
-        // runtime's slot. The read-only checks above never construct it.
-        val runtime = JarvisRuntime.get(app)
-        check(runtime.conversationEngine == null) { "dream_engine_slot_occupied" }
+        EngineSlot.access?.let { return it.loadJudgeEngine(app, spec, store) }
         val engine = LiteRtLmEngineFactory.createInitialized(
             modelId = spec.id,
-            modelPath = store.fileFor(spec).absolutePath,
-            cacheDir = store.engineCacheRoot().absolutePath,
+            modelPath = store.fileFor(spec).path,
+            cacheDir = store.engineCacheRoot().path,
             useGpu = spec.recommendedGpu,
             tools = emptyList(),
             visionEnabled = false,
             audioEnabled = false,
         )
-        runtime.conversationEngine = engine
-        runtime.nativeConversationHasContext = false
-        runtime.conversationCharacters = 0
+        temporaryEngine = engine
         return engine
     }
 
     override suspend fun unloadJudgeEngine() {
-        val runtime = JarvisRuntime.peekInstance() ?: return
-        val engine = runtime.conversationEngine ?: return
-        // Clear the slot before closing, so nothing can pick up an
-        // engine that is already on its way down.
-        runtime.conversationEngine = null
-        runtime.nativeConversationHasContext = false
-        runtime.conversationCharacters = 0
-        runCatching { engine.close() }
+        // The fallback engine is this pass's own, whichever path load
+        // took by the time unload runs; close it directly.
+        val temporary = temporaryEngine
+        if (temporary != null) {
+            temporaryEngine = null
+            runCatching { temporary.close() }
+            return
+        }
+        EngineSlot.access?.unloadJudgeEngine()
     }
 }
