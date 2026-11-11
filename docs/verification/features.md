@@ -6800,14 +6800,14 @@ run another call; go back to the first conversation, tap Copy
 Diagnostics, and confirm the header shows the FIRST call's
 id/build, not the second's.
 
-## Voice-call latency: resident word confirmation, speech-end caption decode, first-clause synthesis — 10 November 2026
+## Voice-call latency: resident word confirmation and first-clause synthesis — 10 November 2026
 
 Battles's build-1785 benchmark export showed voice-call follow-up
 turns taking 2.2–4.6 s from speech end to first spoken word, while
 the clean follow-ups that submitted a small delta prompt needed
-only ~0.5 s of model time. Three separate causes stacked, and one
-proposed cause turned out to be unbuildable inside the shipped
-behavior rules.
+only ~0.5 s of model time. Two fixes shipped. Two further
+proposed fixes turned out to be unbuildable inside the shipped
+behavior rules, with the evidence recorded below.
 
 Cause 1 — a follow-up admitted without live word evidence needed
 Gemma transcription confirmation before it could be answered, and
@@ -6837,19 +6837,27 @@ engine is wrapped in `LiteRtFinalVoiceTranscriptionEngine`) so the
 reset policy is unit-testable, and its transcription deadline
 became a constructor parameter defaulting to the shipped 12 s.
 
-Cause 2 — the final Whisper decode of the user's speech only
-started after speech ended, so recognition finalization at the
-endpoint paid a fresh full decode (~0.35–0.45 s) inside the
-latency the user hears. `AsyncWhisperSession` now schedules a
-boundary decode the moment speech stops: it decodes the complete
-speech span through the same partial-decode path, during the
-endpoint window, and `finish()` reuses that exact decode when it
-is still the latest result. Bytes appended after speech stops are
-trailing silence the phrase gate adds while the endpoint is
-judged; any resumed speech invalidates the boundary coverage and
-`finish()` decodes the full final snapshot exactly as before. If
-the worker is busy when speech stops, nothing is queued and
-`finish()` keeps today's fresh decode.
+Not built — a speech-end boundary decode for the final Whisper
+transcript. The proposed wrap-up fix was to decode the user's
+speech the moment speech stops, during the endpoint window, so
+`AsyncWhisperSession.finish()` could reuse it instead of paying
+a fresh full decode (~0.35–0.45 s) after the seal. It was built
+and then reverted before this entry was finalized, because the
+repository's own tests pin the contract it breaks:
+`ExternalSpeechGateTest.whisperFinalKeepsFullOpeningAndEndingWithoutLongIdleNoise`
+requires the final decode input to be byte-exact — the bounded
+onset context, the speech, and the complete quiet ending the
+phrase gate admits after speech stops. A decode started at
+speech end necessarily covers only a prefix of that input, and
+the quiet ending is real evidence (trailing consonants and quiet
+boundary sounds are preserved by design), so reusing the prefix
+decode would change the final transcript the garble guard and
+the disagreement block consume. `AsrRecognitionWorkMetricsTest`
+pins the same point from the metrics side. Incremental decoding
+during capture already exists (the partial decodes), and
+`finish()` already reuses a partial when one covers the final
+snapshot exactly; making finalization near-instant any other way
+changes what the final transcript is decoded from.
 
 Cause 3 — reply synthesis waited for the full first sentence
 whenever the lead clause was short: "The capital of Idaho is
@@ -6890,11 +6898,7 @@ timeout resets and reports audio_fallback_timeout; a clean
 [NO_SPEECH] verdict keeps the conversation and clarifies; the
 non-resident path pins the legacy behavior (tools disabled, one
 reset per attempt plus the exit reset); a fixed-voice-preface
-conversation ignores the resident flag. `AsyncWhisperSessionTest`
-gained: a speech-end boundary decode runs before `finish()` is
-called and is reused despite trailing silence (one decode total),
-and resumed speech invalidates the reuse so `finish()` decodes
-the full final snapshot. `PiperTextStreamTest` gained: the short
+conversation ignores the resident flag. `PiperTextStreamTest` gained: the short
 complete clause releases at the comma before the sentence ends;
 dependent, negated, unfinished, and predicate-less clauses still
 wait at the relaxed floor; the default boundary floors still
