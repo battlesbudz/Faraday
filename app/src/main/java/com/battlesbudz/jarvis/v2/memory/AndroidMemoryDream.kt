@@ -2,7 +2,6 @@ package com.battlesbudz.jarvis.v2.memory
 
 import android.content.Context
 import androidx.work.ListenableWorker
-import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngineFactory
 import com.battlesbudz.jarvis.v2.ai.ModelCatalog
 import com.battlesbudz.jarvis.v2.ai.ModelStore
 import com.battlesbudz.jarvis.v2.conversation.ConversationWork
@@ -35,6 +34,15 @@ object AndroidMemoryDream {
 
     fun journalState(context: Context): DreamJournalState = journal(context).state()
 
+    /**
+     * Test seam for the shared engine slot; production always uses
+     * [RuntimeDreamEngineSlot]. Tests install a fake and restore null.
+     */
+    @Volatile internal var engineSlotOverride: DreamEngineSlot? = null
+
+    private fun engineSlot(app: Context): DreamEngineSlot =
+        engineSlotOverride ?: RuntimeDreamEngineSlot(app)
+
     /** Live, read-only line for the standard Copy Diagnostics export. */
     fun diagnosticsLine(context: Context): String = journal(context).diagnosticsLine()
 
@@ -44,11 +52,16 @@ object AndroidMemoryDream {
      * 1. Pick the judge model (OD-1: E4B when its file is installed, else the
      *    selected model). No model file at all → journal `skipped_no_model`,
      *    success: there is nothing to retry until a model exists.
-     * 2. Yield discipline (AutomaticMemory's D47 rule): a live conversation
+     * 2. Shared-slot rule (Battles 2026-11-10): an engine resident in the
+     *    app's one engine slot, or a voice session live / wake-armed →
+     *    journal `skipped_contention`, retry. A resident engine is never
+     *    swapped or shut down for the dream, whatever it is doing.
+     * 3. Yield discipline (AutomaticMemory's D47 rule): a live conversation
      *    or a held model gate → journal `skipped_contention`, retry.
-     * 3. Otherwise hold the model gate for the whole pass, run
-     *    [MemoryDreamPass] with a [GemmaDreamJudge] over a freshly created
-     *    engine, and close the engine + release the gate in all paths.
+     * 4. Otherwise hold the model gate for the whole pass, load the judge
+     *    model into the shared slot, run [MemoryDreamPass] with a
+     *    [GemmaDreamJudge] over it, then unload the slot (leaving nothing
+     *    resident) and release the gate, in all paths.
      *
      * Every exit path journals (Vessel's health discipline): a skipped night
      * reports itself as skipped-with-reason, never as silence.
@@ -64,21 +77,22 @@ object AndroidMemoryDream {
             recordSkippedRun(journal, nightKey, DreamRunOutcome.SKIPPED_NO_MODEL, "no_model_installed")
             return ListenableWorker.Result.success()
         }
+        val slot = engineSlot(app)
+        if (slot.engineLoaded()) {
+            recordSkippedRun(journal, nightKey, DreamRunOutcome.SKIPPED_CONTENTION, "engine_resident")
+            return ListenableWorker.Result.retry()
+        }
+        if (slot.sessionActive()) {
+            recordSkippedRun(journal, nightKey, DreamRunOutcome.SKIPPED_CONTENTION, "voice_session_active")
+            return ListenableWorker.Result.retry()
+        }
         if (ConversationWork.activeJobs.get() != 0 || !store.tryBeginModelSelection(spec)) {
             recordSkippedRun(journal, nightKey, DreamRunOutcome.SKIPPED_CONTENTION, "model_busy")
             return ListenableWorker.Result.retry()
         }
         try {
             val engine = try {
-                LiteRtLmEngineFactory.createInitialized(
-                    modelId = spec.id,
-                    modelPath = store.fileFor(spec).absolutePath,
-                    cacheDir = store.engineCacheRoot().absolutePath,
-                    useGpu = spec.recommendedGpu,
-                    tools = emptyList(),
-                    visionEnabled = false,
-                    audioEnabled = false,
-                )
+                slot.loadJudgeEngine(spec, store)
             } catch (failure: Exception) {
                 recordSkippedRun(
                     journal, nightKey, DreamRunOutcome.FAILED,
@@ -105,7 +119,7 @@ object AndroidMemoryDream {
                     ListenableWorker.Result.success()
                 }
             } finally {
-                runCatching { engine.close() }
+                slot.unloadJudgeEngine()
             }
         } finally {
             store.endModelOperation()

@@ -1,10 +1,9 @@
 package com.battlesbudz.jarvis.v2.conversation
 
 import com.battlesbudz.jarvis.v2.ChatEntry
-import com.battlesbudz.jarvis.v2.actions.MobileActionToolDefinitions
 import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngine
-import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngineFactory
 import com.battlesbudz.jarvis.v2.ai.LocalModelSpec
+import com.battlesbudz.jarvis.v2.ai.createResidentEngine
 import com.battlesbudz.jarvis.v2.chat.ShortTermConversationContext
 
 /** The voice owner and answer owner share this state under their existing single model lease. */
@@ -75,25 +74,23 @@ internal class ConversationModelSession(
             if (state.engine?.audioEnabled != true) close() else reset()
         }
         if (voiceAttached && selectedModel().supportsAudio) {
-            // Creation below keys audio on (voiceAttached || audioAttached);
-            // the resident check must too. Without it, a text-built engine is
-            // reused for a direct-audio turn and generateAudio's audio
-            // requirement fails that turn instead of rebuilding once here.
-            // Escalate only when audio is missing: an audio-capable resident
-            // is left untouched, because direct-voice turns deliberately
+            // Resident engines are built in the canonical profile (audio
+            // wired in whenever the model supports it), so an audio-capable
+            // resident is left untouched: direct-voice turns deliberately
             // retain their prepared conversation (no drain, no reseed).
+            // This guard only fires for a resident built without audio,
+            // which the profile no longer produces; it stays so a
+            // mismatched resident can never be reused for a direct-audio
+            // turn, whose generateAudio would fail on the missing encoder.
             val resident = state.engine
             if (resident != null && !resident.audioEnabled) close()
         }
         val started = System.nanoTime()
         reply.benchmark.mark("model_load_started")
         val wasLoaded = state.engine != null
-        val engine = state.engine ?: LiteRtLmEngineFactory.createInitialized(
-            selectedModel().id, modelPath(selectedModel()), cachePath,
-            useGpu = selectedModel().recommendedGpu,
-            tools = if (selectedModel().supportsTools) MobileActionToolDefinitions.all() else emptyList(),
-            visionEnabled = imageAttached && selectedModel().supportsVision,
-            audioEnabled = (voiceAttached || audioAttached) && selectedModel().supportsAudio
+        val engine = state.engine ?: createResidentEngine(
+            selectedModel(), modelPath(selectedModel()), cachePath,
+            visionRequired = imageAttached
         ).also { state.engine = it; clearContextAccounting() }
         if (!wasLoaded) reply.loadMs += (System.nanoTime() - started) / 1_000_000
         reply.benchmark.mark("model_load_finished")

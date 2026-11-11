@@ -10,11 +10,10 @@ import com.battlesbudz.jarvis.v2.actions.ExternalAgentAccess
 import com.battlesbudz.jarvis.v2.actions.ExternalAgentGrant
 import com.battlesbudz.jarvis.v2.actions.ExternalAgentProvider
 import com.battlesbudz.jarvis.v2.actions.ToolTaskLedger
-import com.battlesbudz.jarvis.v2.actions.MobileActionToolDefinitions
 import com.battlesbudz.jarvis.v2.ai.CodeModeEngine
 import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngine
-import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngineFactory
 import com.battlesbudz.jarvis.v2.ai.ModelCatalog
+import com.battlesbudz.jarvis.v2.ai.createResidentEngine
 import com.battlesbudz.jarvis.v2.ai.ModelStore
 import com.battlesbudz.jarvis.v2.ai.ReferenceGroundingClient
 import com.battlesbudz.jarvis.v2.chat.ShortTermConversationContext
@@ -159,10 +158,12 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
      * reliability check already respect — so a code round can never
      * interleave with a chat reply or a call. The resident engine is
      * used as-is; when none is resident, one is created for the
-     * selected model exactly as a plain conversation turn creates it
-     * (no attachments, so no vision or audio encoders) and becomes
-     * the resident engine, with the context accounting cleared the
-     * way `ConversationModelSession` clears it on creation. Returns
+     * selected model under the same canonical resident profile a
+     * plain conversation turn creates it with (the voice
+     * configuration: audio wired in for audio models, no vision
+     * without an image turn) and becomes the resident engine, with
+     * the context accounting cleared the way
+     * `ConversationModelSession` clears it on creation. Returns
      * null when the lease is held, the selected model is not usable,
      * or engine creation fails; the lease is released on every path.
      *
@@ -184,14 +185,10 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
                 if (!modelStore.isUsable(spec)) return null
                 val created = withContext(Dispatchers.IO) {
                     runCatching {
-                        LiteRtLmEngineFactory.createInitialized(
-                            modelId = spec.id,
-                            modelPath = modelStore.fileFor(spec).path,
-                            cacheDir = modelStore.engineCacheRoot().path,
-                            useGpu = spec.recommendedGpu,
-                            tools = if (spec.supportsTools) MobileActionToolDefinitions.all() else emptyList(),
-                            visionEnabled = false,
-                            audioEnabled = false,
+                        createResidentEngine(
+                            spec,
+                            modelStore.fileFor(spec).path,
+                            modelStore.engineCacheRoot().path,
                         )
                     }.getOrNull()
                 } ?: return null
@@ -1215,5 +1212,13 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         fun get(context: android.content.Context): JarvisRuntime = instance ?: synchronized(this) {
             instance ?: JarvisRuntime(context.applicationContext).also { instance = it }
         }
+
+        /**
+         * The live runtime without creating one: null until the app has
+         * built it. Background owners (the memory dream) read shared
+         * state through this so a scheduled pass never spins up the
+         * whole runtime just to learn that no engine is resident.
+         */
+        fun peekInstance(): JarvisRuntime? = instance
     }
 }

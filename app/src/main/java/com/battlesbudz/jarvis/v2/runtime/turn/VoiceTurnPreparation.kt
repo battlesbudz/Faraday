@@ -3,10 +3,9 @@ package com.battlesbudz.jarvis.v2.runtime.turn
 import android.content.Context
 import com.battlesbudz.jarvis.v2.BuildConfig
 import com.battlesbudz.jarvis.v2.ChatEntry
-import com.battlesbudz.jarvis.v2.actions.MobileActionToolDefinitions
 import com.battlesbudz.jarvis.v2.ai.ConversationPromptBuilder
-import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngineFactory
 import com.battlesbudz.jarvis.v2.ai.ModelStore
+import com.battlesbudz.jarvis.v2.ai.createResidentEngine
 import com.battlesbudz.jarvis.v2.chat.ConversationHistory
 import com.battlesbudz.jarvis.v2.conversation.ConversationSessionState
 import com.battlesbudz.jarvis.v2.conversation.ConversationWork
@@ -92,11 +91,9 @@ internal class VoiceTurnPreparation(
         if (engineRecreated) {
             nativeState.engine?.close()
             nativeState.engine = null
-            nativeState.engine = LiteRtLmEngineFactory.createInitialized(
-                modelStore.selectedModel().id, modelStore.fileFor(modelStore.selectedModel()).path,
-                modelStore.engineCacheRoot().path, useGpu = selectedSpec.recommendedGpu,
-                tools = if (selectedSpec.supportsTools) MobileActionToolDefinitions.all() else emptyList(),
-                audioEnabled = selectedSpec.supportsAudio
+            nativeState.engine = createResidentEngine(
+                selectedSpec, modelStore.fileFor(selectedSpec).path,
+                modelStore.engineCacheRoot().path
             )
         }
         val engine = requireNotNull(nativeState.engine)

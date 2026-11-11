@@ -6913,3 +6913,88 @@ the new build, run one voice call with several follow-ups
 export — success reads as every follow-up's speech-end to first
 spoken word at or under ~1.4 s, with no full-size prompt after
 the first turn.
+
+## One engine for chat, code mode and voice calls; model switch fixed; dream on the shared slot — 11 November 2026
+
+The app used to build the model engine in each surface's own image.
+Chat and code mode created the resident engine with the audio
+encoder off, voice-call preparation created it with audio on, and
+the memory dream pass built a third, temporary engine of its own
+for every pass. Engine capabilities are frozen when an engine is
+constructed, so whichever surface ran second found a resident
+engine that did not match its needs and destroyed and rebuilt it —
+pure churn, since all three surfaces already shared the one engine
+slot (`JarvisRuntime.conversationEngine`, reached through the one
+native session state). What kept conversations apart was never the
+engine count; conversations were always separate. They still are.
+
+There is now one canonical resident profile
+(`ai/ResidentEngineProfile.kt`), and every creation site — chat
+prepare, the code-mode borrow, voice-call preparation — builds
+through it: the model's phone tools when it supports them, the
+audio encoder whenever the model supports audio, and the vision
+encoder only for a turn carrying an image, the one capability
+still added on demand. An engine created by any surface now serves
+every surface and is never rebuilt over capabilities. Chat, code
+mode and voice calls each hold their own native conversation on
+the one engine, as before, and conversation isolation stays a
+conversation-layer property — separate conversations, clean
+starts, app-managed context. The per-call persistent voice
+session, its delta prompts, the speculation lane, the
+transcription and tool guards, the endpoint policy, inline
+approval cards and the sandbox are untouched: they run on the same
+single session state, now backed by the one engine.
+
+Model switch fix: `ModelSetupOperations.select()`, `delete()` and
+`importModel()` closed the resident engine synchronously, and the
+commands are invoked from the main thread, where the engine's
+native lifecycle guard refuses — "Native lifecycle control
+requires a worker thread", device-proven on build 1823, where
+Choose and Delete failed whenever an engine was loaded. The setup
+path now runs every close over an injected lifecycle dispatcher
+(`Dispatchers.Default` in production), so the close always lands
+on a worker thread. The engine's guard is unchanged; the caller
+was fixed. The model tester and the reliability check already
+closed on a background dispatcher and are untouched, as are the
+transient probe engines they build.
+
+Dream rule (Battles, 2026-11-10): the scheduled dream pass no
+longer builds a private engine. It reads the app's shared slot
+(`memory/DreamEngineSlot.kt`). With no engine resident it loads
+the judge model into the slot — E4B when installed, else the
+selected model, the historical OD-1 choice, built with the
+judge's historical tool-free configuration so the judge never
+gains the phone tools — runs the pass, and unloads, leaving
+nothing resident. With an engine resident, idle or busy, or a
+voice session live or wake-armed, the night is skipped with a
+`skipped_contention` journal entry (`engine_resident` /
+`voice_session_active`) and the usual retry; a resident engine is
+never swapped and never shut down for the dream. The
+model-operation gate discipline, journal-every-night, the
+`MemoryDreamPass` fence/journal semantics, and the pre-existing
+active-jobs contention check (`model_busy`) are unchanged.
+
+Pinned by tests: `ResidentEngineProfileTest` (new) — audio models
+build with audio and tools for every surface, all surfaces
+request a configuration-identical profile, text-only models build
+without audio, and vision builds only for an image turn on a
+vision model. `ModelSetupOperationsTest` (new) — Choose and Delete
+invoked from the main thread complete, the engine close runs on
+the worker thread (a guarded fake session enforces the engine's
+own worker-thread rule, so the build-1823 failure cannot recur
+from the setup path), a caller already on a worker thread closes
+directly, and the model-operation gate is released afterwards.
+`MemoryDreamSharedSlotTest` (new) — a resident engine skips the
+night and is never loaded over or unloaded; an armed voice
+session skips the night without loading; an empty slot loads
+once, runs, and unloads once, leaving nothing resident. A native
+engine cannot be constructed on the JVM, so instance identity is
+pinned at the profile and slot seams the production code shares —
+the same seam style the existing session-reuse tests use.
+
+Not established by this entry: everything on a phone. The proof
+is Battles's to run on the published build, as one task: install
+the build, open a conversation and load the model with a chat,
+then go to the model browser and switch E2B to E4B — the exact
+case that failed on build 1823 — and confirm it switches; then
+run a short voice call and one code-mode round on the new model.

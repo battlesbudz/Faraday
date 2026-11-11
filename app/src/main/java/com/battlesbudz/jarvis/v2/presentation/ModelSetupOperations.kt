@@ -3,6 +3,7 @@ package com.battlesbudz.jarvis.v2.presentation
 import android.content.Context
 import android.net.Uri
 import android.os.Handler
+import android.os.Looper
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
@@ -21,11 +22,13 @@ import com.battlesbudz.jarvis.v2.eval.checkIdleBeforeClose
 import com.battlesbudz.jarvis.v2.voice.JarvisModelSetupWorker
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 /**
@@ -38,12 +41,36 @@ internal class ModelSetupOperations(
     private val store: ModelStore,
     private val mainHandler: Handler,
     private val session: ModelSetupSession,
+    private val lifecycleDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
+    /**
+     * Closes the resident conversation/engine for a setup command.
+     *
+     * Native lifecycle control is only legal on a worker thread — the
+     * engine's guard refuses it on the main thread ("Native lifecycle
+     * control requires a worker thread") — while select/delete are
+     * invoked synchronously from UI click handlers on the main thread.
+     * Until this dispatch existed, switching or deleting a model failed
+     * whenever an engine was resident (device-proven on build 1823 after
+     * code-mode use loaded the chat engine). The close therefore runs on
+     * [lifecycleDispatcher]; the caller blocks only for the close itself,
+     * and a close failure surfaces through the caller's existing error
+     * path exactly as before. Callers already on a worker thread close
+     * directly, with no extra dispatch.
+     */
+    private fun closeConversationOnWorkerThread(resetCharacters: Boolean) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            runBlocking { withContext(lifecycleDispatcher) { session.closeConversation(resetCharacters) } }
+        } else {
+            session.closeConversation(resetCharacters)
+        }
+    }
+
     fun select(spec: LocalModelSpec): String? {
         if (session.busy()) return "End the Jarvis session and any tests before switching AI models."
         if (!store.tryBeginModelSelection(spec)) return "This model is downloading or a model test is running. Choose another installed model."
         return try {
-            session.closeConversation(resetCharacters = true)
+            closeConversationOnWorkerThread(resetCharacters = true)
             store.selectModel(spec)
             session.record("AI model selected: ${spec.id}")
             null
@@ -58,7 +85,7 @@ internal class ModelSetupOperations(
         if (session.busy()) return "End the Jarvis session and any tests before deleting AI models."
         if (!store.tryBeginModelOperation()) return "Wait for model setup or testing to finish."
         return try {
-            session.closeConversation(resetCharacters = true)
+            closeConversationOnWorkerThread(resetCharacters = true)
             store.deleteModel(spec)
             session.record("AI model deleted: ${spec.id}")
             null
@@ -325,10 +352,13 @@ internal class ModelSetupOperations(
     fun importModel(uri: Uri, spec: LocalModelSpec, report: (String) -> Unit) {
         scope.launch(Dispatchers.IO) {
             val result = store.importModel(uri, spec)
+            if (result.isSuccess && spec.id == store.selectedModel().id) {
+                // Same worker-thread lifecycle rule as select/delete: the
+                // resident engine's close must not run on the main thread.
+                // It still precedes the report, as before.
+                withContext(lifecycleDispatcher) { session.closeConversation(resetCharacters = false) }
+            }
             withContext(Dispatchers.Main) {
-                if (result.isSuccess && spec.id == store.selectedModel().id) {
-                    session.closeConversation(resetCharacters = false)
-                }
                 report(result.fold(
                     { "Model imported successfully." },
                     { error -> "Import failed: ${error.message ?: "unknown error"}" },
