@@ -2,6 +2,7 @@ package com.battlesbudz.jarvis.v2.memory
 
 import android.content.Context
 import com.battlesbudz.jarvis.v2.EngineSlot
+import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngine
 import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngineFactory
 import com.battlesbudz.jarvis.v2.ai.LocalModelEngine
 import com.battlesbudz.jarvis.v2.ai.LocalModelSpec
@@ -51,7 +52,7 @@ internal interface DreamEngineSlot {
 /** The production slot: the shared engine, reached through [EngineSlot]. */
 internal class RuntimeDreamEngineSlot(private val app: Context) : DreamEngineSlot {
     /** Cold-process fallback only; see the class doc. */
-    private var temporaryEngine: LocalModelEngine? = null
+    private var temporaryEngine: LiteRtLmEngine? = null
 
     override fun engineLoaded(): Boolean =
         EngineSlot.access?.engineLoaded() ?: false
