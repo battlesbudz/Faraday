@@ -1192,7 +1192,7 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         com.battlesbudz.jarvis.v2.voice.MicrophoneHandoff.clearDiagnostics()
         asrComparisonStore.clearDiagnostics()
         ttsComparisonStore.clearDiagnostics()
-        diagnosticRecorder.startSession(label)
+        diagnosticRecorder.startSession(label, voiceSessionController.currentConversationId())
     }
 
     private fun stopVoiceService() {

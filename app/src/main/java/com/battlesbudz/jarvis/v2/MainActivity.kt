@@ -234,13 +234,23 @@ class MainActivity : ComponentActivity() {
     private fun startVoiceDiagnostics(label: String) = runtime.startVoiceDiagnostics(label)
 
     private fun copyDiagnostics() {
-        // The runtime ring contains the latest call's ASR, inference and playback events.
+        // The recorder section is the OPEN conversation's latest call — its
+        // live call, or the snapshot retained when that call's session ended —
+        // never whichever call happened most recently in another conversation.
+        // A conversation with no recorded call gets the plain no-call line.
         // Comparison archives and full chat histories do not belong in a call failure report.
+        // The microphone handoff block describes the live call only, so it
+        // rides along only when the exported call is the live one.
         // The sandbox block (Phase 1 scope §12) rides along: install state,
         // run bookkeeping and the engine probe answer most sandbox reports.
         // The code block (code-and-export scope Unit 6) closes the paste:
         // project fingerprints and the round/fix/export counters.
-        val diagnostics = "Jarvis OS V2 — latest Voice Call diagnostics\n\n${runtime.diagnosticRecorder.snapshot()}\n\n${com.battlesbudz.jarvis.v2.voice.MicrophoneHandoff.diagnostics()}\n\n${com.battlesbudz.jarvis.v2.sandbox.SandboxDiagnostics.snapshot(this)}\n\n${com.battlesbudz.jarvis.v2.code.CodeDiagnostics.snapshot(this)}"
+        val conversationId = runtime.conversationHistory.current.value.id
+        val recorder = runtime.diagnosticRecorder
+        val handoff = if (recorder.isLiveCallFor(conversationId)) {
+            "\n\n${com.battlesbudz.jarvis.v2.voice.MicrophoneHandoff.diagnostics()}"
+        } else ""
+        val diagnostics = "Jarvis OS V2 — Voice Call diagnostics for conversation $conversationId\n\n${recorder.exportForConversation(conversationId)}$handoff\n\n${com.battlesbudz.jarvis.v2.sandbox.SandboxDiagnostics.snapshot(this)}\n\n${com.battlesbudz.jarvis.v2.code.CodeDiagnostics.snapshot(this)}"
         val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("Jarvis diagnostics", diagnostics))
     }

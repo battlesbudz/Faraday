@@ -113,6 +113,119 @@ class DiagnosticRecorderTest {
         assertTrue(json.isNull("liveSection"))
     }
 
+    @Test fun twoConversationsEachKeepTheirOwnLatestCall() {
+        val recorder = DiagnosticRecorder(preferences(), "test")
+        recorder.startSession("Voice Call call-a", "conv-a")
+        recorder.recordImportant("call-a-marker")
+        recorder.startSession("Voice Call call-b", "conv-b")
+        recorder.recordImportant("call-b-marker")
+
+        val a = recorder.snapshotForConversation("conv-a")
+        assertNotNull(a)
+        assertTrue(a!!.contains("Voice Call call-a"))
+        assertTrue(a.contains("call-a-marker"))
+        assertFalse(a.contains("call-b-marker"))
+
+        // B's call is the live session, and copying from B returns it live.
+        val b = recorder.snapshotForConversation("conv-b")
+        assertNotNull(b)
+        assertTrue(b!!.contains("Voice Call call-b"))
+        assertTrue(b.contains("call-b-marker"))
+        assertTrue(recorder.isLiveCallFor("conv-b"))
+        assertFalse(recorder.isLiveCallFor("conv-a"))
+
+        // A third call archives B as well; both conversations stay separate.
+        recorder.startSession("Voice Call call-c", "conv-c")
+        val bArchived = recorder.snapshotForConversation("conv-b")
+        assertNotNull(bArchived)
+        assertTrue(bArchived!!.contains("Voice Call call-b"))
+        assertTrue(bArchived.contains("call-b-marker"))
+        assertFalse(bArchived.contains("call-a-marker"))
+        assertTrue(recorder.snapshotForConversation("conv-a")!!.contains("call-a-marker"))
+    }
+
+    @Test fun copyingFromConversationAReturnsItsCallAfterALaterCallInB() {
+        val recorder = DiagnosticRecorder(preferences(), "test")
+        recorder.startSession("Voice Call call-a", "conv-a")
+        recorder.recordInferencePrompt("prompt-from-a")
+        recorder.startSession("Voice Call call-b", "conv-b")
+        recorder.recordInferencePrompt("prompt-from-b")
+
+        val exportA = recorder.exportForConversation("conv-a")
+        assertTrue(exportA.contains("Voice Call call-a"))
+        assertTrue(exportA.contains("prompt-from-a"))
+        assertFalse(exportA.contains("prompt-from-b"))
+        assertFalse(exportA.contains("Voice Call call-b"))
+    }
+
+    @Test fun conversationWithNoCallGetsThePlainNoCallResultNeverAnotherConversationsCall() {
+        val recorder = DiagnosticRecorder(preferences(), "test")
+        recorder.startSession("Voice Call call-a", "conv-a")
+        recorder.recordImportant("call-a-marker")
+        recorder.startSession("Voice Call call-b", "conv-b")
+        recorder.recordImportant("call-b-marker")
+
+        assertNull(recorder.snapshotForConversation("conv-never"))
+        val export = recorder.exportForConversation("conv-never")
+        assertEquals("No call recorded for this conversation.", export)
+        assertEquals(DiagnosticRecorder.NO_CALL_RECORDED_MESSAGE, export)
+        assertFalse(export.contains("call-a-marker"))
+        assertFalse(export.contains("call-b-marker"))
+    }
+
+    @Test fun nonCallSessionNeverStandsInForAConversationsCall() {
+        val recorder = DiagnosticRecorder(preferences(), "test")
+        recorder.startSession("Voice Call call-a", "conv-a")
+        recorder.recordImportant("call-a-marker")
+        // A later non-call session attributed to the same conversation (the
+        // boot/wake session shape) must not shadow the retained call.
+        recorder.startSession("Jarvis session — awaiting wake word", "conv-a")
+        assertFalse(recorder.isLiveCallFor("conv-a"))
+        val a = recorder.snapshotForConversation("conv-a")
+        assertNotNull(a)
+        assertTrue(a!!.contains("Voice Call call-a"))
+        assertTrue(a.contains("call-a-marker"))
+    }
+
+    @Test fun archivedCallsAndLiveOwnershipSurviveProcessRestore() {
+        val prefs = preferences()
+        val recorder = DiagnosticRecorder(prefs, "test")
+        recorder.startSession("Voice Call call-a", "conv-a")
+        recorder.recordImportant("call-a-marker")
+        recorder.startSession("Voice Call call-b", "conv-b")
+
+        val restored = DiagnosticRecorder(prefs, "test")
+        restored.restore()
+        val a = restored.snapshotForConversation("conv-a")
+        assertNotNull(a)
+        assertTrue(a!!.contains("call-a-marker"))
+        assertFalse(a.contains("Voice Call call-b"))
+        // The restored live session still belongs to conv-b.
+        assertTrue(restored.isLiveCallFor("conv-b"))
+        assertTrue(restored.snapshotForConversation("conv-b")!!.contains("Voice Call call-b"))
+    }
+
+    @Test fun archiveRetentionIsBoundedAndLatestPerConversationWins() {
+        val recorder = DiagnosticRecorder(preferences(), "test")
+        for (i in 1..10) {
+            recorder.startSession("Voice Call call-$i", "conv-$i")
+            recorder.recordImportant("marker-$i")
+        }
+        recorder.startSession("Voice Call call-11", "conv-11")
+        // Only the most recent archived conversations survive the cap.
+        assertNull(recorder.snapshotForConversation("conv-1"))
+        assertNotNull(recorder.snapshotForConversation("conv-10"))
+
+        // A second call in the same conversation replaces the first as its latest.
+        recorder.startSession("Voice Call call-ten-second", "conv-10")
+        recorder.recordImportant("ten-second-marker")
+        recorder.startSession("Voice Call call-12", "conv-12")
+        val ten = recorder.snapshotForConversation("conv-10")
+        assertNotNull(ten)
+        assertTrue(ten!!.contains("ten-second-marker"))
+        assertFalse(ten.contains("marker-10"))
+    }
+
     private fun preferences(): SharedPreferences {
         val values = mutableMapOf<String, Any?>()
         lateinit var editor: SharedPreferences.Editor

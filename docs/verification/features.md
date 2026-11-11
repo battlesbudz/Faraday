@@ -6734,3 +6734,68 @@ field run `echo hello > note.txt`, then Reset the sandbox from
 settings and confirm, then run `cat note.txt` — the contents
 come back and the command runs, with no install step in
 between.
+
+## Copy Diagnostics returns the open conversation's call — 10 November 2026
+
+Battles works one test per conversation: each fix gets its own
+conversation and he saves that conversation's Copy Diagnostics
+separately. The export ignored conversations entirely — it
+carried the single latest voice call overall, whichever
+conversation it belonged to, so copying from an older
+conversation silently pasted a different conversation's call.
+That is how the build-1724 proof set lost its diagnostics.
+
+Root cause: `DiagnosticRecorder` kept one global live session.
+`startSession` cleared every collection when a new call began,
+and `MainActivity.copyDiagnostics()` exported that one session
+through `snapshot()`. Nothing in the recorder knew which
+conversation a call belonged to, and once a later call started
+anywhere else, the earlier call's record was gone.
+
+The recorder now keys calls by conversation. `startSession`
+takes the conversation the new call belongs to (the runtime
+funnel reads it from the voice session controller's active call,
+which is begun — or linked on resume — with the open
+conversation's id before diagnostics start). When a call session
+ends, its snapshot is retained under its conversation as that
+conversation's latest call, persisted across process restarts
+alongside the live session exactly as the live collections
+already are. Retention stays bounded: one snapshot per
+conversation, at most eight conversations, oldest evicted first;
+a second call in the same conversation replaces the first as its
+latest. `snapshotForConversation` returns the live session when
+it is the asked conversation's own call, otherwise the retained
+snapshot, otherwise null. Copy Diagnostics exports the open
+conversation through `exportForConversation`, which substitutes
+the plain line "No call recorded for this conversation." when
+the open conversation has no call, never another conversation's
+data; the export header now names the conversation it belongs
+to. The microphone handoff block describes the live call only,
+so it rides along only when the exported call is the live one;
+the sandbox and code blocks are unchanged. A non-call session
+(the boot/wake session) never stands in for a call: ownership
+alone is not enough, the session must be a voice call session.
+
+Pinned by new tests in `DiagnosticRecorderTest`: two
+conversations each with a call keep separate snapshots; copying
+from conversation A returns A's call — prompts included — even
+after conversation B's later call; a conversation with no call
+produces exactly the plain no-call line and none of A's or B's
+data; a non-call session attributed to a conversation does not
+shadow its retained call; the archive and live ownership survive
+a fresh recorder over the same preferences (process restore);
+and retention is bounded with latest-per-conversation winning.
+No composable or constructor signature changed — the recorder
+gained an overloaded `startSession` and the voice session
+controller one accessor — and no instrumentation journey
+constructs these classes (verified against the androidTest
+sources), so no new ProGuard keeps were needed. The Save
+diagnostics JSON export is unchanged: it still carries the live
+session.
+
+Not established by this entry: everything on a phone. The proof
+is Battles's to run on the published build, as one task: in one
+conversation run a short voice call; in a second conversation
+run another call; go back to the first conversation, tap Copy
+Diagnostics, and confirm the header shows the FIRST call's
+id/build, not the second's.
