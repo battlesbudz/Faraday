@@ -465,6 +465,6 @@ internal class VoiceTurnPreparation(
                 log = { diagnosticRecorder.recordImportant(it) })
             diagnosticRecorder.recordImportant("Wake acknowledged; command microphone ready.")
         }
-        return PreparedVoiceTurn(engine, selectedSpec, asrDirectory, ttsDirectory, input, expectedCallId, models, voiceHistory, output, incremental, activeCapture, correction, directAudioTurn, replyAsrEnabled, request.replyProbeEnabled)
+        return PreparedVoiceTurn(engine, selectedSpec, asrDirectory, ttsDirectory, input, expectedCallId, models, voiceHistory, output, incremental, activeCapture, correction, directAudioTurn, replyAsrEnabled, request.replyProbeEnabled, callSessionReusable)
     }
 }

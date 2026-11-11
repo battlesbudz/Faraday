@@ -6799,3 +6799,113 @@ conversation run a short voice call; in a second conversation
 run another call; go back to the first conversation, tap Copy
 Diagnostics, and confirm the header shows the FIRST call's
 id/build, not the second's.
+
+## Voice-call latency: resident word confirmation, speech-end caption decode, first-clause synthesis — 10 November 2026
+
+Battles's build-1785 benchmark export showed voice-call follow-up
+turns taking 2.2–4.6 s from speech end to first spoken word, while
+the clean follow-ups that submitted a small delta prompt needed
+only ~0.5 s of model time. Three separate causes stacked, and one
+proposed cause turned out to be unbuildable inside the shipped
+behavior rules.
+
+Cause 1 — a follow-up admitted without live word evidence needed
+Gemma transcription confirmation before it could be answered, and
+that confirmation destroyed the call it belonged to.
+`FinalVoiceInputResolver.hearAudio` disabled tools (which resets
+the native conversation whenever the policy changes) and reset the
+conversation before every transcription attempt and again on exit.
+The answer that followed therefore re-assembled the full prompt
+(2,958 chars on the measured turn) instead of the ~503-char delta
+a clean follow-up submits. The fix transcribes ON the resident
+call conversation when the turn is a direct-audio turn on the
+persistent session: no tool-policy flip, no resets, the exchange
+joins the call history exactly like the post-answer resident
+caption already does, and the following answer keeps its delta
+prompt. The exchange is kept only when the confirmation completes
+normally with no tool-call output; any failure, timeout,
+cancellation, or tool call falls back to the same reset as before,
+so a partial or tool exchange can never survive into the call
+context. The word-confirmation decisions themselves — confirmed
+words answer from audio, no words take the clarify path — are
+unchanged, as are the transcript-disagreement hard block and the
+final voice tool guard. Plumbing: `PreparedVoiceTurn` gained a
+defaulted `callSessionReusable` field carrying preparation's final
+reuse verdict to the recognition stage; the resolver now depends
+on a small `FinalVoiceTranscriptionEngine` interface (the concrete
+engine is wrapped in `LiteRtFinalVoiceTranscriptionEngine`) so the
+reset policy is unit-testable, and its transcription deadline
+became a constructor parameter defaulting to the shipped 12 s.
+
+Cause 2 — the final Whisper decode of the user's speech only
+started after speech ended, so recognition finalization at the
+endpoint paid a fresh full decode (~0.35–0.45 s) inside the
+latency the user hears. `AsyncWhisperSession` now schedules a
+boundary decode the moment speech stops: it decodes the complete
+speech span through the same partial-decode path, during the
+endpoint window, and `finish()` reuses that exact decode when it
+is still the latest result. Bytes appended after speech stops are
+trailing silence the phrase gate adds while the endpoint is
+judged; any resumed speech invalidates the boundary coverage and
+`finish()` decodes the full final snapshot exactly as before. If
+the worker is busy when speech stops, nothing is queued and
+`finish()` keeps today's fresh decode.
+
+Cause 3 — reply synthesis waited for the full first sentence
+whenever the lead clause was short: "The capital of Idaho is
+Boise," is 30 chars, below the 32-char opening floor. The floors
+in `SpeechTextBoundaries.openingClauseEnd` are now parameters.
+The publication gates (the repetition guard's checked unit) keep
+the shipped defaults; only `PiperTextStream` passage splitting —
+which re-chunks text that already passed those gates — admits a
+shorter complete clause (4 words / 24 chars) for its opening
+passage. Every semantic safety rule (dependent starts, unfinished
+ends, negation/ambiguity words, predicate required, no markup,
+no split numbers) applies unchanged at either floor, and the
+concatenated text is identical; only when synthesis starts
+changes. The diagnostics policy labels moved to first-clause-v3 /
+piper_first_clause_then_passages_max640_v3.
+
+Not built — draft-at-pause speculation on the persistent session.
+The proposed second fix was to make the frozen-pause speculation
+eligible on persistent call turns. The shipped speculation lane
+cannot do that without breaking behavior Battles has ruled on:
+it generates tool-free by construction (the backend forces tools
+off, which resets the conversation; the coordinator rejects any
+draft that proposes tool calls; promotion in
+`ConversationGeneration` is barred whenever tools are allowed,
+which is always for direct-audio turns — and voice turns keep
+their tools, always); it always rolls back by resetting the
+conversation, which on a persistent turn would destroy the call
+context on every draft, defeating cause 1's fix; and promotion
+requires the final prompt to hash-match the frozen draft prompt,
+which is the full seeded prompt, while a persistent turn submits
+a delta — the two can never match. No part of it was shipped.
+
+Pinned by tests: `FinalVoiceInputResolverTest` (new) — resident
+confirmation with confirmed words resets nothing and never flips
+the tool policy; tool-call output on both attempts resets once
+and clarifies; a generation failure resets and propagates; a
+timeout resets and reports audio_fallback_timeout; a clean
+[NO_SPEECH] verdict keeps the conversation and clarifies; the
+non-resident path pins the legacy behavior (tools disabled, one
+reset per attempt plus the exit reset); a fixed-voice-preface
+conversation ignores the resident flag. `AsyncWhisperSessionTest`
+gained: a speech-end boundary decode runs before `finish()` is
+called and is reused despite trailing silence (one decode total),
+and resumed speech invalidates the reuse so `finish()` decodes
+the full final snapshot. `PiperTextStreamTest` gained: the short
+complete clause releases at the comma before the sentence ends;
+dependent, negated, unfinished, and predicate-less clauses still
+wait at the relaxed floor; the default boundary floors still
+reject the short clause for publication gates. No new composable
+and no journey-constructed class changed shape, so no new
+ProGuard keeps were needed.
+
+Not established by this entry: everything on a phone. The proof
+is Battles's to run on the published build, as one task: install
+the new build, run one voice call with several follow-ups
+(including talking over Jarvis once), then paste the benchmark
+export — success reads as every follow-up's speech-end to first
+spoken word at or under ~1.4 s, with no full-size prompt after
+the first turn.

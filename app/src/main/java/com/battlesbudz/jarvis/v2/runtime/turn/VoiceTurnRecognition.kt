@@ -171,12 +171,14 @@ internal class VoiceTurnRecognition(
             "workMs=${(System.nanoTime() - sealStarted) / 1_000_000} " +
             "sinceEndpointMs=${(System.nanoTime() - endpointAt) / 1_000_000}")
         val resolvedInput = FinalVoiceInputResolver(
-            engine = prepared.engine, resetConversation = { conversation.reset() },
+            engine = com.battlesbudz.jarvis.v2.runtime.LiteRtFinalVoiceTranscriptionEngine(prepared.engine),
+            resetConversation = { conversation.reset() },
             benchmark = observation.benchmark, turnTrace = observation.turnTrace, comparison = request.comparison,
             recordDiagnostic = diagnosticRecorder::recordImportant, reportStatus = call::status
         ).resolve(asrTranscript, audioBytes, prepared.directAudioTurn, recognitionIssue, request.asrEngine.label,
             requireWordConfirmation = prepared.correction == null &&
-                prepared.activeCapture.followupAdmittedWithoutLiveWords)
+                prepared.activeCapture.followupAdmittedWithoutLiveWords,
+            residentCallContext = prepared.callSessionReusable)
         val resolvedTranscript = resolvedInput.text
         recognitionIssue = resolvedInput.recognitionIssue
         observation.failure = recognitionIssue

@@ -136,14 +136,14 @@ class PiperVoiceOutput internal constructor(
         val playbackSpeed = 1f
         var estimatedGapMs = 0L
         var sourcePcmSummary: String? = null
-        val pcmDelivery = "piper_first_clause_then_passages_max640_v2"
+        val pcmDelivery = "piper_first_clause_then_passages_max640_v3"
         // One owner creates, invokes and releases the native engine. Playback never owns it.
         // Bounded PCM backpressure prevents long answers from accumulating unlimited audio.
         val audio = NativeAudioQueue<SynthesizedPhrase>(maxQueuedPassages) {
             it.pcm.size * 1000L / it.sampleRate
         }
         val piperText = PiperTextStream()
-        log("piper_text_policy version=first-clause-v2 subsequentTargetChars=320 maxChars=640 nativeMaxNumSentences=0 speed=1.0 threads=4")
+        log("piper_text_policy version=first-clause-v3 subsequentTargetChars=320 maxChars=640 nativeMaxNumSentences=0 speed=1.0 threads=4")
         val startupReady = CompletableDeferred<Unit>()
         val tokens = Channel<String>(64)
         val collectTokens = launch {

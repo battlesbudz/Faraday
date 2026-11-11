@@ -96,4 +96,47 @@ class AsyncWhisperSessionTest {
         assertEquals("Can you", AsyncWhisperSession.agreeingPrefix("Can you open", "Can you tell me"))
         assertEquals("", AsyncWhisperSession.agreeingPrefix("Radio says", "What time is it?"))
     }
+    @Test fun speechEndBoundaryDecodeIsReusedByFinishDespiteTrailingSilence() {
+        val boundaryDone = CountDownLatch(1)
+        val clips = mutableListOf<ByteArray>()
+        val s = AsyncWhisperSession({ pcm -> clips.add(pcm); "Complete question." },
+            log = { if (it.startsWith("whisper_partial")) boundaryDone.countDown() })
+        try {
+            s.observeSpeech(true)
+            s.accept(ByteArray(96000), false)
+            // Speech stops: the complete speech span must already be decoded
+            // during the endpoint window, before finish() is ever called.
+            s.observeSpeech(false)
+            assertTrue(boundaryDone.await(2, TimeUnit.SECONDS))
+            assertEquals(1, clips.size)
+            assertEquals(96000, clips.single().size)
+            // Trailing silence appended while the endpoint is judged does not
+            // force a second decode; its bytes carry no words.
+            s.accept(ByteArray(32000), false)
+            assertEquals("Complete question.", s.finish())
+            assertEquals(1, clips.size)
+        } finally { s.close() }
+    }
+    @Test fun resumedSpeechInvalidatesBoundaryReuse() {
+        val firstDone = CountDownLatch(1)
+        val clips = mutableListOf<ByteArray>()
+        val s = AsyncWhisperSession({ pcm ->
+            clips.add(pcm)
+            if (clips.size == 1) "First part" else "First part and the rest."
+        }, log = { if (it.startsWith("whisper_partial")) firstDone.countDown() })
+        try {
+            s.observeSpeech(true)
+            s.accept(ByteArray(96000), false)
+            s.observeSpeech(false)
+            assertTrue(firstDone.await(2, TimeUnit.SECONDS))
+            assertEquals(1, clips.size)
+            // The user resumes: the boundary decode no longer covers the whole
+            // speech span, so finish() must decode the full final snapshot.
+            s.observeSpeech(true)
+            s.accept(ByteArray(32000), false)
+            assertEquals("First part and the rest.", s.finish())
+            assertEquals(2, clips.size)
+            assertEquals(128000, clips.last().size)
+        } finally { s.close() }
+    }
 }

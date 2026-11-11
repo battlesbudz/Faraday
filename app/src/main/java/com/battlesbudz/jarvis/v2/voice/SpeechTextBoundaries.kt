@@ -28,17 +28,23 @@ internal object SpeechTextBoundaries {
             "measured", "walked", "moved", "arrived", "reached", "noticed")
 
     /** Conservative English opening heuristic, not a grammatical or semantic guarantee.
-     * Ambiguous, dependent and negated clauses wait for the ordinary sentence boundary. */
-    fun openingClauseEnd(text: CharSequence, limit: Int = text.length): Int? {
+     * Ambiguous, dependent and negated clauses wait for the ordinary sentence boundary.
+     * The size floors are parameters so a consumer that only re-chunks already-checked
+     * text (Piper passage splitting) may admit a shorter complete clause, while
+     * publication gates keep the default floors for the unit they check. Every
+     * semantic safety rule (dependent start, unfinished end, negation/ambiguity,
+     * predicate presence, markup, split numbers) applies at either floor. */
+    fun openingClauseEnd(text: CharSequence, limit: Int = text.length,
+                         minWords: Int = MIN_OPENING_WORDS, minChars: Int = MIN_OPENING_CHARS): Int? {
         for (i in 0 until minOf(text.length, limit)) {
             if (text[i] !in ",;:") continue
             // Require real lookahead, including across callbacks; never split numbers or words.
             if (i + 1 >= text.length || !text[i + 1].isWhitespace()) continue
             if (i > 0 && text[i - 1].isDigit()) continue
             val phrase = text.subSequence(0, i).toString().trim()
-            if (phrase.length < MIN_OPENING_CHARS || phrase.any { it in "<>[]{}|`\"“”()" }) continue
+            if (phrase.length < minChars || phrase.any { it in "<>[]{}|`\"“”()" }) continue
             val tokens = words.findAll(phrase.lowercase(Locale.ROOT)).map { it.value }.toList()
-            if (tokens.size < MIN_OPENING_WORDS || tokens.first() in dependentStarts ||
+            if (tokens.size < minWords || tokens.first() in dependentStarts ||
                 tokens.last() in unfinishedEnds) continue
             // A relative clause, pending negation or tool notation is too ambiguous to speak early.
             if (tokens.any { it in ambiguousWords ||
