@@ -1,3 +1,4 @@
+import java.util.zip.ZipFile
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -23,7 +24,7 @@ val prepareWhisperQnn by tasks.registering(Exec::class) {
 val sherpaDir = layout.buildDirectory.dir("sherpa-sdk")
 val sherpaNativeDir = layout.buildDirectory.dir("sherpa-native")
 // The streaming API and checked lifecycle ABI must come from one reviewed build.
-// A missing property deliberately fails; stock Maven 0.16.0 is not API-compatible.
+// A missing property deliberately fails; stock Maven 0.18.0 is not API-compatible.
 fun requiredStreamingProperty(name: String): String = providers.gradleProperty(name).orNull
     ?.takeIf { it.isNotBlank() }
     ?: throw GradleException("Missing -P$name. Build the reviewed SDK with scripts/streaming-sdk first.")
@@ -67,9 +68,46 @@ val buildSherpa by tasks.registering(Exec::class) {
             "--android-ndk", File(android.sdkDirectory, "ndk/27.2.12479018"))
     }
 }
-tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(validateStreamingSdk, extractSherpa, buildSherpa, prepareWhisperQnn) }
+val webShellDir = layout.buildDirectory.dir("webshell")
+// Code-and-export Unit 5 (scope section 5.1): CI builds the :webshell
+// module's unsigned release APK and this task embeds it into the app's
+// generated assets as shell/webshell.apk, following the generated-assets
+// precedent above (the whisper QNN runtime). The exporter streams it back
+// out on the phone; no prebuilt binary is committed to the repo and no
+// developer machine builds anything.
+val copyWebShell by tasks.registering(Copy::class) {
+    dependsOn(":webshell:assembleRelease")
+    from(rootProject.file("webshell/build/outputs/apk/release/webshell-release-unsigned.apk"))
+    into(webShellDir.map { it.dir("shell") })
+    rename { "webshell.apk" }
+}
+// The shipped app must actually carry the shell: fail the release build
+// rather than ship a code mode whose export has nothing to export. The
+// shell's size is printed so the CI log reports what the asset costs.
+val verifyWebShellAsset by tasks.registering {
+    group = "verification"
+    description = "Fails unless the packaged release APK embeds assets/shell/webshell.apk."
+    dependsOn("packageRelease")
+    val apkFile = layout.buildDirectory.file("outputs/apk/release/app-release.apk")
+    inputs.file(apkFile)
+    doLast {
+        val apk = apkFile.get().asFile
+        check(apk.isFile) { "Release APK not found at ${apk.path}; packageRelease should have produced it." }
+        ZipFile(apk).use { zip ->
+            val shell = zip.getEntry("assets/shell/webshell.apk")
+                ?: throw GradleException(
+                    "assets/shell/webshell.apk is missing from ${apk.name}: " +
+                        "the code-export shell did not reach the app APK (check copyWebShell)."
+                )
+            println("Web shell asset verified: ${shell.size} bytes inside ${apk.name} (${apk.length()} bytes).")
+        }
+    }
+}
+tasks.matching { it.name == "assembleRelease" }.configureEach { dependsOn(verifyWebShellAsset) }
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(validateStreamingSdk, extractSherpa, buildSherpa, prepareWhisperQnn, copyWebShell) }
 android {
     sourceSets.getByName("main").assets.srcDir(whisperQnnDir.map { it.dir("assets") })
+    sourceSets.getByName("main").assets.srcDir(webShellDir)
     sourceSets.getByName("main").jniLibs.srcDir(sherpaNativeDir.map { it.dir("jni") })
     namespace = "com.battlesbudz.jarvis.v2"
     compileSdk = 35
@@ -130,6 +168,9 @@ android {
             jvmTarget.set(JvmTarget.JVM_17)
         }
     }
+    // The sandbox rootfs asset must stay stored uncompressed: the installer
+    // reads its length via openFd to compute the extraction fraction.
+    androidResources { noCompress += "xz" }
     // Optional smaller sideload download. Android extracts these libraries at install;
     // the normal artifact keeps direct APK loading and lower installed storage.
     packaging.jniLibs.useLegacyPackaging = providers.gradleProperty("compactApk")
@@ -170,7 +211,24 @@ dependencies {
     implementation(files(sherpaDir.map { it.file("classes.jar") }).builtBy(extractSherpa))
     implementation(project(":phoneinference"))
     implementation("org.apache.commons:commons-compress:1.27.1")
+    // Sandbox: pure-Java XZ decoder for the vendored rootfs installer
+    // (org.tukaani:xz is public domain; see app/src/main/cpp/terminal/NOTICE.md).
+    implementation("org.tukaani:xz:1.10")
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    // Markdown parsing for assistant replies (issue #20): the maintained
+    // CommonMark parser, pure JVM with no transitive dependencies. Only the
+    // parsed tree is used; rendering to Compose lives in the ui package.
+    implementation("org.commonmark:commonmark:0.32.0")
+    // Code mode preview (code-and-export Unit 4): WebViewAssetLoader
+    // serving the open project on the appassets origin. The
+    // browser-automation WebView in actions/ does not use it and is
+    // untouched; this is a separate WebView with a different job.
+    implementation("androidx.webkit:webkit:1.14.0")
+    // Code mode APK export (code-and-export Unit 5): on-device signing
+    // of exported project APKs, APK Signature Scheme v2 only. The
+    // version matches the AGP pin in the root build file (8.7.3), per
+    // the scope's fact 7.
+    implementation("com.android.tools.build:apksig:8.7.3")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test:rules:1.6.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

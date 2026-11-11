@@ -21,3 +21,20 @@ internal fun removeModelFiles(directory: File, fileName: String, cache: File) {
         "Could not remove the model cache. Please try again."
     }
 }
+
+/**
+ * Only the resumable state of an unfinished download: the partial file and
+ * its chunk checkpoints. An installed model file, its compiled cache, and
+ * every other model's files stay exactly where they are. Idempotent — a
+ * discard after a successful one, or with nothing saved, is harmless.
+ */
+internal fun removePartialDownloadFiles(directory: File, fileName: String) {
+    val partial = File(directory, "$fileName.part")
+    check(!partial.exists() || partial.delete()) {
+        "Could not delete ${partial.name}. Please try again."
+    }
+    val chunks = File(directory, "$fileName.part.chunks")
+    check(!chunks.exists() || chunks.deleteRecursively()) {
+        "Could not remove the model download checkpoints. Please try again."
+    }
+}

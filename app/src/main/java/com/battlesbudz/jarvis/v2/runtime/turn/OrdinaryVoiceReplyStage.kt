@@ -7,6 +7,7 @@ import com.battlesbudz.jarvis.v2.conversation.ConversationCallbacks
 import com.battlesbudz.jarvis.v2.conversation.ConversationInvocation
 import com.battlesbudz.jarvis.v2.diagnostics.DiagnosticRecorder
 import com.battlesbudz.jarvis.v2.diagnostics.ReplyCaptureBenchmark
+import com.battlesbudz.jarvis.v2.memory.AutoMemorySource
 import com.battlesbudz.jarvis.v2.memory.ConversationMemorySource
 import com.battlesbudz.jarvis.v2.runtime.RuntimeVoiceResources
 import com.battlesbudz.jarvis.v2.voice.AsrComparisonStore
@@ -109,6 +110,7 @@ internal class OrdinaryVoiceReplyStage(
                                     System.nanoTime() / 1_000_000 - observation.telemetry.speechEndedAt.get())
                             }
                             diagnosticRecorder.recordSummary("Voice latency: endpoint_to_first_text_ms=$elapsedMs turn=${request.asrTurnId}")
+                            observation.telemetry.recordEndpointToFirstText(elapsedMs)
                         }
                     }
                     val interruptionTest = com.battlesbudz.jarvis.v2.voice.VoiceInterruptionTest.requested(finalized.transcript)
@@ -142,7 +144,8 @@ internal class OrdinaryVoiceReplyStage(
                             comparison = request.comparison,
                             benchmarkCapture = observation.benchmark,
                             sealedVoiceAudio = finalized.sealedVoiceAudio,
-                            nativeSpeculation = finalized.nativeSpeculation
+                            nativeSpeculation = finalized.nativeSpeculation,
+                            asrTranscript = finalized.asrTranscript
                         ), ConversationCallbacks(
                             onLiveInference = { submittedAt, firstTokenAt, tokensPerSecond, durable ->
                                 call.controller.updateReplyMetrics(prepared.expectedCallId, request.asrTurnId, durable = durable) { current ->
@@ -204,6 +207,21 @@ internal class OrdinaryVoiceReplyStage(
                                     if (streamed.isBlank() && text.isNotBlank()) lifetime.speechChunks.trySend(AssistantText.forSpeech(text))
                                 }
                                 completed.complete(text)
+                                // Automatic memory (D-3): a finalized ordinary voice answer queues a
+                                // candidate exactly like a chat turn, so the idle evaluator can commit
+                                // it above thresholds. Comparison trials never capture (chat parity);
+                                // direct-audio turns queue from the final-caption site below instead,
+                                // where the real transcript exists. Recognition-issue and
+                                // interruption-test turns never start a conversation, so they never
+                                // reach this callback.
+                                if (request.comparison == null && !prepared.directAudioTurn && finalized.transcript.isNotBlank()) {
+                                    memory.autoCaptureTurn(
+                                        prepared.correction?.utteranceId ?: request.asrTurnId,
+                                        if (prepared.correction?.origin == com.battlesbudz.jarvis.v2.voice.TranscriptOrigin.TYPED)
+                                            AutoMemorySource.CHAT else AutoMemorySource.VOICE,
+                                        finalized.transcript, text,
+                                        prepared.correction?.capturedAtMs ?: System.currentTimeMillis())
+                                }
                             }
                         ))
                     }
@@ -242,6 +260,12 @@ internal class OrdinaryVoiceReplyStage(
                         val ticket = call.controller.captionTicket(prepared.expectedCallId, request.asrTurnId,
                             com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy.PENDING_TRANSCRIPT)
                         var finalCaptionPublished = false
+                        // Caption/session reconciliation state: written by the
+                        // generate lambda, read by checkedReset, which always
+                        // runs after a started caption.
+                        var captionReusedConversation = false
+                        var captionCompletedCleanly = false
+                        var captionEmittedToolCalls = false
                         try {
                             val result = com.battlesbudz.jarvis.v2.voice.PostAnswerCaptionContinuation.run(
                                 isCurrent = { ticket != null && ownsCaption() },
@@ -250,22 +274,70 @@ internal class OrdinaryVoiceReplyStage(
                                     observation.benchmark.mark("gemma_final_caption_started")
                                     prepared.engine.onInferenceProgress = {}
                                     prepared.engine.benchmarkPurpose = com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkPurpose.TRANSCRIPTION_FALLBACK
-                                    conversation.reset()
-                                    prepared.engine.setToolsEnabled(false)
-                                    prepared.engine.generateAudio(com.battlesbudz.jarvis.v2.voice.VoiceTranscriptResolver.instructions, finalized.audioBytes, {})
+                                    // Persistent call conversation: when the
+                                    // resident conversation cleanly holds this
+                                    // call's turns, the caption transcribes on
+                                    // it directly — no reset, no tool-policy
+                                    // flip — and the transcribe exchange joins
+                                    // the call's native history. Any doubt
+                                    // about the resident state takes the
+                                    // original reset path unchanged.
+                                    captionReusedConversation = !prepared.engine.isNativeClosed &&
+                                        prepared.engine.nativeResourcesSafeToRelease &&
+                                        !prepared.engine.isNativeQuarantined &&
+                                        !prepared.engine.requiresConfirmedHistoryRebuild &&
+                                        prepared.engine.hasNativeConversationHistory
+                                    observation.benchmark.configuration("gemma_final_caption_session",
+                                        if (captionReusedConversation) "resident_call_conversation" else "fresh_conversation")
+                                    if (!captionReusedConversation) {
+                                        conversation.reset()
+                                        prepared.engine.setToolsEnabled(false)
+                                    }
+                                    val heard = prepared.engine.generateAudio(com.battlesbudz.jarvis.v2.voice.VoiceTranscriptResolver.instructions, finalized.audioBytes, {})
+                                    captionEmittedToolCalls = heard.toolCalls.isNotEmpty()
+                                    captionCompletedCleanly = true
+                                    heard
                                 },
                                 checkedReset = {
                                     check(prepared.engine.nativeResourcesSafeToRelease && !prepared.engine.isNativeQuarantined) {
                                         "Caption native drain failed; model ownership retained, reuse disabled"
                                     }
-                                    conversation.reset()
+                                    // Keep the resident conversation only when
+                                    // the caption reused it AND completed
+                                    // cleanly without emitting tool calls: an
+                                    // unanswered tool call, or a cancelled /
+                                    // failed generation (whose conversation
+                                    // the lifecycle already disposed), would
+                                    // leave the next send malformed, so
+                                    // re-establish from confirmed history.
+                                    if (!captionReusedConversation || !captionCompletedCleanly ||
+                                        captionEmittedToolCalls || prepared.engine.requiresConfirmedHistoryRebuild)
+                                        conversation.reset()
                                 },
                                 observe = { event -> observation.benchmark.mark(event) }
                             )
                             observation.benchmark.configuration("gemma_final_caption_result", result.end.name.lowercase())
                             val heard = result.value
                             val finalCaption = heard?.let { com.battlesbudz.jarvis.v2.voice.TranscriptContent.speech(it.text).trim() }.orEmpty()
-                            if (heard != null && heard.toolCalls.isEmpty() && com.battlesbudz.jarvis.v2.voice.VoiceTranscriptResolver.hasTranscript(finalCaption) &&
+                            // Transcript-disagreement hard block (Battles, 2026-11-09):
+                            // when Whisper and this Gemma caption share no words and
+                            // differ in script, neither is the user's words (build
+                            // 1771, call 83164c01: "and it does not matter." against
+                            // "प्रस्थान मेरा है" — both engines invented words on the
+                            // same audio, and the caption was still committed into
+                            // dialogue history and request evidence). Commit neither:
+                            // no caption commit, no turn evidence, no memory capture.
+                            // Leaving finalCaptionPublished false routes the turn to
+                            // the same dropped outcome as a failed caption — the
+                            // finally below commits UNTRANSCRIBED in place of either
+                            // text, so nothing downstream can plan from them.
+                            val disagreementBlocked = com.battlesbudz.jarvis.v2.voice.TranscriptDisagreement.hardBlock(finalized.asrTranscript, finalCaption)
+                            if (disagreementBlocked) {
+                                observation.benchmark.configuration("gemma_final_caption_result", "disagreement_hard_block")
+                                diagnosticRecorder.recordImportant("Voice transcript disagreement: result=hard_block action=commit_neither evidence=none memory_capture=false " +
+                                    "whisperChars=${finalized.asrTranscript.length} gemmaChars=${finalCaption.length}")
+                            }
+                            if (heard != null && !disagreementBlocked && heard.toolCalls.isEmpty() && com.battlesbudz.jarvis.v2.voice.VoiceTranscriptResolver.hasTranscript(finalCaption) &&
                                 !com.battlesbudz.jarvis.v2.voice.TranscriptContent.isSoundOnly(finalCaption)) {
                                 val farewell = com.battlesbudz.jarvis.v2.voice.VoiceCallPolicy.isGoodbye(finalCaption)
                                 var committed: com.battlesbudz.jarvis.v2.voice.VoiceSessionController.CaptionCommit? = null
@@ -287,13 +359,21 @@ internal class OrdinaryVoiceReplyStage(
                                             prepared.expectedCallId, ConversationMemorySource.VOICE, finalCaption,
                                             prepared.correction?.capturedAtMs ?: System.currentTimeMillis()) }
                                             .onFailure { diagnosticRecorder.recordImportant("Final caption memory capture failed; not retried reason=${it.javaClass.simpleName}") }
+                                        // Automatic memory (D-3): the committed final caption is this
+                                        // direct-audio turn's real transcript, so the turn's candidate
+                                        // queues from here with the answer actually given, mirroring
+                                        // the receipt capture above.
+                                        runCatching { memory.autoCaptureTurn(prepared.correction?.utteranceId ?: request.asrTurnId,
+                                            AutoMemorySource.VOICE, finalCaption, text,
+                                            prepared.correction?.capturedAtMs ?: System.currentTimeMillis()) }
+                                            .onFailure { diagnosticRecorder.recordImportant("Final caption auto-memory capture failed; not retried reason=${it.javaClass.simpleName}") }
                                     }
                                 } finally {
                                     // A storage failure cannot leave an atomically ended input gate armed.
                                     // Call-scoped cleanup runs outside publication/queue/controller locks.
                                     if (published && farewell) call.events.returnToWake(prepared.expectedCallId)
                                 }
-                            } else if (heard != null) observation.benchmark.configuration("gemma_final_caption_result", "empty_or_invalid")
+                            } else if (heard != null && !disagreementBlocked) observation.benchmark.configuration("gemma_final_caption_result", "empty_or_invalid")
                         } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
                         catch (error: Throwable) {
                             if (error is com.battlesbudz.jarvis.v2.voice.PostAnswerCaptionContinuation.NativeReleaseFailure ||
@@ -389,6 +469,8 @@ internal class OrdinaryVoiceReplyStage(
                     }, log = {
                     request.comparison?.log("barge $it")
                     diagnosticRecorder.recordImportant("Voice interruption: $it")
+                    if (it.startsWith("barge_keyword_summary")) observation.telemetry.recordBargeSource("keyword")
+                    else if (it.startsWith("barge_natural_summary")) observation.telemetry.recordBargeSource("natural")
                     if (it.startsWith("barge_natural_summary") || it.startsWith("barge_keyword_summary") || it.startsWith("barge_evidence_"))
                         diagnosticRecorder.recordTurnEvidence(request.asrTurnId, it.substringBefore(" "), it)
                 })

@@ -23,6 +23,9 @@ internal class ConversationInput(
             "Sealed native audio requires one complete direct-audio request"
         }
     }
+    /** True when this turn carries audio the model is expected to hear:
+     * direct voice audio (raw or sealed) or an attached audio file. */
+    val carriesAudioInput: Boolean get() = directAudio || attachedAudio != null
     var incrementalFallbackUsed = false
         private set
     private var speculativeResultUsed = false

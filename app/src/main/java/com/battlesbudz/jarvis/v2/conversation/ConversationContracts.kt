@@ -33,7 +33,15 @@ internal data class ConversationInvocation(
     /** Immutable, complete native encoder result; never provisional action authority. */
     val sealedVoiceAudio: com.google.ai.edge.litertlm.Content.SealedAudioEmbeddings? = null,
     /** Candidate output is still held until exact final prompt/input and ordinary routing match. */
-    val nativeSpeculation: com.battlesbudz.jarvis.v2.voice.NativeVoiceSpeculation? = null
+    val nativeSpeculation: com.battlesbudz.jarvis.v2.voice.NativeVoiceSpeculation? = null,
+    /**
+     * This turn's final ASR transcript, when one exists. On a direct-audio
+     * turn [prompt] is the audio boilerplate rather than the spoken words,
+     * so this is the only text form of the recognized request the native
+     * tool-intent gate can check a model-emitted plan against. Null or
+     * blank when no transcript exists for the turn.
+     */
+    val asrTranscript: String? = null
 )
 
 internal data class ConversationCallbacks(
@@ -43,13 +51,29 @@ internal data class ConversationCallbacks(
     val onLiveInference: (Long?, Long?, Double?, Boolean) -> Unit = { _, _, _, _ -> },
     val onActionResult: (String, String, Boolean) -> Unit = { _, _, _ -> },
     val onPhonePlanFinished: (ActionTurnRunner.Outcome) -> Unit = {},
-    val onMemoryBound: (MemoryDeliveryFence.Ticket, MemoryTurnContext) -> Unit = { _, _ -> }
+    val onMemoryBound: (MemoryDeliveryFence.Ticket, MemoryTurnContext) -> Unit = { _, _ -> },
+    /**
+     * Discarded-turn signal (M7): fired exactly once when an admitted turn
+     * ends with nothing persisted (cancelled, or superseded before it could
+     * publish), so listeners on this existing callback channel can clear
+     * any in-flight presentation state for the turn. Never fired for a turn
+     * that published a reply or a failure message.
+     */
+    val onTurnDiscarded: () -> Unit = {}
 )
 
 /** Approved-memory authority only; no tools, Android state or model leases are exposed here. */
 internal interface ConversationMemoryAccess {
     val deliveryFence: MemoryDeliveryFence
     fun approvedSnapshot(query: String, maxChars: Int): MemoryTurnContext?
+    /**
+     * Snapshot with each record's quoted content capped at [maxEntryChars]
+     * (direct-audio voice turns, whose packet budget is deliberately small).
+     * The default keeps the uncapped snapshot; the runtime override plumbs
+     * the cap through to packet construction.
+     */
+    fun approvedSnapshotCapped(query: String, maxChars: Int, maxEntryChars: Int): MemoryTurnContext? =
+        approvedSnapshot(query, maxChars)
     fun adopt(context: MemoryTurnContext): Boolean
     fun clearNativeToken()
     fun isCurrent(context: MemoryTurnContext): Boolean

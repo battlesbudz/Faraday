@@ -174,6 +174,7 @@ internal object WispPresenter {
             "create_reminder" -> "Scheduling your reminder"
             "show_schedule" -> "Checking your scheduled reminders"
             "post_notification" -> "Posting your reminder notification"
+            "run_in_sandbox" -> "Running your approved sandbox command"
             else -> if (attempt.provider != "native") "Running a connected tool" else "Working on a task"
         }
         val (activity, label) = when (attempt.state) {

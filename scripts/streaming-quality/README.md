@@ -130,8 +130,8 @@ tail and resource/action progress are retained even if compilation fails.
 
 ## Fresh input chain
 
-- Official LiteRT-LM 0.16 commit 924e79c91542761242244e4f1651851f822e4cbb;
-  its WORKSPACE LiteRT pin 0ff28117f1cb5556d0e015bf80b773f74e2bee51.
+- Official LiteRT-LM 0.18 commit b2f686e2ed4718fb84ec398a61dd59ca0f0aff27;
+  its WORKSPACE LiteRT pin 26895c9fbcc25c43faa8c1a98cd1fd28951602c3.
 - Full public bundle from the official HF revision
   6e5c4f1e395deb959c494953478fa5cec4b8008f, 2,588,147,712 bytes,
   SHA256 181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c.

@@ -7,6 +7,8 @@ import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkCapture
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkOutcome
 import com.battlesbudz.jarvis.v2.eval.ConversationAdmission
 import com.battlesbudz.jarvis.v2.eval.admitConversationTurn
+import com.battlesbudz.jarvis.v2.work.DiscardedTurnSignal
+import com.battlesbudz.jarvis.v2.work.TurnOwnership
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -116,16 +118,27 @@ internal class ConversationCoordinator(
             return null
         }
         runCatching { onTurnStarted() }
+        // M7 turn guard: this admitted turn claims the next sequence.
+        // Claiming supersedes any earlier turn whose teardown or posted
+        // callbacks are still in flight; every shared-state touch below is
+        // fenced on this ownership.
+        val ownership = TurnOwnership(ConversationWork.turnGuard, ConversationWork.turnGuard.claim())
         val job = scope.launch(Dispatchers.Default) {
             var failed = false
             var ownedBackend: ConversationBackend? = null
             var telemetry: ConversationInferenceTelemetry? = null
+            // Discarded-turn signal (M7): exactly one emission, only for a
+            // turn that ends with nothing persisted, on the callback
+            // channel the UI/state layers already listen to.
+            val discardedSignal = DiscardedTurnSignal(callbacks.onTurnDiscarded)
+            fun emitDiscarded() = discardedSignal.emit()
             val activity = runCatching { beginActivity(conversationId) }.getOrNull()
             fun progress(message: String, sequence: Long) { runCatching { activity?.progress(message, sequence) } }
             // Only this admitted invocation may install the native-mutation fence.
             // Unchanged context can promote a running draft; any reset/close must
             // invalidate and drain it before touching the same native owner.
-            modelSession.beforeNativeMutation = { input.nativeSpeculation?.beforeNativeMutation() }
+            val installedFence: suspend () -> Unit = { input.nativeSpeculation?.beforeNativeMutation() }
+            modelSession.beforeNativeMutation = installedFence
             try {
                 capture.mark("request_processing_started")
                 capture.metric("request_queue_ms", reply.elapsed())
@@ -156,16 +169,33 @@ internal class ConversationCoordinator(
                     else -> "Writing your reply"
                 }, 3)
                 val draft = generation.generate(input, contextLimit, routed, prepared, history, prompt,
-                    backend, reply, actions, timings)
+                    backend, reply, actions, timings, turnOwnership = ownership)
                 progress("Checking your reply", 4)
                 recovery.recover(draft)
-                finishDraft(draft)
+                finishDraft(draft, ownership, ::emitDiscarded)
             } catch (cancelled: CancellationException) {
+                // Cancelled (or superseded-aborted) turn: nothing was
+                // persisted, so emit the discarded-turn signal once.
                 reply.recordOutcome(PipelineBenchmarkOutcome.CANCELLED, cancelled.javaClass.simpleName)
                 actions.cancel()
                 telemetry?.finishProgress()
+                emitDiscarded()
                 throw cancelled
             } catch (error: Throwable) {
+                if (!ownership.isCurrent()) {
+                    // M7: a superseded turn's error is dropped silently.
+                    // It must not close the shared session, publish a
+                    // failure over its replacement, or raise the visible
+                    // error surface; the turn persisted nothing, so the
+                    // discarded-turn signal fires instead.
+                    reply.recordOutcome(PipelineBenchmarkOutcome.CANCELLED, "superseded_turn")
+                    actions.cancel()
+                    telemetry?.finishProgress()
+                    diagnostics.summary("Superseded turn ${ownership.sequence} error dropped: " +
+                        "${error.javaClass.simpleName}: ${error.message?.take(200)}")
+                    emitDiscarded()
+                    return@launch
+                }
                 failed = true
                 reply.recordOutcome(PipelineBenchmarkOutcome.ERROR, error.javaClass.simpleName)
                 actions.cancel()
@@ -186,23 +216,40 @@ internal class ConversationCoordinator(
                         throw com.battlesbudz.jarvis.v2.voice.SpeculativeResponseCoordinator.Quarantined(null)
                     capture.mark("request_processing_finished")
                     reply.finishBenchmark()
-                    if (ownsBenchmark) ownedBackend?.onBenchmarkSubmission = {}
-                    modelSession.residentBackend?.onInferenceProgress = {}
-                    if (input.voiceAudio == null && !input.callOwned) modelSession.residentBackend?.onPromptSubmitted = { _, _ -> }
+                    // The resident backend is shared: only the turn that
+                    // still owns the sequence may clear its callbacks.
+                    if (ownership.isCurrent()) {
+                        if (ownsBenchmark) ownedBackend?.onBenchmarkSubmission = {}
+                        modelSession.residentBackend?.onInferenceProgress = {}
+                        if (input.voiceAudio == null && !input.callOwned) modelSession.residentBackend?.onPromptSubmitted = { _, _ -> }
+                    }
                     input.incrementalVoice?.close()
                 } finally {
-                    modelSession.beforeNativeMutation = {}
+                    // Clear the native-mutation fence only if it is still
+                    // this turn's; a replacement turn's fence stays.
+                    if (modelSession.beforeNativeMutation === installedFence) modelSession.beforeNativeMutation = {}
                     runCatching { activity?.close() }
                 }
                 // Start the bounded visible error after cleanup, before releasing admission.
-                if (failed) runCatching { onTurnFailure(conversationId) }
+                if (failed && ownership.isCurrent()) runCatching { onTurnFailure(conversationId) }
             }
         }
-        job.invokeOnCompletion { ConversationWork.activeJobs.decrementAndGet() }
+        job.invokeOnCompletion {
+            ConversationWork.activeJobs.decrementAndGet()
+            ownership.guard.release(ownership.sequence)
+        }
         return job
     }
 
-    private suspend fun finishDraft(draft: ConversationDraft) {
+    private suspend fun finishDraft(draft: ConversationDraft, ownership: TurnOwnership,
+                                    emitDiscarded: () -> Unit) {
+        // M7: a superseded turn publishes nothing and writes no shared
+        // session state; it persisted nothing, so signal the discard.
+        if (!ownership.isCurrent()) {
+            diagnostics.summary("Superseded turn ${ownership.sequence} draft dropped before publication")
+            emitDiscarded()
+            return
+        }
         val answer = draft.answer
         val input = answer.invocation
         if (!draft.rawControlOutput) modelSession.addCharacters(answer.submittedPrompt.length + draft.generated.text.length)
@@ -225,5 +272,9 @@ internal class ConversationCoordinator(
             "raw=${draft.generated.text.take(4_000)}\nrepeatedFragment=${final.repeatedFragment}\n" +
             "conversationCharacters=${modelSession.characters}")
         answer.reply.postFinish(final.text)
+        // A direct-audio turn that produced a native tool plan ends
+        // call-session reuse: the next call turn re-establishes a fresh
+        // conversation instead of appending behind a tool exchange.
+        if (answer.directAudio && draft.actionName != null) modelSession.reset()
     }
 }

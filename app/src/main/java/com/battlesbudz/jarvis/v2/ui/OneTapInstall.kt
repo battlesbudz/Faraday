@@ -2,16 +2,23 @@ package com.battlesbudz.jarvis.v2.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -23,6 +30,12 @@ import androidx.compose.ui.unit.dp
  * model (stock Gemma-4-E2B-it) and hands off to the normal app flow once it is
  * installed and its automatic check passes. Shown only when no usable model
  * exists on the device, so there is nothing to configure before the tap.
+ *
+ * While the transfer runs, the user owns it: Pause stops the work and keeps
+ * the downloaded progress on the phone (the paused state below offers
+ * Resume), and Cancel — behind a confirmation, because it is destructive —
+ * stops the work and removes that saved progress. Neither control existed
+ * here before; the only way out of a download was waiting for it to finish.
  */
 @Composable
 internal fun OneTapInstall(
@@ -32,9 +45,38 @@ internal fun OneTapInstall(
     downloadBytes: Long,
     downloadTotalBytes: Long,
     status: String,
+    paused: Boolean,
+    partialBytes: Long,
     onInstall: () -> Unit,
-    onChooseDifferentModel: () -> Unit
+    onChooseDifferentModel: () -> Unit,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onDiscard: () -> Unit
 ) {
+    var confirmingDiscard by remember { mutableStateOf(false) }
+    if (confirmingDiscard) {
+        val savedBytes = if (downloading) downloadBytes else partialBytes
+        AlertDialog(
+            onDismissRequest = { confirmingDiscard = false },
+            title = { Text("Cancel this download?") },
+            text = {
+                Text(
+                    "This stops the download and removes the " +
+                        "${oneTapMegabytes(savedBytes)} MB already saved on this phone. " +
+                        "Pausing instead keeps that progress, so the download can resume where it left off."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { confirmingDiscard = false; onDiscard() },
+                    modifier = Modifier.testTag("one_tap_confirm_discard")
+                ) { Text("Cancel download") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingDiscard = false }) { Text("Keep it") }
+            }
+        )
+    }
     Column(
         Modifier
             .fillMaxSize()
@@ -63,6 +105,52 @@ internal fun OneTapInstall(
                 )
             } else {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+            if (status.isNotBlank()) {
+                Text(status, modifier = Modifier.padding(top = 20.dp), textAlign = TextAlign.Center)
+            }
+            if (downloading) {
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onPause,
+                        modifier = Modifier.weight(1f).testTag("one_tap_pause")
+                    ) { Text("Pause") }
+                    TextButton(
+                        onClick = { confirmingDiscard = true },
+                        modifier = Modifier.weight(1f).testTag("one_tap_cancel_download")
+                    ) { Text("Cancel download") }
+                }
+                Text(
+                    "Pause keeps the progress saved on this phone. Cancel removes it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 8.dp),
+                    textAlign = TextAlign.Center
+                )
+            }
+        } else if (paused) {
+            Text("Download paused", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "${oneTapMegabytes(partialBytes)} MB is saved on this phone. " +
+                    "Resume to pick up where the download left off, or cancel to remove it.",
+                modifier = Modifier.padding(top = 8.dp, bottom = 20.dp),
+                textAlign = TextAlign.Center
+            )
+            Button(
+                onClick = onResume,
+                enabled = !importing,
+                modifier = Modifier.fillMaxWidth().testTag("one_tap_resume")
+            ) {
+                Text("Resume download")
+            }
+            TextButton(
+                onClick = { confirmingDiscard = true },
+                enabled = !importing,
+                modifier = Modifier.fillMaxWidth().testTag("one_tap_cancel_download")
+            ) {
+                Text("Cancel download")
             }
             if (status.isNotBlank()) {
                 Text(status, modifier = Modifier.padding(top = 20.dp), textAlign = TextAlign.Center)

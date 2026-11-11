@@ -153,6 +153,7 @@ internal fun VoiceCallScreen(
     onVoiceTurn: (Boolean, (String) -> Unit, (String, String, Boolean) -> Unit, (String) -> Unit) -> Unit,
     onEndVoiceCall: ((String) -> Unit) -> Unit,
     onCopyDiagnostics: (List<ChatEntry>) -> Unit,
+    onSaveDiagnostics: ((String) -> Unit) -> Unit = {},
     // M1d explicit silent work (D21/T05): toggle plus observable posture.
     silentWork: kotlinx.coroutines.flow.StateFlow<Boolean>? = null,
     onSilentWork: (Boolean) -> Unit = {},
@@ -163,6 +164,8 @@ internal fun VoiceCallScreen(
     onConnectMcpServer: (String, String, String, (String) -> Unit) -> Unit = { _, _, _, done -> done("MCP setup is unavailable right now.") },
     // M7 external agents (D06): grant list with authorize/revoke/enable.
     callEvidenceActions: CallEvidenceActions,
+    // Code-and-export Unit 6: the settings door to the Code destination.
+    onOpenCodeProjects: () -> Unit = {},
 ) {
     val runtime = com.battlesbudz.jarvis.v2.voice.VoiceSessionUi
     val runtimePhase by runtime.phase.collectAsState()
@@ -317,6 +320,18 @@ internal fun VoiceCallScreen(
         val assistantContext = androidx.compose.ui.platform.LocalContext.current
         VoiceInputSettings(enabled = !chatSending && !runtimeArmed && !turnInFlight && !inputTesting, onBusy = { inputTesting = it })
         VisionServerSettingsSection(enabled = !chatSending && !runtimeArmed && !turnInFlight && !inputTesting)
+        androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 16.dp))
+        SandboxSettingsSection(enabled = !chatSending && !runtimeArmed && !turnInFlight && !inputTesting)
+        androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 16.dp))
+        Text("Code projects", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Build small web apps with the loaded model, preview them, and export them " +
+                "as installable APKs. Projects live in the sandbox workspace.",
+            style = MaterialTheme.typography.bodyMedium)
+        Button(
+            onClick = { onDismissSettings(); onOpenCodeProjects() },
+            modifier = Modifier.testTag("voice_call_open_code"),
+        ) { Text("Open code projects") }
         var assistantSettingsMessage by remember { mutableStateOf(
             if (assistantContext.getSystemService(android.app.role.RoleManager::class.java)
                 .isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT)) "Jarvis is your default assistant."
@@ -381,6 +396,7 @@ internal fun VoiceCallScreen(
         }) { Text(if (helperConnected) "Keyboard handoff settings" else "Enable keyboard microphone handoff") }
         if (keyboardSetupError.isNotBlank()) Text(keyboardSetupError, style = MaterialTheme.typography.bodySmall)
         var diagnosticsOpen by remember { mutableStateOf(false) }
+        var diagnosticsSaveMessage by remember { mutableStateOf("") }
         TextButton(onClick = { diagnosticsOpen = !diagnosticsOpen }) {
             Text(if (diagnosticsOpen) "Hide development diagnostics" else "Development diagnostics")
         }
@@ -391,6 +407,17 @@ internal fun VoiceCallScreen(
                 modifier = Modifier.padding(top = 4.dp)
             ) {
                 Text("Copy diagnostics")
+            }
+            TextButton(
+                onClick = { onSaveDiagnostics { diagnosticsSaveMessage = it } },
+                modifier = Modifier.padding(top = 4.dp)
+            ) {
+                Text("Save diagnostics")
+            }
+            if (diagnosticsSaveMessage.isNotEmpty()) {
+                Text(diagnosticsSaveMessage,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 4.dp))
             }
         }
         } }

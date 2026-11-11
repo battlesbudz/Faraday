@@ -17,7 +17,14 @@ internal class PiperTextStream(private val waitForEnd: Boolean = false, openingT
         if (final && buffer.length <= MAX_CHARS) return release(buffer.length)
         val sentenceEnds = SpeechTextBoundaries.sentenceEnds(buffer, final, MAX_CHARS)
         if (!waitForEnd && opening) {
-            val clause = SpeechTextBoundaries.openingClauseEnd(buffer, MAX_CHARS)
+            // Passage splitting only re-chunks text that already passed the
+            // publication gates, so the opening may release at the shorter
+            // complete-clause floor: synthesis starts at the first clause
+            // instead of waiting for the full first sentence. The semantic
+            // safety rules in SpeechTextBoundaries still apply unchanged;
+            // only the size floor differs from the checked-publication one.
+            val clause = SpeechTextBoundaries.openingClauseEnd(buffer, MAX_CHARS,
+                minWords = OPENING_MIN_WORDS, minChars = OPENING_MIN_CHARS)
             val first = listOfNotNull(clause, sentenceEnds.firstOrNull()).minOrNull()
             if (first != null) return release(first)
         }
@@ -44,5 +51,8 @@ internal class PiperTextStream(private val waitForEnd: Boolean = false, openingT
     companion object {
         const val TARGET_CHARS = 320
         const val MAX_CHARS = 640
+        /** Opening-clause size floor for passage splitting only (see take()). */
+        const val OPENING_MIN_WORDS = 4
+        const val OPENING_MIN_CHARS = 24
     }
 }

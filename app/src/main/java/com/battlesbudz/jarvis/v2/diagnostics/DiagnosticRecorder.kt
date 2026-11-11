@@ -13,6 +13,17 @@ class DiagnosticRecorder(
     private val summaries = mutableListOf<String>()
     private val turnEvidence = linkedMapOf<String, String>()
 
+    /** Conversation the live session's call belongs to; null for non-call sessions. */
+    private var sessionConversationId: String? = null
+
+    /**
+     * Latest completed call per conversation, in archive order (oldest first):
+     * when a call session ends, its snapshot moves here under its conversation
+     * so Copy Diagnostics can still return that conversation's call after
+     * later calls in other conversations have taken over the live session.
+     */
+    private val callArchive = linkedMapOf<String, String>()
+
     /** Separate retention: timing chatter cannot evict or truncate the model input. */
     fun recordInferencePrompt(entry: String) = synchronized(entries) {
         inferencePrompts.addLast("atMs=${System.currentTimeMillis()}\n$entry")
@@ -32,18 +43,73 @@ class DiagnosticRecorder(
     }
     private var sessionLabel = "Previous app runtime (may include earlier calls or chat)"
 
-    fun startSession(label: String) {
+    fun startSession(label: String) = startSession(label, null)
+
+    fun startSession(label: String, conversationId: String?) {
+        archiveCurrentCall()
         synchronized(entries) {
             sessionLabel = "$label recordedByBuild=$buildLabel startedAtMs=${System.currentTimeMillis()}"
+            sessionConversationId = conversationId
             inferencePrompts.clear()
             entries.clear()
             important.clear()
             summaries.clear()
             turnEvidence.clear()
-            preferences.edit().remove("diagnostics_inference_prompts").remove("diagnostics_turn_evidence").remove("diagnostics_summaries").remove("diagnostics_important").putString("diagnostics_session", sessionLabel)
-                .putString("diagnostics", "[]").apply()
+            val editor = preferences.edit().remove("diagnostics_inference_prompts").remove("diagnostics_turn_evidence").remove("diagnostics_summaries").remove("diagnostics_important").putString("diagnostics_session", sessionLabel)
+                .putString("diagnostics_call_archive", archivedCallsJson())
+                .putString("diagnostics", "[]")
+            if (conversationId == null) editor.remove("diagnostics_session_conversation")
+            else editor.putString("diagnostics_session_conversation", conversationId)
+            editor.apply()
         }
     }
+
+    /**
+     * The outgoing session, when it was a voice call, becomes its
+     * conversation's retained latest call before the new session clears the
+     * live collections. Retention stays bounded: one snapshot per
+     * conversation, at most [MAX_ARCHIVED_CALLS] conversations.
+     */
+    private fun archiveCurrentCall() {
+        val owner = synchronized(entries) { sessionConversationId } ?: return
+        val wasCall = synchronized(entries) { sessionLabel.startsWith(CALL_LABEL_PREFIX) }
+        if (!wasCall) return
+        val text = snapshot()
+        synchronized(entries) {
+            callArchive.remove(owner)
+            callArchive[owner] = text
+            while (callArchive.size > MAX_ARCHIVED_CALLS) callArchive.remove(callArchive.keys.first())
+            preferences.edit().putString("diagnostics_call_archive", archivedCallsJson()).apply()
+        }
+    }
+
+    private fun archivedCallsJson(): String = JSONArray().also { array ->
+        callArchive.forEach { (conversation, snapshot) ->
+            array.put(org.json.JSONObject().put("conversation", conversation).put("snapshot", snapshot))
+        }
+    }.toString()
+
+    /**
+     * The latest recorded call belonging to [conversationId]: the live
+     * session when it is that conversation's call, otherwise the retained
+     * snapshot of its most recent completed call. Null when the conversation
+     * has no recorded call — never another conversation's call.
+     */
+    fun snapshotForConversation(conversationId: String?): String? {
+        if (conversationId == null) return null
+        if (isLiveCallFor(conversationId)) return snapshot()
+        return synchronized(entries) { callArchive[conversationId] }
+    }
+
+    /** True when the live session is [conversationId]'s own in-progress call. */
+    fun isLiveCallFor(conversationId: String?): Boolean = synchronized(entries) {
+        conversationId != null && conversationId == sessionConversationId &&
+            sessionLabel.startsWith(CALL_LABEL_PREFIX)
+    }
+
+    /** Copy Diagnostics body for the open conversation: its call, or the plain no-call line. */
+    fun exportForConversation(conversationId: String?): String =
+        snapshotForConversation(conversationId) ?: NO_CALL_RECORDED_MESSAGE
 
     fun restore(): List<String> {
         val stored = preferences.getString("diagnostics", null).orEmpty()
@@ -67,6 +133,16 @@ class DiagnosticRecorder(
                 ((saved.length() - 24).coerceAtLeast(0) until saved.length()).forEach { inferencePrompts.addLast(saved.getString(it)) }
             }
             sessionLabel = preferences.getString("diagnostics_session", null) ?: sessionLabel
+            sessionConversationId = preferences.getString("diagnostics_session_conversation", null)
+            callArchive.clear()
+            runCatching {
+                val saved = JSONArray(preferences.getString("diagnostics_call_archive", "[]"))
+                (0 until saved.length()).forEach { index ->
+                    val item = saved.getJSONObject(index)
+                    callArchive[item.getString("conversation")] = item.getString("snapshot")
+                }
+                while (callArchive.size > MAX_ARCHIVED_CALLS) callArchive.remove(callArchive.keys.first())
+            }
             entries.clear()
             entries.addAll(restored)
             important.clear()
@@ -92,10 +168,46 @@ class DiagnosticRecorder(
         return restored
     }
 
+    /**
+     * Live section appended to every [snapshot], supplied by the composition root
+     * (JarvisRuntime binds the memory-embeddings probe). It is computed at snapshot
+     * time, so an export always carries current values instead of a state stamped
+     * when some earlier event happened to be recorded; both standard Copy
+     * Diagnostics assembly sites build on [snapshot], so both inherit it. A
+     * failing probe degrades to the plain snapshot rather than breaking the export.
+     */
+    @Volatile var liveSection: (() -> String?)? = null
+
     fun snapshot(): String {
-        return synchronized(entries) {
+        val body = synchronized(entries) {
             "Running build: $buildLabel\n$sessionLabel\n\nExact Gemma prompt submissions (latest 24; includes drafts and retries):\n${inferencePrompts.joinToString("\n\n")}\n\nRetained turn evidence (up to 12 turns):\n${turnEvidence.values.joinToString("\n\n")}\n\nTiming and recognition summaries:\n${summaries.joinToString("\n\n")}\n\nCall actions and turns:\n${important.joinToString("\n\n")}\n\nRecent audio events:\n" + entries.takeLast(100).joinToString("\n\n")
                 .ifBlank { "No runtime events in this session yet." }
+        }
+        val section = runCatching { liveSection?.invoke() }.getOrNull()?.takeIf { it.isNotBlank() }
+        return if (section == null) body else "$body\n\n$section"
+    }
+
+    /**
+     * Structured twin of [snapshot] for the Save diagnostics export: the same
+     * sections and the same entry strings, as genuine JSON (build, generation
+     * time, session, and one array per snapshot section) instead of flattened
+     * text. The live section rides as its own field, exactly as the text
+     * export appends it.
+     */
+    fun snapshotJson(): org.json.JSONObject {
+        val section = runCatching { liveSection?.invoke() }.getOrNull()?.takeIf { it.isNotBlank() }
+        return synchronized(entries) {
+            org.json.JSONObject().apply {
+                put("build", buildLabel)
+                put("generatedAtMs", System.currentTimeMillis())
+                put("session", sessionLabel)
+                put("inferencePrompts", JSONArray().also { array -> inferencePrompts.forEach(array::put) })
+                put("turnEvidence", JSONArray().also { array -> turnEvidence.values.forEach(array::put) })
+                put("summaries", JSONArray().also { array -> summaries.forEach(array::put) })
+                put("callActionsAndTurns", JSONArray().also { array -> important.forEach(array::put) })
+                put("recentAudioEvents", JSONArray().also { array -> entries.takeLast(100).forEach(array::put) })
+                put("liveSection", section ?: org.json.JSONObject.NULL)
+            }
         }
     }
 
@@ -148,5 +260,13 @@ class DiagnosticRecorder(
             }.toString()
             preferences.edit().putString("diagnostics", persisted).apply()
         }
+    }
+
+    companion object {
+        /** Copy Diagnostics result when the open conversation has no recorded call. */
+        const val NO_CALL_RECORDED_MESSAGE = "No call recorded for this conversation."
+
+        private const val CALL_LABEL_PREFIX = "Voice Call "
+        private const val MAX_ARCHIVED_CALLS = 8
     }
 }

@@ -45,7 +45,10 @@ internal data class PreparedVoiceTurn(
     val correction: CapturedVoiceTurn?,
     val directAudioTurn: Boolean,
     val replyAsrEnabled: Boolean,
-    val replyProbeEnabled: Boolean
+    val replyProbeEnabled: Boolean,
+    /** True when this turn answers on the live persistent call conversation,
+     * so recognition stages may run on it without resetting it. */
+    val callSessionReusable: Boolean = false
 )
 
 /** Final recognition evidence. Only this value may advance to phone or ordinary answer stages. */

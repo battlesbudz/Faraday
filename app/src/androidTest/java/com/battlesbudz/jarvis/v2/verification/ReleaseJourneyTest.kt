@@ -17,11 +17,14 @@ import android.system.StructPollfd
 import android.provider.MediaStore
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
@@ -1484,7 +1487,9 @@ class ReleaseJourneyTest {
         /*
          * This mounts the shipping MemoryScreen on a real, file-backed MemoryOs.  The two
          * ConversationMemory inputs are deliberately finalized fixtures: this proves the
-         * production capture boundary and review UI without claiming microphone/ASR/model work.
+         * production capture boundary and memory UI without claiming microphone/ASR/model work.
+         * Since 2026-11-01 capture commits immediately (no review step): captured and
+         * manually added memories are approved at once and searchable in the wiki.
          */
         val file = File(context.cacheDir, "release-memory-wiki-journey.db").apply { delete() }
         val store = SQLiteMemoryStore(file)
@@ -1512,15 +1517,9 @@ class ReleaseJourneyTest {
             clickHorizontalChip(By.res("memory_category_picker"), By.res("memory_category_$category"))
             enterText(By.res("memory_topic_input"), topic)
             clickEnabled(By.res("memory_propose"))
-            assertTrue("Add dialog did not close after its saved proposal", device.wait(
+            assertTrue("Add dialog did not close after its saved memory", device.wait(
                 Until.gone(By.res("memory_new_content")), 15_000
             ))
-        }
-        fun approveOnlyPending() {
-            clickFixedMemoryControl(By.res("memory_review_tab"))
-            assertNotNull(find(By.text("Review (1)")))
-            clickEnabled(By.res("memory_approve"))
-            assertNotNull(find(By.text("Review (0)")))
         }
 
         try {
@@ -1551,17 +1550,12 @@ class ReleaseJourneyTest {
                 "$cobalt.", now + 1
             )).outcome)
 
-            // Pending capture is reviewable but never part of Wiki search until a real Approve tap.
-            assertNotNull(find(By.text("Review (2)")))
-            searchMemory("sapphire notebooks", By.text("No approved memories match that search."))
+            // Captured memories commit immediately: there is no review tab, and
+            // both captures are part of Wiki search right away.
+            assertNull(device.findObject(By.res("memory_review_tab")))
+            searchMemory("sapphire notebooks", By.text(sapphire))
             enterFixedMemorySearchText("")
-            clickFixedMemoryControl(By.res("memory_review_tab"))
-            assertNotNull(scrollTo(By.text(sapphire)))
-            captureEvidence("memory_wiki_review_pending")
-            clickEnabled(By.res("memory_approve"))
-            assertNotNull(find(By.text("Review (1)")))
-            clickEnabled(By.res("memory_approve"))
-            assertNotNull(find(By.text("Review (0)")))
+            captureEvidence("memory_wiki_capture_immediate")
 
             // Exact wiki search opens the derived topic page; Sources exposes the capture provenance.
             clickEnabled(By.res("memory_wiki_tab"))
@@ -1575,12 +1569,6 @@ class ReleaseJourneyTest {
             // Explicit category/topic placement can be changed later and survives the store reload.
             addManual(atlas, "projects", "Atlas")
             addManual(cobaltNotes, "knowledge", "Cobalt")
-            clickFixedMemoryControl(By.res("memory_review_tab"))
-            assertNotNull(find(By.text("Review (2)")))
-            clickEnabled(By.res("memory_approve"))
-            assertNotNull(find(By.text("Review (1)")))
-            clickEnabled(By.res("memory_approve"))
-            assertNotNull(find(By.text("Review (0)")))
             clickEnabled(By.res("memory_wiki_tab"))
             searchMemory("atlas", By.text(atlas))
             clickEnabled(By.text(atlas))
@@ -1611,7 +1599,7 @@ class ReleaseJourneyTest {
             captureEvidence("memory_wiki_linked_article")
             clickEnabled(By.res("memory_article_back"))
 
-            // Corrections stay out of the index until reviewed, then supersede the old search hit.
+            // Corrections apply on save and supersede the old search hit at once.
             searchMemory("sapphire notebooks", By.text(sapphire))
             clickEnabled(By.text(sapphire))
             assertNotNull(find(By.res("memory_article_tab")))
@@ -1620,11 +1608,10 @@ class ReleaseJourneyTest {
             assertNotNull(find(By.text("Correct memory")))
             enterText(By.res("memory_new_content"), indigo)
             clickEnabled(By.res("memory_propose"))
-            assertTrue("Correction dialog did not close after its saved proposal", device.wait(
+            assertTrue("Correction dialog did not close after its saved memory", device.wait(
                 Until.gone(By.res("memory_new_content")), 15_000
             ))
             clickEnabled(By.res("memory_article_back"))
-            approveOnlyPending()
             clickEnabled(By.res("memory_wiki_tab"))
             searchMemory("sapphire notebooks", By.text("No approved memories match that search."))
             searchMemory("indigo notebooks", By.text(indigo))
@@ -1657,11 +1644,15 @@ class ReleaseJourneyTest {
             searchMemory("sapphire notebooks", By.text("No approved memories match that search."))
             enterFixedMemorySearchText("")
 
-            // Rejected pending records are retained only in History, never in the wiki index.
-            addManual("Rejected private note for verification.", "knowledge", "Rejected")
-            clickFixedMemoryControl(By.res("memory_review_tab"))
-            clickEnabled(By.res("memory_reject"))
-            assertNotNull(find(By.text("Review (0)")))
+            // Rejected records are retained only in History, never in the wiki
+            // index. There is no review UI anymore, so the rejection is driven
+            // through the MemoryOs lifecycle directly (the same shape as the
+            // ledger-only fixtures at the end of this journey).
+            val rejectedNote = checkNotNull(memoryOs.propose(MemoryProposal(
+                "Rejected private note for verification.",
+                MemorySource("release-rejected-note", "manual", now + 2),
+                wikiAssignment = MemoryWikiAssignment(WikiCategory.KNOWLEDGE, "Rejected"))).memory)
+            assertEquals(MemoryOutcome.REJECTED, memoryOs.reject(rejectedNote.id, rejectedNote.revision).outcome)
             clickEnabled(By.res("memory_wiki_tab"))
             searchMemory("rejected private note", By.text("No approved memories match that search."))
             enterFixedMemorySearchText("")
@@ -1672,7 +1663,6 @@ class ReleaseJourneyTest {
 
             // A fresh approved record survives Activity recreation using the same real store.
             addManual(persistent, "preferences", "Tea")
-            approveOnlyPending()
             activity.recreate()
             val reloaded = SQLiteMemoryStore(file).use { checkNotNull(it.read().snapshot) }
             assertTrue("A separately opened store must retain the approved record after recreation",
@@ -1723,9 +1713,11 @@ class ReleaseJourneyTest {
         }
     }
 
-    @Test fun test25_finalizedTextAndVoiceMemoryNeedsApprovalBeforePromptUse() {
+    @Test fun test25_finalizedTextAndVoiceMemoryIsImmediatelyAvailableToPrompts() {
         // Controlled finalized-input fixtures exercise the production local bridge and prompt builder,
-        // not a microphone or model-generated response.
+        // not a microphone or model-generated response. Since 2026-11-01 capture
+        // commits immediately: no approval step stands between a finalized
+        // text/voice fact and prompt use.
         val file = File(context.cacheDir, "release-finalized-memory.json").apply { delete() }
         val now = System.currentTimeMillis()
         try {
@@ -1741,11 +1733,10 @@ class ReleaseJourneyTest {
             ))
             assertEquals(ConversationMemoryOutcome.PROPOSED, text.outcome)
             assertEquals(ConversationMemoryOutcome.PROPOSED, voice.outcome)
-            val pending = checkNotNull(os.read().snapshot).memories
-            assertEquals(setOf(MemoryReviewStatus.PENDING), pending.map { it.reviewStatus }.toSet())
-            assertTrue(bridge.approvedContext("tea", 600).packet!!.memories.isEmpty())
+            val captured = checkNotNull(os.read().snapshot).memories
+            assertEquals(setOf(MemoryReviewStatus.APPROVED), captured.map { it.reviewStatus }.toSet())
+            assertTrue(bridge.approvedContext("tea", 600).packet!!.text.contains("bergamot tea"))
 
-            pending.forEach { record -> assertEquals(MemoryOutcome.APPROVED, os.approve(record.id, record.revision).outcome) }
             val packet = checkNotNull(bridge.approvedContext("tea cobalt", 900).packet).text
             assertTrue(packet.contains("I prefer bergamot tea"))
             assertTrue(packet.contains("My favorite color is cobalt"))
@@ -1764,11 +1755,13 @@ class ReleaseJourneyTest {
         try {
             val os = MemoryOs(file) { now }
             val bridge = ConversationMemory(os)
-            val created = checkNotNull(bridge.capture(FinalMemoryInput(
+            // Capture commits immediately (2026-11-01), so the captured record
+            // is already the approved one the correction targets.
+            val approved = checkNotNull(bridge.capture(FinalMemoryInput(
                 "release-original-memory", "thread-release", null, ConversationMemorySource.TEXT,
                 "Remember I prefer blue mugs.", now
             )).memory)
-            val approved = checkNotNull(os.approve(created.id, created.revision).memory)
+            assertEquals(MemoryReviewStatus.APPROVED, approved.reviewStatus)
             val before = bridge.approvedContext("mugs", 600)
             assertTrue(checkNotNull(before.packet).text.contains("blue mugs"))
 
@@ -1970,12 +1963,13 @@ class ReleaseJourneyTest {
             clickFixedMemoryControl(By.res("memory_nav_chat"))
             assertNotNull(find(By.res("chat_composer")))
             assertEquals("The parent Memory-to-Chat route must preserve an active call", callsBeforeRoute, ends.get())
-            clickEnabled(By.res("phone_tasks_open"))
+            // Approvals render inline in the conversation thread now —
+            // no tasks-panel trip. The card shows the exact action.
+            assertNotNull(find(By.res("inline_approval_${combinedChoice.task.id}")))
             assertNotNull(find(By.text("Set media volume to 25%")))
             assertNotNull(find(By.text("Waiting for your approval")))
             clickEnabled(By.res("task_deny_${combinedChoice.task.id}"))
             assertEquals(ToolTaskState.CANCELLED, combinedLedger.get(combinedChoice.task.id)?.state)
-            clickEnabled(By.text("Done"))
             assertNotNull(find(By.res("voice_call_overlay")))
             assertEquals("Task approval UI must not end the active call", callsBeforeRoute, ends.get())
             assertNotNull(find(By.res("voice_call_overlay")))
@@ -2577,7 +2571,7 @@ class ReleaseJourneyTest {
         } finally { root.deleteRecursively() }
     }
 
-    @Test fun test39_referencePdfExtractionAndPendingAcknowledgmentUseReleaseCode() {
+    @Test fun test39_referencePdfExtractionAndSavedAcknowledgmentUseReleaseCode() {
         val bytes = instrumentation.context.assets.open("reference-fixture.pdf").use { it.readBytes() }
         val text = com.battlesbudz.jarvis.v2.ai.ReferencePdfText.read(context, bytes)
         assertTrue(text.contains("Fermented plant juice (FPJ)"))
@@ -2591,9 +2585,11 @@ class ReleaseJourneyTest {
             val os = MemoryOs(File(root, "memory.json"))
             val receipt = ConversationMemory(os).capture(FinalMemoryInput("ack", "conversation", source = ConversationMemorySource.TEXT,
                 text = "Remember I like apricots", capturedAtMs = System.currentTimeMillis()))
-            assertEquals(MemoryReviewStatus.PENDING, receipt.memory!!.reviewStatus)
-            assertEquals("I've added a pending memory for your review. It isn't approved yet.", MemoryCaptureAcknowledgment.reply(receipt))
-            assertTrue(os.contextPacket("what fruit do I like?", 1200).packet!!.memories.isEmpty())
+            // No approval step (2026-11-01): the capture is approved at once,
+            // the receipt says so, and the fact is recallable immediately.
+            assertEquals(MemoryReviewStatus.APPROVED, receipt.memory!!.reviewStatus)
+            assertEquals("Saved to memory.", MemoryCaptureAcknowledgment.reply(receipt))
+            assertTrue(os.contextPacket("what fruit do I like?", 1200).packet!!.text.contains("apricots"))
         } finally { root.deleteRecursively() }
     }
 
@@ -2669,7 +2665,7 @@ class ReleaseJourneyTest {
     }
 
     @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
-    @Test fun test42_taskPanelShowsExactChoiceAndReconcilesWithoutRetry() {
+    @Test fun test42_inlineApprovalShowsExactChoiceAndPanelReconcilesWithoutRetry() {
         val file = File(context.cacheDir, "release-task-panel.json").apply { delete() }
         val ledger = ToolTaskLedger(FileToolTaskStore(file))
         val approvals = ActionApprovalStore(FileToolTaskStore(file))
@@ -2698,10 +2694,12 @@ class ReleaseJourneyTest {
             activity.onActivity { host -> host.setContent {
                 MaterialTheme { Surface(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
                     val snapshot by journal.collectAsState()
-                    com.battlesbudz.jarvis.v2.ui.PhoneTaskPanel(snapshot, "panel-thread", null, decide)
+                    Column {
+                        com.battlesbudz.jarvis.v2.ui.InlineApprovalCards(snapshot, "panel-thread", decide)
+                        com.battlesbudz.jarvis.v2.ui.PhoneTaskPanel(snapshot, "panel-thread", null, decide)
+                    }
                 } }
             } }
-            find(By.res("phone_tasks_open")).click()
             assertNotNull(find(By.text("Set media volume to 25%")))
             assertEquals(0, effects.get())
             captureEvidence("phone_task_approval")
@@ -2711,6 +2709,17 @@ class ReleaseJourneyTest {
             ))
             assertEquals(1, effects.get())
             assertEquals(ToolTaskState.SUCCEEDED, ledger.get(pending.task.id)?.state)
+            // The fixture parks the panel button at the window's top edge,
+            // under the status bar, and a plain click() taps its center: on
+            // the foldable the status bar is 74px tall, so that center tap
+            // lands in the SystemUI strip and is swallowed before the panel
+            // dialog can open (on the phone profiles the 63px bar leaves the
+            // center 1px inside the app window). Tap near the button's lower
+            // edge instead — inside the app window on every profile.
+            val panelButton = find(By.res("phone_tasks_open"))
+            assertTrue("Panel button tap must inject",
+                device.click(panelButton.visibleBounds.centerX(), panelButton.visibleBounds.bottom - 16))
+            device.waitForIdle()
             clickEnabled(By.res("task_checked_${unknown.id}"))
             assertTrue("Reconciliation must finish before reopening the ledger", device.wait(
                 Until.gone(By.res("task_checked_${unknown.id}")), 15_000
@@ -2725,6 +2734,7 @@ class ReleaseJourneyTest {
             val declined = ledger.admit(listOf(ActionRequest("read_battery")), "panel-thread", ToolAuthority.EXACT_APPROVAL)
             val choice = gate.prepare(checkNotNull(ledger.get(declined.attemptIds.single())))
             journal.value = ledger.journal()
+            clickEnabled(By.text("Done"))
             clickEnabled(By.res("task_deny_${choice.task.id}"))
             assertTrue("Decline must finish before reopening the ledger", device.wait(
                 Until.gone(By.res("task_deny_${choice.task.id}")), 15_000
@@ -3595,23 +3605,40 @@ class ReleaseJourneyTest {
             assertEquals(1, restored.report(conversationId = thread).turns.size)
             activity.onActivity { host -> host.setContent {
                 MaterialTheme { Surface(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
-                    ConversationScreen(history, MutableStateFlow(false), MutableStateFlow(VoiceSessionState.PASSIVE_LISTENING),
-                        onSend = { _, _ -> null }, selectedModel = LocalModelSpec("release-fixture", "fixture.bin", recommendedGpu = false),
-                        onSelectConversation = { null }, onEndVoice = {}, onOpenVoiceCalls = {}, resumedVoice = false,
-                        pipelineBenchmarkStore = restored, voiceContent = { _, _, _, _ -> })
+                    // The Metrics action lives in the header band beside the
+                    // wisp now; the header's Copy metrics button is removed.
+                    // Conversation-scoped export remains covered by
+                    // ConversationMetricsExportTest and by the benchmark
+                    // screen's own copy below.
+                    Column(Modifier.fillMaxSize()) {
+                        val settingsState = remember { mutableStateOf(false) }
+                        val historyState = remember { mutableStateOf(false) }
+                        val headerErrorState = remember { mutableStateOf<String?>(null) }
+                        val inputBusyState = remember { mutableStateOf(false) }
+                        val benchmarksState = remember { mutableStateOf(false) }
+                        val benchmarkReplyState = remember { mutableStateOf<String?>(null) }
+                        com.battlesbudz.jarvis.v2.ui.ChatHeaderBand(
+                            memoryEnabled = true, settingsEnabled = true,
+                            conversationsEnabled = true, privateEnabled = true, newEnabled = true,
+                            metricsVisible = true,
+                            onOpenMemory = {}, onOpenSettings = { settingsState.value = true },
+                            onOpenHistory = { historyState.value = true },
+                            onNewPrivateConversation = { headerErrorState.value = "Private chat is unavailable right now." },
+                            onNewConversation = { headerErrorState.value = null },
+                            onOpenMetrics = { benchmarkReplyState.value = null; benchmarksState.value = true },
+                            presence = {},
+                        )
+                        ConversationScreen(history, MutableStateFlow(false), MutableStateFlow(VoiceSessionState.PASSIVE_LISTENING),
+                            onSend = { _, _ -> null }, selectedModel = LocalModelSpec("release-fixture", "fixture.bin", recommendedGpu = false),
+                            onSelectConversation = { null }, onEndVoice = {}, onOpenVoiceCalls = {}, resumedVoice = false,
+                            pipelineBenchmarkStore = restored,
+                            settingsOpenState = settingsState, historyOpenState = historyState,
+                            headerErrorState = headerErrorState, inputBusyState = inputBusyState,
+                            benchmarksOpenState = benchmarksState, benchmarkReplyState = benchmarkReplyState,
+                            voiceContent = { _, _, _, _ -> })
+                    }
                 } }
             } }
-            find(By.res("conversation_metrics_copy")).click()
-            find(By.text("Conversation metrics copied."))
-            val copiedConversation = AtomicReference<String>()
-            activity.onActivity { host -> copiedConversation.set(host.getSystemService(android.content.ClipboardManager::class.java)
-                .primaryClip?.getItemAt(0)?.coerceToText(host)?.toString().orEmpty()) }
-            val directReport = org.json.JSONObject(copiedConversation.get())
-            assertEquals(1, directReport.getJSONArray("turns").length())
-            assertEquals(thread, directReport.getJSONArray("turns").getJSONObject(0).getString("conversationId"))
-            assertEquals(4, directReport.getJSONArray("replyMetrics").getJSONObject(0).getInt("estimatedOutputTokens"))
-            assertFalse(copiedConversation.get().contains("other-conversation"))
-            assertFalse(copiedConversation.get().contains("Measured reply"))
             find(By.res("conversation_metrics_open")).click()
             find(By.res("pipeline_benchmark_screen"))
             benchmarkClickEnabled(By.res("pipeline_benchmark_close"), towardTop = true)
@@ -4706,9 +4733,9 @@ class ReleaseJourneyTest {
     // M1d task/conversation scheduling journeys.
 
     @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
-    @Test fun test59_panelApprovalAdmitsScreenSessionAndDispatchesExactly() {
-        // M1d approval-UI wiring (T07): approving a screen task in the task
-        // panel admits the screen-control session grant for its group, and the
+    @Test fun test59_inlineApprovalAdmitsScreenSessionAndDispatchesExactly() {
+        // M1d approval-UI wiring (T07): approving a screen task on the
+        // inline approval card admits the screen-control session grant for its group, and the
         // ledger claim consumes the approval atomically with dispatch
         // eligibility. A changed target invalidates the prior approval (D13).
         val file = File(context.cacheDir, "release-m1d-approval.json").apply { delete() }
@@ -4728,7 +4755,7 @@ class ReleaseJourneyTest {
         // ...so the stale approval cannot admit the session.
         assertTrue("changed target must invalidate the prior approval",
             admission.admitForApproval(checkNotNull(ledger.get(changedOnce.id)), pending.approval) is AdmitResult.Denied)
-        // Fresh approval for the current action goes through the panel.
+        // Fresh approval for the current action goes through the inline card.
         val changedBack = checkNotNull(ledger.revise(changedOnce.id, changedOnce.generation, tapRequest("n0")))
         val fresh = ledger.requestApproval(changedBack.id, changedBack.generation, "native", MobileToolCatalog.VERSION)
         val journal = MutableStateFlow<ToolTaskJournal?>(ledger.journal())
@@ -4738,7 +4765,7 @@ class ReleaseJourneyTest {
             if (a != null && command == "approve") {
                 val approval = a.approvalId?.let { approvals.get(it) }
                 if (approval != null) {
-                    // The M1d approval wiring: the panel approval admits the
+                    // The M1d approval wiring: the inline approval admits the
                     // session grant for this group before the ledger claim.
                     admission.admitForApproval(a, approval)
                     JournaledActionPipeline(ledger, executor).executeAttempt(a, approval)
@@ -4752,15 +4779,14 @@ class ReleaseJourneyTest {
             activity.onActivity { host -> host.setContent {
                 MaterialTheme { Surface(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
                     val snapshot by journal.collectAsState()
-                    com.battlesbudz.jarvis.v2.ui.PhoneTaskPanel(snapshot, "panel-thread", null, decide)
+                    com.battlesbudz.jarvis.v2.ui.InlineApprovalCards(snapshot, "panel-thread", decide)
                 } }
             } }
-            find(By.res("phone_tasks_open")).click()
             captureEvidence("m1d_screen_approval")
             find(By.res("task_approve_${fresh.task.id}")).click()
             // The tap is only an intermediate effect: the UI callback still has
             // to save its receipt, show Stop and publish the journal afterward.
-            assertTrue("Panel approval callback must complete within the UI deadline",
+            assertTrue("Inline approval callback must complete within the UI deadline",
                 approvalCompleted.await(10, java.util.concurrent.TimeUnit.SECONDS))
             activity.onActivity {
                 assertEquals("approved tap must dispatch exactly once", listOf("n0"), bridge.tapped.map { it.id })

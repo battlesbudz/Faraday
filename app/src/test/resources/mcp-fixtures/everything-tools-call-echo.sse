@@ -1,0 +1,4 @@
+event: message
+id: 7a331291-2123-4e68-a13c-6b7736a82f11
+data: {"result":{"content":[{"type":"text","text":"Echo: fixture-hello"}]},"jsonrpc":"2.0","id":3}
+

@@ -28,7 +28,10 @@ internal data class ModelSetupActions(
     val delete: (LocalModelSpec) -> String?,
     val test: ((String) -> Unit) -> Unit,
     val download: (LocalModelSpec, (Long, Long) -> Unit, (String) -> Unit, (String) -> Unit) -> Unit,
-    val cancelDownload: () -> Unit,
+    /** Halts the transfer; its saved progress stays on the phone, resumable. */
+    val pauseDownload: () -> Unit,
+    /** Halts the transfer and removes its saved progress; reports the outcome. */
+    val discardDownload: (LocalModelSpec, (String) -> Unit) -> Unit,
     val importModel: (Uri, LocalModelSpec, (String) -> Unit) -> Unit,
     /**
      * User-triggered tool-call reliability check, routed through the
@@ -64,6 +67,13 @@ internal class ModelSetupState(
     var automaticSmokeTestAttempted by mutableStateOf(false)
     var downloadBytes by mutableStateOf(0L)
     var downloadTotalBytes by mutableStateOf(-1L)
+    /** Resumable bytes a stopped download of the selected model left behind. */
+    var partialDownloadBytes by mutableStateOf(0L)
+
+    /** A stopped download left saved progress for the selected model: it can
+     * be resumed from the checkpoints, or discarded. */
+    val selectedDownloadPaused: Boolean
+        get() = downloadingModelId == null && !modelInstalled && partialDownloadBytes > 0L
     var downloadSpeedBytesPerSec by mutableStateOf(0.0)
         private set
     private val downloadSpeedTracker = DownloadSpeedTracker()
@@ -118,7 +128,20 @@ internal class ModelSetupState(
         })
     }
 
-    fun cancelDownload() = actions().cancelDownload()
+    fun pauseDownload() = actions().pauseDownload()
+
+    /** Cancels [spec]'s download and removes its saved progress; the honest
+     * outcome (removed, already installed, kept) lands in the notice/status. */
+    fun discardDownload(spec: LocalModelSpec) {
+        actions().discardDownload(spec) { message ->
+            downloadNotice = message
+            if (spec.id == selectedModel.id) {
+                setupStatus = message
+                partialDownloadBytes = store.partialDownloadBytes(spec)
+            }
+            refreshReadiness()
+        }
+    }
 
     fun importModel(uri: Uri?, spec: LocalModelSpec) {
         if (uri == null) return
@@ -190,6 +213,7 @@ private fun ObserveModelSetup(state: ModelSetupState) {
                     ?: active?.tags?.firstOrNull { it.startsWith("model:") }?.removePrefix("model:")
                     ?: if (active != null) state.selectedModel.id else null
                 state.modelDownloadRunning = active != null && state.downloadingModelId == state.selectedModel.id
+                state.partialDownloadBytes = store.partialDownloadBytes(state.selectedModel)
                 if (active != null) {
                     // A stall (backing off before a retry) overrides the phase
                     // text so the UI says "Retrying…", not just "Downloading…".
@@ -222,6 +246,7 @@ private fun ObserveModelSetup(state: ModelSetupState) {
             delay(500)
             state.modelsReady = store.isUsable()
             state.modelImportRunning = store.importInProgress()
+            state.partialDownloadBytes = store.partialDownloadBytes(state.selectedModel)
             state.smokeTestPassed = state.modelsReady && store.smokeTestPassed()
         }
     }

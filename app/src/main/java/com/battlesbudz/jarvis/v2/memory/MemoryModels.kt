@@ -79,7 +79,7 @@ data class MemorySnapshot(
 
 /** Retrieval outcome preserves storage failures for UI rather than treating them as an empty history. */
 data class MemorySearchResult(val outcome: MemoryOutcome?, val message: String, val memories: List<RetrievedMemory> = emptyList())
-data class MemoryPacketResult(val outcome: MemoryOutcome?, val message: String, val packet: MemoryContextPacket? = null, val stateToken: String? = null, val nextApprovedExpiryMs: Long? = null)
+data class MemoryPacketResult(val outcome: MemoryOutcome?, val message: String, val packet: MemoryContextPacket? = null, val stateToken: String? = null, val nextApprovedExpiryMs: Long? = null, /** Content-free per-turn retrieval diagnostics (ids/counts only), present when hybrid retrieval built this packet. */ val diagnostics: String? = null)
 
 enum class ConversationMemorySource { TEXT, VOICE }
 

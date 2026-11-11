@@ -10,6 +10,7 @@ import com.battlesbudz.jarvis.v2.ai.LocalModelSpec
 import com.battlesbudz.jarvis.v2.ai.ToolCall
 import com.battlesbudz.jarvis.v2.ai.TurnKind
 import com.battlesbudz.jarvis.v2.ai.TurnPlan
+import com.battlesbudz.jarvis.v2.chat.AssistantText
 import com.battlesbudz.jarvis.v2.chat.ShortTermConversationContext
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkCapture
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkProvenance
@@ -130,6 +131,7 @@ class ConversationGenerationTest {
     private suspend fun generateWithBackend(backend: ConversationBackend, audio: ByteArray?,
                                               phoneActions: ConversationActions? = null,
                                               plan: ActionTurnPlan = ActionTurnPlan.NotAction,
+                                              onNeedsApproval: (suspend (ActionRequest) -> com.battlesbudz.jarvis.v2.actions.ExecutionResult)? = null,
                                               sessionProbe: (ConversationModelSession) -> Unit = {}): ConversationDraft {
         val diagnostics = ConversationDiagnostics({}, {}, {}, {})
         val memory = MemoryDeliveryFence()
@@ -155,7 +157,8 @@ class ConversationGenerationTest {
         val actions = phoneActions ?: ConversationActions({ error("No Android executor") },
             { _, _ -> error("No action admission") }, { _, _, _, _ -> error("No action dispatch") },
             {}, "conversation", { _, _, _ -> })
-        val generation = ConversationGeneration(session, references, builder, { error("No attachment") }, diagnostics)
+        val generation = ConversationGeneration(session, references, builder, { error("No attachment") }, diagnostics,
+            onNeedsApproval = onNeedsApproval)
         return generation.generate(input, 10_000,
             RoutedConversation(emptyList(), TurnPlan(TurnKind.NORMAL_CHAT), plan, null),
             PreparedConversation(emptyList(), null, null, null, false, false, null), emptyList(),
@@ -208,6 +211,37 @@ class ConversationGenerationTest {
             check("reset" in events) { "Failed native history must be rebuilt from confirmed history" }
             return GenerationResult("", 1, null, toolCalls = listOf(ToolCall("read_battery", "{}")))
         }
+    }
+
+    /** Returns scripted text results in order; the last one repeats. */
+    private class TextScriptBackend(vararg results: String) : ConversationBackend {
+        private val scripted = results.toList()
+        val requests = mutableListOf<String>()
+        val tools = mutableListOf<Boolean>()
+        override val modelId = "fake"
+        override var onPromptSubmitted: (String, Int) -> Unit = { _, _ -> }
+        override var onInferenceProgress: (InferenceProgress) -> Unit = {}
+        override var onBenchmarkSubmission: (PipelineBenchmarkSubmission) -> Unit = {}
+        override var benchmarkPurpose = PipelineBenchmarkPurpose.UNKNOWN
+        override fun inputContextDescription() = "fake"
+        override var toolsEnabled = false
+        override suspend fun setToolsEnabled(enabled: Boolean): Boolean {
+            tools.add(enabled)
+            val changed = toolsEnabled != enabled
+            toolsEnabled = enabled
+            return changed
+        }
+        override suspend fun generate(prompt: String, onToken: (String) -> Unit): GenerationResult {
+            requests.add(prompt)
+            val text = scripted.getOrElse(requests.size - 1) { scripted.last() }
+            return GenerationResult(text, 1, null).also { onToken(it.text) }
+        }
+        override suspend fun generateAudio(prompt: String, audioBytes: ByteArray, onToken: (String) -> Unit): GenerationResult =
+            error("Text path only")
+        override suspend fun generate(prompt: String, imageBytes: ByteArray, onToken: (String) -> Unit): GenerationResult =
+            error("Unexpected image input")
+        override suspend fun sendToolResults(results: List<Pair<ToolCall, String>>, onToken: (String) -> Unit): GenerationResult =
+            error("Unrequested tools must not execute")
     }
 
     /** The exact SDK rejection from Battles's build-1563 diagnostics dump. */
@@ -480,5 +514,71 @@ class ConversationGenerationTest {
             assertEquals(1, rollbacks)
             assertTrue(candidate.closeAndDrain())
         }
+    }
+
+    @Test fun legacyMarkupSandboxCallOnATextTurnParksForApproval() = runBlocking {
+        // Build 1771, session 903e25c2 shape: a text turn with no armed
+        // plan whose model emits the sandbox call as legacy text markup
+        // instead of a native call. The emission converts to the call and
+        // parks for exact approval through the normal machinery — the
+        // markup itself never becomes the turn's answer.
+        val parked = mutableListOf<ActionRequest>()
+        val backend = TextScriptBackend("call:run_in_sandbox{command:<|\"|>cat note.txt<|\"|>}")
+        val draft = generateWithBackend(backend, null, onNeedsApproval = { request ->
+            parked += request
+            com.battlesbudz.jarvis.v2.actions.ExecutionResult(true, "Parked for approval: cat note.txt")
+        })
+        assertEquals(listOf(ActionRequest("run_in_sandbox", mapOf("command" to "cat note.txt"))), parked)
+        assertEquals(1, backend.requests.size)
+        assertEquals("run_in_sandbox", draft.actionName)
+        assertEquals("Parked for approval: cat note.txt", draft.actionResultMessage)
+        val final = ConversationFinalizer.resolve(AssistantText.forDisplay(draft.generated.text),
+            null, draft.actionResultMessage, true, draft.actionName).text
+        assertEquals("Parked for approval: cat note.txt", final)
+        assertFalse(final.contains("call:"))
+    }
+
+    @Test fun unparseableLegacyMarkupRegeneratesWithoutToolsAndNeverSurfaces() = runBlocking {
+        // The build-1771 specimen emission itself: a hallucinated
+        // namespaced tool in the wrapped legacy form. It parses to no
+        // known tool, so no plan forms; the turn regenerates once without
+        // tools and the plain answer — never the markup — ends the turn.
+        val backend = TextScriptBackend(
+            "<|tool_call>call:sandbox:read_file{file_path:note.txt}<tool_call|>",
+            "The note says hello.")
+        val draft = generateWithBackend(backend, null)
+        assertEquals(2, backend.requests.size)
+        assertTrue(backend.requests.last().contains("tool-call markup"))
+        assertEquals(listOf(false, false), backend.tools)
+        assertEquals("The note says hello.", draft.generated.text)
+        assertNull(draft.actionResultMessage)
+        val final = ConversationFinalizer.resolve(AssistantText.forDisplay(draft.generated.text),
+            null, draft.actionResultMessage, false, draft.actionName).text
+        assertEquals("The note says hello.", final)
+        assertFalse(final.contains("call:"))
+    }
+
+    @Test fun markupForAnotherToolFormsNoPlanAndEndsInTheHonestFallback() = runBlocking {
+        // A well-formed legacy call for a non-sandbox tool never forms a
+        // plan from markup alone (only run_in_sandbox may, because it can
+        // only park). When the regeneration emits it again, the draft is
+        // emptied so the finalizer's blank-answer fallback ends the turn.
+        val backend = TextScriptBackend("call:open_app{app:<|\"|>Facebook<|\"|>}")
+        val draft = generateWithBackend(backend, null)
+        assertEquals(2, backend.requests.size)
+        assertEquals("", draft.generated.text)
+        assertNull(draft.actionName)
+        assertNull(draft.actionResultMessage)
+        val final = ConversationFinalizer.resolve(AssistantText.forDisplay(draft.generated.text),
+            null, draft.actionResultMessage, false, draft.actionName).text
+        assertEquals("I couldn't generate a response. Please try that again.", final)
+    }
+
+    @Test fun ordinaryProseAboutACallIsNotMarkupAndPassesUntouched() = runBlocking {
+        val backend = TextScriptBackend("I'll call the office tomorrow and ask about the note.")
+        val draft = generateWithBackend(backend, null)
+        assertEquals(1, backend.requests.size)
+        assertEquals("I'll call the office tomorrow and ask about the note.", draft.generated.text)
+        assertNull(draft.actionResultMessage)
     }
 }

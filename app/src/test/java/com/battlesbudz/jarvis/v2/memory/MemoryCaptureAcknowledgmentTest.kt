@@ -7,10 +7,15 @@ class MemoryCaptureAcknowledgmentTest {
     private fun result(status: MemoryReviewStatus) = ConversationMemoryResult(ConversationMemoryOutcome.PROPOSED, "receipt",
         MemoryRecord("one", "I like apricots", MemoryCategory.PREFERENCE, MemoryTier.LONG_TERM, MemoryType.SEMANTIC,
             90, MemorySource("event", "final_text_input", 1), status, 1, 1, 1))
-    @Test fun pendingCannotClaimApprovedPersistence() {
-        assertEquals("I've added a pending memory for your review. It isn't approved yet.", MemoryCaptureAcknowledgment.reply(result(MemoryReviewStatus.PENDING)))
-        assertTrue(MemoryCaptureAcknowledgment.reply(result(MemoryReviewStatus.APPROVED)).contains("already approved"))
-        assertFalse(MemoryCaptureAcknowledgment.reply(result(MemoryReviewStatus.REJECTED)).contains("already approved"))
+    @Test fun onlyAnApprovedReceiptMayClaimASave() {
+        // Capture commits immediately (2026-11-01): an approved receipt says the
+        // memory is saved, with no approval step left to describe. Any other
+        // status must not claim a save.
+        assertEquals("Saved to memory.", MemoryCaptureAcknowledgment.reply(result(MemoryReviewStatus.APPROVED)))
+        assertFalse(MemoryCaptureAcknowledgment.reply(result(MemoryReviewStatus.PENDING)).contains("Saved to memory"))
+        assertFalse(MemoryCaptureAcknowledgment.reply(result(MemoryReviewStatus.REJECTED)).contains("Saved to memory"))
+        assertFalse(MemoryCaptureAcknowledgment.section(result(MemoryReviewStatus.APPROVED)).contains("unapproved"))
+        assertFalse(MemoryCaptureAcknowledgment.section(result(MemoryReviewStatus.APPROVED)).contains("for your review"))
     }
     @Test fun storageFailureExclusionAndMissingReceiptAreExplicit() {
         assertTrue(MemoryCaptureAcknowledgment.reply(ConversationMemoryResult(ConversationMemoryOutcome.STORAGE_FAILURE, "disk")).contains("couldn't save"))

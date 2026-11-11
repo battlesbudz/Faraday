@@ -2,6 +2,7 @@ package com.battlesbudz.jarvis.v2.runtime.turn
 
 import com.battlesbudz.jarvis.v2.conversation.ConversationCallbacks
 import com.battlesbudz.jarvis.v2.conversation.ConversationInvocation
+import com.battlesbudz.jarvis.v2.memory.AutoMemorySource
 import com.battlesbudz.jarvis.v2.memory.ConversationMemorySource
 import com.battlesbudz.jarvis.v2.memory.MemoryDeliveryFence
 import com.battlesbudz.jarvis.v2.voice.VoiceSessionController
@@ -44,6 +45,23 @@ internal fun interface VoiceConversationDispatch {
 internal class VoiceMemoryAccess(
     val fence: MemoryDeliveryFence,
     val delivery: VoiceMemoryDeliveryOwner,
+    /**
+     * Automatic-memory queue port (the D-3 auto-commit path). Production wiring binds
+     * it to JarvisRuntime's private-mode-gated queueing; the default is a no-op so
+     * call sites that are not wired queue nothing.
+     */
+    val autoCapture: (eventId: String, source: AutoMemorySource, text: String, capturedAtMs: Long) -> Unit = { _, _, _, _ -> },
     val capture: (eventId: String, conversationId: String, callId: String?, source: ConversationMemorySource,
                   text: String, capturedAtMs: Long) -> Boolean
-)
+) {
+    /**
+     * Queues an automatic-memory candidate for a completed conversation turn. The
+     * candidate text mirrors the chat path's user-text + answer blob, the shape the
+     * evaluator's patterns were tuned on; a blank answer queues the user text alone,
+     * and blank user text queues nothing.
+     */
+    fun autoCaptureTurn(eventId: String, source: AutoMemorySource, userText: String, answer: String, capturedAtMs: Long) {
+        if (userText.isBlank()) return
+        autoCapture(eventId, source, if (answer.isNotBlank()) "$userText\n$answer" else userText, capturedAtMs)
+    }
+}

@@ -12,14 +12,26 @@ import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import com.battlesbudz.jarvis.v2.actions.*
 
+/**
+ * The phone-tasks panel carries the journal's non-approval bookkeeping:
+ * task status rows, the journal error line, unknown-outcome
+ * reconciliation ("I've checked this") and cancelling queued work.
+ * Approvals no longer live here — they render inline in the
+ * conversation thread (see InlineApprovalCards), so WAITING_APPROVAL
+ * attempts are filtered out of this panel entirely.
+ */
 @Composable
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 internal fun PhoneTaskPanel(journal: ToolTaskJournal?, conversationId: String, error: String?,
     onAction: (String, Long, String) -> Unit) {
     var open by remember { mutableStateOf(false) }
     val groups = journal?.groups.orEmpty().filter { it.conversationId == conversationId }.mapTo(hashSetOf()) { it.id }
-    val attempts = journal?.attempts.orEmpty().filter { it.groupId in groups || it.groupId == null &&
-        it.state !in setOf(ToolTaskState.SUCCEEDED, ToolTaskState.FAILED, ToolTaskState.CANCELLED) && !it.reconciled }
+    val attempts = journal?.attempts.orEmpty().filter { attempt ->
+        attempt.state != ToolTaskState.WAITING_APPROVAL &&
+            (attempt.groupId in groups || attempt.groupId == null &&
+                attempt.state !in setOf(ToolTaskState.SUCCEEDED, ToolTaskState.FAILED, ToolTaskState.CANCELLED) &&
+                !attempt.reconciled)
+    }
     val unfinished = attempts.filter { it.state !in setOf(ToolTaskState.SUCCEEDED, ToolTaskState.FAILED, ToolTaskState.CANCELLED) && !it.reconciled }
     if (attempts.isNotEmpty() || error != null) TextButton(onClick = { open = true }, modifier = Modifier.testTag("phone_tasks_open")) {
         Text(if (error != null) "Phone tasks need attention" else "Phone tasks · ${unfinished.size} waiting")
@@ -38,13 +50,7 @@ internal fun PhoneTaskPanel(journal: ToolTaskJournal?, conversationId: String, e
                             Text("Check what happened before requesting this action again.", style = MaterialTheme.typography.bodySmall)
                             TextButton(onClick = { onAction(a.id, a.generation, "checked") }, modifier = Modifier.testTag("task_checked_${a.id}")) { Text("I've checked this") }
                         }
-                        val approval = journal?.approvals?.find { it.id == a.approvalId && !it.consumed && it.action == a.request }
-                        if (a.state == ToolTaskState.WAITING_APPROVAL && approval != null) {
-                            Row {
-                                TextButton(onClick = { onAction(a.id, a.generation, "approve") }, modifier = Modifier.testTag("task_approve_${a.id}")) { Text("Approve") }
-                                TextButton(onClick = { onAction(a.id, a.generation, "deny") }, modifier = Modifier.testTag("task_deny_${a.id}")) { Text("Decline") }
-                            }
-                        } else if (a.state in setOf(ToolTaskState.QUEUED, ToolTaskState.READY, ToolTaskState.PAUSED)) {
+                        if (a.state in setOf(ToolTaskState.QUEUED, ToolTaskState.READY, ToolTaskState.PAUSED)) {
                             TextButton(onClick = { onAction(a.id, a.generation, "cancel") }, modifier = Modifier.testTag("task_cancel_${a.id}")) { Text("Cancel task") }
                         }
                     }
@@ -53,7 +59,7 @@ internal fun PhoneTaskPanel(journal: ToolTaskJournal?, conversationId: String, e
         })
 }
 
-private fun ActionRequest.description() = when (name) {
+internal fun ActionRequest.description() = when (name) {
     "read_battery" -> "Check battery"
     "set_volume" -> "Set media volume to ${arguments["level"]}%"
     "open_app" -> "Open ${arguments["app"] ?: arguments["package"]}"
@@ -68,6 +74,9 @@ private fun ActionRequest.description() = when (name) {
     "browse_submit" -> "Submit the form"
     "browse_handoff" -> "Open the page in your browser"
     "browse_login" -> "Fill the login with your password manager"
+    // Sandbox Phase 2: the approval card shows the exact command text —
+    // Battles approves what he can read, never a paraphrase.
+    "run_in_sandbox" -> "Run in the sandbox: ${arguments["command"] ?: ""}"
     else -> name
 }
 private fun ToolTaskState.description() = when (this) {

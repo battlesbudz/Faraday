@@ -3,10 +3,9 @@ package com.battlesbudz.jarvis.v2.runtime.turn
 import android.content.Context
 import com.battlesbudz.jarvis.v2.BuildConfig
 import com.battlesbudz.jarvis.v2.ChatEntry
-import com.battlesbudz.jarvis.v2.actions.MobileActionToolDefinitions
 import com.battlesbudz.jarvis.v2.ai.ConversationPromptBuilder
-import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngine
 import com.battlesbudz.jarvis.v2.ai.ModelStore
+import com.battlesbudz.jarvis.v2.ai.createResidentEngine
 import com.battlesbudz.jarvis.v2.chat.ConversationHistory
 import com.battlesbudz.jarvis.v2.conversation.ConversationSessionState
 import com.battlesbudz.jarvis.v2.conversation.ConversationWork
@@ -87,18 +86,15 @@ internal class VoiceTurnPreparation(
         val comparisonLoadStarted = System.nanoTime()
         observation.benchmark.mark("llm_setup_started")
         request.comparison?.put("llm_reused", nativeState.engine != null && nativeState.engine?.modelId == selectedSpec.id && nativeState.engine?.audioEnabled == selectedSpec.supportsAudio)
-        if (nativeState.engine == null || nativeState.engine?.modelId != selectedSpec.id ||
-            nativeState.engine?.audioEnabled != selectedSpec.supportsAudio) {
+        val engineRecreated = nativeState.engine == null || nativeState.engine?.modelId != selectedSpec.id ||
+            nativeState.engine?.audioEnabled != selectedSpec.supportsAudio
+        if (engineRecreated) {
             nativeState.engine?.close()
             nativeState.engine = null
-            val created = LiteRtLmEngine(
-                modelStore.selectedModel().id, modelStore.fileFor(modelStore.selectedModel()).path,
-                context.cacheDir.path, useGpu = selectedSpec.recommendedGpu,
-                tools = if (selectedSpec.supportsTools) MobileActionToolDefinitions.all() else emptyList(),
-                audioEnabled = selectedSpec.supportsAudio
+            nativeState.engine = createResidentEngine(
+                selectedSpec, modelStore.fileFor(selectedSpec).path,
+                modelStore.engineCacheRoot().path
             )
-            try { created.initialize() } catch (error: Throwable) { created.close(); throw error }
-            nativeState.engine = created
         }
         val engine = requireNotNull(nativeState.engine)
         if (directAudioTurn) check(engine.audioEnabled) { "Select an audio-capable Gemma model for Gemma audio understanding." }
@@ -120,9 +116,23 @@ internal class VoiceTurnPreparation(
         if (request.comparison?.request?.path?.usesAudio == true) check(engine.modelId.startsWith("Gemma", ignoreCase = true) && engine.audioEnabled) {
             "Choose an audio-capable Gemma model before testing Gemma ASR."
         }
-        conversation.reset()
-        if (directAudioTurn) engine.setToolsEnabled(false)
-        nativeState.characters = 0
+        // Persistent call conversation: a direct-audio follow-up turn in the
+        // same call keeps the resident native conversation — persona,
+        // call-start memory packet and dialogue were prefilled once and stay
+        // loaded — instead of rebuilding it per turn. Every condition that
+        // would make the resident context foreign or unsafe (a different or
+        // not-yet-begun call, a recreated or closed engine, no resident
+        // context, a pending confirmed-history rebuild, quarantine, a
+        // comparison trial) falls back to the fresh-conversation path below,
+        // which is byte-for-byte the previous behavior.
+        var callSessionReusable = directAudioTurn && request.comparison == null && !engineRecreated &&
+            nativeState.hasContext && dialogue.isCurrentCall(call.controller.currentCallId()) &&
+            !engine.requiresConfirmedHistoryRebuild && !engine.isNativeQuarantined && !engine.isNativeClosed
+        if (!callSessionReusable) {
+            conversation.reset()
+            if (directAudioTurn) engine.setToolsEnabled(false)
+            nativeState.characters = 0
+        }
         val ttsDirectory = ttsModels.ensureReady(request.ttsEngine, call::status)
         val followupBoundary = resources.resources.consumeFollowupBoundary()
         var input = resources.resources.borrowMicrophone("command", followupBoundary,
@@ -244,9 +254,26 @@ internal class VoiceTurnPreparation(
                 "capture_first_handoff_stale_or_already_claimed"
             }
         }
+        if (callSessionReusable && correction?.origin == com.battlesbudz.jarvis.v2.voice.TranscriptOrigin.TYPED) {
+            // A typed interjection is a text turn, not a spoken follow-up: it
+            // takes the fresh path exactly as before rather than appending to
+            // the resident call conversation. Nothing native has run yet at
+            // this point in preparation, so the reset is safe here.
+            callSessionReusable = false
+            conversation.reset()
+            engine.setToolsEnabled(false)
+            nativeState.characters = 0
+        }
         if (correction?.origin == com.battlesbudz.jarvis.v2.voice.TranscriptOrigin.TYPED) directAudioTurn = false
+        observation.benchmark.configuration("call_session_reuse",
+            if (callSessionReusable) "persistent_native_conversation" else "fresh_conversation")
         val earlyPreparationJob = lifetime.scope.coroutineContext[kotlinx.coroutines.Job]
-        val earlyGemma = if (directAudioTurn && correction == null && selectedSpec.incrementalGemmaInput)
+        // Fixed-preface preparation requires a pristine tools-off
+        // conversation; a persistent call conversation is neither, so early
+        // preparation (and the speculation it warms up for) does not run on
+        // reusable turns. The capture's own encoder seal is unaffected.
+        val earlyGemma = if (directAudioTurn && correction == null && selectedSpec.incrementalGemmaInput &&
+            !callSessionReusable)
             com.battlesbudz.jarvis.v2.voice.EarlyGemmaPreparationGate {
                 earlyPreparationJob?.isActive == true && lifetime.modelLease.owned &&
                     call.controller.currentCallId() == expectedCallId && call.state.armed
@@ -260,7 +287,7 @@ internal class VoiceTurnPreparation(
             observation.benchmark.mark("native_audio_artifact_prepare_started")
             val artifact = kotlinx.coroutines.withContext(Dispatchers.IO) {
                 com.battlesbudz.jarvis.v2.ai.audio.GemmaStreamingArtifactStore.acquire(
-                    modelStore.fileFor(selectedSpec), java.io.File(context.cacheDir, selectedSpec.id),
+                    modelStore.fileFor(selectedSpec), modelStore.compiledCacheDirectory(selectedSpec),
                     readAsset = context.assets::open,
                     exactSourceVerified = { modelStore.matchesVerifiedArtifact(selectedSpec,
                         com.battlesbudz.jarvis.v2.ai.audio.WeightlessEncoderRecipe.SOURCE_SHA256) },
@@ -301,7 +328,12 @@ internal class VoiceTurnPreparation(
         }
         val nativePauseGeneration = nativePauseGenerations.incrementAndGet().also { check(it > 0) }
         val nativeCapture = lifetime.nativeAudioCapture
-        val nativePreview = if (nativeCapture != null) conversation.previewNativeAudioPrompt() else null
+        // A speculative draft generates on (and its rollback resets) a
+        // pristine conversation, and on tools-enabled turns it can never be
+        // promoted; constructing it on a persistent turn would let a draft
+        // destroy the resident call context for no possible gain.
+        val nativePreview = if (nativeCapture != null && !callSessionReusable)
+            conversation.previewNativeAudioPrompt() else null
         if (nativeCapture != null && nativePreview != null) {
             val exactTurnJob = lifetime.scope.coroutineContext[kotlinx.coroutines.Job]
             lifetime.nativeSpeculation = com.battlesbudz.jarvis.v2.voice.NativeVoiceSpeculation(
@@ -320,7 +352,9 @@ internal class VoiceTurnPreparation(
                 })
             observation.benchmark.configuration("native_speculation", "frozen_pause_exact_prompt_v1")
             observation.benchmark.configuration("native_speculation_budget", "attempts=1,draft_ms=1500,held_chars=4096,held_utf8_bytes=16384,estimated_tokens=1024,callbacks=64,tts_pcm_bytes=0")
-        } else observation.benchmark.configuration("native_speculation", "ineligible_no_native_capture_or_current_context")
+        } else observation.benchmark.configuration("native_speculation",
+            if (callSessionReusable) "ineligible_call_session_persistent"
+            else "ineligible_no_native_capture_or_current_context")
         val exactShadowTurnJob = lifetime.scope.coroutineContext[kotlinx.coroutines.Job]
         val shadowTelemetry = com.battlesbudz.jarvis.v2.diagnostics.SmartTurnBenchmarkTelemetry(observation.benchmark) { category, evidence ->
             diagnosticRecorder.recordTurnEvidence(request.asrTurnId, category, evidence)
@@ -336,6 +370,10 @@ internal class VoiceTurnPreparation(
                 call.controller.currentCallId() == expectedCallId },
             observeCapture = correction == null,
             endpointEnabled = true,
+            // Deadline-first captures: Smart Turn judging starts at the first
+            // quiet frame of the pause, alongside the 300ms decision deadline,
+            // so a veto-grade verdict can be in hand before the deadline.
+            endpointPauseAdmissionMs = 0L,
             admissionBlocker = {
                 when {
                     lifetime.nativeSpeculation?.consumedEncoder == true -> "gemma_speculation"
@@ -424,6 +462,6 @@ internal class VoiceTurnPreparation(
                 log = { diagnosticRecorder.recordImportant(it) })
             diagnosticRecorder.recordImportant("Wake acknowledged; command microphone ready.")
         }
-        return PreparedVoiceTurn(engine, selectedSpec, asrDirectory, ttsDirectory, input, expectedCallId, models, voiceHistory, output, incremental, activeCapture, correction, directAudioTurn, replyAsrEnabled, request.replyProbeEnabled)
+        return PreparedVoiceTurn(engine, selectedSpec, asrDirectory, ttsDirectory, input, expectedCallId, models, voiceHistory, output, incremental, activeCapture, correction, directAudioTurn, replyAsrEnabled, request.replyProbeEnabled, callSessionReusable)
     }
 }

@@ -49,6 +49,47 @@ class PiperTextStreamTest {
         assertEquals("$earlySentence Another sentence is ready.", full.take(final = true))
     }
 
+    @Test fun shortCompleteOpeningClauseReleasesAtTheCommaBeforeTheSentenceEnds() {
+        // The canonical short lead: thirty characters before the comma sit
+        // below the checked-publication char floor (32), so passage splitting
+        // used to wait for the full first sentence. The
+        // clause is complete (predicate present, no dependent start, no
+        // negation, no unfinished end), so synthesis now starts at the comma.
+        val stream = PiperTextStream()
+        stream.append("The capital of Idaho is Boise, ")
+        assertEquals("The capital of Idaho is Boise,", stream.take())
+        stream.append("sir. It is in the northwest of the country.")
+        val rest = mutableListOf<String>()
+        while (true) rest += stream.take(final = true) ?: break
+        assertEquals("sir. It is in the northwest of the country.", rest.joinToString(" "))
+    }
+
+    @Test fun shortUnsafeOpeningClausesStillWaitForTheSentence() {
+        // The relaxed passage floor admits size only; every semantic safety
+        // rule in SpeechTextBoundaries still gates the opening clause.
+        val unsafe = listOf(
+            "Although the rain is falling hard today, ", // dependent start
+            "The answer is not ready yet, ", // negation
+            "The capital of Idaho is in, ", // unfinished end
+            "The distant stars above the quiet lake, ", // no predicate
+            "When the meeting finally ends today, " // dependent start
+        )
+        for (text in unsafe) {
+            val stream = PiperTextStream()
+            stream.append(text)
+            assertNull(text, stream.take())
+        }
+    }
+
+    @Test fun defaultClauseFloorsStillRejectTheShortClauseForPublicationGates() {
+        // SpeechTextBoundaries defaults are the checked-publication floors;
+        // only PiperTextStream's passage splitting passes the shorter floor.
+        val text = "The capital of Idaho is Boise, sir."
+        assertNull(SpeechTextBoundaries.openingClauseEnd(text))
+        assertEquals(text.indexOf(',') + 1, SpeechTextBoundaries.openingClauseEnd(text,
+            minWords = PiperTextStream.OPENING_MIN_WORDS, minChars = PiperTextStream.OPENING_MIN_CHARS))
+    }
+
     @Test fun waitingForOpeningDoesNotMistakeAnAbbreviationForASentence() {
         var clock = 0L
         val stream = PiperTextStream(openingTargetChars = 160, nowMs = { clock })

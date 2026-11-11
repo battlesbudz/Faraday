@@ -30,7 +30,7 @@ object ToolReliabilityFixtures {
      * scoring semantics change. Saved scores pin this version; scores from an
      * older version are never presented as current.
      */
-    const val SUITE_VERSION = 2
+    const val SUITE_VERSION = 3
 
     fun all(): List<ReliabilityFixture> = listOf(
         // read_battery (no parameters)
@@ -381,6 +381,21 @@ object ToolReliabilityFixtures {
             utterance = "Log in using the password manager",
             expectedTool = "browse_login",
             expectedArguments = mapOf("token" to "1234567890abcdef")
+        ),
+
+        // run_in_sandbox (Sandbox Phase 2; the command is model-composed and
+        // only ever runs after the user's exact approval of its text)
+        ReliabilityFixture(
+            id = "run_in_sandbox_1",
+            utterance = "Run ls /workspace in the sandbox",
+            expectedTool = "run_in_sandbox",
+            expectedArguments = mapOf("command" to "ls /workspace")
+        ),
+        ReliabilityFixture(
+            id = "run_in_sandbox_2",
+            utterance = "Use the sandbox to print the current date",
+            expectedTool = "run_in_sandbox",
+            expectedArguments = mapOf("command" to "date")
         )
     )
 }
