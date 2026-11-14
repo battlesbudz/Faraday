@@ -27,6 +27,14 @@ class ConversationModelSessionTest {
             })
     }
 
+    @Test fun residentEngineReuseIsBoundToTheSelectedModelIdentity() {
+        assertFalse("no resident engine needs replacement", shouldReplaceResidentEngine(null, "model-a"))
+        assertFalse("the selected model may keep its engine across conversations",
+            shouldReplaceResidentEngine("model-a", "model-a"))
+        assertTrue("a shared resident engine must be rebuilt after model selection changes",
+            shouldReplaceResidentEngine("model-a", "model-b"))
+    }
+
     @Test fun compactionKeepsVisibleHistoryAndPersistsBeforeResettingNativeAccounting() = runBlocking {
         val f = Fixture()
         f.state.characters = 9_000
