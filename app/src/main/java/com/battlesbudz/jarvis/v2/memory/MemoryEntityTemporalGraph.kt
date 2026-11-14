@@ -91,7 +91,6 @@ class MemoryEntityTemporalGraph private constructor(
                     (record.expiresAtMs == null || record.expiresAtMs > nowMs)
             }.associateBy { it.id }
             val active = safe.values.filter { it.reviewStatus == MemoryReviewStatus.APPROVED }
-            val activeIds = active.mapTo(HashSet()) { it.id }
             val superseder = active.mapNotNull { child -> child.correctsMemoryId?.let { it to child } }.toMap()
             val versions = safe.values.associate { record ->
                 val next = superseder[record.id]
@@ -109,7 +108,9 @@ class MemoryEntityTemporalGraph private constructor(
             }
             return MemoryEntityTemporalGraph(
                 linked.mapValues { (name, ids) -> MemoryEntity(nameFrom(ids.first(), safe) ?: name, ids.toSet()) },
-                safe.filterKeys { it in activeIds }, versions,
+                // Retain eligible superseded rows for correction-chain traversal. Query
+                // selection and entity links remain restricted to approved active rows.
+                safe, versions,
             )
         }
 
