@@ -11,6 +11,8 @@ sealed interface MobileAction {
     data class SetVolume(val level: Int) : MobileAction
     data class MediaControl(val action: MediaControlAction) : MobileAction
     data class OpenWebsite(val url: String) : MobileAction
+    data class WebFetch(val url: String) : MobileAction
+    data class WebSearch(val query: String) : MobileAction
     data class OpenSettings(val screen: SettingsScreen) : MobileAction
     data class Navigate(val destination: String) : MobileAction
     /** Read-only screen snapshot; needs no session grant. */
@@ -151,6 +153,12 @@ class MobileActionValidator {
         "open_website" -> normalizeUrl(request.arguments["url"].orEmpty())
             ?.let { ActionValidation.Valid(MobileAction.OpenWebsite(it)) }
             ?: ActionValidation.Rejected("A valid http or https website URL is required.")
+        "web_fetch" -> WebReadPolicy.validateUrl(request.arguments["url"].orEmpty())
+            ?.let { ActionValidation.Valid(MobileAction.WebFetch(it)) }
+            ?: ActionValidation.Rejected("A valid HTTPS URL is required.")
+        "web_search" -> request.arguments["query"]?.trim()?.takeIf { it.isNotEmpty() && it.length <= 300 }
+            ?.let { ActionValidation.Valid(MobileAction.WebSearch(it)) }
+            ?: ActionValidation.Rejected("A search query of 1 to 300 characters is required.")
         "open_settings" -> SettingsScreen.fromKey(request.arguments["screen"]?.trim().orEmpty().lowercase())
             ?.let { ActionValidation.Valid(MobileAction.OpenSettings(it)) }
             ?: ActionValidation.Rejected("Settings screen must be one of: ${SettingsScreen.keys()}.")

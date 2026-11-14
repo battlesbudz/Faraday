@@ -32,6 +32,7 @@ class AndroidMobileActionExecutor(
      * with an honest receipt, exactly like the browse actions below.
      */
     private val sandboxRun: ((String) -> ExecutionResult)? = null,
+    private val webReadTools: WebReadTools = WebReadTools(),
     /**
      * Background-launch seams (finding 3): injectable so the route matrix
      * and the visibility observation are unit-testable. Defaults are the
@@ -149,6 +150,14 @@ class AndroidMobileActionExecutor(
             Intent(Intent.ACTION_VIEW, Uri.parse(action.url)),
             label = action.url
         )
+        is MobileAction.WebFetch -> {
+            onDiagnostic("web_fetch url_host=${runCatching { java.net.URI(action.url).host }.getOrNull() ?: "invalid"}")
+            ExecutionResult(true, webReadTools.fetch(action.url))
+        }
+        is MobileAction.WebSearch -> {
+            onDiagnostic("web_search query_chars=${action.query.length}")
+            ExecutionResult(true, webReadTools.search(action.query))
+        }
         is MobileAction.OpenSettings -> dispatchViewIntent(
             Intent(action.screen.intentAction),
             label = "${action.screen.label} settings"
