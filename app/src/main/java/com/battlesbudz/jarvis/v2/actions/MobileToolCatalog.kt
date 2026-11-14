@@ -29,6 +29,14 @@ object MobileToolCatalog {
         @Volatile var wired: Boolean = false
     }
 
+    /** Web-read tools are model-visible only after the production HTTP executor is installed. */
+    object WebReadRuntimeGate {
+        @Volatile var wired: Boolean = false
+    }
+
+    /** The two read-only external web tools, separately gated from internal-browser actions. */
+    val WEB_READ_TOOL_NAMES = setOf("web_fetch", "web_search")
+
     fun isBrowseTool(name: String): Boolean = name in BROWSE_TOOL_NAMES
 
     enum class ParameterType(val schemaType: String) { STRING("string"), INTEGER("integer") }
@@ -377,13 +385,13 @@ object MobileToolCatalog {
     )
 
     /**
-     * The model-visible tools. Browse tools are withheld while
-     * [BrowserRuntimeGate] is closed (see its KDoc): the model must never
-     * see tools the runtime cannot execute.
+     * Model-visible tools. Runtime-backed tool families stay withheld until
+     * their production dispatch path is installed.
      */
-    fun all(): List<Tool> =
-        if (BrowserRuntimeGate.wired) entries
-        else entries.filter { it.name !in BROWSE_TOOL_NAMES }
+    fun all(): List<Tool> = entries.filter { tool ->
+        (BrowserRuntimeGate.wired || tool.name !in BROWSE_TOOL_NAMES) &&
+            (WebReadRuntimeGate.wired || tool.name !in WEB_READ_TOOL_NAMES)
+    }
 
     /** Storage/decode lookup: still resolves every catalog tool, including gated browse tools. */
     fun find(name: String): Tool? = entries.firstOrNull { it.name == name }
