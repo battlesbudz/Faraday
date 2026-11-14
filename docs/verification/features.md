@@ -1,5 +1,17 @@
 # Feature and acceptance map
 
+# Memory Unit 4 entity/temporal prototype — 14 November 2026
+
+`MemoryEntityTemporalGraph` is an opt-in-disabled, ephemeral projection built
+from a canonical `MemorySnapshot`. It links conservative proper-name mentions
+and follows approved correction edges to render temporal history. It is not
+wired to `MemoryOs`, context packets, embeddings or UI; it does not change
+production recall. Its JVM fixture acceptance covers person aggregation,
+current versus historical corrections, timestamps, secret exclusion and
+tombstone exclusion. On-device persistence/rebuild, broad entity resolution,
+real conversational query interpretation and production integration remain
+unverified and out of scope. See [the study](../../STUDY.md).
+
 ## Deadline-first endpointing — 5 November 2026
 
 The REFERENCE turn-stop arbitration (PR #18) made Smart Turn a
