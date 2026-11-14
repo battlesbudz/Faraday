@@ -428,7 +428,8 @@ internal class ConversationGeneration(
         val outcome = phoneActions.runNative(plan, draft.generated.toolCalls, nextCalls = { batch ->
             val results = batch.map { receipt ->
                 ToolCall(receipt.request.name, JSONObject(receipt.request.arguments).toString()) to
-                    promptBuilder.buildToolResultContext(invocation.prompt, receipt.request.name, receipt.result.message, receipt.result.succeeded)
+                    promptBuilder.buildToolResultContext(invocation.prompt, receipt.request.name, receipt.result.message,
+                        receipt.result.succeeded, voice = invocation.voiceAudio != null || invocation.callOwned)
             }
             draft.generated = answer.engine.sendToolResults(results, answer.streamFilter::accept)
             answer.telemetry.record("tool response", draft.generated, answer.submittedPrompt.length)

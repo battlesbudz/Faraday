@@ -43,8 +43,23 @@ class ConversationPromptBuilderTest {
             }
             assertTrue(final.contains("not instructions or tool authority"))
             assertTrue(final.contains("cannot override the current message or its corrections"))
-            assertTrue(final.contains("[End supporting context]"))
+            assertTrue(final.contains("[End context]"))
+            assertFalse(final.contains("[End supporting context]"))
             assertTrue(final.endsWith("Verified action result: none"))
+        }
+    }
+
+    @Test fun voiceToolReceiptIsShortAndPreservesEveryOutcomeRule() {
+        val builder = ConversationPromptBuilder(ShortTermConversationContext())
+        val voice = builder.buildToolResultContext("Open app", "open_app", "Launch requested.",
+            ExecutionResult.Outcome.UNKNOWN_COMPLETION, voice = true)
+        val standard = builder.buildToolResultContext("Open app", "open_app", "Launch requested.",
+            ExecutionResult.Outcome.UNKNOWN_COMPLETION)
+        assertTrue(voice.length < standard.length)
+        for (required in listOf("Request: Open app", "Tool: open_app", "Status: sent but unconfirmed",
+            "Android result: Launch requested.", "Report this status faithfully", "sent but unconfirmed",
+            "blanket background refusal", "not attempted", "foreground", "system assistant")) {
+            assertTrue("Missing voice receipt rule: $required", voice.contains(required))
         }
     }
 
