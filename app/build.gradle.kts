@@ -279,11 +279,20 @@ dependencies {
     // litert-api references only long-stable lifecycle types
     // (Lifecycle, LifecycleOwner, LifecycleCoroutineScope), all present
     // in 2.8.7, so linkage is unaffected.
+    // The ai-delivery exclusion is load-bearing (U0, CI run 1896):
+    // litert-api's POM also drags com.google.android.play:ai-delivery,
+    // whose play-services-basement pulls androidx.fragment:fragment
+    // 1.1.0 onto the classpath, tripping the activity lint error
+    // InvalidFragmentVersionForActivityResult (fragment < 1.3.0) in
+    // lintVitalRelease. Faraday delivers its models itself and never
+    // uses Play AI delivery, so the whole subtree stays out.
     implementation("com.google.ai.edge.litert:litert:2.3.0") {
         exclude(group = "androidx.lifecycle", module = "lifecycle-runtime")
+        exclude(group = "com.google.android.play", module = "ai-delivery")
     }
     implementation("com.google.ai.edge.litert:litert-gpu:2.3.0") {
         exclude(group = "androidx.lifecycle", module = "lifecycle-runtime")
+        exclude(group = "com.google.android.play", module = "ai-delivery")
     }
     implementation("org.jetbrains.kotlin:kotlin-reflect:2.3.21")
     sherpaSdk("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.7@aar")
