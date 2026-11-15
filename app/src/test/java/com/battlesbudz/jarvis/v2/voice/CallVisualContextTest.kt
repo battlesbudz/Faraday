@@ -270,12 +270,54 @@ class CallVisualContextTest {
         assertTrue(decision.snapshotLine!!.contains("frameAgeMs=1001"))
     }
 
-    @Test fun videoOffFallsBackToTheSummaryBlock() {
+    @Test fun videoOffDoesNotInjectSceneInstruction() {
         val holder = holderFeedingPaired(frameBytes, 1_000L to listOf(detection("person")))
-        val decision = CallVisualContext.decide(holder, nowMs = 2_000L, imageCapable = true)
+        val decision = CallVisualContext.decide(holder, nowMs = 2_000L, imageCapable = true, videoCallEnabled = false)
         assertNull(decision.snapshot)
+        assertNull(decision.block)
+        assertTrue(decision.diagnosticsLine!!.contains("injected=false reason=video_off"))
+    }
+
+    @Test fun videoOnAllowsSceneInstructionWhenImageCannotBeAttached() {
+        val holder = holderFeeding(1_000L to listOf(detection("person")))
+        val decision = CallVisualContext.decide(holder, nowMs = 2_000L, videoCallEnabled = true)
         assertNotNull(decision.block)
-        assertTrue(decision.snapshotLine!!.contains("attached=false reason=video_off"))
+        assertTrue(decision.block!!.contains("Currently visible: person 1."))
+    }
+
+    @Test fun overlappingSameLabelTracksNearRetirementAreConsolidatedAndAccounted() = withVideoOn {
+        val holder = holderFeedingPaired(frameBytes,
+            1_000L to listOf(detection("toilet")),
+            6_000L to listOf(detection("toilet", 5f, 5f, 95f, 95f)))
+        val decision = CallVisualContext.decide(holder, nowMs = 6_500L, imageCapable = true)
+        val block = decision.block!!
+        assertTrue(block.contains("ids=1,2 sightings=2"))
+        assertEquals(2, decision.snapshot!!.tracksIncluded)
+        assertEquals(0, decision.snapshot!!.tracksOmitted)
+    }
+
+    @Test fun separateSameLabelObjectsRemainSeparate() = withVideoOn {
+        val holder = holderFeedingPaired(frameBytes,
+            1_000L to listOf(detection("person", 0f, 0f, 100f, 100f)),
+            6_000L to listOf(detection("person", 300f, 0f, 400f, 100f)))
+        val decision = CallVisualContext.decide(holder, nowMs = 6_500L, imageCapable = true)
+        val block = decision.block!!
+        assertTrue(block.contains("#1 person box="))
+        assertTrue(block.contains("#2 person box="))
+        assertFalse(block.contains("sightings=2"))
+    }
+
+    @Test fun snapshotBudgetReportsEveryUnlistedTrackAsOmitted() = withVideoOn {
+        val holder = LatestServerVisionResult()
+        for (index in 1..40) holder.recordSuccess(
+            snapshotOf(detection("very-long-object-label-with-descriptive-suffix-and-extra-padding-$index", (index * 200).toFloat(), 0f,
+                (index * 200 + 100).toFloat(), 100f)), index * 200L,
+            250L, index * 200L + 250L,
+            LatestServerVisionResult.Frame(frameBytes, index * 200L, FrameGeometry(640, 480, 0)))
+        val decision = CallVisualContext.decide(holder, nowMs = 8_500L, imageCapable = true)
+        val attachment = decision.snapshot!!
+        assertEquals(40, attachment.tracksIncluded + attachment.tracksOmitted)
+        assertTrue(decision.block!!.contains("tracksOmitted=${attachment.tracksOmitted}"))
     }
 
     @Test fun engineWithoutVisionFallsBackToTheSummaryBlock() = withVideoOn {

@@ -96,12 +96,18 @@ object CallVisualContext {
     /** Hard budget for the snapshot block; over-budget drops the OLDEST
      * tracks first (the list is newest-first) and counts the omission. */
     const val MAX_SNAPSHOT_BLOCK_CHARS = 2_400
+    const val DUPLICATE_MIN_IOU = 0.5f
+    const val DUPLICATE_MAX_GAP_MS = 5_000L
 
     fun current(nowMs: Long = System.currentTimeMillis(), imageCapable: Boolean = false): Decision =
-        decide(CallVisionRegistry.serverVision, nowMs, imageCapable)
+        decide(CallVisionRegistry.serverVision, nowMs, imageCapable, VoiceSessionUi.videoEnabled.value)
 
-    fun decide(holder: LatestServerVisionResult?, nowMs: Long, imageCapable: Boolean = false): Decision {
+    fun decide(holder: LatestServerVisionResult?, nowMs: Long, imageCapable: Boolean = false,
+               videoCallEnabled: Boolean = true): Decision {
         if (holder == null) return INACTIVE
+        if (!videoCallEnabled) return Decision(
+            null, "Call visual context: injected=false reason=video_off",
+            snapshotLine = "Call snapshot: attached=false reason=video_off")
         val entry = holder.latest() ?: return Decision(
             null, "Call visual context: injected=false reason=no_live_result",
             snapshotLine = "Call snapshot: attached=false reason=no_live_result")
@@ -133,16 +139,19 @@ object CallVisualContext {
             .sortedBy { it.lastSeenAgeMs }
         val oneFrameOmitted = snapshot.objects.count { !it.presentNow && it.lastSeenMs == it.firstSeenMs }
         var recentShown = recent.take(MAX_RECENT_TRACKS)
-        var block = compose(snapshot, recentShown, ageMs)
+        var block = compose(snapshot, recentShown, ageMs, snapshot.objects.size - snapshot.presentObjects.size - recentShown.size)
         while (block.length > MAX_BLOCK_CHARS && recentShown.isNotEmpty()) {
             recentShown = recentShown.dropLast(1)
-            block = compose(snapshot, recentShown, ageMs)
+            block = compose(snapshot, recentShown, ageMs, snapshot.objects.size - snapshot.presentObjects.size - recentShown.size)
         }
-        if (block.length > MAX_BLOCK_CHARS) block = block.take(MAX_BLOCK_CHARS)
+        val summaryOmitted = (snapshot.objects.size - snapshot.presentObjects.size - recentShown.size).coerceAtLeast(0)
+        if (block.length > MAX_BLOCK_CHARS) {
+            block = block.take(MAX_BLOCK_CHARS - 60).trimEnd() + "\nAdditional tracked objects omitted: $summaryOmitted."
+        }
         val line = "Call visual context: injected=true chars=${block.length} snapshotAgeMs=$ageMs" +
             " presentCounts=${snapshot.presentCountsText().ifBlank { "none" }}" +
             " recentShown=${recentShown.size} recentOmitted=${recent.size - recentShown.size}" +
-            " oneFrameOmitted=$oneFrameOmitted"
+            " oneFrameOmitted=$oneFrameOmitted tracksOmitted=$summaryOmitted"
         val snapshotLine = "Call snapshot: attached=false reason=$snapshotBlockedReason" +
             (frameAgeMs?.let { " frameAgeMs=$it" } ?: "")
         return Decision(block, line, snapshotLine = snapshotLine)
@@ -181,17 +190,29 @@ object CallVisualContext {
             "Tracked objects (last 15 seconds):",
         )
         var blockLength = header.sumOf { it.length } + header.size - 1
+        val groups = reconcile(inWindow)
         val trackLines = mutableListOf<String>()
-        for (track in inWindow) {
-            val line = trackLine(track)
-            // +1 for the newline that joins this line to the block.
-            if (blockLength + 1 + line.length > MAX_SNAPSHOT_BLOCK_CHARS) break
+        var accounted = 0
+        for (group in groups) {
+            val line = trackLine(group)
+            val projectedOmitted = inWindow.size - accounted - group.size
+            val omissionLineLength = if (projectedOmitted > 0) {
+                // The eventual count can grow if a later line fails the
+                // budget check, so reserve enough digits for every in-window track.
+                1 + ("Additional tracked objects omitted: ${inWindow.size} " +
+                    "(tracksOmitted=${inWindow.size}).").length
+            } else 0
+            // Reserve room for the explicit raw-track omission count.
+            if (blockLength + 1 + line.length + omissionLineLength > MAX_SNAPSHOT_BLOCK_CHARS) break
             trackLines += line
             blockLength += 1 + line.length
+            accounted += group.size
         }
         if (trackLines.isEmpty() && inWindow.isEmpty()) trackLines += "none detected."
-        val included = if (inWindow.isEmpty()) 0 else trackLines.size
+        val included = accounted
         val omitted = inWindow.size - included
+        if (omitted > 0) trackLines +=
+            "Additional tracked objects omitted: $omitted (tracksOmitted=$omitted)."
         val block = (header + trackLines).joinToString("\n")
         val oneFrameIncluded = inWindow.take(included).count { it.lastSeenMs == it.firstSeenMs }
         val line = "Call visual context: injected=true mode=snapshot chars=${block.length} snapshotAgeMs=$resultAgeMs" +
@@ -207,10 +228,24 @@ object CallVisualContext {
         )
     }
 
-    private fun trackLine(track: ServerVisionTracker.TrackedObject): String {
+    private fun reconcile(tracks: List<ServerVisionTracker.TrackedObject>): List<List<ServerVisionTracker.TrackedObject>> {
+        val groups = mutableListOf<MutableList<ServerVisionTracker.TrackedObject>>()
+        for (track in tracks.sortedByDescending { it.lastSeenMs }) {
+            val group = groups.firstOrNull { candidate -> candidate.any { prior ->
+                prior.label == track.label && kotlin.math.abs(prior.lastSeenMs - track.lastSeenMs) <= DUPLICATE_MAX_GAP_MS &&
+                    ServerVisionTracker.intersectionOverUnion(prior.box, track.box) >= DUPLICATE_MIN_IOU
+            } }
+            if (group == null) groups += mutableListOf(track) else group += track
+        }
+        return groups
+    }
+
+    private fun trackLine(group: List<ServerVisionTracker.TrackedObject>): String {
+        val track = group.first()
         val box = track.box
         val presence = if (track.presentNow) "visible now" else "last seen ${agePhrase(track.lastSeenAgeMs)}"
-        return "#${track.id} ${track.label} " +
+        val sightings = if (group.size > 1) " ids=${group.map { it.id }.sorted().joinToString(",")} sightings=${group.size}" else ""
+        return "#${track.id} ${track.label}$sightings " +
             "box=(${box.x1.toInt()},${box.y1.toInt()})-(${box.x2.toInt()},${box.y2.toInt()}) $presence"
     }
 
@@ -223,6 +258,7 @@ object CallVisualContext {
         snapshot: ServerVisionTracker.Snapshot,
         recentShown: List<ServerVisionTracker.TrackedObject>,
         ageMs: Long,
+        omitted: Int,
     ): String {
         val ageSeconds = ageMs / 1_000
         val updated = if (ageSeconds <= 1) "about a second ago" else "$ageSeconds seconds ago"
@@ -238,6 +274,7 @@ object CallVisualContext {
                 "${it.label} (last seen ${it.lastSeenAgeMs / 1_000} seconds ago)"
             } + "."
         }
+        if (omitted > 0) lines += "Additional tracked objects omitted: $omitted."
         return lines.joinToString("\n")
     }
 }

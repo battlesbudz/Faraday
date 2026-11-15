@@ -2,7 +2,9 @@ package com.battlesbudz.jarvis.v2.voice
 
 import com.battlesbudz.jarvis.v2.ai.GenerationResult
 import com.google.ai.edge.litertlm.Content
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -28,6 +30,7 @@ class PrimedAudioInputTest {
         data class ChunkFeed(val values: FloatArray, val tokenCount: Int, val width: Int,
                              val begin: Boolean, val end: Boolean)
         val chunkFeeds = mutableListOf<ChunkFeed>()
+        val twoChunksFed = CompletableDeferred<Unit>()
         var decodes = 0
         var closed = false
 
@@ -50,6 +53,7 @@ class PrimedAudioInputTest {
             if (failAudioChunk) error("audio chunk rejected")
             chunkFeeds += ChunkFeed(rows.copyOf(), tokenCount, embeddingWidth,
                 includeBeginMarker, includeEndMarker)
+            if (chunkFeeds.size == 2) twoChunksFed.complete(Unit)
         }
 
         override suspend fun decode(onToken: (String) -> Unit): GenerationResult {
@@ -271,6 +275,9 @@ class PrimedAudioInputTest {
         owner.prime()
         owner.offerProvisionalRows(offer(0, 96))
         owner.offerProvisionalRows(offer(96, 192))
+        // Wait until the feeder has really appended both provisional chunks
+        // before introducing the restart that poisons the sequence.
+        withTimeout(5_000) { fake.twoChunksFed.await() }
         // The encoder candidate restarted: the chain breaks at row 0 again.
         owner.offerProvisionalRows(offer(0, 12))
         val result = owner.answerWithSealedFallback("PREFIX ", sealedPattern(), {}) {
