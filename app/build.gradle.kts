@@ -110,8 +110,8 @@ tasks.matching { it.name == "assembleRelease" }.configureEach { dependsOn(verify
 // ARM64 native library in the release APK and fails unless both runtimes are
 // present and exactly one libLiteRt.so shipped: the Maven 2.3.0 build, proven
 // by its published size. If a future bridge build ever ships its own
-// libLiteRt.so, packaging fails on the duplicate path first; resolve it with
-// an explicit pickFirst here, never by dropping a runtime.
+// libLiteRt.so, packaging fails on the duplicate path first; resolve that
+// collision explicitly in the packaging rules, never by dropping a runtime.
 val verifyLiteRtCoexistence by tasks.registering {
     group = "verification"
     description = "Fails unless the packaged release APK carries both the reviewed bridge runtime and Maven LiteRT 2.3.0, with exactly one libLiteRt.so."
