@@ -281,7 +281,7 @@ class MainActivity : ComponentActivity() {
         val handoff = if (recorder.isLiveCallFor(conversationId)) {
             "\n\n${com.battlesbudz.jarvis.v2.voice.MicrophoneHandoff.diagnostics()}"
         } else ""
-        val diagnostics = "Jarvis OS V2 — Voice Call diagnostics for conversation $conversationId\n\n${recorder.exportForConversation(conversationId)}$handoff\n\n${com.battlesbudz.jarvis.v2.sandbox.SandboxDiagnostics.snapshot(this)}\n\n${com.battlesbudz.jarvis.v2.code.CodeDiagnostics.snapshot(this)} + (serverVision?.let { "\n\n$it" } ?: "")
+        val diagnostics = "Jarvis OS V2 — Voice Call diagnostics for conversation $conversationId\n\n${recorder.exportForConversation(conversationId)}$handoff\n\n${com.battlesbudz.jarvis.v2.sandbox.SandboxDiagnostics.snapshot(this)}\n\n${com.battlesbudz.jarvis.v2.code.CodeDiagnostics.snapshot(this)}" + (serverVision?.let { "\n\n$it" } ?: "")
         val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("Jarvis diagnostics", diagnostics))
     }

@@ -48,7 +48,6 @@ internal data class PreparedVoiceTurn(
     val replyProbeEnabled: Boolean,
     /** Route B: primed-audio owner for this direct-audio turn, when armed. */
     val primedAudio: com.battlesbudz.jarvis.v2.voice.PrimedAudioInput? = null,
-    val replyProbeEnabled: Boolean,
     /** True when this turn answers on the live persistent call conversation,
      * so recognition stages may run on it without resetting it. */
     val callSessionReusable: Boolean = false

@@ -129,7 +129,6 @@ internal class VoiceTurnPreparation(
                 selectedSpec, modelStore.fileFor(selectedSpec).path,
                 modelStore.engineCacheRoot().path, visionRequired = snapshotVisionWanted
             )
-            )
         }
         val engine = requireNotNull(nativeState.engine)
         if (directAudioTurn) check(engine.audioEnabled) { "Select an audio-capable Gemma model for Gemma audio understanding." }
