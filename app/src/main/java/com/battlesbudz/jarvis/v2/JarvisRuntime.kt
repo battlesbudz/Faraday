@@ -508,6 +508,9 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         // the browserRuntime lazy: LiteRT schema generation via
         // MobileToolCatalog.all() may run before first browser use.
         com.battlesbudz.jarvis.v2.actions.MobileToolCatalog.BrowserRuntimeGate.wired = true
+        // The production AndroidMobileActionExecutor includes WebReadTools, so
+        // the read-only web schemas can be advertised for this runtime.
+        com.battlesbudz.jarvis.v2.actions.MobileToolCatalog.WebReadRuntimeGate.wired = true
         modelStore = ModelStore(applicationContext)
         // M6: automatic memory is always on; start the background evaluation loop.
         startAutoMemoryEvaluation()
