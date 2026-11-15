@@ -578,3 +578,8 @@
 
 # Native on-device vision (phoneinference module): keep the ONNX Runtime Java API.
 -keep class ai.onnxruntime.** { *; }
+
+# LFM3-Omni U0 coexistence spike: keep the fenced CompiledModel touchpoint so
+# Maven LiteRT 2.3.0 stays linked in the release build until U2 wires real
+# callers. See docs/verification/streaming-sdk.md.
+-keep class com.battlesbudz.jarvis.v2.ai.OmniRuntime { *; }
