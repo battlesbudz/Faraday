@@ -20,6 +20,7 @@ internal class SmartTurnCallOwner(
         ownerIsCurrent: () -> Boolean, admissionBlocker: () -> String?,
         observeCapture: Boolean = true,
         endpointEnabled: Boolean = false,
+        endpointPauseAdmissionMs: Long = 350L,
     ): CaptureShadowObserver? {
         val evidence = SafeSmartTurnTelemetry(telemetry)
         // A stale setup attempt has no authority to revoke/reap a newer call owner.
@@ -53,7 +54,8 @@ internal class SmartTurnCallOwner(
                 callId = expectedCallId
             }
             SmartTurnCaptureObserver(requireNotNull(shadow), turnId, captureGeneration,
-                evidence, ownerIsCurrent, admissionBlocker, clock, endpointEnabled).also { observer = it }
+                evidence, ownerIsCurrent, admissionBlocker, clock, endpointEnabled,
+                endpointPauseAdmissionMs).also { observer = it }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             revoke()
             throw cancelled

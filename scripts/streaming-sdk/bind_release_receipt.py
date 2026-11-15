@@ -191,10 +191,10 @@ def bind(inputs, out, quality, expected_aar, expected_provenance, identity,
         raise ValueError('SDK source receipt does not match exact producer/AAR provenance')
     if any(identity.get(k)!=quality_identity.get(k) for k in ('GITHUB_RUN_ID','GITHUB_SHA','GITHUB_REPOSITORY')):
         raise ValueError('SDK and quality producers do not share the same run/source/repository')
-    reviewed=load(ROOT/'third_party/litert-lm-0.16.0/reviewed-source.json')
+    reviewed=load(ROOT/'third_party/litert-lm-0.18.0/reviewed-source.json')
     if (provenance.get('aar_sha256')!=expected_aar or source.get('workflow_identity')!=identity
             or source.get('reviewed_patch_sha256')!=reviewed['patch_sha256']
-            or source.get('reviewed_source_sha256')!=sha256(ROOT/'third_party/litert-lm-0.16.0/reviewed-source.json')):
+            or source.get('reviewed_source_sha256')!=sha256(ROOT/'third_party/litert-lm-0.18.0/reviewed-source.json')):
         raise ValueError('SDK provenance is not the exact reviewed producer result')
     packaged_samplers = []
     for name in ('app-release.apk','app-compact.apk'):

@@ -61,11 +61,11 @@ jobs:
         run: |
           set -euo pipefail
           export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/28.1.13356709"
-          PATCH_SHA="$(python3 -c 'import json; print(json.load(open("third_party/litert-lm-0.16.0/reviewed-source.json"))["patch_sha256"])')"
+          PATCH_SHA="$(python3 -c 'import json; print(json.load(open("third_party/litert-lm-0.18.0/reviewed-source.json"))["patch_sha256"])')"
           python3 scripts/streaming-sdk/build_android_sdk.py --run \
-            --patch third_party/litert-lm-0.16.0/PATCH.diff \
+            --patch third_party/litert-lm-0.18.0/PATCH.diff \
             --patch-sha256 "$PATCH_SHA" \
-            --reviewed-source third_party/litert-lm-0.16.0/reviewed-source.json \
+            --reviewed-source third_party/litert-lm-0.18.0/reviewed-source.json \
             --page-auditor scripts/check_page_sizes.py \
             --out "$RUNNER_TEMP/streaming-sdk" 2>&1 | tee streaming-sdk-build.log
       - name: Retain compiler and packaging evidence
@@ -87,8 +87,8 @@ jobs:
         id: sdk-digests
         run: |
           python3 scripts/streaming-sdk/validate_artifact.py \
-            --aar "$RUNNER_TEMP/streaming-sdk/litertlm-android-0.16.0-sealed-audio-arm64.aar" \
-            --provenance "$RUNNER_TEMP/streaming-sdk/litertlm-android-0.16.0-sealed-audio-arm64.provenance.json" \
+            --aar "$RUNNER_TEMP/streaming-sdk/litertlm-android-0.18.0-sealed-audio-arm64.aar" \
+            --provenance "$RUNNER_TEMP/streaming-sdk/litertlm-android-0.18.0-sealed-audio-arm64.provenance.json" \
             --source-receipt "$RUNNER_TEMP/streaming-sdk/source-receipt.json" \
             --check-workflow --github-output "$GITHUB_OUTPUT"
           echo "producer_attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
@@ -154,8 +154,8 @@ jobs:
           STREAMING_PRODUCER_ATTEMPT: ${{ needs.build-streaming-sdk.outputs.producer_attempt }}
         run: |
           python3 scripts/streaming-sdk/validate_artifact.py \
-            --aar streaming-sdk-input/litertlm-android-0.16.0-sealed-audio-arm64.aar \
-            --provenance streaming-sdk-input/litertlm-android-0.16.0-sealed-audio-arm64.provenance.json \
+            --aar streaming-sdk-input/litertlm-android-0.18.0-sealed-audio-arm64.aar \
+            --provenance streaming-sdk-input/litertlm-android-0.18.0-sealed-audio-arm64.provenance.json \
             --source-receipt streaming-sdk-input/source-receipt.json \
             --expected-aar-sha256 "$STREAMING_AAR_SHA256" --expected-provenance-sha256 "$STREAMING_PROVENANCE_SHA256" \
             --expected-source-receipt-sha256 "$STREAMING_SOURCE_RECEIPT_SHA256" --require-digests --check-workflow \
@@ -172,8 +172,8 @@ jobs:
         run: |
           python scripts/streaming-quality/prepare_sdk_source.py \
             --android-receipt "$GITHUB_WORKSPACE/streaming-sdk-input/source-receipt.json" \
-            --patch third_party/litert-lm-0.16.0/PATCH.diff \
-            --reviewed-source third_party/litert-lm-0.16.0/reviewed-source.json \
+            --patch third_party/litert-lm-0.18.0/PATCH.diff \
+            --reviewed-source third_party/litert-lm-0.18.0/reviewed-source.json \
             --sdk "$RUNNER_TEMP/streaming-sdk/sdk" \
             --bazel "$RUNNER_TEMP/streaming-sdk/downloads/bazel-7.6.1-linux-x86_64"
       - name: Build bounded hosted native quality probes
@@ -183,7 +183,7 @@ jobs:
           python scripts/streaming-quality/build_probes.py \
             --sdk "$RUNNER_TEMP/streaming-sdk/sdk" \
             --android-receipt "$GITHUB_WORKSPACE/streaming-sdk-input/source-receipt.json" \
-            --patch third_party/litert-lm-0.16.0/PATCH.diff \
+            --patch third_party/litert-lm-0.18.0/PATCH.diff \
             --bazel "$RUNNER_TEMP/streaming-sdk/downloads/bazel-7.6.1-linux-x86_64" \
             --bazel-root "$RUNNER_TEMP/streaming-sdk/bazel" \
             --out "$RUNNER_TEMP/streaming-quality-build"
@@ -387,8 +387,8 @@ jobs:
           STREAMING_PRODUCER_ATTEMPT: ${{ needs.build-streaming-sdk.outputs.producer_attempt }}
         run: |
           set -euo pipefail
-          AAR="$GITHUB_WORKSPACE/streaming-sdk-input/litertlm-android-0.16.0-sealed-audio-arm64.aar"
-          PROVENANCE="$GITHUB_WORKSPACE/streaming-sdk-input/litertlm-android-0.16.0-sealed-audio-arm64.provenance.json"
+          AAR="$GITHUB_WORKSPACE/streaming-sdk-input/litertlm-android-0.18.0-sealed-audio-arm64.aar"
+          PROVENANCE="$GITHUB_WORKSPACE/streaming-sdk-input/litertlm-android-0.18.0-sealed-audio-arm64.provenance.json"
           python3 scripts/streaming-sdk/validate_artifact.py --aar "$AAR" --provenance "$PROVENANCE" --source-receipt "$GITHUB_WORKSPACE/streaming-sdk-input/source-receipt.json" --expected-source-receipt-sha256 "$STREAMING_SOURCE_RECEIPT_SHA256" --expected-aar-sha256 "$STREAMING_AAR_SHA256" --expected-provenance-sha256 "$STREAMING_PROVENANCE_SHA256" --require-digests --check-workflow --producer-attempt "$STREAMING_PRODUCER_ATTEMPT" --app-ndk "$ANDROID_HOME/ndk/27.2.12479018"
           # Engineering SOP (Battles 2026-10-21): only test packages that
           # change. mode=full reproduces the historical command untouched.
@@ -496,8 +496,8 @@ jobs:
           STREAMING_PRODUCER_ATTEMPT: ${{ needs.build-streaming-sdk.outputs.producer_attempt }}
         run: |
           set -euo pipefail
-          AAR="$GITHUB_WORKSPACE/streaming-sdk-input/litertlm-android-0.16.0-sealed-audio-arm64.aar"
-          PROVENANCE="$GITHUB_WORKSPACE/streaming-sdk-input/litertlm-android-0.16.0-sealed-audio-arm64.provenance.json"
+          AAR="$GITHUB_WORKSPACE/streaming-sdk-input/litertlm-android-0.18.0-sealed-audio-arm64.aar"
+          PROVENANCE="$GITHUB_WORKSPACE/streaming-sdk-input/litertlm-android-0.18.0-sealed-audio-arm64.provenance.json"
           python3 scripts/streaming-sdk/validate_artifact.py --aar "$AAR" --provenance "$PROVENANCE" --source-receipt "$GITHUB_WORKSPACE/streaming-sdk-input/source-receipt.json" --expected-source-receipt-sha256 "$STREAMING_SOURCE_RECEIPT_SHA256" --expected-aar-sha256 "$STREAMING_AAR_SHA256" --expected-provenance-sha256 "$STREAMING_PROVENANCE_SHA256" --require-digests --check-workflow --producer-attempt "$STREAMING_PRODUCER_ATTEMPT" --app-ndk "$ANDROID_HOME/ndk/27.2.12479018"
           bash scripts/ci_gradle.sh compact -PlitertLmBridgeAar="$AAR" -PlitertLmBridgeProvenance="$PROVENANCE" -PlitertLmBridgeSha256="$STREAMING_AAR_SHA256" -PlitertLmBridgeProvenanceSha256="$STREAMING_PROVENANCE_SHA256" -PlitertLmBridgeProducerAttempt="$STREAMING_PRODUCER_ATTEMPT" -PcompactApk=true assembleRelease
           cp app/build/outputs/apk/release/app-release.apk artifact/app-compact.apk
@@ -522,7 +522,7 @@ jobs:
         run: |
           python3 scripts/streaming-sdk/verify_packaged_samplers.py \
             --apk artifact/app-release.apk --apk artifact/app-compact.apk \
-            --provenance streaming-sdk-input/litertlm-android-0.16.0-sealed-audio-arm64.provenance.json \
+            --provenance streaming-sdk-input/litertlm-android-0.18.0-sealed-audio-arm64.provenance.json \
             --expected-provenance-sha256 "$STREAMING_PROVENANCE_SHA256" \
             --out artifact/packaged-sampler-identity.json
 

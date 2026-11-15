@@ -76,6 +76,7 @@ internal class ReplyCaptureBenchmark(
             expectedCallId, plan.turnId, captureGeneration = 0,
             enabled = plan.directAudioTurn && com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnSettings.enabled(applicationContext),
             endpointEnabled = plan.directAudioTurn,
+            endpointPauseAdmissionMs = 0L,
             model = com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnSettings.store(applicationContext).availableFile(),
             telemetry = shadowTelemetry,
             ownerIsCurrent = { exactCaptureJob?.isActive == true && shadowOwnerIsCurrent() },
@@ -216,7 +217,7 @@ internal class ReplyCaptureBenchmark(
         // same lifecycle captureFirstFollowup uses: the call owner closes any
         // previous capture's observer (that capture has already sealed), the
         // observer is closed again when this listen returns, and a failed or
-        // unavailable setup degrades to the analyzer-free reference stop, never
+        // unavailable setup degrades to the analyzer-free deadline stop, never
         // to a failed listen.
         val shadowCallId = expectedCallId ?: callId
         val endpointObserver = if (shadowOwner != null && shadowTelemetry != null && shadowCallId != null) {
@@ -226,6 +227,7 @@ internal class ReplyCaptureBenchmark(
                 enabled = smartTurnEndpointEnabled &&
                     com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnSettings.enabled(applicationContext),
                 endpointEnabled = smartTurnEndpointEnabled,
+                endpointPauseAdmissionMs = 0L,
                 model = com.battlesbudz.jarvis.v2.voice.smartturn.SmartTurnSettings.store(applicationContext).availableFile(),
                 telemetry = shadowTelemetry,
                 ownerIsCurrent = { exactListenJob?.isActive == true && shadowOwnerIsCurrent() },

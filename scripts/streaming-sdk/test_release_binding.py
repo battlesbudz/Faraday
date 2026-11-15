@@ -254,7 +254,7 @@ class QualityEvidenceBinding(unittest.TestCase):
         self.data['build/diagnostic-status.json']['context']['run_attempt']=2
         inputs=self.root/'inputs';out=self.root/'out';out.mkdir()
         consumer=inputs/'jarvis-streaming-sdk-consumer';consumer.mkdir(parents=True)
-        manifest=ROOT/'third_party/litert-lm-0.16.0/reviewed-source.json'
+        manifest=ROOT/'third_party/litert-lm-0.18.0/reviewed-source.json'
         reviewed=json.loads(manifest.read_text());self.patch=reviewed['patch_sha256']
         self.data['run/summary.json']['reviewed_patch_sha256']=self.patch
         self.data['build/build-status.json']['reviewed_patch_sha256']=self.patch
@@ -266,7 +266,7 @@ class QualityEvidenceBinding(unittest.TestCase):
             name: {'output_sha256': digest} for name, digest in pins.items()},
             sampler_modifications_notice_sha256=hashlib.sha256(notice).hexdigest())
         prefix = 'streaming-sdk-input/' if nested else ''
-        provenance_name = prefix + 'litertlm-android-0.16.0-sealed-audio-arm64.provenance.json'
+        provenance_name = prefix + 'litertlm-android-0.18.0-sealed-audio-arm64.provenance.json'
         # Match upload-artifact's common-root archive, not a flattened mock.
         archive = self.root/'consumer.zip'
         with zipfile.ZipFile(archive, 'w') as z:
@@ -429,11 +429,11 @@ class ConsumerEvidenceLayout(unittest.TestCase):
         self.bundle.mkdir(parents=True)
         self.identity = {'GITHUB_RUN_ID':'123', 'GITHUB_RUN_ATTEMPT':'1',
                          'GITHUB_SHA':'a'*40, 'GITHUB_REPOSITORY':'battlesbudz/Faraday'}
-        manifest = ROOT/'third_party/litert-lm-0.16.0/reviewed-source.json'
+        manifest = ROOT/'third_party/litert-lm-0.18.0/reviewed-source.json'
         self.source = {'workflow_identity':self.identity.copy(),
                        'reviewed_patch_sha256':json.loads(manifest.read_text())['patch_sha256'],
                        'reviewed_source_sha256':sha256(manifest)}
-        self.provenance = self.bundle/'litertlm-android-0.16.0-sealed-audio-arm64.provenance.json'
+        self.provenance = self.bundle/'litertlm-android-0.18.0-sealed-audio-arm64.provenance.json'
         self.receipt = self.bundle/'source-receipt.json'
         self.manifest = self.consumer/'streaming-sdk-manifest.json'
         self.manifest.write_text('{}')

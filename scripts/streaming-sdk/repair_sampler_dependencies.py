@@ -11,12 +11,12 @@ import subprocess
 PROVIDER = 'liblitertlm_jni.so'
 TOOL_SHA256 = 'b699cb82300dfd08ea6c895d8829b46bea970cfa737fa34188d8256ca89404e5'
 TARGETS = {
-    'libLiteRtTopKOpenClSampler.so': '4404dc68786460602685cab62ddfa29035e9cfc38bb4550dec15abaaa1302a82',
-    'libLiteRtTopKWebGpuSampler.so': 'c52a1cf69a92a2d2c4d3c08f5c087d1eb405f709af61c3312b215221135e18db',
+    'libLiteRtTopKOpenClSampler.so': '0f77c888ad2a2ae044e189fd0fb87844c47fe46c8e68a677e6f204dac1096e24',
+    'libLiteRtTopKWebGpuSampler.so': '1ab8e8b49d3c7e4fa64c5a50f58d507de2db7936e4b8fc0d008782724aa5862c',
 }
 OUTPUTS = {
-    'libLiteRtTopKOpenClSampler.so': '8ce3b26c4c8eb26a13a06cd3838f9a27524032772551e4307e9c5b72ff8d756a',
-    'libLiteRtTopKWebGpuSampler.so': 'e446ca3394e95b0e42157eae878511d555d14aa86097c48a676346b89f3e2277',
+    'libLiteRtTopKOpenClSampler.so': '7907ac482ee33e9d06361078afbd99975389db87367e5a9d72486a787a30c61e',
+    'libLiteRtTopKWebGpuSampler.so': '932632f79393440cc9e9ec83248a59191b0949db6dd81284fdabacf73ed3c92b',
 }
 METADATA = {'.dynamic', '.dynstr', '.note.android.ident', '.note.gnu.build-id'}
 

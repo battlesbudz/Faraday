@@ -98,11 +98,12 @@ class ReplyVoiceCapture(private val context: Context, private val log: (String) 
                 // The gated input above decides only WHETHER an interruption
                 // happened (keyword/probe confirmation, playback stop). The stop
                 // of the speech retained here is a user turn's stop, judged under
-                // the reference turn-stop policy like every conversation capture:
-                // the analyzer's COMPLETE binds, an undecided turn stays open
-                // behind the 5s backstop, and with no analyzer the speech-timeout
-                // window (this capture's 650ms ASR-free window, else 600ms) ends it.
-                turnStopPolicy = TurnStopPolicy.REFERENCE,
+                // the deadline-first turn-stop policy like every conversation
+                // capture: submission 300ms after the speech ends by default,
+                // a high-confidence unfinished verdict from the analyzer buys
+                // one extra 300ms window, and with no analyzer the deadline
+                // itself ends it.
+                turnStopPolicy = TurnStopPolicy.DEADLINE,
                 allowAudioOnlyTurns = true,
                 guardFollowupSpeech = true,
                 initialConfirmedSpeech = { confirmedNaturalText },

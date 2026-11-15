@@ -51,9 +51,10 @@ internal class VoiceTurnCaptureFactory(
             rejectAtAudioLimit = plan.directAudioTurn,
             captionOnly = plan.directAudioTurn,
             // This factory builds only the conversation captures (primary and
-            // follow-up). They follow the reference turn-stop pattern: the Smart
-            // Turn analyzer decides every stop, backed only by the 5s timeout.
-            turnStopPolicy = TurnStopPolicy.REFERENCE,
+            // follow-up). They follow the deadline-first turn-stop pattern:
+            // submission 300ms after the last speech by default, with Smart
+            // Turn holding a turn only on a high-confidence unfinished verdict.
+            turnStopPolicy = TurnStopPolicy.DEADLINE,
             trailingSilenceMs = if (plan.directAudioTurn && !plan.captionAsrEnabled) 650L else null,
             createDetector = { SileroSpeechDetector.create(context.assets) },
             log = {

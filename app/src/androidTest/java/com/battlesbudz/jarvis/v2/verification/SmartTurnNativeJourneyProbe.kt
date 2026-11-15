@@ -92,7 +92,14 @@ internal object SmartTurnNativeJourneyProbe {
                 fun eligibility(hasSpeech: Boolean) = NativePauseEndpointPolicy.eligibility(
                     hasSpeech, 1000L, false, 1000L, raw, false, 0L, true)
                 fun decide(probability: Float, hasSpeech: Boolean) = SmartTurnEndpointPolicy.decision(
-                    fallback, CaptureEndpointDecision(SmartTurnEndpointPolicy.modelState(probability), 128_000L),
+                    // All constructor arguments explicit on purpose: this probe runs
+                    // against the R8-minified release app, and R8 may rewrite the
+                    // synthetic defaults constructor of an app class (it specialized
+                    // CaptureEndpointDecision's to a residual (state) signature once
+                    // the endpointing change altered in-app call patterns, which
+                    // broke this probe with NoSuchMethodError). Only the primary
+                    // constructor is a stable cross-APK contract.
+                    fallback, CaptureEndpointDecision(SmartTurnEndpointPolicy.modelState(probability), 128_000L, probability),
                     eligibility(hasSpeech), true, raw, 256_000L, 1000L, 128_000L, bindVerdict = false)
                 check(decide(complete.probability, true).silenceMs == 350L)
                 check(decide(continuing.probability, true).silenceMs == 3500L)

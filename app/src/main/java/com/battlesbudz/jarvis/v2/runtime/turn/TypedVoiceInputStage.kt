@@ -5,6 +5,7 @@ import com.battlesbudz.jarvis.v2.conversation.ConversationCallbacks
 import com.battlesbudz.jarvis.v2.conversation.ConversationInvocation
 import com.battlesbudz.jarvis.v2.conversation.ConversationWork
 import com.battlesbudz.jarvis.v2.diagnostics.DiagnosticRecorder
+import com.battlesbudz.jarvis.v2.memory.AutoMemorySource
 import com.battlesbudz.jarvis.v2.memory.ConversationMemorySource
 import com.battlesbudz.jarvis.v2.voice.CallFinalInput
 import kotlinx.coroutines.CoroutineScope
@@ -60,7 +61,14 @@ internal class TypedVoiceInputStage(
                             callIdentity = input.callId
                         ), ConversationCallbacks(
                             onToken = { token -> response.append(token); call.controller.updateReplyText(input.callId, replyId, response.toString()) },
-                            onComplete = { answer -> call.controller.updateReplyText(input.callId, replyId, answer, finished = true) },
+                            onComplete = { answer ->
+                                call.controller.updateReplyText(input.callId, replyId, answer, finished = true)
+                                // Automatic memory (D-3): a completed typed-during-call turn queues a
+                                // candidate like a chat turn. Typed text is verbatim user input with no
+                                // ASR risk, so it takes the CHAT source, mirroring the receipt path's
+                                // TEXT classification for this same input above.
+                                memory.autoCaptureTurn(input.id, AutoMemorySource.CHAT, input.text, answer, input.capturedAtMs)
+                            },
                             onLiveInference = { submittedAt, firstTokenAt, tokensPerSecond, durable ->
                                 call.controller.updateReplyMetrics(input.callId, replyId, durable = durable) { current ->
                                     var updated = current

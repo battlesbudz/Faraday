@@ -24,6 +24,14 @@ object FinalVoiceToolGuard {
             }
             "read_battery" -> true
             "show_schedule" -> true
+            "run_in_sandbox" ->
+                // Only the empty-command intent marker (Sandbox Phase 2:
+                // ConversationRouting arms the model-proposal channel for an
+                // explicit sandbox request) may pass. A plan step carrying a
+                // real command never passes this guard: a command dispatches
+                // only after Battles's exact approval of its text in the
+                // phone tasks panel, never from a plan.
+                arguments["command"].isNullOrEmpty()
             "post_notification" -> {
                 // Notifications are voice-triggerable: re-parse the final
                 // spoken clause deterministically and require the spoken

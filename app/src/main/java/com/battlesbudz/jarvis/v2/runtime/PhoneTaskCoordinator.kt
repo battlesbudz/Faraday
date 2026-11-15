@@ -231,7 +231,7 @@ internal class PhoneTaskCoordinator(
             recordDiagnostic("Screen task parked for approval: ${request.name} group=${group.id}")
             ExecutionResult(false,
                 "I need your approval before I control the screen. " +
-                    "Approve \"${request.describeForOverlay()}\" in the phone tasks panel to continue.")
+                    "Approve \"${request.describeForOverlay()}\" in the conversation to continue.")
         } catch (_: ToolTaskStorageException) {
             ExecutionResult(false,
                 "I couldn't save the screen action, so I didn't start it.")
@@ -267,13 +267,44 @@ internal class PhoneTaskCoordinator(
             ExecutionResult(false,
                 "I need your approval before I submit this form" +
                     (dest?.let { " to $it" } ?: "") +
-                    ". Approve \"Submit the form\" in the phone tasks panel to continue.")
+                    ". Approve \"Submit the form\" in the conversation to continue.")
         } catch (_: ToolTaskStorageException) {
             ExecutionResult(false,
                 "I couldn't save the browser submission, so I didn't start it.")
         } catch (_: IllegalArgumentException) {
             ExecutionResult(false,
                 "I couldn't verify the requested browser submission.")
+        }
+    }
+
+    /**
+     * Sandbox Phase 2: a model-proposed run_in_sandbox command never
+     * auto-dispatches. Park it in the ledger awaiting Battles's explicit
+     * approval of the exact command text (the panel renders the command
+     * verbatim); the approval claim is the only dispatch path, and a denial
+     * cancels the attempt with nothing executed. Returns a truthful
+     * not-yet receipt, never a success.
+     */
+    fun parkSandboxRunForApproval(request: ActionRequest, conversationId: String): ExecutionResult {
+        return try {
+            val group = ledger.admit(listOf(request), conversationId)
+            val attempt = ledger.get(group.attemptIds.single())
+                ?: return ExecutionResult(false,
+                    "I couldn't save the sandbox command, so I didn't run it.")
+            ledger.requestApproval(attempt.id, attempt.generation, "native",
+                MobileToolCatalog.VERSION)
+            refreshPhoneTasks()
+            com.battlesbudz.jarvis.v2.sandbox.SandboxStore(appContext).recordAgentProposal()
+            recordDiagnostic("Sandbox command parked for approval: group=${group.id}")
+            ExecutionResult(false,
+                "I need your approval before I run that command in the sandbox. " +
+                    "Approve \"${request.describeForOverlay()}\" in the conversation to continue.")
+        } catch (_: ToolTaskStorageException) {
+            ExecutionResult(false,
+                "I couldn't save the sandbox command, so I didn't run it.")
+        } catch (_: IllegalArgumentException) {
+            ExecutionResult(false,
+                "I couldn't verify the requested sandbox command.")
         }
     }
 
@@ -430,6 +461,14 @@ internal class PhoneTaskCoordinator(
                                 else -> Unit
                             }
                         }
+                        // Sandbox Phase 2: Battles's approval decision on a
+                        // parked command is counted here, where the decision
+                        // is final (admissions above may still defer it);
+                        // the diagnostics agent counters prove the gate.
+                        if (a.request.name == "run_in_sandbox") {
+                            com.battlesbudz.jarvis.v2.sandbox.SandboxStore(appContext)
+                                .recordAgentDecision(approved = true)
+                        }
                         // Blocking dispatch runs OFF the coordinator
                         // dispatcher (Main in production): the executor
                         // blocks for launch verification.
@@ -459,6 +498,13 @@ internal class PhoneTaskCoordinator(
                         synchronized(publishLock) {
                             approvals.deny(it)
                             silentWork.onAnswerReceived(it)
+                        }
+                        // Sandbox Phase 2: a denied command is counted and
+                        // never executes — the denial cancels the attempt
+                        // in the approval store above.
+                        if (a.request.name == "run_in_sandbox") {
+                            com.battlesbudz.jarvis.v2.sandbox.SandboxStore(appContext)
+                                .recordAgentDecision(approved = false)
                         }
                     }
                     "cancel" -> if (a.groupId != null) ledger.cancelGroup(a.groupId)

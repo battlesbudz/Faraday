@@ -40,6 +40,8 @@ internal fun MemoryScreen(
     onEndCall: (((String) -> Unit) -> Unit)? = null,
     onOpenChat: () -> Unit = onBack,
     onOpenVoice: () -> Unit = onBack,
+    embeddingSetup: MemoryEmbeddingSetupController? = null,
+    dreamJournalProvider: () -> List<DreamRunEntry> = { emptyList() },
 ) {
     val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current
@@ -73,10 +75,12 @@ internal fun MemoryScreen(
     var confirmDeleteRevision by rememberSaveable { mutableStateOf<Long?>(null) }
     var confirmDeleteAll by rememberSaveable { mutableStateOf(false) }
     var eraseGeneration by rememberSaveable { mutableStateOf<Long?>(null) }
+    var dreamEntries by remember { mutableStateOf<List<DreamRunEntry>>(emptyList()) }
 
     fun passiveRead() {
         scope.launch {
             try {
+                dreamEntries = withContext(Dispatchers.IO) { runCatching { dreamJournalProvider() }.getOrDefault(emptyList()) }
                 val read = withContext(Dispatchers.IO) { memoryOs.read() }
                 val incoming = read.snapshot
                 val currentGeneration = snapshot?.generation
@@ -125,10 +129,8 @@ internal fun MemoryScreen(
     val deleteTarget = snapshot?.memories?.firstOrNull { it.id == confirmDeleteId }
     val selectedPage = index?.pages?.firstOrNull { it.id == pageId }
     val selectedDetail = snapshot?.memories?.firstOrNull { it.id == detailId }
-    val pending = snapshot?.memories?.count { it.reviewStatus == MemoryReviewStatus.PENDING } ?: 0
     val searchRows = if (query.isBlank()) emptyList() else when (tab) {
         0 -> index?.search(query).orEmpty()
-        1 -> snapshot?.memories.orEmpty().filter { it.reviewStatus == MemoryReviewStatus.PENDING && it.matches(query) }
         else -> snapshot?.memories.orEmpty().filter { it.matches(query) }
     }
     fun beginAdd() {
@@ -174,7 +176,7 @@ internal fun MemoryScreen(
             notice?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp).testTag("memory_notice")) }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when {
-                    selectedDetail != null -> MemoryDetail(selectedDetail, snapshot?.memories.orEmpty(), onBack = { detailId = null }, onCorrect = ::beginCorrection, onOrganize = ::beginOrganize, onDelete = ::requestDelete, onApprove = { mutate({ memoryOs.approve(it.id, it.revision) }) }, onReject = { mutate({ memoryOs.reject(it.id, it.revision) }) })
+                    selectedDetail != null -> MemoryDetail(selectedDetail, snapshot?.memories.orEmpty(), onBack = { detailId = null }, onCorrect = ::beginCorrection, onOrganize = ::beginOrganize, onDelete = ::requestDelete)
                     selectedPage != null -> BoxWithConstraints(Modifier.fillMaxSize()) {
                         val openPage: (String) -> Unit = { pageId = it; detailId = null; highlightedId = null }
                         if (maxWidth >= 600.dp) Row(Modifier.fillMaxSize()) {
@@ -185,13 +187,15 @@ internal fun MemoryScreen(
                             Box(Modifier.weight(1f)) { MemoryArticle(selectedPage, index, snapshot?.memories.orEmpty(), onBack = { pageId = null; highlightedId = null }, onOpenPage = openPage, onOpenRecord = { detailId = it.id }, highlightedId = highlightedId) }
                         } else MemoryArticle(selectedPage, index, snapshot?.memories.orEmpty(), onBack = { pageId = null; highlightedId = null }, onOpenPage = openPage, onOpenRecord = { detailId = it.id }, highlightedId = highlightedId)
                     }
-                    query.isNotBlank() -> SearchList(searchRows, tab, onClear = { query = "" }, onOpen = { record -> if (record.reviewStatus == MemoryReviewStatus.APPROVED && index?.findMemory(record.id) != null) openRecord(record) else { detailId = record.id; query = ""; tab = if (record.reviewStatus == MemoryReviewStatus.PENDING) 1 else 2 } })
+                    query.isNotBlank() -> SearchList(searchRows, tab, onClear = { query = "" }, onOpen = { record -> if (record.reviewStatus == MemoryReviewStatus.APPROVED && index?.findMemory(record.id) != null) openRecord(record) else { detailId = record.id; query = ""; tab = 1 } })
                     else -> {
                         Column(Modifier.fillMaxSize()) {
-                            TabRow(selectedTabIndex = tab, modifier = Modifier.padding(horizontal = 16.dp)) { Tab(tab == 0, { tab = 0 }, text = { Text("Wiki") }, modifier = Modifier.testTag("memory_wiki_tab")); Tab(tab == 1, { tab = 1 }, text = { Text("Review ($pending)") }, modifier = Modifier.testTag("memory_review_tab")); Tab(tab == 2, { tab = 2 }, text = { Text("History") }, modifier = Modifier.testTag("memory_history_tab")) }
-                            when (tab) {
-                                0 -> WikiHome(index, onOpenPage = { pageId = it }, onEraseAll = ::requestEraseAll)
-                                1 -> ReviewList(snapshot?.memories.orEmpty().filter { it.reviewStatus == MemoryReviewStatus.PENDING }, busy, onApprove = { mutate({ memoryOs.approve(it.id, it.revision) }) }, onReject = { mutate({ memoryOs.reject(it.id, it.revision) }) }, onCorrect = ::beginCorrection, onOrganize = ::beginOrganize, onDelete = ::requestDelete, onOpen = { detailId = it.id })
+                            // Two tabs since the review queue was removed (2026-11-01);
+                            // a persisted tab index from the three-tab layout coerces to History.
+                            val shownTab = if (tab == 0) 0 else 1
+                            TabRow(selectedTabIndex = shownTab, modifier = Modifier.padding(horizontal = 16.dp)) { Tab(shownTab == 0, { tab = 0 }, text = { Text("Wiki") }, modifier = Modifier.testTag("memory_wiki_tab")); Tab(shownTab == 1, { tab = 1 }, text = { Text("History") }, modifier = Modifier.testTag("memory_history_tab")) }
+                            when (shownTab) {
+                                0 -> WikiHome(index, onOpenPage = { pageId = it }, onEraseAll = ::requestEraseAll, embeddingSetup = embeddingSetup, dreamJournal = dreamEntries)
                                 else -> HistoryList(snapshot?.memories.orEmpty(), busy, onCorrect = ::beginCorrection, onOrganize = ::beginOrganize, onDelete = ::requestDelete, onOpen = { detailId = it.id }, onEraseAll = ::requestEraseAll)
                             }
                         }
@@ -210,7 +214,17 @@ internal fun MemoryScreen(
         onDraft = { value -> draft = value; sourceEventId = UUID.randomUUID().toString(); sourceCreatedAtMs = System.currentTimeMillis(); if (!categoryOverridden || !topicOverridden) { val suggested = MemoryWiki.suggest(value); if (!categoryOverridden) categoryName = suggested.category.name; if (!topicOverridden) topic = suggested.topic } },
         onTopic = { topic = it; topicOverridden = true }, onCategory = { categoryName = it.name; categoryOverridden = true },
         onDismiss = { showEditor = false; correctionId = null; correctionRevision = null }, onSave = {
-            mutate({ memoryOs.propose(MemoryProposal(content = draft, source = MemorySource(sourceEventId, "manual entry", sourceCreatedAtMs), wikiAssignment = MemoryWikiAssignment(category, topic), correctsMemoryId = correctionId, expectedTargetRevision = correctionRevision)) }) { showEditor = false; correctionId = null; correctionRevision = null }
+            // No approval step (2026-11-01): a memory added or corrected here is
+            // committed on save, the same immediate propose+approve the capture
+            // paths use; approving a correction supersedes its target at once.
+            mutate({
+                val proposed = memoryOs.propose(MemoryProposal(content = draft, source = MemorySource(sourceEventId, "manual entry", sourceCreatedAtMs), wikiAssignment = MemoryWikiAssignment(category, topic), correctsMemoryId = correctionId, expectedTargetRevision = correctionRevision))
+                val record = proposed.memory
+                if (proposed.outcome == MemoryOutcome.CREATED && record != null) {
+                    val approved = memoryOs.approve(record.id)
+                    if (approved.outcome == MemoryOutcome.APPROVED) MemoryResult(MemoryOutcome.APPROVED, "Memory saved.", approved.memory) else approved
+                } else proposed
+            }) { showEditor = false; correctionId = null; correctionRevision = null }
         })
     organizeTarget?.let { record -> OrganizeDialog(record, organizeCategory, organizeTopic, actionError, busy, onCategory = { organizeCategoryName = it.name }, onTopic = { organizeTopic = it }, onDismiss = { organizeId = null; organizeRevision = null }, onSave = { mutate({ memoryOs.assignWiki(record.id, organizeRevision, MemoryWikiAssignment(organizeCategory, organizeTopic)) }) { organizeId = null; organizeRevision = null } }) }
     deleteTarget?.let { record -> AlertDialog(modifier = Modifier.semantics { testTagsAsResourceId = true }, onDismissRequest = { if (!busy) confirmDeleteId = null }, title = { Text("Erase this memory?") }, text = { Column { Text("This also erases linked corrections."); actionError?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("memory_error")) } } }, confirmButton = { TextButton(onClick = { mutate({ memoryOs.delete(record.id, confirmDeleteRevision) }) { confirmDeleteId = null } }, enabled = !busy, modifier = Modifier.testTag("memory_delete_confirm")) { Text("Erase") } }, dismissButton = { TextButton(onClick = { confirmDeleteId = null }, enabled = !busy, modifier = Modifier.testTag("memory_delete_cancel")) { Text("Cancel") } }) }
@@ -232,10 +246,10 @@ private fun MemoryEditorDialog(draft: String, topic: String, category: WikiCateg
         OutlinedTextField(topic, onTopic, label = { Text("Topic") }, modifier = Modifier.fillMaxWidth().testTag("memory_topic_input"))
         if (!categoryOverridden || !topicOverridden) Text("Category and topic are suggested from your wording; you can choose either.", style = MaterialTheme.typography.bodySmall)
         if (correction != null) Text("Replaces: ${correction.content}", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        else if (isCorrection) Text("The original memory will be checked when this correction is saved.", style = MaterialTheme.typography.bodySmall)
+        else if (isCorrection) Text("Saving applies this correction right away.", style = MaterialTheme.typography.bodySmall)
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("memory_error")) }
     } },
-    confirmButton = { TextButton(onClick = onSave, enabled = draft.isNotBlank() && topic.isNotBlank() && !busy, modifier = Modifier.semantics { testTagsAsResourceId = true }.testTag("memory_propose")) { Text(if (isCorrection) "Submit correction" else "Add for review") } },
+    confirmButton = { TextButton(onClick = onSave, enabled = draft.isNotBlank() && topic.isNotBlank() && !busy, modifier = Modifier.semantics { testTagsAsResourceId = true }.testTag("memory_propose")) { Text(if (isCorrection) "Submit correction" else "Add") } },
     dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
 )
 
@@ -254,7 +268,102 @@ private fun OrganizeDialog(record: MemoryRecord, category: WikiCategory, topic: 
     dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
 )
 
-@Composable private fun WikiHome(index: MemoryWikiIndex?, onOpenPage: (String) -> Unit, onEraseAll: () -> Unit) = LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { item { Column { Text("Your personal wiki", style = MaterialTheme.typography.headlineSmall); Text("Organized from approved memories", style = MaterialTheme.typography.bodySmall) } }; if (index == null) item { Text("Loading saved memories…") } else { items(index.categoryPages, key = { it.id }) { page -> Card(Modifier.fillMaxWidth().testTag("memory_category_row_${page.category.id}").clickable { onOpenPage(page.id) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) { Row(Modifier.padding(16.dp)) { Text(page.title.take(1), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 12.dp)); Text(page.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f)); Text("${page.records.size} ›") } } }; val recent = index.pages.filter { it.id.startsWith("topic:") && it.records.isNotEmpty() }.sortedByDescending { it.updatedAtMs }.take(6); if (recent.isNotEmpty()) { item { Text("Recently updated", style = MaterialTheme.typography.titleMedium) }; items(recent, key = { "recent:${it.id}" }) { page -> TextButton(onClick = { onOpenPage(page.id) }, modifier = Modifier.fillMaxWidth().testTag("memory_topic_row_${page.id}")) { Text(page.title, Modifier.weight(1f)); Text(dateLabel(page.updatedAtMs)) } } }; if (index.memories.isNotEmpty()) item { TextButton(onClick = onEraseAll, modifier = Modifier.testTag("memory_erase_all")) { Text("Erase all memories") } } } }
+/**
+ * Memory embeddings row (memory RAG Unit 2): the install surface for the semantic
+ * recall model. State comes from the setup controller, whose installed check is the
+ * store's pin verification — the row can only say "Installed" about a verified file,
+ * and failures show the acquisition layer's own message.
+ */
+@Composable
+private fun MemoryEmbeddingsCard(controller: MemoryEmbeddingSetupController) {
+    val scope = rememberCoroutineScope()
+    var state by remember(controller) { mutableStateOf<MemoryEmbeddingSetupState?>(null) }
+    LaunchedEffect(controller) { state = withContext(Dispatchers.IO) { controller.state() } }
+    fun install() {
+        state = MemoryEmbeddingSetupState.Downloading(0L, controller.spec.downloadBytes)
+        scope.launch {
+            state = withContext(Dispatchers.IO) {
+                controller.install { downloaded, total ->
+                    state = MemoryEmbeddingSetupState.Downloading(downloaded, total)
+                }
+            }
+        }
+    }
+    Card(Modifier.fillMaxWidth().testTag("memory_embeddings_card"), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Memory embeddings", style = MaterialTheme.typography.titleMedium)
+            when (val current = state) {
+                null -> Text("Checking the embedding model…", style = MaterialTheme.typography.bodySmall)
+                is MemoryEmbeddingSetupState.NotInstalled -> {
+                    Text("Semantic recall model (EmbeddingGemma 2) is not installed. With it, memory recall understands meaning, not just keywords.", style = MaterialTheme.typography.bodySmall)
+                    if (current.savedBytes > 0L) Text("A partial download (${formatMegabytes(current.savedBytes)}) is saved on this phone; installing resumes it.", style = MaterialTheme.typography.bodySmall)
+                    Button(onClick = ::install, modifier = Modifier.testTag("memory_embeddings_install")) { Text("Install (${formatMegabytes(current.downloadBytes)})") }
+                }
+                is MemoryEmbeddingSetupState.Downloading -> {
+                    LinearProgressIndicator(progress = { if (current.totalBytes > 0L) (current.downloadedBytes.toFloat() / current.totalBytes).coerceIn(0f, 1f) else 0f }, modifier = Modifier.fillMaxWidth().testTag("memory_embeddings_progress"))
+                    Text("Downloading… ${formatMegabytes(current.downloadedBytes)} of ${formatMegabytes(current.totalBytes)}", style = MaterialTheme.typography.bodySmall)
+                }
+                is MemoryEmbeddingSetupState.Installed -> Text("Installed (${formatMegabytes(current.sizeBytes)}) — semantic memory recall is on. New memories are indexed in the background.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("memory_embeddings_installed"))
+                is MemoryEmbeddingSetupState.Failed -> {
+                    Text(current.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("memory_embeddings_error"))
+                    Button(onClick = ::install, modifier = Modifier.testTag("memory_embeddings_retry")) { Text("Try again") }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Dream journal (memory RAG Unit 3, OD-6): the read-only run history of the
+ * nightly synthesis pass — every run, what it committed or would have
+ * committed on a dry-run night, and what the gates refused, with reasons.
+ * There is no approval affordance here by design (D-6/OD-3): refused outputs
+ * were dropped, and this section is the audit trail, not a queue.
+ */
+@Composable
+private fun MemoryDreamJournalCard(entries: List<DreamRunEntry>) {
+    Card(Modifier.fillMaxWidth().testTag("memory_dream_journal"), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Dream journal", style = MaterialTheme.typography.titleMedium)
+            if (entries.isEmpty()) {
+                Text("No dream runs yet. The nightly synthesis pass journals every run here, including skipped and dry-run nights.", style = MaterialTheme.typography.bodySmall)
+            } else {
+                entries.takeLast(10).asReversed().forEach { entry ->
+                    val outcomeLabel = when {
+                        !entry.isComplete -> "in progress"
+                        entry.outcome == DreamRunOutcome.COMPLETED && entry.dryRun -> "dry run"
+                        else -> entry.outcome?.name?.lowercase()?.replace('_', ' ') ?: "unknown"
+                    }
+                    Text("${dateLabel(entry.startedAtMs)} · $outcomeLabel", style = MaterialTheme.typography.labelLarge, modifier = Modifier.testTag("memory_dream_run_${entry.runId}"))
+                    val synthesized = entry.committedOf(DreamVerb.SYNTHESIZE) + entry.committedOf(DreamVerb.CREATE)
+                    Text(
+                        "merged=${entry.committedOf(DreamVerb.MERGE)} superseded=${entry.committedOf(DreamVerb.SUPERSEDE)} synthesized=$synthesized noop=${entry.noopCount} vetoed=${entry.vetoedCount}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    entry.outputs.forEach { output ->
+                        val actionLabel = when (output.action) {
+                            DreamOutputAction.COMMITTED -> "committed"
+                            DreamOutputAction.WOULD_COMMIT -> "would commit (dry run)"
+                            DreamOutputAction.JOURNALED -> "dropped"
+                            DreamOutputAction.NONE -> "no-op"
+                        }
+                        val detail = output.content?.let { " — $it" } ?: ""
+                        Text(
+                            "${output.verb.name.lowercase()} · $actionLabel · ${output.reason}$detail",
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun formatMegabytes(bytes: Long): String = "%.0f MB".format(bytes / 1_048_576.0)
+
+@Composable private fun WikiHome(index: MemoryWikiIndex?, onOpenPage: (String) -> Unit, onEraseAll: () -> Unit, embeddingSetup: MemoryEmbeddingSetupController? = null, dreamJournal: List<DreamRunEntry> = emptyList()) = LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { if (embeddingSetup != null) item(key = "memory_embeddings") { MemoryEmbeddingsCard(embeddingSetup) }; item(key = "memory_dream_journal") { MemoryDreamJournalCard(dreamJournal) }; item { Column { Text("Your personal wiki", style = MaterialTheme.typography.headlineSmall); Text("Organized from approved memories", style = MaterialTheme.typography.bodySmall) } }; if (index == null) item { Text("Loading saved memories…") } else { items(index.categoryPages, key = { it.id }) { page -> Card(Modifier.fillMaxWidth().testTag("memory_category_row_${page.category.id}").clickable { onOpenPage(page.id) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) { Row(Modifier.padding(16.dp)) { Text(page.title.take(1), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 12.dp)); Text(page.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f)); Text("${page.records.size} ›") } } }; val recent = index.pages.filter { it.id.startsWith("topic:") && it.records.isNotEmpty() }.sortedByDescending { it.updatedAtMs }.take(6); if (recent.isNotEmpty()) { item { Text("Recently updated", style = MaterialTheme.typography.titleMedium) }; items(recent, key = { "recent:${it.id}" }) { page -> TextButton(onClick = { onOpenPage(page.id) }, modifier = Modifier.fillMaxWidth().testTag("memory_topic_row_${page.id}")) { Text(page.title, Modifier.weight(1f)); Text(dateLabel(page.updatedAtMs)) } } }; if (index.memories.isNotEmpty()) item { TextButton(onClick = onEraseAll, modifier = Modifier.testTag("memory_erase_all")) { Text("Erase all memories") } } } }
 
 @Composable private fun SearchList(rows: List<MemoryRecord>, tab: Int, onClear: () -> Unit, onOpen: (MemoryRecord) -> Unit) = LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { item { TextButton(onClick = onClear, modifier = Modifier.testTag("memory_search")) { Text("Clear search") } }; if (rows.isEmpty()) item { Text(if (tab == 0) "No approved memories match that search." else "No memories match that search.") }; items(rows, key = { it.id }) { record -> MemorySearchCard(record, onClick = { onOpen(record) }) } }
 @Composable private fun MemorySearchCard(record: MemoryRecord, onClick: () -> Unit) = Card(Modifier.fillMaxWidth().clickable(onClick = onClick).testTag("memory_search_result_${record.id}")) { Column(Modifier.padding(14.dp)) { Text(record.content); Text(record.placement().second, style = MaterialTheme.typography.labelSmall); Text("Captured from ${record.source.screenSourceLabel()} · ${dateLabel(record.source.createdAtMs)}", style = MaterialTheme.typography.labelSmall) } }

@@ -33,9 +33,12 @@ internal class VoiceTurnTelemetry(
     private val comparison: LiveComparison.Trial?,
     private val diagnosticRecorder: DiagnosticRecorder,
     private val asrComparisonStore: AsrComparisonStore,
-    private val ttsComparisonStore: TtsComparisonStore
+    private val ttsComparisonStore: TtsComparisonStore,
+    private val directAudioTurn: Boolean = false
 ) {
     var hypothesis: String? = null
+    private val endpointMetrics = java.util.concurrent.atomic.AtomicReference<AsrCaptureMetrics?>(null)
+    private val endpointToFirstTextMs = java.util.concurrent.atomic.AtomicLong(-1)
     val replyTtsMetrics = java.util.concurrent.atomic.AtomicReference<TtsSessionMetrics?>(null)
     val speechEndToReplyMs = java.util.concurrent.atomic.AtomicLong(-1)
     val finalReadyAt = java.util.concurrent.atomic.AtomicLong(0)
@@ -72,7 +75,35 @@ internal class VoiceTurnTelemetry(
         }
     }
 
+    /** First reply text after the endpoint; feeds the diagnostics Endpointing block only. */
+    fun recordEndpointToFirstText(elapsedMs: Long) {
+        endpointToFirstTextMs.compareAndSet(-1, elapsedMs)
+    }
+
+    /** Which barge-in path spoke for this turn ("keyword" / "natural"), from its
+     *  summary record; feeds the diagnostics Endpointing block only. */
+    private val bargeSource = java.util.concurrent.atomic.AtomicReference<String?>(null)
+
+    fun recordBargeSource(source: String) {
+        bargeSource.compareAndSet(null, source)
+    }
+
+    /** The turn's Endpointing summary once capture metrics exist; null before that. */
+    fun endpointingSummary(interrupted: Boolean? = null, playedMsBeforeStop: Long? = null):
+        com.battlesbudz.jarvis.v2.diagnostics.EndpointingSummary? =
+        endpointMetrics.get()?.let { metrics ->
+            com.battlesbudz.jarvis.v2.diagnostics.EndpointingSummary.from(metrics,
+                endpointToFirstTextMs = endpointToFirstTextMs.get().takeIf { it >= 0 },
+                speechEndToFirstAudioMs = speechEndToReplyMs.get().takeIf { it >= 0 },
+                nativeAudioTurn = directAudioTurn,
+                firstTextToFirstAudioMs = replyTtsMetrics.get()?.firstTextToPlaybackMs,
+                interrupted = interrupted,
+                bargeSource = bargeSource.get(),
+                playedMsBeforeStop = playedMsBeforeStop)
+        }
+
     fun recordAsr(metrics: AsrCaptureMetrics, text: String, capture: AudioTurnCapture?) {
+        endpointMetrics.set(metrics)
         hypothesis = text
         if (captionAsrEnabled) benchmark.asr(PipelineBenchmarkAsr(
             if (captionAsrEnabled) asrEngine.id else "none", loadMs = metrics.modelLoadMs, captureReadyMs = metrics.captureReadyMs,

@@ -1,10 +1,10 @@
 # Reviewed streaming SDK producer
 
-This directory builds one pinned LiteRT-LM 0.16.0 Kotlin/JNI pair for Android
+This directory builds one pinned LiteRT-LM 0.18.0 Kotlin/JNI pair for Android
 ARM64, with the native PCM owner and checked Session/Conversation lifecycle ABI.
 It is consumed only as an explicit local AAR. There is no stock Maven fallback.
 
-See [the SDK review contract](../../third_party/litert-lm-0.16.0/README.md) and
+See [the SDK review contract](../../third_party/litert-lm-0.18.0/README.md) and
 [release integration coverage](../../docs/verification/streaming-sdk.md).
 
 Run the dependency-free helper tests:

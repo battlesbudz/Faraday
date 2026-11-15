@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The export shell's manifest (code-and-export scope section 5.1).
+  Deliberate placeholders, patched in place in the binary string pool
+  at export time: the package name (the module's applicationId, 64
+  characters) and the label below (48 characters). The activity name
+  is fully qualified on purpose: it names the real compiled class in
+  the webshell package, so it does not move when the package
+  placeholder is replaced. No permissions are requested: an exported
+  app is offline by construction.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:label="FaradayAppLabel000000000000000000000000000000000"
+        android:icon="@android:drawable/sym_def_app_icon"
+        android:theme="@android:style/Theme.Material.NoActionBar"
+        android:allowBackup="false">
+        <activity
+            android:name="com.battlesbudz.faraday.webshell.ShellActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

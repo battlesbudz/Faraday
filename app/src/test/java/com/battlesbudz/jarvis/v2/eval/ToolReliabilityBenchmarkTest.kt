@@ -9,6 +9,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -151,7 +152,11 @@ class ToolReliabilityBenchmarkTest {
         assertEquals(2, batteryCases.size)
         assertEquals(1, batteryCases.count { it.passed })
         assertTrue(report.percent < 100.0)
-        assertEquals(report.percent.toInt(), store.load(spec.id)!!.percent)
+        // The store persists percent with roundToInt (see
+        // InMemoryReliabilityReportStore.save); compare with the same
+        // conversion. (toInt only agreed while 1 pass of 50 fixtures was
+        // exactly 2.0%.)
+        assertEquals(report.percent.roundToInt(), store.load(spec.id)!!.percent)
     }
 
     @Test fun conversationResetsBetweenFixtures() = runBlocking {

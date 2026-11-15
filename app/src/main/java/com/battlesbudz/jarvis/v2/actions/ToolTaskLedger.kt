@@ -85,7 +85,8 @@ class ToolTaskLedger(
         // (D11); it stays non-dispatchable until the exact approval admits
         // the browser session, and routine grants still cannot cover it.
         require(requests.size in 1..3 && requests.all { it.isRoutineEligible() ||
-            it.name in SCREEN_MUTATION_TOOLS || it.name in BROWSE_APPROVAL_TOOLS })
+            it.name in SCREEN_MUTATION_TOOLS || it.name in BROWSE_APPROVAL_TOOLS ||
+            it.name in SANDBOX_APPROVAL_TOOLS })
         require(conversationId.length in 1..256 && validForMs > 0)
         require(authority != ToolAuthority.ROUTINE || grantId != null)
         val at = now()
@@ -219,7 +220,7 @@ class ToolTaskLedger(
         // approval to dispatch. M4: a changed browse_submit token is the
         // same shape (D11).
         require(request.isRoutineEligible() || request.name in SCREEN_MUTATION_TOOLS ||
-            request.name in BROWSE_APPROVAL_TOOLS)
+            request.name in BROWSE_APPROVAL_TOOLS || request.name in SANDBOX_APPROVAL_TOOLS)
         var revised: ToolTaskAttempt? = null
         store.updateJournal { j ->
             val a = j.attempts.find { it.id == id && it.generation == expectedGeneration &&

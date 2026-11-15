@@ -234,7 +234,8 @@ class ExternalAgentAccess(
         // function is ever dispatchable here, even if EXPOSED were
         // misconfigured. External agents never inherit session grants and
         // never bypass individual approval.
-        if (request.name in SCREEN_MUTATION_TOOLS || request.name in BROWSE_APPROVAL_TOOLS) {
+        if (request.name in SCREEN_MUTATION_TOOLS || request.name in BROWSE_APPROVAL_TOOLS ||
+            request.name in SANDBOX_APPROVAL_TOOLS) {
             return ExternalAgentCallResult.Denied(ExternalDenialCode.D11_GATED,
                 "'${request.name}' needs an approval or session grant that external agents can never hold.")
         }

@@ -4,6 +4,7 @@ import com.battlesbudz.jarvis.v2.ChatEntry
 import com.battlesbudz.jarvis.v2.ai.GenerationResult
 import com.battlesbudz.jarvis.v2.chat.AssistantStreamFilter
 import com.battlesbudz.jarvis.v2.voice.VoiceRepetitionGuard
+import com.battlesbudz.jarvis.v2.work.TurnOwnership
 
 /** Exact assembled input and streaming authority transferred from generation to recovery. */
 internal data class ConversationAnswer(
@@ -19,7 +20,24 @@ internal data class ConversationAnswer(
     val directAudio: Boolean,
     val streamFilter: AssistantStreamFilter,
     val repetitionGuard: VoiceRepetitionGuard?,
-    val telemetry: ConversationInferenceTelemetry
+    val telemetry: ConversationInferenceTelemetry,
+    /**
+     * True when a structured visual-context block was injected into this
+     * turn's prompt. The no-vision honesty guard treats an attached image
+     * or an injected visual-context block as visual input for the turn;
+     * on main today the block exists only when a chat image was attached,
+     * but the flag is the seam the video-call branch's live visual context
+     * will use unchanged.
+     */
+    val visualContextInjected: Boolean = false,
+    /**
+     * Turn sequence ownership claimed at admission (M7). Recovery stages
+     * check it before touching shared native/session state, so a
+     * superseded turn's recovery can never reset or rewrite its
+     * replacement's state. Null for direct generation/recovery tests that
+     * run outside coordinator admission.
+     */
+    val turnOwnership: TurnOwnership? = null
 )
 
 /** One native draft, including whether its resident session still contains this user turn. */

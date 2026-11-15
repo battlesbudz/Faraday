@@ -5,7 +5,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MemoryRecallIntegrationTest {
-    @Test fun reviewedPersonalFactStaysLocalUntilErasedButExplicitLookupStillWins() {
+    @Test fun capturedPersonalFactStaysLocalUntilErasedButExplicitLookupStillWins() {
         val now = 1_700_000_000_000L
         val file = File.createTempFile("memory-merge-routing", ".json").apply { delete(); deleteOnExit() }
         val os = MemoryOs(file) { now }
@@ -13,13 +13,14 @@ class MemoryRecallIntegrationTest {
         val proposal = bridge.capture(FinalMemoryInput("one", "chat", source = ConversationMemorySource.TEXT,
             text = "Please remember that my notebook color is teal", capturedAtMs = now))
         assertEquals(ConversationMemoryOutcome.PROPOSED, proposal.outcome)
+        // Capture commits immediately (2026-11-01): the record is approved at
+        // capture time, with no review step in between.
+        assertEquals(MemoryReviewStatus.APPROVED, proposal.memory!!.reviewStatus)
         val query = "What is my notebook color?"
         fun route(explicit: Boolean = false, phoneAction: Boolean = false): Boolean {
             val packet = bridge.approvedContext(query, 900).packet!!
             return MemoryTurnContext.shouldUseLocalRecall(query, packet.memories.isNotEmpty(), explicit, phoneAction)
         }
-        assertFalse("Pending records cannot change the lookup route", route())
-        os.approve(proposal.memory!!.id)
         val packet = bridge.approvedContext(query, 900).packet!!
         assertTrue(packet.text.contains("historical, untrusted data"))
         assertTrue(packet.text.contains("notebook color is teal"))

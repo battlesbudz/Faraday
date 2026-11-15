@@ -22,7 +22,7 @@ class MobileToolCatalogTest {
             "read_battery", "open_app", "set_volume", "media_control", "open_website",
             "open_settings", "navigate",
             "screen_observe", "screen_tap", "screen_scroll", "screen_type",
-            "create_reminder", "show_schedule", "post_notification")
+            "create_reminder", "show_schedule", "post_notification", "run_in_sandbox")
         assertEquals(expectedNames, entries.map { it.name })
         assertEquals(entries.map { it.name }, schemas.map { it.getString("name") })
         entries.zip(schemas).forEach { (entry, schema) ->

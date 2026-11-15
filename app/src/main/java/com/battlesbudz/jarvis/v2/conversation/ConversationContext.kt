@@ -14,6 +14,75 @@ import com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy
 import com.battlesbudz.jarvis.v2.voice.IncrementalVoiceInput
 
 
+/**
+ * Explicit history budget for the persistent-conversation model (M7,
+ * epic item 5 part 3). Faraday keeps one persistent LiteRT conversation
+ * and rebuilds it from confirmed history, so the budget is enforced on
+ * the history handed to prompt assembly / a confirmed-history rebuild —
+ * never as a per-turn re-prefill cap.
+ *
+ * Budgets, enforced newest-first:
+ * - at most [MAX_MESSAGES] entries;
+ * - at most [MAX_CHARS] characters of entry text, the measurable proxy
+ *   for tokens in this codebase (prompt limits are computed as
+ *   contextTokens × [CHARS_PER_TOKEN] in
+ *   [ConversationPrompt.contextLimit]), i.e. about [MAX_ESTIMATED_TOKENS]
+ *   estimated tokens;
+ * - the newest entry is always kept, even if it alone exceeds the char
+ *   budget, so the latest exchange can never be windowed away.
+ *
+ * Heavy-payload windowing: within the window, an attached-payload
+ * reference (a [ChatEntry.imageUri] or the persisted
+ * "[image|audio attached to this message]" context marker written by
+ * ConversationHistory) survives only on the newest entry that carries
+ * one. Older payload entries continue as text with the reference
+ * stripped, so a rebuild never re-pays the payload cost of every old
+ * attachment. Returns the input instance unchanged when nothing is
+ * trimmed or stripped.
+ */
+internal object HistoryBudget {
+    const val MAX_MESSAGES = 32
+    const val MAX_CHARS = 6_000
+    const val CHARS_PER_TOKEN = 3
+    const val MAX_ESTIMATED_TOKENS = MAX_CHARS / CHARS_PER_TOKEN
+
+    private val ATTACHMENT_MARKER = Regex("\\[(?:image|audio) attached to this message\\]")
+    private val ATTACHMENT_MARKER_LINE = Regex("\\n?\\[(?:image|audio) attached to this message\\]")
+
+    /** Rough token estimate using the codebase's chars-per-token ratio. */
+    fun estimatedTokens(history: List<ChatEntry>): Int =
+        history.sumOf { it.text.length } / CHARS_PER_TOKEN
+
+    fun window(history: List<ChatEntry>): List<ChatEntry> {
+        if (history.isEmpty()) return history
+        val selected = ArrayDeque<ChatEntry>()
+        var chars = 0
+        for (entry in history.asReversed()) {
+            if (selected.isNotEmpty() &&
+                (selected.size >= MAX_MESSAGES || chars + entry.text.length > MAX_CHARS)) break
+            selected.addFirst(entry)
+            chars += entry.text.length
+        }
+        val newestPayload = selected.indexOfLast { carriesPayload(it) }
+        val trimmed = selected.size != history.size
+        if (newestPayload < 0) return if (trimmed) selected.toList() else history
+        var strippedAny = false
+        val windowed = selected.mapIndexed { index, entry ->
+            if (index < newestPayload && carriesPayload(entry)) {
+                strippedAny = true
+                textOnly(entry)
+            } else entry
+        }
+        return if (trimmed || strippedAny) windowed else history
+    }
+
+    private fun carriesPayload(entry: ChatEntry): Boolean =
+        entry.imageUri != null || ATTACHMENT_MARKER.containsMatchIn(entry.text)
+
+    private fun textOnly(entry: ChatEntry): ChatEntry =
+        entry.copy(text = ATTACHMENT_MARKER_LINE.replace(entry.text, "").trimEnd(), imageUri = null)
+}
+
 internal data class PreparedConversation(
     val history: List<ChatEntry>,
     val memoryContext: MemoryTurnContext?,
@@ -33,6 +102,18 @@ internal class ConversationContextPreparation(
     private val references: ConversationReferences,
     private val diagnostics: ConversationDiagnostics
 ) {
+    companion object {
+        /**
+         * Total packet budget cap for direct-audio voice turns (the general
+         * cap is 1,200 chars): the packet is supporting evidence, not the
+         * request, and on a persistent call conversation it is submitted
+         * once at call start rather than re-prefilled per turn at full size.
+         * Retrieval ranking is untouched, so the top records still ride.
+         */
+        const val VOICE_MEMORY_BUDGET_MAX_CHARS = 800
+        /** Per-record quoted-content cap for direct-audio voice turns. */
+        const val VOICE_MEMORY_ENTRY_MAX_CHARS = 240
+    }
     /** Pure preview for direct audio only: no routing effects, token adoption,
      * receipt consumption, history cutoff, memory capture, lookup or native reset. */
     fun previewDirectAudio(builder: com.battlesbudz.jarvis.v2.ai.ConversationPromptBuilder):
@@ -63,14 +144,22 @@ internal class ConversationContextPreparation(
         val turnPlan = routed.plan
         val requestedActionPlan = routed.actionPlan
         var preparedTextInput = routed.textInput
+        // A direct-audio turn whose call conversation is already resident:
+        // its memory packet was frozen into that conversation at call start.
+        val persistentCallTurn = request.directVoiceAudio && modelSession.hasContext
+        var adoptedMemoryChange = false
         // Read one approved snapshot only for an ordinary answer, after raw action routing
         // and before lookup or any prompt-size/retry calculation. Pending proposals never
         // invalidate it; an approved mutation fences later tokens and forces a fresh context.
         if (requestedActionPlan !is ActionTurnPlan.Ready) {
-            val memoryBudget = (contextLimit / 5).coerceIn(240, 1_200)
+            val memoryBudget = if (request.directVoiceAudio)
+                (contextLimit / 5).coerceIn(240, VOICE_MEMORY_BUDGET_MAX_CHARS)
+            else (contextLimit / 5).coerceIn(240, 1_200)
             val memoryStarted = System.nanoTime()
             benchmark.mark("memory_retrieval_started")
-            memoryTurnContext = memory.approvedSnapshot(prompt, memoryBudget)
+            memoryTurnContext = if (request.directVoiceAudio)
+                memory.approvedSnapshotCapped(prompt, memoryBudget, VOICE_MEMORY_ENTRY_MAX_CHARS)
+            else memory.approvedSnapshot(prompt, memoryBudget)
             benchmark.mark("memory_retrieval_finished")
             benchmark.metric("memory_retrieval_ms", (System.nanoTime() - memoryStarted) / 1_000_000)
             if (memoryTurnContext == null) {
@@ -85,9 +174,15 @@ internal class ConversationContextPreparation(
                 return null
             }
             if (memory.adopt(memoryTurnContext!!)) {
+                adoptedMemoryChange = true
                 preparedTextInput?.close()
                 preparedTextInput = null
-                modelSession.reset()
+                // A persistent call conversation keeps its call-start packet
+                // resident: a token change driven by this call's own captures
+                // or a record expiring mid-call does not rebuild it. The fresh
+                // snapshot still binds this turn's delivery fence above; the
+                // new packet takes effect from the next call (or any reset).
+                if (!persistentCallTurn) modelSession.reset()
                 // Expiry-token adoption can publish a fresh persistent cutoff. Reload
                 // before any recall/retry prompt observes retained dialogue.
                 safeHistory = historyAfterCutoff().filterNot {
@@ -218,8 +313,17 @@ internal class ConversationContextPreparation(
             )
         }
 
-        val memoryHistoryInvalidated = requestedActionPlan !is ActionTurnPlan.Ready &&
+        val cutoffFired = requestedActionPlan !is ActionTurnPlan.Ready &&
             memory.consumeHistoryCutoff()
+        // A cutoff this prepare's own adopt explains (a capture- or
+        // expiry-driven token change) is not a dialogue invalidation: the
+        // resident call packet is frozen at call start, so a persistent call
+        // turn keeps its native context. A cutoff from a real memory boundary
+        // publication (this prepare's adopt did not fire) invalidates exactly
+        // as before.
+        val memoryHistoryInvalidated = cutoffFired && !(persistentCallTurn && adoptedMemoryChange)
+        if (cutoffFired && !memoryHistoryInvalidated)
+            diagnostics.summary("Memory token changed during call; resident call-start packet retained policy=frozen_at_call_start")
         if (memoryHistoryInvalidated) {
             preparedTextInput?.close()
             preparedTextInput = null

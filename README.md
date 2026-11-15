@@ -6,7 +6,9 @@
 
 <p align="center"><strong>A private offline Android voice agent.</strong></p>
 
-<p align="center">The conversation runs on your phone, including speech recognition, AI inference, and the spoken reply.</p>
+<p align="center">The conversation runs on your phone, including speech recognition, AI inference, and the spoken reply.
+
+Faraday runs Google's Gemma 4 models entirely on your Android phone through LiteRT-LM, with Whisper speech recognition and Piper speech output. It is a fully on-device AI agent: real voice conversation, long-term memory, and tool calling, with no cloud service, no account, and no API key.</p>
 
 <p align="center">
   <a href="https://github.com/battlesbudz/Faraday/releases"><img src="https://img.shields.io/github/v/release/battlesbudz/Faraday" alt="Latest release"></a>

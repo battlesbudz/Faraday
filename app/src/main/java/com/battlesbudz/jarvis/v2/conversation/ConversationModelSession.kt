@@ -1,10 +1,9 @@
 package com.battlesbudz.jarvis.v2.conversation
 
 import com.battlesbudz.jarvis.v2.ChatEntry
-import com.battlesbudz.jarvis.v2.actions.MobileActionToolDefinitions
 import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngine
-import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngineFactory
 import com.battlesbudz.jarvis.v2.ai.LocalModelSpec
+import com.battlesbudz.jarvis.v2.ai.createResidentEngine
 import com.battlesbudz.jarvis.v2.chat.ShortTermConversationContext
 
 /** The voice owner and answer owner share this state under their existing single model lease. */
@@ -54,6 +53,8 @@ internal class ConversationModelSession(
     suspend fun prepare(imageAttached: Boolean, audioAttached: Boolean, voiceAttached: Boolean,
                         reply: ConversationReply): ConversationBackend {
         check(state.engine?.isNativeQuarantined != true) { "Native model is still quarantined; ownership cannot be reused" }
+        val selected = selectedModel()
+        if (shouldReplaceResidentEngine(state.engine?.modelId, selected.id)) close()
         if (state.engine?.requiresConfirmedHistoryRebuild == true) reset()
         if (!voiceAttached) {
             // A prior direct-audio child has a fixed system preface. Change modes before
@@ -65,35 +66,33 @@ internal class ConversationModelSession(
             }
         }
         if (imageAttached) {
-            check(selectedModel().supportsVision) {
-                "${selectedModel().id} is text-only. Select a model with image input."
+            check(selected.supportsVision) {
+                "${selected.id} is text-only. Select a model with image input."
             }
             if (state.engine?.visionEnabled != true) close() else reset()
         }
         if (audioAttached) {
-            check(selectedModel().supportsAudio) { "This download does not support audio input." }
+            check(selected.supportsAudio) { "This download does not support audio input." }
             if (state.engine?.audioEnabled != true) close() else reset()
         }
-        if (voiceAttached && selectedModel().supportsAudio) {
-            // Creation below keys audio on (voiceAttached || audioAttached);
-            // the resident check must too. Without it, a text-built engine is
-            // reused for a direct-audio turn and generateAudio's audio
-            // requirement fails that turn instead of rebuilding once here.
-            // Escalate only when audio is missing: an audio-capable resident
-            // is left untouched, because direct-voice turns deliberately
+        if (voiceAttached && selected.supportsAudio) {
+            // Resident engines are built in the canonical profile (audio
+            // wired in whenever the model supports it), so an audio-capable
+            // resident is left untouched: direct-voice turns deliberately
             // retain their prepared conversation (no drain, no reseed).
+            // This guard only fires for a resident built without audio,
+            // which the profile no longer produces; it stays so a
+            // mismatched resident can never be reused for a direct-audio
+            // turn, whose generateAudio would fail on the missing encoder.
             val resident = state.engine
             if (resident != null && !resident.audioEnabled) close()
         }
         val started = System.nanoTime()
         reply.benchmark.mark("model_load_started")
         val wasLoaded = state.engine != null
-        val engine = state.engine ?: LiteRtLmEngineFactory.createInitialized(
-            selectedModel().id, modelPath(selectedModel()), cachePath,
-            useGpu = selectedModel().recommendedGpu,
-            tools = if (selectedModel().supportsTools) MobileActionToolDefinitions.all() else emptyList(),
-            visionEnabled = imageAttached && selectedModel().supportsVision,
-            audioEnabled = (voiceAttached || audioAttached) && selectedModel().supportsAudio
+        val engine = state.engine ?: createResidentEngine(
+            selected, modelPath(selected), cachePath,
+            visionRequired = imageAttached
         ).also { state.engine = it; clearContextAccounting() }
         if (!wasLoaded) reply.loadMs += (System.nanoTime() - started) / 1_000_000
         reply.benchmark.mark("model_load_finished")
@@ -116,6 +115,14 @@ internal class ConversationModelSession(
             promptHistory = emptyList()
             reset()
         }
-        return promptHistory
+        // M7 history budget: enforce the explicit message/token budget and
+        // heavy-payload windowing (HistoryBudget) on whatever history a
+        // (re)build would seed. A no-op instance-identical pass when the
+        // history is already inside the budget.
+        return HistoryBudget.window(promptHistory)
     }
 }
+
+/** A resident native engine belongs to the selected model identity, across every conversation mode. */
+internal fun shouldReplaceResidentEngine(residentModelId: String?, selectedModelId: String): Boolean =
+    residentModelId != null && residentModelId != selectedModelId

@@ -54,37 +54,12 @@ object ModelCatalog {
         downloadUrl = "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/1fc8912676889ed3aeec478c92c1e239bed08928/gemma-4-E4B-it.litertlm?download=true"
     )
 
-    val gemma4E2bAbliterated = LocalModelSpec(
-        id = "Gemma-4-E2B-Abliterated",
-        fileName = "Gemma-4-E2B-Abliterated.litertlm",
-        expectedSha256 = "e8c197596ccf8ec20553eb467675291a30212f3a27a52f75e37f9c9b1b1c6db5",
-        recommendedGpu = true, supportsVision = true, supportsAudio = true,
-        experimental = false,
-        supportsTools = true, incrementalGemmaInput = true,
-        // The DuoNeural bundle metadata declares max_num_tokens=1024, which the
-        // SDK honors when contextTokens is null; stock bundles declare no cap and
-        // get a prompt-sized default instead. Pin the stock-equivalent 4096 so long
-        // prompts are not capped at 1024 tokens.
-        contextTokens = 4096,
-        downloadBytes = 2556215296L, description = "Uncensored E2B · no refusals · balanced size",
-        provider = "DuoNeural",
-        downloadUrl = "https://huggingface.co/DuoNeural/Gemma-4-Abliterated-LiteRT/resolve/1c6b2a8b6866c5c6afad718ddec0dbacb6ad5eb8/Gemma-4-E2B-Abliterated.litertlm?download=true"
-    )
-
-    val gemma4E4bAbliterated = LocalModelSpec(
-        id = "Gemma-4-E4B-Abliterated",
-        fileName = "Gemma-4-E4B-Abliterated.litertlm",
-        expectedSha256 = "7e7c6bda7396a2251338361745408e236dc34ea269572c1a41ddef8a32b3e3cb",
-        recommendedGpu = true, supportsVision = true, supportsAudio = true,
-        experimental = false,
-        supportsTools = true, incrementalGemmaInput = true,
-        // Same 1024-token bundle metadata cap as the E2B abliterated build;
-        // pin the stock-equivalent context (see above).
-        contextTokens = 4096,
-        downloadBytes = 4120150016L, description = "Uncensored E4B · no refusals · larger assistant",
-        provider = "DuoNeural",
-        downloadUrl = "https://huggingface.co/DuoNeural/Gemma-4-Abliterated-LiteRT/resolve/1c6b2a8b6866c5c6afad718ddec0dbacb6ad5eb8/Gemma-4-E4B-Abliterated.litertlm?download=true"
-    )
+    // The DuoNeural abliterated Gemma 4 entries (E2B + E4B) were removed from
+    // the catalog on 2026-11-01 by Battles's decision: the abliterated bundles
+    // lack the hardware audio encoder, so audio-capable conversation creation
+    // failed outright on device, and the stock bundles cover the need. A
+    // persisted selection naming either removed id resolves to the stock
+    // Gemma-4-E2B-it default via [resolve] — never a crash, never model-less.
 
     // Curated portable bundles; no MediaTek-specific NPU files or legacy .task files.
     val qwen = listOf(
@@ -194,7 +169,7 @@ object ModelCatalog {
         )
     )
 
-    val all = listOf(gemma4E2b, gemma4E4b, gemma4E2bAbliterated, gemma4E4bAbliterated) + qwen + CommunityModels.all
+    val all = listOf(gemma4E2b, gemma4E4b) + qwen + CommunityModels.all
 
     fun find(id: String?): LocalModelSpec? = all.firstOrNull { it.id == id }
 

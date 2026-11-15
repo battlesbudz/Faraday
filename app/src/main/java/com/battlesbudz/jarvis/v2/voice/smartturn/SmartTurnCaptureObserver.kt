@@ -34,6 +34,12 @@ internal class SmartTurnCaptureObserver(
     private val admissionBlocker: () -> String?,
     private val clock: () -> Long = System::nanoTime,
     private val endpointEnabled: Boolean = false,
+    /** Endpoint mode only: how much classified silence must accumulate before
+     * the first inference of a pause is offered. Deadline-first conversation
+     * captures pass 0 so judging starts at the first quiet frame and a verdict
+     * can land inside the capture's 300ms decision deadline; the historical
+     * 350ms admission remains the default for every other consumer. */
+    private val endpointPauseAdmissionMs: Long = 350L,
 ) : CaptureEndpointObserver {
     override val controlsEndpoint get() = endpointEnabled
     private val evidence = SafeSmartTurnTelemetry(telemetry)
@@ -56,6 +62,7 @@ internal class SmartTurnCaptureObserver(
     private var lastAttemptAt: Long? = null
     private var priorityAt: Long? = null
     private var endpointVerdict: CaptureEndpointState? = null
+    private var verdictProbability: Float? = null
     private var requestAt: Long? = null
     private var lastFrame: CaptureShadowFrame? = null
     private var modelThroughSample: Long? = null
@@ -73,7 +80,7 @@ internal class SmartTurnCaptureObserver(
         evidence.configuration("smart_turn_mode", if (endpointEnabled) "native_endpoint_v1" else "shadow_only_v1")
         evidence.configuration("smart_turn_model_sha256", SmartTurnModelSpec.SHA256)
         evidence.configuration("smart_turn_budget", if (endpointEnabled)
-            "accepted_requests=8_per_turn,max_requests_per_pause=2,refresh_after_samples=8000,spacing_ms=500,pause_ms=350,deadline_ms=250,continue_classified_quiet_ms=3500,window_samples=128000,threads=1"
+            "accepted_requests=8_per_turn,max_requests_per_pause=2,refresh_after_samples=8000,spacing_ms=500,pause_ms=$endpointPauseAdmissionMs,deadline_ms=250,continue_classified_quiet_ms=3500,window_samples=128000,threads=1"
             else "attempts=3,spacing_ms=500,pause_ms=200,deadline_ms=250,window_samples=128000,threads=1")
         evidence.configuration("smart_turn_contention", "background_priority_requested;cancel_on_native_priority;overlap_may_remain_until_drain")
     }
@@ -115,7 +122,7 @@ internal class SmartTurnCaptureObserver(
             resumed++
             generation = generation.copy(revision = generation.revision + 1)
             shadow.updateGeneration(generation)
-            endpointVerdict = null; requestAt = null; pauseRequests = 0
+            endpointVerdict = null; verdictProbability = null; requestAt = null; pauseRequests = 0
             // A new pause may use the remaining whole-turn budget after a cancelled proposal.
             if (endpointEnabled) prioritized = false
             evidence.metric("smart_turn_resumption_invalidations", resumed)
@@ -135,7 +142,7 @@ internal class SmartTurnCaptureObserver(
         // A pending/failed refresh retains the earlier CONTINUE, never promotes UNKNOWN.
         if (endpointEnabled && (endpointVerdict == CaptureEndpointState.COMPLETE || pauseRequests >= 2 ||
             (endpointVerdict == CaptureEndpointState.CONTINUE && boundary - lastAcceptedBoundary < 8_000))) return
-        if (!frame.hasSpeech || frame.possibleSpeech || frame.silenceMs < (if (endpointEnabled) 350 else 200) ||
+        if (!frame.hasSpeech || frame.possibleSpeech || frame.silenceMs < (if (endpointEnabled) endpointPauseAdmissionMs else 200) ||
             size < 1600 || attempts >= (if (endpointEnabled) 8 else 3)) return
         val now = clock()
         if (lastAttemptAt?.let { now - it < 500_000_000L } == true) return
@@ -189,7 +196,7 @@ internal class SmartTurnCaptureObserver(
         drainResult()
         // The verdict belongs to the exact speech revision. Newly classified quiet PCM may
         // extend that pause, but the capture owner must independently cover ALL final PCM.
-        endpointVerdict?.let { return CaptureEndpointDecision(it, modelThroughSample) }
+        endpointVerdict?.let { return CaptureEndpointDecision(it, modelThroughSample, verdictProbability) }
         // Reserve the first pause for model admission, but do not extend the ordinary
         // endpoint while waiting. This only keeps Gemma speculation from stealing its budget.
         if (!prioritized && attempts < 8 && requestAt == null && frame.silenceMs in 200 until 350)
@@ -210,6 +217,7 @@ internal class SmartTurnCaptureObserver(
             }
             if (nextVerdict != null) {
                 endpointVerdict = nextVerdict
+                verdictProbability = result.probability
                 modelThroughSample = result.captureSampleBoundary
             }
             fallbackReason = result.unknown?.name?.lowercase() ?: "model_returned"
@@ -252,7 +260,7 @@ internal class SmartTurnCaptureObserver(
         val preserveContinue = endpointEnabled && endpointVerdict == CaptureEndpointState.CONTINUE &&
             reason == "endpoint_finalization"
         if (!preserveComplete) {
-            if (!preserveContinue) endpointVerdict = null
+            if (!preserveContinue) { endpointVerdict = null; verdictProbability = null }
             requestAt = null
             // Retaining CONTINUE never retains authority for an in-flight refresh.
             // Cancel that work and fence its result before native priority; raw resumption
@@ -270,7 +278,7 @@ internal class SmartTurnCaptureObserver(
         generation = generation.copy(revision = generation.revision + 1)
         shadow.updateGeneration(generation)
         ring.fill(0); size = 0; next = 0; possibleSpeech = true; hasBoundary = false
-        endpointVerdict = null; requestAt = null; lastFrame = null; pauseRequests = 0
+        endpointVerdict = null; verdictProbability = null; requestAt = null; lastFrame = null; pauseRequests = 0
         if (endpointEnabled) prioritized = false
         evidence.configuration("smart_turn_capture_invalidation", reason)
     }

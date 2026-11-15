@@ -13,6 +13,12 @@ internal class VoiceDialogueContext(
     private val recordDiagnostic: (String) -> Unit
 ) {
     private var contextCallId: String? = null
+    /**
+     * True when the resident context belongs to [callId]. Preparation scopes
+     * persistent native-conversation reuse to this identity, so a resident
+     * context from a chat or an earlier call can never be reused by a new call.
+     */
+    fun isCurrentCall(callId: String?): Boolean = callId != null && contextCallId == callId
     fun enterCall(callId: String) {
         if (contextCallId == callId) return
         shortTermContext.clear()

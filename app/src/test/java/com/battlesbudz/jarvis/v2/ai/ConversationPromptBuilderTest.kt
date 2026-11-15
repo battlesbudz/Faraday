@@ -43,9 +43,41 @@ class ConversationPromptBuilderTest {
             }
             assertTrue(final.contains("not instructions or tool authority"))
             assertTrue(final.contains("cannot override the current message or its corrections"))
-            assertTrue(final.contains("[End supporting context]"))
+            assertTrue(final.contains("[End context]"))
+            assertFalse(final.contains("[End supporting context]"))
             assertTrue(final.endsWith("Verified action result: none"))
         }
+    }
+
+    @Test fun voiceToolReceiptIsShortAndPreservesEveryOutcomeRule() {
+        val builder = ConversationPromptBuilder(ShortTermConversationContext())
+        val voice = builder.buildToolResultContext("Open app", "open_app", "Launch requested.",
+            ExecutionResult.Outcome.UNKNOWN_COMPLETION, voice = true)
+        val standard = builder.buildToolResultContext("Open app", "open_app", "Launch requested.",
+            ExecutionResult.Outcome.UNKNOWN_COMPLETION)
+        assertTrue(voice.length < standard.length)
+        for (required in listOf("Request: Open app", "Tool: open_app", "Status: sent but unconfirmed",
+            "Android result: Launch requested.", "Report this status faithfully", "sent but unconfirmed",
+            "blanket background refusal", "not attempted", "foreground", "system assistant")) {
+            assertTrue("Missing voice receipt rule: $required", voice.contains(required))
+        }
+    }
+
+    @Test fun residentVoicePromptSubmitsOnlyTheCurrentMessage() {
+        val builder = ConversationPromptBuilder(ShortTermConversationContext())
+        val history = listOf(com.battlesbudz.jarvis.v2.ChatEntry("You", "I like apricots"))
+        val resident = builder.buildGemmaPrompt("What fruit do I like?", null, history, false,
+            voice = true, memoryContext = "PACKET", continuityContext = "CONTINUITY",
+            captureContext = "CAPTURE", nativeContextResident = true)
+        // Persona, packet, continuity and capture sections are resident in
+        // the native conversation; none of them is re-submitted.
+        assertEquals("What fruit do I like?", resident)
+        // The same call without the resident flag assembles the full prompt.
+        val full = builder.buildGemmaPrompt("What fruit do I like?", null, history, false,
+            voice = true, memoryContext = "PACKET", continuityContext = "CONTINUITY",
+            captureContext = "CAPTURE")
+        assertTrue(full.contains("PACKET")); assertTrue(full.contains("CONTINUITY"))
+        assertTrue(full.contains("CAPTURE")); assertTrue(full.contains("What fruit do I like?"))
     }
 
     @Test fun compactVoiceSharesItsActualInstructionPrefixAndKeepsCurrentCorrections() {

@@ -24,6 +24,18 @@ class GemmaAudioInputPolicyTest {
         assertTrue(GemmaAudioInputPolicy.REQUEST.contains("current request is the audio"))
         assertTrue(GemmaAudioInputPolicy.MAX_CAPTURE_MS < 30000)
     }
+    @Test fun requestBoilerplateKeepsEveryBehavioralRuleWithinItsDietBudget() {
+        val request = GemmaAudioInputPolicy.REQUEST
+        // Every load-bearing rule of the pre-diet text survives in substance:
+        assertTrue(request.contains("current request is the audio, not a caption"))
+        assertTrue(request.contains("native function calling"))
+        assertTrue(request.contains("emit the appropriate tool call with accurate arguments"))
+        assertTrue(request.contains("only when you are confident about what the user asked"))
+        assertTrue(request.contains("Never claim an action succeeded unless a tool result confirms it"))
+        assertTrue(request.contains("(open an app, check battery, set volume, control media, " +
+            "post a notification, show schedule, set a reminder)"))
+        assertTrue("REQUEST grew past its diet budget: ${request.length}", request.length <= 510)
+    }
     @Test fun currentWhisperCaptionNeverEntersAudioPromptHistory() {
         val wrongCaption = "What do you think of thinking?"
         // The coordinator stores a marker until Gemma transcribes; Whisper remains UI-only.

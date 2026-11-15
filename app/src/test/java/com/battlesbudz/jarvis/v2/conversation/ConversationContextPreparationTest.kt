@@ -30,9 +30,14 @@ class ConversationContextPreparationTest {
         var captureReads = 0
         var cutoffReads = 0
         var packet = "approved packet"
+        val cappedCalls = mutableListOf<Triple<String, Int, Int>>()
         override fun approvedSnapshot(query: String, maxChars: Int): MemoryTurnContext? =
             if (available) MemoryTurnContext(packet, "token", query, null, 1,
                 hasApprovedMemories = true, currentEpoch = { 1 }) else null
+        override fun approvedSnapshotCapped(query: String, maxChars: Int, maxEntryChars: Int): MemoryTurnContext? {
+            cappedCalls.add(Triple(query, maxChars, maxEntryChars))
+            return approvedSnapshot(query, maxChars)
+        }
         override fun adopt(context: MemoryTurnContext) = changed.also { adoptions++ }
         override fun clearNativeToken() { tokenCleared = true }
         override fun isCurrent(context: MemoryTurnContext) = context.isCurrent()
@@ -247,6 +252,53 @@ class ConversationContextPreparationTest {
         assertEquals(preview.exactPrompt, f.actualDirectVoicePrompt())
         assertEquals(1, drains) // Equality alone cannot bypass required adoption/reset.
         assertEquals(1, f.memory.adoptions)
+    }
+
+    private fun directAudioRequest() = ConversationTurnRequest(
+        com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy.REQUEST,
+        emptyList(), "conversation", false, false, true, true, false, null, null, false)
+
+    private fun directAudioRouted() = RoutedConversation(emptyList(), TurnPlan(TurnKind.NORMAL_CHAT),
+        ActionTurnPlan.NotAction, null)
+
+    @Test fun directAudioTurnUsesTheCappedVoiceMemoryBudget() = runBlocking {
+        val f = Fixture()
+        val prompt = ConversationPrompt(ConversationPromptBuilder(f.context), true, { null }, { f.reply.memoryContext })
+        val prepared = f.stage.prepare(directAudioRequest(), directAudioRouted(), f.reply, prompt, 10_000) { _, _ -> }
+        assertNotNull(prepared)
+        // Voice turns cap the packet total and each record; other turns keep
+        // the general snapshot (asserted by every pre-existing test here,
+        // whose fixtures record no capped call).
+        assertEquals(listOf(Triple(com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy.REQUEST,
+            ConversationContextPreparation.VOICE_MEMORY_BUDGET_MAX_CHARS,
+            ConversationContextPreparation.VOICE_MEMORY_ENTRY_MAX_CHARS)), f.memory.cappedCalls)
+        assertEquals(800, ConversationContextPreparation.VOICE_MEMORY_BUDGET_MAX_CHARS)
+        assertEquals(240, ConversationContextPreparation.VOICE_MEMORY_ENTRY_MAX_CHARS)
+    }
+
+    @Test fun persistentCallTurnKeepsResidentContextWhenItsOwnCaptureChangesTheToken() = runBlocking {
+        val f = Fixture() // state.hasContext = true, characters = 800: a resident call conversation.
+        f.memory.changed = true; f.memory.cutoff = true
+        val prompt = ConversationPrompt(ConversationPromptBuilder(f.context), true, { null }, { f.reply.memoryContext })
+        val prepared = requireNotNull(f.stage.prepare(directAudioRequest(), directAudioRouted(), f.reply, prompt, 10_000) { _, _ -> })
+        // The token change is explained by this prepare's own adopt (the
+        // call's captures / a mid-call expiry): the call-start packet stays
+        // resident, no reset, and the cutoff is not a history invalidation.
+        assertTrue(f.state.hasContext)
+        assertEquals(800, f.state.characters)
+        assertFalse(prepared.memoryHistoryInvalidated)
+    }
+
+    @Test fun persistentCallTurnStillResetsOnARealMemoryBoundary() = runBlocking {
+        val f = Fixture()
+        f.memory.changed = false; f.memory.cutoff = true
+        val prompt = ConversationPrompt(ConversationPromptBuilder(f.context), true, { null }, { f.reply.memoryContext })
+        val prepared = requireNotNull(f.stage.prepare(directAudioRequest(), directAudioRouted(), f.reply, prompt, 10_000) { _, _ -> })
+        // A cutoff this prepare's adopt does not explain is a real memory
+        // boundary publication: it invalidates and resets exactly as before.
+        assertFalse(f.state.hasContext)
+        assertEquals(0, f.state.characters)
+        assertTrue(prepared.memoryHistoryInvalidated)
     }
 
     @Test fun changedMemoryCutoffMakesNativePreviewIneligibleBeforeFinalPromptReuse() = runBlocking {

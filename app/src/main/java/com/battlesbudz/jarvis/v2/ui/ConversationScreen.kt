@@ -3,6 +3,7 @@ package com.battlesbudz.jarvis.v2.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,7 +21,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.battlesbudz.jarvis.v2.chat.*
@@ -53,11 +53,28 @@ internal fun ConversationScreen(
     phoneTaskError: StateFlow<String?>? = null,
     onPhoneTaskAction: (String, Long, String) -> Unit = { _, _, _ -> },
     pipelineBenchmarkStore: com.battlesbudz.jarvis.v2.diagnostics.AndroidPipelineBenchmarkStore? = null,
+    // Header state holders shared with the app frame's header band, where
+    // the header buttons now render beside the wisp. Null (standalone
+    // composition, as in the verification fixtures) keeps the previous
+    // screen-owned state; JarvisApp passes its holders so the band and
+    // this screen drive the same settings/history/error/benchmark state.
+    settingsOpenState: MutableState<Boolean>? = null,
+    historyOpenState: MutableState<Boolean>? = null,
+    headerErrorState: MutableState<String?>? = null,
+    inputBusyState: MutableState<Boolean>? = null,
+    benchmarksOpenState: MutableState<Boolean>? = null,
+    benchmarkReplyState: MutableState<String?>? = null,
+    // Optional in-conversation content rendered in the column directly
+    // above the composer (code mode's project bar lives there, so the
+    // conversation stays the working surface). Empty by default.
+    aboveComposer: @Composable () -> Unit = {},
     voiceContent: @Composable (visible: Boolean, settingsOpen: Boolean, dismissSettings: () -> Unit, startRequest: Long) -> Unit
 ) {
     val thread by history.current.collectAsState()
-    var showingBenchmarks by remember { mutableStateOf(false) }
-    var benchmarkReply by remember { mutableStateOf<String?>(null) }
+    val showingBenchmarksHolder = benchmarksOpenState ?: remember { mutableStateOf(false) }
+    var showingBenchmarks by showingBenchmarksHolder
+    val benchmarkReplyHolder = benchmarkReplyState ?: remember { mutableStateOf<String?>(null) }
+    var benchmarkReply by benchmarkReplyHolder
     if (showingBenchmarks && pipelineBenchmarkStore != null) Dialog(onDismissRequest = { showingBenchmarks = false; benchmarkReply = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize()) { PipelineBenchmarkScreen(pipelineBenchmarkStore, onClose = { showingBenchmarks = false; benchmarkReply = null }, resetEnabled = false, conversationId = thread.id, initialTurnId = benchmarkReply, conversationReplies = thread) }
     }
@@ -73,6 +90,12 @@ internal fun ConversationScreen(
     val voiceState by callState.collectAsState()
     val taskJournal by (phoneTasks?.collectAsState() ?: remember { mutableStateOf<com.battlesbudz.jarvis.v2.actions.ToolTaskJournal?>(null) })
     val taskError by (phoneTaskError?.collectAsState() ?: remember { mutableStateOf<String?>(null) })
+    // Inline approval cards (2026-11-10): approvals requested in this
+    // conversation render as items in its thread, after the messages,
+    // and are decided in place; the phone-tasks panel no longer holds
+    // them. The tail-scroll accounting below counts them as items.
+    val approvalCards = inlineApprovalCards(taskJournal, thread.id)
+    val approvalTailKey = approvalCards.joinToString(",") { it.approval.id }
     var hadCall by remember { mutableStateOf(false) }
     var voiceVisible by rememberSaveable { mutableStateOf(false) }
     // The End-call control must be available for the whole live session, not
@@ -84,15 +107,21 @@ internal fun ConversationScreen(
     val effectiveVoiceVisible = voiceVisible || armed || sessionAlive
     var callStartRequest by rememberSaveable { mutableLongStateOf(0L) }
     var wasArmed by remember { mutableStateOf(armed) }
-    var settings by remember { mutableStateOf(false) }
-    var showHistory by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    val settingsHolder = settingsOpenState ?: remember { mutableStateOf(false) }
+    var settings by settingsHolder
+    val showHistoryHolder = historyOpenState ?: remember { mutableStateOf(false) }
+    var showHistory by showHistoryHolder
+    val errorHolder = headerErrorState ?: remember { mutableStateOf<String?>(null) }
+    var error by errorHolder
     var draft by rememberSaveable(thread.id) { mutableStateOf("") }
     var pendingUri by rememberSaveable(thread.id) { mutableStateOf<String?>(null) }
     var pendingKind by rememberSaveable(thread.id) { mutableStateOf(AttachmentKind.IMAGE) }
     var preparingAttachment by remember { mutableStateOf(false) }
     var dictating by remember { mutableStateOf(false) }
     val inputBusy = preparingAttachment || dictating
+    // The header band gates its buttons on this same signal; mirror it to
+    // the shared holder when the app frame provides one.
+    SideEffect { inputBusyState?.value = inputBusy }
     val pendingAttachment = pendingUri?.let { ChatAttachment(it, pendingKind) }
     val context = androidx.compose.ui.platform.LocalContext.current
     DisposableEffect(thread.id) {
@@ -157,51 +186,63 @@ internal fun ConversationScreen(
             keyboard?.hide()
         }
     }
-    LaunchedEffect(thread.id, thread.messages.lastOrNull()?.text, liveTranscript, armed) {
-        if (armed && liveTranscript.isNotBlank()) listState.animateScrollToItem(thread.messages.size)
-        else if (thread.messages.isNotEmpty()) listState.animateScrollToItem(thread.messages.lastIndex)
+    // Issue #20 item 2: follow the transcript's tail without fighting the
+    // reader. The previous effect scrolled on every change to the last
+    // message's text and landed on that item's START, so a reply taller
+    // than the viewport never showed its end, and a reader who scrolled up
+    // was dragged back down by the next streamed chunk. Now the scroll
+    // lands on the END of the last item (a maximal item offset, clamped to
+    // the list's end) and only runs while the reader is parked at the
+    // tail; ChatScrollPolicy holds the stickiness rules.
+    var stickToBottom by remember(thread.id) { mutableStateOf(true) }
+    var userDraggingList by remember { mutableStateOf(false) }
+    LaunchedEffect(listState) {
+        listState.interactionSource.interactions.collect { interaction ->
+            when (interaction) {
+                is DragInteraction.Start -> userDraggingList = true
+                is DragInteraction.Stop, is DragInteraction.Cancel -> userDraggingList = false
+            }
+        }
+    }
+    val currentLastIndex = rememberUpdatedState(
+        thread.messages.size + approvalCards.size +
+            (if (armed && liveTranscript.isNotBlank()) 1 else 0) - 1)
+    LaunchedEffect(listState, thread.id) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val lastVisible = info.visibleItemsInfo.lastOrNull()
+            if (lastVisible == null) null
+            else ChatScrollPolicy.isAtTail(
+                lastVisible.index, lastVisible.offset + lastVisible.size,
+                info.viewportEndOffset, currentLastIndex.value,
+            ) to userDraggingList
+        }.collect { observed ->
+            if (observed != null) {
+                stickToBottom = ChatScrollPolicy.updatedStick(stickToBottom, observed.first, observed.second)
+            }
+        }
+    }
+    LaunchedEffect(thread.id, thread.messages.lastOrNull()?.id, thread.messages.lastOrNull()?.text, liveTranscript, armed, approvalTailKey) {
+        val lastIndex = thread.messages.size + approvalCards.size +
+            (if (armed && liveTranscript.isNotBlank()) 1 else 0) - 1
+        if (lastIndex >= 0 && stickToBottom) {
+            listState.animateScrollToItem(lastIndex, Int.MAX_VALUE)
+        }
     }
     Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Text("JARVIS", style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
-            TextButton(enabled = !inputBusy, onClick = onOpenMemory, modifier = Modifier.testTag("memory_open")) { Text("Memory") }
-            TextButton(enabled = !inputBusy, onClick = { settings = true }) { Text("Settings") }
-        }
-        // One line, always: at a large font scale on a narrow screen these
-        // buttons wrapped to two lines and ate the transcript's height.
-        // Conversations takes the flexible share (its label ellipsizes, the
-        // full label stays in semantics); Private/New keep intrinsic size
-        // so they are never clipped off-screen.
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { showHistory = true }, enabled = !sending && !armed && !inputBusy,
-                modifier = Modifier.weight(1f)) {
-                Text("Conversations", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Start)
-            }
-            if (thread.isPrivate) {
-                // Private mode indicator: unmissable so there's never confusion about what's saved.
-                Text("PRIVATE — nothing is saved",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.error,
-                    maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false).testTag("private_mode_indicator"))
-            }
-            Row {
-                TextButton(onClick = { error = onNewPrivateConversation() }, enabled = !sending && !armed && !inputBusy,
-                    modifier = Modifier.testTag("new_private_chat")) {
-                    Text("Private", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-                }
-                TextButton(onClick = { error = onSelectConversation(null) }, enabled = !sending && !armed && !inputBusy) {
-                    Text("New", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-                }
-            }
-        }
-        if (pipelineBenchmarkStore != null) ConversationMetricsControls(thread, pipelineBenchmarkStore) {
-            benchmarkReply = null
-            showingBenchmarks = true
+        // The header buttons (Memory, Settings, Conversations, Private,
+        // New, Metrics) render beside the wisp in the app frame's header
+        // band — see ChatHeaderBand. The JARVIS title text and the Copy
+        // metrics button are removed. The private-mode indicator stays
+        // with the transcript as a full-width strip: unmissable, so
+        // there's never confusion about what's saved.
+        if (thread.isPrivate) {
+            Text("PRIVATE — nothing is saved",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.error,
+                maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
+                    .testTag("private_mode_indicator"))
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             Column(Modifier.fillMaxSize()) {
@@ -229,9 +270,19 @@ internal fun ConversationScreen(
                                         style = MaterialTheme.typography.labelMedium)
                                     message.attachment?.let { ChatAttachmentPreview(it, playbackEnabled = !dictating && !armed && !effectiveVoiceVisible) }
                                     SelectionContainer {
-                                        Text(message.text.ifBlank { if (sending) "Thinking…" else "No reply was saved." },
-                                            fontStyle = if (message.spoken) FontStyle.Italic else FontStyle.Normal,
-                                            modifier = Modifier.padding(top = 6.dp))
+                                        when {
+                                            message.text.isBlank() -> Text(if (sending) "Thinking…" else "No reply was saved.",
+                                                fontStyle = if (message.spoken) FontStyle.Italic else FontStyle.Normal,
+                                                modifier = Modifier.padding(top = 6.dp))
+                                            // Issue #20 item 1: assistant replies are
+                                            // Markdown and now render as such. User
+                                            // messages keep the plain rendering.
+                                            message.role == "Jarvis" -> AssistantMarkdownText(message.text,
+                                                spoken = message.spoken, modifier = Modifier.padding(top = 6.dp))
+                                            else -> Text(message.text,
+                                                fontStyle = if (message.spoken) FontStyle.Italic else FontStyle.Normal,
+                                                modifier = Modifier.padding(top = 6.dp))
+                                        }
                                     }
                                     if (message.role == "Jarvis")
                                         Text((message.metrics ?: com.battlesbudz.jarvis.v2.diagnostics.ReplyMetrics.unavailable).withOutputText(message.text).summary(),
@@ -242,6 +293,9 @@ internal fun ConversationScreen(
                                         Text("Reply interrupted or not fully spoken", style = MaterialTheme.typography.labelSmall)
                                 }
                             }
+                        }
+                        items(approvalCards, key = { "approval-${it.attempt.id}" }) { card ->
+                            InlineApprovalCard(card, onPhoneTaskAction)
                         }
                         if (armed && liveTranscript.isNotBlank()) item(key = "live_voice_transcript") {
                             Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
@@ -277,6 +331,8 @@ internal fun ConversationScreen(
                 if (armed) Text("Attachments are unavailable during a voice call. End the call to add one.",
                     style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
 
+                aboveComposer()
+
                 key(thread.id) {
                     ChatVoiceInput(enabled = !sending && !effectiveVoiceVisible && !armed && !preparingAttachment,
                         canSendAudio = selectedModel.supportsAudio && pendingAttachment == null,
@@ -296,6 +352,7 @@ internal fun ConversationScreen(
                                 val failure = onSend(voiceText, requireNotNull(attached))
                                 check(failure == null) { failure.orEmpty() }
                                 accepted = true
+                                stickToBottom = true
                                 draft = ""
                                 error = null
                             } finally { if (!accepted) attached?.let { ChatMediaStore.discard(context, it) } }
@@ -304,7 +361,15 @@ internal fun ConversationScreen(
                             draft = if (draft.isBlank()) text else draft.trimEnd() + " " + text
                             error = null
                         }, onError = { error = it }) { voiceButton ->
-                        Row(Modifier.fillMaxWidth().imePadding().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        // No imePadding on this row: the root column's
+                        // safeDrawingPadding already applies the IME
+                        // inset once (safeDrawing includes ime) and
+                        // nothing between here and the root consumes
+                        // it, so padding for it again lifted the
+                        // composer a second keyboard height and left a
+                        // keyboard-sized gap under it (issue #19's
+                        // gap, the in-code half its window fix missed).
+                        Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                             OutlinedTextField(value = draft, onValueChange = { draft = it }, placeholder = { Text("Message Jarvis") },
                                 modifier = Modifier.weight(1f).testTag("chat_composer"), maxLines = 5, enabled = !sending && !inputBusy && (!effectiveVoiceVisible || armed),
@@ -326,7 +391,7 @@ internal fun ConversationScreen(
                                 (pendingAttachment == null || AttachmentPolicy.accepts(selectedModel, pendingAttachment.kind))
                             FilledIconButton(enabled = canSend && !sending && !inputBusy && (!effectiveVoiceVisible || armed), onClick = {
                                 error = onSend(draft, if (armed) null else pendingAttachment)
-                                if (error == null) { draft = ""; pendingUri = null }
+                                if (error == null) { stickToBottom = true; draft = ""; pendingUri = null }
                             }, modifier = Modifier.testTag("chat_send")) {
                                 ComposerIcon(com.battlesbudz.jarvis.v2.R.drawable.ic_composer_send, if (sending) "Thinking" else "Send message")
                             }

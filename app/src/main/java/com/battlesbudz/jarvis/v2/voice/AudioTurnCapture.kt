@@ -24,17 +24,18 @@ import kotlinx.coroutines.withContext
 /**
  * Who arbitrates this capture's endpoint. LEGACY is the historical stack: the
  * Smart Turn verdict arbitrated against AdaptiveTurnEnd's transcript-cue targets,
- * which remain an active decider whenever no verdict binds. REFERENCE is the
- * Pipecat pattern used by the conversation captures (primary and follow-up,
- * built by VoiceTurnCaptureFactory): the analyzer's COMPLETE is the only
- * verdict-based endpoint, an undecided turn stays open until speech resumes or
- * the 5s turn-stop timeout backstop fires, and with no analyzer the plain
- * speech-timeout window decides. Reply/barge-in captures use REFERENCE too:
- * the speech retained after an interruption is a user turn, and its stop is
- * judged the same way. LEGACY remains only for captures that never opt in,
- * the non-conversation diagnostic and dictation endpoints.
+ * which remain an active decider whenever no verdict binds. DEADLINE is the
+ * deadline-first strategy used by the conversation captures (primary and
+ * follow-up, built by VoiceTurnCaptureFactory) and by reply/barge-in captures:
+ * the turn submits 300ms after the last speech by default; Smart Turn judges
+ * alongside that clock and may hold the turn only with a high-confidence
+ * unfinished verdict produced by the deadline, which buys exactly one extra
+ * 300ms window. No verdict, a late verdict, an uncertain verdict and a
+ * COMPLETE verdict all resolve to submission at the deadline, and with no
+ * analyzer the deadline itself decides. LEGACY remains only for captures that
+ * never opt in, the non-conversation diagnostic and dictation endpoints.
  */
-enum class TurnStopPolicy { LEGACY, REFERENCE }
+enum class TurnStopPolicy { LEGACY, DEADLINE }
 
 /** Captures one speech turn, with bounded idle pre-roll and no raw audio on disk. */
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -106,6 +107,13 @@ class AudioTurnCapture(
         private set
     @Volatile var captionFinalizationReason: String = "not_attempted"
         private set
+    /** A guarded follow-up candidate accepted with no word evidence (sustained
+     * strong audio alone; see FollowupSpeechEvidence.hasWordEvidence). Such a
+     * turn may not be answered until recognition confirms real words by
+     * transcription. Set only on the accepted candidate; a discarded candidate
+     * resets it together with its evidence. */
+    @Volatile var followupAdmittedWithoutLiveWords: Boolean = false
+        private set
     private var lastPartial = ""
     private var partialUpdates = 0
     private var firstSpeechAt: Long? = null
@@ -160,6 +168,26 @@ class AudioTurnCapture(
         var decodeMs = 0L
         var maxDecodeChunkMs = 0L
         var emptyCandidates = 0
+        // Full re-decodes of this candidate's retained audio (complete-turn and
+        // empty-stream recovery share the budget). Reset when the candidate is
+        // discarded or genuinely resumed speech reopens the endpoint.
+        var asrRecoveryAttempts = 0
+        // Presentation-only record for the diagnostics Endpointing block: every
+        // proposed endpoint this turn that was deferred or invalidated, in order.
+        val endpointDeferrals = mutableListOf<String>()
+        // The last real verdict (COMPLETE/CONTINUE) the analyzer produced for
+        // the current pause, with its probability. Metrics report this, not
+        // the final frame's raw state: a frame evaluated after the verdict
+        // can read PENDING/FALLBACK and would misreport a judged pause as
+        // "no verdict" (the build-1697 specimen: CONTINUE p=0.34 exported
+        // as no verdict). Reset whenever confirmed speech ends the pause.
+        var lastVerdictState: CaptureEndpointState? = null
+        var lastVerdictProbability: Float? = null
+        // Deadline-first veto latch: a qualifying high-confidence unfinished
+        // verdict seen by the deadline extends this pause exactly once.
+        // Reset whenever confirmed speech ends the pause or the candidate
+        // is discarded, so the next pause must earn its own hold.
+        var deadlineVetoHold = false
         var deferredPartialChunks = 0
         var finalDecodeMs = 0L
         val recognitionBudget = CaptureRecognitionBudget()
@@ -214,17 +242,31 @@ class AudioTurnCapture(
                             if (unconfirmedOnsetAt == null) unconfirmedOnsetAt = audioAt
                         } else unconfirmedOnsetAt = null
                         awaitingConfirmation = unconfirmedOnsetAt?.let { audioAt - it < 96 } == true
+                        if (decision.isSpeech) {
+                            // Confirmed speech ends the pause the latched
+                            // verdict and any veto hold belonged to.
+                            lastVerdictState = null; lastVerdictProbability = null; deadlineVetoHold = false
+                        }
                         var resumedAudio: ByteArray? = null
                         if (pendingEndpoint) pendingAudio.append(chunk)
-                        if (pendingEndpoint && (decision.isSpeech || ((nativePause != null || endpointObserver != null) &&
-                            (frame.rawDecision.probability >= .15f || frame.rawDecision.rawCoverage == null)))) {
+                        // Only confirmed speech invalidates a pending endpoint. Raw VAD
+                        // risk or unclassified coverage on a frame the confirmed decision
+                        // calls non-speech must not throw away a finalization: that audio
+                        // already holds the seal through the finalization drain below
+                        // (requiresNativeEndpointDrain), and invalidating on it let weak
+                        // noise cycle defer/invalidate/recovery for a whole turn
+                        // (build 1697, call ee63fa69). A genuine onset still invalidates
+                        // once the detector confirms it (96 ms confirmation window).
+                        if (pendingEndpoint && decision.isSpeech) {
                             if (!skippedSmartCaptionAtPendingEndpoint) (transcriber as? SegmentedTranscriber)?.resumeAfterEndpoint()
                             skippedSmartCaptionAtPendingEndpoint = false
                             pendingEndpoint = false
+                            asrRecoveryAttempts = 0
                             finalNativeEndpointGuard = null
                             retiredCaptionAtPendingEndpoint = false
                             resumedAudio = pendingAudio.snapshot(); pendingAudio.clear()
                             onSpeechResumed()
+                            endpointDeferrals += "resumed_speech"
                             log("turn_endpoint_invalidated reason=resumed_speech")
                         }
                         var retainedAudio: ByteArray? = null
@@ -317,6 +359,9 @@ class AudioTurnCapture(
                             lastSpeechAt = audioAt
                             lastSpeechAtMs = audioAt
                             lastSpeechSample = audioBytes / 2
+                            // Corroborated words are speech: the pause the
+                            // latched verdict and veto hold belonged to is over.
+                            lastVerdictState = null; lastVerdictProbability = null; deadlineVetoHold = false
                         }
                         if (!hasSpeech && corroborated) {
                             var acceptedPreRoll: ByteArray? = null
@@ -359,6 +404,9 @@ class AudioTurnCapture(
                     val smartDecision = runCatching { endpointObserver?.endpointDecision(currentSmartFrame) }
                         .getOrNull() ?: CaptureEndpointDecision(CaptureEndpointState.FALLBACK)
                     val smartState = smartDecision.state
+                    if (smartState == CaptureEndpointState.COMPLETE || smartState == CaptureEndpointState.CONTINUE) {
+                        lastVerdictState = smartState; lastVerdictProbability = smartDecision.probability
+                    }
                     val rawCoverage = frame.rawDecision.rawCoverage
                     val exactCollectorCoverage = rawCoverage != null && rawCoverage.receivedPcmBytes == audioBytes &&
                         rawCoverage.classifiedThroughSample * 2 == audioBytes
@@ -387,10 +435,10 @@ class AudioTurnCapture(
                     // On the Whisper/ASR route the verdict is the endpoint authority and
                     // only input sanity gates it. The native-audio route keeps the full
                     // native eligibility conjunction for its Smart Turn decisions.
-                    // REFERENCE captures use input sanity on every route: the native
+                    // DEADLINE captures use input sanity on every route: the native
                     // conjunction above survives only as the native-pause speculation
                     // gate (nativeEligibility) and the legacy arbitration below.
-                    val smartEligibility = if (turnStopPolicy == TurnStopPolicy.REFERENCE)
+                    val smartEligibility = if (turnStopPolicy == TurnStopPolicy.DEADLINE)
                         NativePauseEndpointPolicy.smartTurnSanity(hasSpeech,
                             smartDecision.modelThroughSample, lastSpeechSample)
                     else if (captionOnly) NativePauseEndpointPolicy.eligibility(hasSpeech,
@@ -401,33 +449,44 @@ class AudioTurnCapture(
                     val legacyArbitratedEndpoint = SmartTurnEndpointPolicy.decision(acousticEndpoint, smartDecision,
                         smartEligibility, smartRouteAllowed, rawCoverage, audioBytes, audioAt - lastSpeechAt,
                         lastSpeechSample, bindVerdict = !captionOnly)
-                    // REFERENCE arbitration (Pipecat pattern): the analyzer is the stop
-                    // strategy. A binding COMPLETE is the only verdict-based endpoint;
-                    // any other state leaves the turn open behind the 5s turn-stop
-                    // timeout backstop, and with no analyzer attached the plain
-                    // speech-timeout window decides. The route/echo gate and the
-                    // Adaptive stack no longer end conversation turns here; echo is
-                    // still rejected at final-candidate acceptance downstream. That
-                    // rejection needs the final transcript, so the native caption
-                    // omission at finalization keeps honoring the route gate even
-                    // though the bind does not.
-                    val endpoint = if (turnStopPolicy != TurnStopPolicy.REFERENCE) legacyArbitratedEndpoint
+                    // DEADLINE arbitration (deadline-first): the turn submits
+                    // 300ms after the last speech by default. Smart Turn judges
+                    // alongside that clock; it can only delay submission with a
+                    // high-confidence unfinished verdict (completion probability
+                    // at most 0.02) that is in hand by the deadline, and that
+                    // veto buys exactly one extra 300ms window. No verdict, a
+                    // late verdict, an uncertain verdict and a COMPLETE verdict
+                    // all resolve to submission at the deadline, and with no
+                    // analyzer attached the deadline itself decides. The
+                    // route/echo gate and the Adaptive stack no longer end
+                    // conversation turns here; echo is still rejected at
+                    // final-candidate acceptance downstream. That rejection
+                    // needs the final transcript, so the native caption
+                    // omission at finalization keeps honoring the route gate
+                    // even though the endpoint does not.
+                    if (turnStopPolicy == TurnStopPolicy.DEADLINE && endpointObserver != null &&
+                        !deadlineVetoHold && audioAt - lastSpeechAt <= SmartTurnEndpointPolicy.DEADLINE_MS &&
+                        SmartTurnEndpointPolicy.vetoQualifies(smartDecision, smartEligibility,
+                            audioBytes, lastSpeechSample)) {
+                        deadlineVetoHold = true
+                        endpointDeferrals += "smart_turn_veto_hold"
+                        log("smart_turn_veto_hold probability=${smartDecision.probability} " +
+                            "extendedDeadlineMs=${SmartTurnEndpointPolicy.DEADLINE_MS + SmartTurnEndpointPolicy.VETO_EXTENSION_MS}")
+                    }
+                    val endpoint = if (turnStopPolicy != TurnStopPolicy.DEADLINE) legacyArbitratedEndpoint
                         else if (endpointObserver == null) AdaptiveTurnEnd.Decision(
-                            trailingSilenceMs ?: SmartTurnEndpointPolicy.SPEECH_TIMEOUT_MS,
-                            SmartTurnEndpointPolicy.CUE_SPEECH_TIMEOUT)
-                        else SmartTurnEndpointPolicy.referenceDecision(smartDecision, smartEligibility,
-                            audioBytes, audioAt - lastSpeechAt, lastSpeechSample)
-                            ?: AdaptiveTurnEnd.Decision(SmartTurnEndpointPolicy.TURN_STOP_TIMEOUT_MS,
-                                SmartTurnEndpointPolicy.CUE_TURN_STOP_TIMEOUT)
+                            SmartTurnEndpointPolicy.DEADLINE_MS, SmartTurnEndpointPolicy.CUE_DEADLINE)
+                        else SmartTurnEndpointPolicy.deadlineDecision(smartDecision, smartEligibility,
+                            audioBytes, lastSpeechSample, deadlineVetoHold)
                     val smartComplete = endpoint.cue == "smart_turn_complete"
                     // A Smart-Turn-decided endpoint is final: the queue-drain fire
                     // condition and the final-transcript guard do not re-open it below.
                     // The finalization drain may only hold the seal until queued or
                     // unclassified audio is resolved; it never re-judges the endpoint
                     // or the transcript. LEGACY keeps that finality on the Whisper
-                    // route only; REFERENCE binds on every route.
+                    // route only; DEADLINE binds on every route.
                     val smartVerdictBinding = smartComplete &&
-                        (turnStopPolicy == TurnStopPolicy.REFERENCE || !captionOnly)
+                        (turnStopPolicy == TurnStopPolicy.DEADLINE || !captionOnly)
                     if (nativeEligibility.allowed) nativeEligibleFrames++
                     if (nativeEligibility.allowed && !exactCollectorCoverage) nativeUncoveredEndpointFrames++
                     val nativeReason = if (nativeEligibility.allowed && !exactCollectorCoverage)
@@ -443,9 +502,9 @@ class AudioTurnCapture(
                         // Its independent certificate still requires raw coverage. Do not spend
                         // the encoder for a same-event model endpoint that cannot certify it.
                         (smartState != CaptureEndpointState.COMPLETE || exactCollectorCoverage) &&
-                        // REFERENCE spends the encoder only on an analyzer-confirmed
+                        // DEADLINE spends the encoder only on an analyzer-confirmed
                         // pause; LEGACY also proposes on the adaptive base cues.
-                        (smartComplete || (turnStopPolicy != TurnStopPolicy.REFERENCE &&
+                        (smartComplete || (turnStopPolicy != TurnStopPolicy.DEADLINE &&
                             NativePauseEndpointPolicy.permitsProposal(baseEndpoint)))) {
                         shadow { it.onPriority("gemma_speculation") }
                         val snapshot = synchronized(pcm) { pcm.snapshot() }
@@ -473,9 +532,17 @@ class AudioTurnCapture(
                         // final recognition. Publish it only with the accepted candidate.
                         val proposedEndpointAtNs = nowNs()
                         val finalizeStartedAt = nowMs()
-                        val acousticAccepted = !guardFollowupSpeech || !hasSpeech || followupEvidence.accepts()
+                        // The word-evidence rule binds only where the transcript is the
+                        // request. On captionOnly captures the retained audio is the
+                        // request and Gemma judges it, so sustained strong audio still
+                        // admits (see FollowupSpeechEvidence.acceptsAudioOnly).
+                        val acousticAccepted = !guardFollowupSpeech || !hasSpeech ||
+                            if (captionOnly) followupEvidence.acceptsAudioOnly() else followupEvidence.accepts()
                         if (guardFollowupSpeech && hasSpeech && !pendingEndpoint) {
                             log("followup_speech_evidence accepted=$acousticAccepted ${followupEvidence.diagnostic()}")
+                        }
+                        if (guardFollowupSpeech && hasSpeech && acousticAccepted) {
+                            followupAdmittedWithoutLiveWords = !followupEvidence.hasWordEvidence()
                         }
                         currentCoroutineContext().ensureActive()
                         if (turnCompleted.isCompleted) return@collect
@@ -489,7 +556,8 @@ class AudioTurnCapture(
                             nativePause?.invalidate(NativePauseInvalidation.CANDIDATE_DISCARDED)
                             if (nativePause?.encoderFrozen != true) retainedPcmObserver?.onCandidateDiscarded()
                             retainedPreRollSampleCount = null
-                            followupEvidence.reset(); initialEvidenceAvailable = false; recoveryAudio.clear()
+                            followupEvidence.reset(); followupAdmittedWithoutLiveWords = false; initialEvidenceAvailable = false; recoveryAudio.clear(); asrRecoveryAttempts = 0
+                            lastVerdictState = null; lastVerdictProbability = null; deadlineVetoHold = false
                             pendingEndpoint = false; finalNativeEndpointGuard = null; retiredCaptionAtPendingEndpoint = false; skippedSmartCaptionAtPendingEndpoint = false
                             pendingAudio.clear(); recognitionIssue = null
                             firstSpeechCaptureAtMs = null; firstSpeechAt = null; firstPartialAfterSpeechMs = null; lastPartial = ""
@@ -535,7 +603,7 @@ class AudioTurnCapture(
                             // skipped caption would leave acceptance with no transcript
                             // to reject the echo against, submitting the echo audio as
                             // the request. The verdict itself still binds under
-                            // REFERENCE; only the omission is gated.
+                            // DEADLINE; only the omission is gated.
                             val skipSmartCaption = captionOnly && unsegmented && smartComplete && smartRouteAllowed &&
                                 reason == "trailing_silence"
                             captionFinalizationReason = when {
@@ -569,10 +637,10 @@ class AudioTurnCapture(
                             finalDecodeMs += nowMs() - finishAt
                             currentCoroutineContext().ensureActive()
                             if (turnCompleted.isCompleted) return@collect
-                            // REFERENCE never lets the final transcript defer or
+                            // DEADLINE never lets the final transcript defer or
                             // re-lengthen an endpoint: it is an ingredient of the
                             // seal (produced by finish() above), never a re-judgment.
-                            if (reason == "trailing_silence" && turnStopPolicy != TurnStopPolicy.REFERENCE &&
+                            if (reason == "trailing_silence" && turnStopPolicy != TurnStopPolicy.DEADLINE &&
                                 !smartVerdictBinding && endpoint.silenceMs < legacyEndpoint.silenceMs &&
                                 rawFinal.isNotBlank() && !TranscriptContent.isSoundOnly(rawFinal)) {
                                 val finalCue = AdaptiveTurnEnd().also { it.update(TranscriptContent.speech(rawFinal), nowMs()) }.decision(nowMs())
@@ -583,6 +651,7 @@ class AudioTurnCapture(
                                     finalNativeEndpointGuard = finalCue
                                     completedCues.reset(); completedCueEnd.reset()
                                     pendingEndpoint = true; pendingAudio.clear()
+                                    endpointDeferrals += "final_caption_${finalCue.cue}"
                                     log("native_endpoint_deferred reason=final_caption_${finalCue.cue} targetSilenceMs=${finalCue.silenceMs}")
                                     return@collect
                                 }
@@ -616,6 +685,7 @@ class AudioTurnCapture(
                             if (needsFinalizationDrain()) {
                                 if (!pendingEndpoint) {
                                     pendingAudio.clear()
+                                    endpointDeferrals += "audio_arrived_during_finalization"
                                     log("turn_endpoint_deferred reason=audio_arrived_during_finalization")
                                 }
                                 pendingEndpoint = true
@@ -623,9 +693,11 @@ class AudioTurnCapture(
                             }
                             var resolvedFinal = rawFinal
                             var recoveryAttempted = false
-                            if (audioIsComplete && recognitionIssue in setOf("unrecognized_segment", "segment_boundary_uncertain")) {
+                            if (audioIsComplete && recognitionIssue in setOf("unrecognized_segment", "segment_boundary_uncertain") &&
+                                asrRecoveryAttempts < MAX_ASR_RECOVERY_ATTEMPTS) {
                                 val completePcm = synchronized(pcm) { pcm.snapshot() }
-                                log("asr_recovery_started reason=$recognitionIssue source=complete_turn audioMs=${completePcm.size / 32}")
+                                asrRecoveryAttempts++
+                                log("asr_recovery_started reason=$recognitionIssue source=complete_turn attempt=$asrRecoveryAttempts audioMs=${completePcm.size / 32}")
                                 val recoveryStarted = nowMs()
                                 recoveryAttempted = true
                                 val recovered = transcriber?.recover(completePcm).orEmpty().trim()
@@ -636,14 +708,24 @@ class AudioTurnCapture(
                                     recognitionIssue = null
                                     log("asr_recovery_finished source=complete_turn accepted=true chars=${recovered.length}")
                                 } else log("asr_recovery_finished source=complete_turn accepted=false")
+                            } else if (audioIsComplete && recognitionIssue in setOf("unrecognized_segment", "segment_boundary_uncertain")) {
+                                // The per-candidate budget is spent: another full re-decode
+                                // of the same retained audio cannot change the outcome, and
+                                // an unbounded retry loop is what ate the build-1697
+                                // follow-up turn. The turn completes below with its issue
+                                // recorded; downstream decides from the retained audio
+                                // (caption route) or the clarify path (ASR route).
+                                log("asr_recovery_skipped reason=attempt_budget attempts=$asrRecoveryAttempts issue=$recognitionIssue")
                             }
                             val nonverbal = TranscriptContent.isSoundOnly(resolvedFinal)
                             finalTranscript = if (nonverbal) "" else TranscriptContent.speech(resolvedFinal)
                             if (nonverbal) log(if (captionOnly) "nonverbal_caption ignored=true original_audio_retained=true" else "nonverbal_candidate ignored=true destination=none microphone=kept_open")
-                            if (transcriber != null && finalTranscript.isBlank() && !allowAudioOnlyTurns && !nonverbal && recognitionIssue == null) {
+                            if (transcriber != null && finalTranscript.isBlank() && !allowAudioOnlyTurns && !nonverbal && recognitionIssue == null &&
+                                asrRecoveryAttempts < MAX_ASR_RECOVERY_ATTEMPTS) {
                                 val candidate = recoveryAudio.snapshot()
                                 val recoveryAt = nowMs()
-                                log("asr_recovery_started candidateAudioMs=${candidate.size / 32} reason=empty_stream source=full_capture_window nativeVad=bypassed")
+                                asrRecoveryAttempts++
+                                log("asr_recovery_started candidateAudioMs=${candidate.size / 32} reason=empty_stream source=full_capture_window nativeVad=bypassed attempt=$asrRecoveryAttempts")
                                 onRecognitionRecovery(true)
                                 try {
                                     recoveryAttempted = true
@@ -658,6 +740,7 @@ class AudioTurnCapture(
                             if (recoveryAttempted && needsFinalizationDrain()) {
                                 if (!pendingEndpoint) pendingAudio.clear()
                                 pendingEndpoint = true
+                                endpointDeferrals += "audio_arrived_during_recovery"
                                 log("turn_endpoint_deferred reason=audio_arrived_during_recovery")
                                 return@collect
                             }
@@ -707,8 +790,11 @@ class AudioTurnCapture(
                                 finalNativeEndpointGuard = null
                                 retiredCaptionAtPendingEndpoint = false
                                 skippedSmartCaptionAtPendingEndpoint = false
+                                lastVerdictState = null; lastVerdictProbability = null; deadlineVetoHold = false
+                                asrRecoveryAttempts = 0
                                 turnEnd.reset()
                                 followupEvidence.reset()
+                                followupAdmittedWithoutLiveWords = false
                                 initialEvidenceAvailable = false
                                 quietEvidence.reset()
                                 quietEvidenceUsed = false
@@ -742,9 +828,9 @@ class AudioTurnCapture(
                                 "audioComplete=$audioIsComplete issue=$recognitionIssue")
                         }
                         val endpointAuthority = when {
-                            endpoint.cue == "smart_turn_complete" || endpoint.cue == "smart_turn_continue" -> "smart_turn"
-                            endpoint.cue == SmartTurnEndpointPolicy.CUE_TURN_STOP_TIMEOUT -> "timeout"
-                            endpoint.cue == SmartTurnEndpointPolicy.CUE_SPEECH_TIMEOUT -> "speech_timeout"
+                            endpoint.cue == "smart_turn_complete" || endpoint.cue == "smart_turn_continue" ||
+                                endpoint.cue == SmartTurnEndpointPolicy.CUE_VETO_HOLD -> "smart_turn"
+                            endpoint.cue == SmartTurnEndpointPolicy.CUE_DEADLINE -> "deadline"
                             finalNativeEndpointGuard != null -> "guard"
                             else -> "fallback"
                         }
@@ -755,13 +841,19 @@ class AudioTurnCapture(
                             endpoint.silenceMs, endpoint.cue, acousticMetrics.snapshot(),
                             maxRecognitionBacklogMs, recognitionBudget.largestWorkMs, finalDecodeMs,
                             recognitionWork.withActive(transcriber?.recognitionWorkMetrics, transcriber != null),
-                            endpointAuthority = endpointAuthority), finalTranscript)
+                            endpointAuthority = endpointAuthority,
+                            silenceWaitedMs = endpointSilenceMs,
+                            smartTurnState = if (endpointObserver != null)
+                                (lastVerdictState ?: smartState).name else null,
+                            smartTurnProbability = if (lastVerdictState != null)
+                                lastVerdictProbability else smartDecision.probability,
+                            endpointDeferrals = endpointDeferrals.toList()), finalTranscript)
                         log("capture_endpoint_timing reason=$reason " +
                             "speechEndToFinalMs=${lastSpeechAtMs?.let { (nowMs() - it).coerceAtLeast(0) }} " +
                             "silenceDetectedToFinalMs=${speechQueue.latestSilenceDetectedAtMs?.takeIf { it >= lastSpeechAt }?.let { (nowMs() - it).coerceAtLeast(0) }} " +
                             "finalDecodeMs=$finalDecodeMs deferredPartialChunks=$deferredPartialChunks " +
                             "maxRecognitionWorkMs=${recognitionBudget.largestWorkMs} maxRecognitionBacklogMs=$maxRecognitionBacklogMs " +
-                            "recognitionBacklogMs=${speechQueue.bufferedAudioMs}")
+                            "recognitionBacklogMs=${speechQueue.bufferedAudioMs} asrRecoveryAttempts=$asrRecoveryAttempts")
                         if (nativePause != null) log("native_pause_capture_summary eligibleFrames=$nativeEligibleFrames " +
                             "uncoveredEndpointFrames=$nativeUncoveredEndpointFrames proposals=$nativeProposalCount " +
                             "finalCue=${endpoint.cue} targetSilenceMs=${endpoint.silenceMs}")
@@ -859,5 +951,10 @@ class AudioTurnCapture(
 
     private companion object {
         const val MAX_TURN_BYTES = 25 * 16_000 * 2
+        /** Per-candidate cap on full re-decodes of the retained audio. One rescue
+         * attempt is the designed path; one more covers a drain-deferred retry.
+         * Beyond that the same audio cannot decode differently, so the turn
+         * completes with its recognition issue instead of looping. */
+        const val MAX_ASR_RECOVERY_ATTEMPTS = 2
     }
 }

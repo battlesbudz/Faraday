@@ -5,6 +5,10 @@ import org.junit.Test
 class ModelCompatibilityTest {
     @Test fun removedModelsCannotBeSelectedAndSavedPreferencesRecover() {
         val removed = listOf(
+            // Removed 2026-11-01 by Battles's decision: the abliterated bundles
+            // lack the hardware audio encoder (see ModelCatalog).
+            "Gemma-4-E2B-Abliterated",
+            "Gemma-4-E4B-Abliterated",
             "Qwen3-8B",
             "Qwen2-1.5B-Instruct",
             "Llama-3.2-1B",
@@ -24,7 +28,7 @@ class ModelCompatibilityTest {
             "gemma-4-31B-it-litert-lm",
             "granite-4.0-350m-litert-lm"
         )
-        assertEquals(74, ModelCatalog.all.size)
+        assertEquals(72, ModelCatalog.all.size)
         removed.forEach { id ->
             assertNull(id, ModelCatalog.find(id))
             assertEquals(ModelCatalog.gemma4E2b, ModelCatalog.resolve(id))

@@ -51,19 +51,19 @@ jobs:
         run: |
           set -euo pipefail
           export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/28.1.13356709"
-          PATCH_SHA="$(python3 -c 'import json; print(json.load(open("third_party/litert-lm-0.16.0/reviewed-source.json"))["patch_sha256"])')"
+          PATCH_SHA="$(python3 -c 'import json; print(json.load(open("third_party/litert-lm-0.18.0/reviewed-source.json"))["patch_sha256"])')"
           python3 scripts/streaming-sdk/build_android_sdk.py --run \
-            --patch third_party/litert-lm-0.16.0/PATCH.diff \
+            --patch third_party/litert-lm-0.18.0/PATCH.diff \
             --patch-sha256 "$PATCH_SHA" \
-            --reviewed-source third_party/litert-lm-0.16.0/reviewed-source.json \
+            --reviewed-source third_party/litert-lm-0.18.0/reviewed-source.json \
             --page-auditor scripts/check_page_sizes.py \
             --out "$RUNNER_TEMP/streaming-sdk" 2>&1 | tee streaming-sdk-build.log
       - name: Bind exact SDK output digests
         id: sdk-digests
         run: |
           python3 scripts/streaming-sdk/validate_artifact.py \
-            --aar "$RUNNER_TEMP/streaming-sdk/litertlm-android-0.16.0-sealed-audio-arm64.aar" \
-            --provenance "$RUNNER_TEMP/streaming-sdk/litertlm-android-0.16.0-sealed-audio-arm64.provenance.json" \
+            --aar "$RUNNER_TEMP/streaming-sdk/litertlm-android-0.18.0-sealed-audio-arm64.aar" \
+            --provenance "$RUNNER_TEMP/streaming-sdk/litertlm-android-0.18.0-sealed-audio-arm64.provenance.json" \
             --source-receipt "$RUNNER_TEMP/streaming-sdk/source-receipt.json" \
             --check-workflow --github-output "$GITHUB_OUTPUT"
       - name: Install speech runtime NDK
@@ -88,8 +88,8 @@ jobs:
           ANDROID_VERSION_NAME: 0.1.0-build.${{ github.run_number }}
         run: |
           set -euo pipefail
-          AAR="$RUNNER_TEMP/streaming-sdk/litertlm-android-0.16.0-sealed-audio-arm64.aar"
-          PROVENANCE="$RUNNER_TEMP/streaming-sdk/litertlm-android-0.16.0-sealed-audio-arm64.provenance.json"
+          AAR="$RUNNER_TEMP/streaming-sdk/litertlm-android-0.18.0-sealed-audio-arm64.aar"
+          PROVENANCE="$RUNNER_TEMP/streaming-sdk/litertlm-android-0.18.0-sealed-audio-arm64.provenance.json"
           # Deliberately no select_unit_tests.py and no --tests filters here:
           # this lane is the unconditional full-suite backstop.
           bash scripts/ci_gradle.sh nightly \

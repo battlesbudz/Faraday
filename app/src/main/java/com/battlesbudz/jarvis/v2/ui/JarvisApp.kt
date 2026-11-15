@@ -16,6 +16,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -23,6 +24,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import com.battlesbudz.jarvis.v2.ai.ModelCatalog
 import com.battlesbudz.jarvis.v2.ai.ModelStore
+import com.battlesbudz.jarvis.v2.code.CodeModeDriver
+import com.battlesbudz.jarvis.v2.code.ConversationCodeController
+import com.battlesbudz.jarvis.v2.memory.AndroidMemoryDream
+import com.battlesbudz.jarvis.v2.memory.AndroidMemoryEmbeddings
 import com.battlesbudz.jarvis.v2.memory.AndroidMemoryOs
 
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
@@ -60,6 +65,7 @@ fun JarvisApp(
     onDiscardModelDownload: (com.battlesbudz.jarvis.v2.ai.LocalModelSpec, (String) -> Unit) -> Unit = { _, _ -> },
     onImportModel: (Uri, com.battlesbudz.jarvis.v2.ai.LocalModelSpec, (String) -> Unit) -> Unit,
     onCopyDiagnostics: (List<ChatEntry>) -> Unit,
+    onSaveDiagnostics: ((String) -> Unit) -> Unit = {},
     agentActivity: kotlinx.coroutines.flow.StateFlow<com.battlesbudz.jarvis.v2.presentation.AgentActivitySnapshot?>? = null,
     phoneTasks: kotlinx.coroutines.flow.StateFlow<com.battlesbudz.jarvis.v2.actions.ToolTaskJournal?>? = null,
     phoneTaskError: kotlinx.coroutines.flow.StateFlow<String?>? = null,
@@ -73,7 +79,7 @@ fun JarvisApp(
     routeBSpikeReport: kotlinx.coroutines.flow.StateFlow<String?>? = null,
     onRunRouteBParitySpike: () -> Unit = {},
 ) {
-    WithPipelineDiagnostics { benchmarkStore, callEvidence ->
+    WithPipelineDiagnostics { benchmarkStore, callEvidence, codeAccess ->
         val setup = rememberModelSetupState(store, ModelSetupActions(
             select = onSelectModel, delete = onDeleteModel, test = onRunModelSmokeTest,
             download = onDownloadGemma, pauseDownload = onCancelModelDownload,
@@ -83,6 +89,8 @@ fun JarvisApp(
         var pickerModelId by rememberSaveable { mutableStateOf<String?>(null) }
         var showingVoiceCalls by rememberSaveable { mutableStateOf(false) }
         var showingMemory by rememberSaveable { mutableStateOf(false) }
+        var showingCodePicker by rememberSaveable { mutableStateOf(false) }
+        var showingCodePreview by rememberSaveable { mutableStateOf(false) }
         var memoryReturnToVoice by rememberSaveable { mutableStateOf(false) }
         var memoryReturnToChat by rememberSaveable { mutableStateOf(false) }
         var showingFullSetup by rememberSaveable { mutableStateOf(false) }
@@ -92,8 +100,55 @@ fun JarvisApp(
 
         val phoneContext = androidx.compose.ui.platform.LocalContext.current
         val memoryOs = remember(phoneContext.applicationContext) { AndroidMemoryOs.get(phoneContext.applicationContext) }
+        val embeddingSetup = remember(phoneContext.applicationContext) { AndroidMemoryEmbeddings.setupController(phoneContext.applicationContext) }
         val activeVoiceCall by com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.armed.collectAsState()
         val activeVoiceStatus by com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.status.collectAsState()
+        // Chat header state, hoisted out of ConversationScreen: the header
+        // buttons now render beside the wisp in the frame's presence band
+        // (ChatHeaderBand), while the settings surface, history dialog,
+        // error line and benchmark dialog they drive stay in the screen.
+        // Both sides share these holders, so behavior is unchanged.
+        val chatSettingsOpen = remember { mutableStateOf(false) }
+        val chatHistoryOpen = remember { mutableStateOf(false) }
+        val chatHeaderError = remember { mutableStateOf<String?>(null) }
+        val chatInputBusy = remember { mutableStateOf(false) }
+        val chatBenchmarksOpen = remember { mutableStateOf(false) }
+        val chatBenchmarkReply = remember { mutableStateOf<String?>(null) }
+        val chatSending by chatBusy.collectAsState()
+        // The band shows only while the chat destination is the visible
+        // content (never over Memory, the voice-call list/detail, or setup).
+        val chatDestination = setup.modelsReady && setup.smokeTestPassed &&
+            selectedVoiceCall == null && !showingVoiceCalls && !showingMemory
+        // Code mode in the conversation (Battles, 2026-11-09: the
+        // separate code destination is reversed). The controller owns
+        // the picked project; plain-text sends while a project is
+        // picked become code rounds in the thread, everything else —
+        // attachments, sends during a voice call (they belong to the
+        // call), sends with nothing picked — takes the normal chat
+        // path untouched.
+        val codeScope = rememberCoroutineScope()
+        val codeDriver = remember(codeAccess) {
+            CodeModeDriver(codeAccess.store, codeAccess.statsStore, codeAccess.engineAccess)
+        }
+        val codeController = remember(codeAccess, conversationHistory) {
+            ConversationCodeController(
+                store = codeAccess.store,
+                statsStore = codeAccess.statsStore,
+                driver = codeDriver,
+                engineAccess = codeAccess.engineAccess,
+                history = conversationHistory,
+                scope = codeScope,
+            )
+        }
+        val onSendRouted: (String, com.battlesbudz.jarvis.v2.chat.ChatAttachment?) -> String? = { text, attachment ->
+            if (attachment == null && text.isNotBlank() && !activeVoiceCall &&
+                codeController.activeProjectId.value != null
+            ) {
+                codeController.sendDirection(text.trim())
+            } else {
+                onSendChat(text, attachment)
+            }
+        }
         val modelSelector: @Composable (Boolean) -> Unit = { enabled ->
             ModelSelectionSection(setup, enabled, benchmarkStore, onOpenMemory = { showingMemory = true })
         }
@@ -111,13 +166,34 @@ fun JarvisApp(
         ) {
             Surface(modifier = Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
                 WispAppFrame(presence = {
-                    WispPresence(conversationHistory, chatBusy, callState, voicePlayback, phoneTasks, phoneTaskError,
-                        agentActivity, setupActivity = when {
-                            setup.modelDownloadRunning -> WispPresentation(WispActivity.CONNECTING, "Installing model")
-                            setup.modelImportRunning -> WispPresentation(WispActivity.CHECKING, "Importing model")
-                            setup.smokeTestRunning -> WispPresentation(WispActivity.THINKING, "Testing model")
-                            else -> null
-                        })
+                    val wispPresence: @Composable () -> Unit = {
+                        WispPresence(conversationHistory, chatBusy, callState, voicePlayback, phoneTasks, phoneTaskError,
+                            agentActivity, setupActivity = when {
+                                setup.modelDownloadRunning -> WispPresentation(WispActivity.CONNECTING, "Installing model")
+                                setup.modelImportRunning -> WispPresentation(WispActivity.CHECKING, "Importing model")
+                                setup.smokeTestRunning -> WispPresentation(WispActivity.THINKING, "Testing model")
+                                else -> null
+                            })
+                    }
+                    if (chatDestination) {
+                        ChatHeaderBand(
+                            memoryEnabled = !chatInputBusy.value,
+                            settingsEnabled = !chatInputBusy.value,
+                            conversationsEnabled = !chatSending && !activeVoiceCall && !chatInputBusy.value,
+                            privateEnabled = !chatSending && !activeVoiceCall && !chatInputBusy.value,
+                            newEnabled = !chatSending && !activeVoiceCall && !chatInputBusy.value,
+                            metricsVisible = true,
+                            onOpenMemory = { showingMemory = true },
+                            onOpenSettings = { chatSettingsOpen.value = true },
+                            onOpenHistory = { chatHistoryOpen.value = true },
+                            onNewPrivateConversation = { chatHeaderError.value = onNewPrivateConversation() },
+                            onNewConversation = { chatHeaderError.value = onSelectConversation(null) },
+                            onOpenMetrics = { chatBenchmarkReply.value = null; chatBenchmarksOpen.value = true },
+                            presence = wispPresence,
+                        )
+                    } else {
+                        wispPresence()
+                    }
                 }) {
                     if (setup.modelsReady && setup.smokeTestPassed) {
                         AssistantBannerPopupLayer(
@@ -158,7 +234,7 @@ fun JarvisApp(
                                         }
                                     )
                                     else -> ConversationScreen(
-                                        history = conversationHistory, busy = chatBusy, callState = callState, onSend = onSendChat,
+                                        history = conversationHistory, busy = chatBusy, callState = callState, onSend = onSendRouted,
                                         phoneTasks = phoneTasks, phoneTaskError = phoneTaskError, onPhoneTaskAction = onPhoneTaskAction,
                                         selectedModel = setup.selectedModel,
                                         onSelectConversation = onSelectConversation,
@@ -175,7 +251,20 @@ fun JarvisApp(
                                         onForceVoiceConsumed = { memoryReturnToVoice = false },
                                         forceChatDestination = memoryReturnToChat,
                                         onForceChatConsumed = { memoryReturnToChat = false },
-                                        pipelineBenchmarkStore = benchmarkStore
+                                        pipelineBenchmarkStore = benchmarkStore,
+                                        settingsOpenState = chatSettingsOpen,
+                                        historyOpenState = chatHistoryOpen,
+                                        headerErrorState = chatHeaderError,
+                                        inputBusyState = chatInputBusy,
+                                        benchmarksOpenState = chatBenchmarksOpen,
+                                        benchmarkReplyState = chatBenchmarkReply,
+                                        aboveComposer = {
+                                            CodeConversationBar(
+                                                controller = codeController,
+                                                onOpenPicker = { showingCodePicker = true },
+                                                onOpenPreview = { showingCodePreview = true },
+                                            )
+                                        }
                                     ) { visible, settingsOpen, dismissSettings, startRequest ->
                                         VoiceCallScreen(
                                             visible = visible, settingsOpen = settingsOpen, memoryOpen = showingMemory,
@@ -187,6 +276,7 @@ fun JarvisApp(
                                             onVoiceTurn = onVoiceTurn,
                                             onEndVoiceCall = onEndVoiceCall,
                                             onCopyDiagnostics = onCopyDiagnostics,
+                                            onSaveDiagnostics = onSaveDiagnostics,
                                             silentWork = silentWork,
                                             onSilentWork = onSilentWork,
                                             workflowSettings = workflowSettings,
@@ -195,6 +285,7 @@ fun JarvisApp(
                                             routeBSpikeReport = routeBSpikeReport,
                                             onRunRouteBParitySpike = onRunRouteBParitySpike,
                                             callEvidenceActions = callEvidence,
+                                            onOpenCodeProjects = { showingCodePicker = true },
                                         )
                                     }
                                 }
@@ -212,7 +303,25 @@ fun JarvisApp(
                                 onEndCall = onEndVoiceCall,
                                 onOpenChat = { memoryReturnToVoice = false; memoryReturnToChat = true; showingMemory = false },
                                 onOpenVoice = { memoryReturnToChat = false; memoryReturnToVoice = true; showingMemory = false },
+                                embeddingSetup = embeddingSetup,
+                                dreamJournalProvider = { AndroidMemoryDream.journalState(phoneContext).entries },
                             )
+                        // Code mode's picker and preview viewer overlay the
+                        // same way; the working surface is the conversation
+                        // itself (the bar above its composer and the turns
+                        // in the thread), not a destination.
+                        if (showingCodePicker) {
+                            CodeProjectsPicker(
+                                controller = codeController,
+                                onDismiss = { showingCodePicker = false },
+                            )
+                        }
+                        if (showingCodePreview) {
+                            CodePreviewViewer(
+                                controller = codeController,
+                                onDismiss = { showingCodePreview = false },
+                            )
+                        }
                     } else if (showingMemory) {
                         MemoryScreen(
                             memoryOs = memoryOs,
@@ -222,6 +331,8 @@ fun JarvisApp(
                             onEndCall = onEndVoiceCall,
                             onOpenChat = { memoryReturnToVoice = false; memoryReturnToChat = true; showingMemory = false },
                             onOpenVoice = { memoryReturnToChat = false; memoryReturnToVoice = true; showingMemory = false },
+                            embeddingSetup = embeddingSetup,
+                            dreamJournalProvider = { AndroidMemoryDream.journalState(phoneContext).entries },
                         )
                     } else if (!setup.modelsReady && !showingFullSetup) {
                         // First run: no usable model on the device. One-tap install

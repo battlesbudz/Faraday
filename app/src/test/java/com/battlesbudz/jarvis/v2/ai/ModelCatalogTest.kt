@@ -38,12 +38,16 @@ class ModelCatalogTest {
         }
     }
 
-    @Test fun abliteratedModelsUseStockEquivalentContext() {
-        // The DuoNeural bundles declare max_num_tokens=1024 in metadata; the SDK
-        // honors that when contextTokens is null, so a null here reintroduces the
-        // 1024-token cap on long prompts. Stock bundles declare no cap.
-        assertEquals(4096, ModelCatalog.gemma4E2bAbliterated.contextTokens)
-        assertEquals(4096, ModelCatalog.gemma4E4bAbliterated.contextTokens)
+    @Test fun removedAbliteratedSelectionsFallBackToStockE2b() {
+        // Battles removed both DuoNeural abliterated entries on 2026-11-01 (the
+        // bundles lack the hardware audio encoder). They must not be findable,
+        // listable or downloadable, and a persisted selection naming either one
+        // must resolve to the stock E2B default — never a crash or no model.
+        assertNull(ModelCatalog.find("Gemma-4-E2B-Abliterated"))
+        assertNull(ModelCatalog.find("Gemma-4-E4B-Abliterated"))
+        assertTrue(ModelCatalog.all.none { it.id.contains("Abliterated") })
+        assertEquals(ModelCatalog.gemma4E2b, ModelCatalog.resolve("Gemma-4-E2B-Abliterated"))
+        assertEquals(ModelCatalog.gemma4E2b, ModelCatalog.resolve("Gemma-4-E4B-Abliterated"))
     }
 
     @Test fun qwenSelectionsDoNotEnableGemmaOnlyPaths() {

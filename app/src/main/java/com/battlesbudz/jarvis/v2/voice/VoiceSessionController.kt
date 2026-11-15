@@ -229,6 +229,8 @@ class VoiceSessionController(
 
     @Synchronized fun currentCallId(): String? = activeCall?.id
 
+    @Synchronized fun currentConversationId(): String? = activeCall?.conversationId
+
     @Synchronized fun currentTranscript(): List<TranscriptEntry> = activeCall?.transcript.orEmpty()
 
     /** Only this call, or the explicitly resumed transcript, supplies dialogue. */
