@@ -42,6 +42,8 @@ object NativeActionDecoder {
                 name = call.name,
                 arguments = mapOf("url" to args.optString("url"))
             )
+            "web_fetch" -> ActionRequest(call.name, mapOf("url" to args.optString("url")))
+            "web_search" -> ActionRequest(call.name, mapOf("query" to args.optString("query")))
             "open_settings" -> ActionRequest(
                 name = call.name,
                 arguments = mapOf("screen" to args.optString("screen"))
