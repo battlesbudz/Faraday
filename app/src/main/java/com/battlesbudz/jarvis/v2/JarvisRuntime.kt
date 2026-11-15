@@ -212,7 +212,24 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     // describes whether the current native Conversation has received that
     // app-managed context capsule.
     internal var nativeConversationHasContext = false
-    internal val shortTermContext = ShortTermConversationContext()
+    /** Editable harness files with the shipped v1 assets as the bundled fallback. */
+    internal val harnessStore: com.battlesbudz.jarvis.v2.harness.HarnessStore by lazy {
+        com.battlesbudz.jarvis.v2.harness.HarnessStore(
+            java.io.File(applicationContext.filesDir, "harness"),
+            bundled = { name ->
+                runCatching {
+                    applicationContext.assets.open("harness/v1/$name")
+                        .bufferedReader().use { it.readText() }
+                }.getOrNull()
+            })
+    }
+    /** Structured replay records, retained by the Phase 1 store's rolling policy. */
+    internal val replayTaskStore: com.battlesbudz.jarvis.v2.harness.ReplayTaskStore by lazy {
+        com.battlesbudz.jarvis.v2.harness.ReplayTaskStore(
+            java.io.File(applicationContext.filesDir, "replay-tasks"))
+    }
+    internal val shortTermContext = ShortTermConversationContext(
+        policyProvider = { harnessStore.current().historyPolicy })
     private val agentActivityMonitor = AgentActivityMonitor()
     internal val agentActivity = agentActivityMonitor.state
     private fun showAgentFailure(conversationId: String) {
@@ -232,7 +249,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     )
     internal val factualityVerifier = com.battlesbudz.jarvis.v2.ai.FactualityVerifier()
     internal val turnOrchestrator = com.battlesbudz.jarvis.v2.ai.TurnOrchestrator(referenceGrounding)
-    internal val promptBuilder = com.battlesbudz.jarvis.v2.ai.ConversationPromptBuilder(shortTermContext)
+    internal val promptBuilder = com.battlesbudz.jarvis.v2.ai.ConversationPromptBuilder(
+        shortTermContext, harness = { harnessStore.current() })
     private val conversationMemory by lazy {
         ConversationMemory(AndroidMemoryOs.get(applicationContext), AndroidMemoryOs.sources(applicationContext))
     }
@@ -624,6 +642,11 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         // the browserRuntime lazy: LiteRT schema generation via
         // MobileToolCatalog.all() may run before first browser use.
         com.battlesbudz.jarvis.v2.actions.MobileToolCatalog.BrowserRuntimeGate.wired = true
+        // Harness policies are runtime scoped; provider reads remain lazy at each use.
+        com.battlesbudz.jarvis.v2.voice.VoiceResponsePolicy.configProvider = { harnessStore.current() }
+        com.battlesbudz.jarvis.v2.vision.VisionContextFormatter.configProvider = { harnessStore.current() }
+        com.battlesbudz.jarvis.v2.actions.MobileToolCatalog.descriptionOverrides =
+            { harnessStore.current().toolDescriptions }
         // The production AndroidMobileActionExecutor includes WebReadTools, so
         // the read-only web schemas can be advertised for this runtime.
         com.battlesbudz.jarvis.v2.actions.MobileToolCatalog.WebReadRuntimeGate.wired = true
@@ -1040,6 +1063,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             }, diagnostics,
                 appAssets = applicationContext.assets,
                 visionServerConfig = { VisionServerSettings.snapshot(applicationContext) },
+                replayCapture = { record -> replayTaskStore.record(record) },
+                harnessVersion = { harnessStore.current().version },
                 callVisualContext = { imageCapable ->
                     com.battlesbudz.jarvis.v2.voice.CallVisualContext.current(imageCapable = imageCapable)
                 },
@@ -1209,7 +1234,9 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     private fun runAutoMemoryEvaluationPass() {
         try {
             AndroidMemoryOs.automaticMemory(this).evaluatePending(
-                HeuristicMemoryEvaluator(),
+                HeuristicMemoryEvaluator(
+                    harnessStore.current().memoryEval.saveRelevance,
+                    harnessStore.current().memoryEval.saveConfidence),
                 isIdle = { !modelStore.isModelOperationActive() && ConversationWork.activeJobs.get() == 0 },
                 cancel = NoCancel,
             )

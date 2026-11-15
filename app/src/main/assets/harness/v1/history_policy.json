@@ -1,0 +1,10 @@
+{
+  "recentEntryLimit": 8,
+  "summaryCharacterLimit": 2000,
+  "userEntryChars": 300,
+  "assistantEntryChars": 450,
+  "topicAnchorChars": 900,
+  "contextCapChars": 3000,
+  "compactSnapshotTailChars": 2800,
+  "compactSnapshotSummaryTailChars": 1000
+}

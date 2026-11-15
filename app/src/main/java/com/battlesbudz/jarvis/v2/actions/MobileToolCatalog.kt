@@ -81,7 +81,23 @@ object MobileToolCatalog {
         }
     }
 
-    private val entries = listOf(
+    /**
+     * Harness-supplied description text by tool name. Routing, schemas and gates
+     * remain compiled core; only model-facing descriptions can be overridden.
+     */
+    @Volatile
+    var descriptionOverrides: () -> Map<String, String> = { emptyMap() }
+
+    private val entries: List<Tool>
+        get() {
+            val overrides = descriptionOverrides()
+            if (overrides.isEmpty()) return baseEntries
+            return baseEntries.map { tool ->
+                overrides[tool.name]?.let { description -> tool.copy(description = description) } ?: tool
+            }
+        }
+
+    private val baseEntries = listOf(
         Tool(
             name = "read_battery",
             description = "Read the phone battery percentage, charge level, and current battery status. Use this when the user asks how much battery the phone has or what the battery percentage is."
