@@ -49,11 +49,6 @@ class MemoryEntityTemporalGraph private constructor(
     /** Small deterministic query surface used to prove the study examples on fixtures. */
     fun answer(question: String): MemoryGraphAnswer {
         val normalized = key(question)
-        val entityMatch = entities.values.firstOrNull { normalized.contains(key(it.canonicalName)) }
-        if (entityMatch != null) {
-            val matches = entityMatch.memoryIds.mapNotNull(records::get).sortedBy { it.createdAtMs }
-            return MemoryGraphAnswer(matches.joinToString("\n") { it.content }, matches)
-        }
         val tokens = normalized.split(' ').filter { it.length > 2 && it !in QUESTION_WORDS }.toSet()
         val current = records.values.filter { record ->
             record.reviewStatus == MemoryReviewStatus.APPROVED && tokens.any { token ->
@@ -68,6 +63,11 @@ class MemoryEntityTemporalGraph private constructor(
                 "${version.content} (${version.validFromMs}${version.validToMs?.let { "–$it" } ?: "–present"})"
             }
             return MemoryGraphAnswer(lines.joinToString("; "), relevantVersions.mapNotNull { records[it.memoryId] })
+        }
+        val entityMatch = entities.values.firstOrNull { normalized.contains(key(it.canonicalName)) }
+        if (entityMatch != null) {
+            val matches = entityMatch.memoryIds.mapNotNull(records::get).sortedBy { it.createdAtMs }
+            return MemoryGraphAnswer(matches.joinToString("\n") { it.content }, matches)
         }
         return MemoryGraphAnswer(current.joinToString("\n") { it.content }, current)
     }

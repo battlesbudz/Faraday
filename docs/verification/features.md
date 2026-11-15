@@ -8,9 +8,12 @@ and follows approved correction edges to render temporal history. It is not
 wired to `MemoryOs`, context packets, embeddings or UI; it does not change
 production recall. Its JVM fixture acceptance covers person aggregation,
 current versus historical corrections, timestamps, secret exclusion and
-tombstone exclusion. On-device persistence/rebuild, broad entity resolution,
-real conversational query interpretation and production integration remain
-unverified and out of scope. See [the study](../../STUDY.md).
+tombstone exclusion. History intent is evaluated before entity matching so a
+generic capitalized token such as "My" cannot short-circuit a correction-chain
+answer; ordinary entity questions still use approved-only links. On-device
+persistence/rebuild, broad entity resolution, real conversational query
+interpretation and production integration remain unverified and out of scope.
+See [the study](../../STUDY.md).
 
 ## Deadline-first endpointing — 5 November 2026
 
