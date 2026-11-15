@@ -1,0 +1,22 @@
+{
+  "containmentThreshold": 0.8,
+  "serverConfidence": 0.5,
+  "emitSegmentsLine": true,
+  "emitSceneLine": true,
+  "emitCountsLine": true,
+  "emitPeopleCountLine": true,
+  "nativeHeader": "On-device vision analysis (native ONNX models, {{MS}} ms total). Treat the following as authoritative for what is visible in the attached image.",
+  "serverHeader": "On-device vision analysis (Phone Inference server, {{MS}} ms). Treat the following as authoritative for what is visible in the attached image.",
+  "failureNote": "On-device vision analysis was unavailable for this image ({{ERROR}}). Answer from the attached image alone and mention that on-device detection was unavailable.",
+  "summaryEmpty": "I didn't spot anything recognizable in that image ({{MS}} ms on-device).",
+  "summaryPrefix": "I see: ",
+  "summarySuffix": " — {{MS}} ms on-device.",
+  "objectsLinePrefix": "Objects detected: ",
+  "objectsLineJoiner": ". Detected objects: ",
+  "noObjectsText": "none recognizable.",
+  "countsLinePrefix": "Counts: ",
+  "peopleCountPrefix": "People count: ",
+  "segmentsLinePrefix": "Segmented outlines: ",
+  "peopleLinePrefix": "People: ",
+  "sceneLinePrefix": "Scene looks like: "
+}

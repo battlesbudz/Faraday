@@ -4,6 +4,7 @@ import android.net.Uri
 import com.battlesbudz.jarvis.v2.ChatEntry
 import com.battlesbudz.jarvis.v2.actions.ActionRequest
 import com.battlesbudz.jarvis.v2.actions.ActionTurnPlan
+import com.battlesbudz.jarvis.v2.actions.ActionTurnRunner
 import com.battlesbudz.jarvis.v2.actions.ExecutionResult
 import com.battlesbudz.jarvis.v2.actions.NativeActionDecoder
 import com.battlesbudz.jarvis.v2.ai.ConversationPromptBuilder
@@ -15,7 +16,10 @@ import com.battlesbudz.jarvis.v2.chat.AssistantStreamFilter
 import com.battlesbudz.jarvis.v2.chat.AssistantText
 import com.battlesbudz.jarvis.v2.chat.ToolCallMarkup
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkPurpose
+import com.battlesbudz.jarvis.v2.harness.HarnessConfig
+import com.battlesbudz.jarvis.v2.harness.ReplayTurnRecord
 import com.battlesbudz.jarvis.v2.vision.NativeVision
+import com.battlesbudz.jarvis.v2.vision.NativeVisionSnapshot
 import com.battlesbudz.jarvis.v2.vision.PhoneVisionClient
 import com.battlesbudz.jarvis.v2.vision.VisionContextFormatter
 import com.battlesbudz.jarvis.v2.vision.VisionServerSettings
@@ -64,6 +68,9 @@ internal class ConversationGeneration(
      * full 15-second track block); any other engine gets step 4's summary.
      */
     private val callVisualContext: (Boolean) -> CallVisualContext.Decision = { CallVisualContext.INACTIVE },
+    /** Best-effort structured replay capture; failures never affect a live turn. */
+    private val replayCapture: (ReplayTurnRecord) -> Unit = {},
+    private val harnessVersion: () -> Int = { HarnessConfig.DEFAULT.version },
 ) {
     suspend fun generate(invocation: ConversationInvocation, contextLimit: Int,
                          routed: RoutedConversation, prepared: PreparedConversation,
@@ -105,6 +112,10 @@ internal class ConversationGeneration(
         // HTTP path). One message combines detection + Gemma's understanding.
         val visionAssets = appAssets
         val visionImageBytes = attachments.image
+        // Retain structured vision output alongside the formatted prompt block
+        // so replay records can be rendered again by a later formatter.
+        var visionSnapshot: NativeVisionSnapshot? = null
+        var visionSource: String? = null
         val visionContext = if (visionImageBytes != null) {
             val serverConfig = visionServerConfig()
             if (serverConfig?.enabled == true) {
@@ -119,6 +130,8 @@ internal class ConversationGeneration(
                             "Paste the token from the Phone Inference app into Settings."
                     }
                     val snapshot = PhoneVisionClient().detect(visionImageBytes, serverConfig.token)
+                    visionSnapshot = snapshot
+                    visionSource = "server"
                     reply.benchmark.metric("phone_vision_server_ms", snapshot.totalMs.toLong())
                     VisionContextFormatter.formatServerDetections(snapshot.detections, snapshot.totalMs)
                 }.getOrElse { error ->
@@ -128,6 +141,8 @@ internal class ConversationGeneration(
             } else if (visionAssets != null) {
                 runCatching {
                     val snapshot = NativeVision.analyze(visionImageBytes, visionAssets)
+                    visionSnapshot = snapshot
+                    visionSource = "native"
                     reply.benchmark.metric("native_vision_ms", snapshot.totalMs.toLong())
                     VisionContextFormatter.format(snapshot)
                 }.getOrElse { error ->
@@ -194,6 +209,7 @@ internal class ConversationGeneration(
         // Guard and retry paths below reset before regenerating, so they
         // must re-seed from the full prompt; assemble it before switching
         // this turn's assembly to resident mode.
+        val seedContextRequested = !modelSession.hasContext
         val fullPromptText = if (reuseNativeContext) {
             turnPrompt.nativeContextResident = false
             turnPrompt.assemble(invocation.prompt, promptContext, promptHistory, true,
@@ -329,7 +345,7 @@ internal class ConversationGeneration(
         // M7: a superseded turn dispatches no actions and runs no
         // reset-and-retry guard against its replacement's session.
         turnOwnership?.checkCurrent()
-        executeNativeActions(draft, phoneActions)
+        val executedActions = executeNativeActions(draft, phoneActions)
         val retryPromptBase = fullPromptText ?: submission.text
         retryInvalidToolDraft(draft, input, retryPromptBase)
         guardLegacyMarkupDraft(draft, input, retryPromptBase)
@@ -337,7 +353,94 @@ internal class ConversationGeneration(
         guardVisionPerceptionClaim(draft, input, hasVisualInput, retryPromptBase)
         guardMemoryDisregard(draft, input, turnPrompt)
         guardMemoryCompleteness(draft, input, turnPrompt)
+        captureReplayTurn(invocation, routed, prepared, promptHistory, turnPrompt, submission,
+            seedContextRequested, promptContext, visionSnapshot, visionSource, directAudio, executedActions)
         return draft
+    }
+
+    /** The plan that ran and its receipts, retained for replay capture. */
+    private data class ExecutedActions(
+        val steps: List<ActionTurnPlan.Step>,
+        val receipts: List<ActionTurnRunner.Receipt>
+    )
+
+    /** Capture the exact turn assembly inputs without allowing capture errors to affect generation. */
+    private fun captureReplayTurn(
+        invocation: ConversationInvocation,
+        routed: RoutedConversation,
+        prepared: PreparedConversation,
+        promptHistory: List<ChatEntry>,
+        turnPrompt: ConversationPrompt,
+        submission: ConversationPrompt.Submission,
+        seedContextRequested: Boolean,
+        contextBlock: String?,
+        visionSnapshot: NativeVisionSnapshot?,
+        visionSource: String?,
+        directAudio: Boolean,
+        executed: ExecutedActions
+    ) {
+        runCatching {
+            val kind = when {
+                directAudio -> ReplayTurnRecord.Kind.DIRECT_AUDIO
+                invocation.imageUri != null -> ReplayTurnRecord.Kind.IMAGE_TEXT
+                invocation.voiceAudio != null -> ReplayTurnRecord.Kind.VOICE_TEXT
+                else -> ReplayTurnRecord.Kind.TEXT
+            }
+            replayCapture(ReplayTurnRecord(
+                id = java.util.UUID.randomUUID().toString(),
+                capturedAtMs = System.currentTimeMillis(),
+                harnessVersion = harnessVersion(),
+                modelId = modelSession.selectedModel().id,
+                kind = kind,
+                replayable = !directAudio,
+                userPrompt = invocation.prompt,
+                historyOffered = promptHistory.map { ReplayTurnRecord.HistoryEntry(it.role, it.text) },
+                seedContextRequested = seedContextRequested,
+                seeded = submission.seeded,
+                memorySection = prepared.memoryContext?.takeIf { it.isCurrent() }?.promptSection(),
+                continuitySection = turnPrompt.continuityContext,
+                captureSection = turnPrompt.captureContext,
+                contextBlock = contextBlock,
+                vision = visionSnapshot?.let { snapshot ->
+                    visionSource?.let { source -> visionCapture(snapshot, source) }
+                },
+                referenceSection = prepared.referenceContext,
+                activeSubject = routed.plan.activeSubject,
+                resolvedQuestion = routed.plan.resolvedQuestion,
+                toolPlan = executed.steps.map { step ->
+                    ReplayTurnRecord.ToolStep(step.request.name, JSONObject(step.request.arguments).toString(), step.sourceClause)
+                },
+                toolReceipts = executed.receipts.map { receipt ->
+                    ReplayTurnRecord.ToolReceipt(receipt.request.name, receipt.result.message,
+                        receipt.result.succeeded, receipt.result.outcome.name)
+                },
+                finalPrompt = submission.text
+            ))
+        }
+    }
+
+    private fun visionCapture(snapshot: NativeVisionSnapshot, source: String): ReplayTurnRecord.VisionCapture {
+        fun box(box: com.battlesbudz.phoneinference.Box) =
+            ReplayTurnRecord.BoxCapture(box.x1, box.y1, box.x2, box.y2)
+        return ReplayTurnRecord.VisionCapture(
+            source = source,
+            totalMs = snapshot.totalMs,
+            detections = snapshot.detections.map { detection ->
+                ReplayTurnRecord.DetectionCapture(detection.label, detection.classId, detection.confidence, box(detection.box))
+            },
+            segments = snapshot.segments.map { segment ->
+                ReplayTurnRecord.SegmentCapture(segment.label, segment.classId, segment.confidence, box(segment.box),
+                    segment.points.map { point -> ReplayTurnRecord.PointCapture(point.x, point.y) })
+            },
+            poses = snapshot.poses.map { pose ->
+                ReplayTurnRecord.PoseCapture(pose.confidence, box(pose.box), pose.keypoints.map { keypoint ->
+                    ReplayTurnRecord.KeypointCapture(keypoint.name, keypoint.classId, keypoint.x, keypoint.y, keypoint.confidence)
+                })
+            },
+            classifications = snapshot.classifications.map { classification ->
+                ReplayTurnRecord.ClassificationCapture(classification.label, classification.classId, classification.confidence)
+            }
+        )
     }
 
     private fun repetitionGuard(invocation: ConversationInvocation, routed: RoutedConversation,
@@ -484,7 +587,7 @@ internal class ConversationGeneration(
             ActionRequest("run_in_sandbox", mapOf("command" to "")), invocation.prompt)))
     }
 
-    private suspend fun executeNativeActions(draft: ConversationDraft, phoneActions: ConversationActions) {
+    private suspend fun executeNativeActions(draft: ConversationDraft, phoneActions: ConversationActions): ExecutedActions {
         val answer = draft.answer
         val invocation = answer.invocation
         // Settle outstanding speculation before the tool phase can mutate
@@ -493,10 +596,10 @@ internal class ConversationGeneration(
         invocation.nativeSpeculation?.beforeNativeMutation()
         recoverLegacyMarkupCall(draft)
         val plan = answer.routed.actionPlan as? ActionTurnPlan.Ready
-            ?: audioPlanFromCalls(draft) ?: legacyMarkupPlan(draft) ?: return
+            ?: audioPlanFromCalls(draft) ?: legacyMarkupPlan(draft) ?: return ExecutedActions(emptyList(), emptyList())
         if (draft.generated.toolCalls.isEmpty()) {
             draft.actionResultMessage = "I couldn't verify the requested phone actions."
-            return
+            return ExecutedActions(plan.steps, emptyList())
         }
         val allowed = if (invocation.directVoiceAudio) {
             // Audio-native path: AudioToolGuard applies the allowlist +
@@ -512,7 +615,10 @@ internal class ConversationGeneration(
                 FinalVoiceToolGuard.allows(step.sourceClause, step.request.name, step.request.arguments)
             }
         }
-        if (!allowed) { draft.actionResultMessage = "I couldn't verify the requested phone actions."; return }
+        if (!allowed) {
+            draft.actionResultMessage = "I couldn't verify the requested phone actions."
+            return ExecutedActions(plan.steps, emptyList())
+        }
         val outcome = phoneActions.runNative(plan, draft.generated.toolCalls, nextCalls = { batch ->
             val results = batch.map { receipt ->
                 ToolCall(receipt.request.name, JSONObject(receipt.request.arguments).toString()) to
@@ -527,6 +633,7 @@ internal class ConversationGeneration(
         draft.actionResultMessage = outcome.message
         diagnostics.important("Action turn\nuser=${invocation.prompt.take(500)}\nsteps=${plan.steps.map { it.request }}\n" +
             "receipts=${outcome.receipts}\ncompleted=${outcome.completed} result=${outcome.message}")
+        return ExecutedActions(plan.steps, outcome.receipts)
     }
 
     /**
