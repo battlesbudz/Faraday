@@ -53,6 +53,8 @@ internal class ConversationModelSession(
     suspend fun prepare(imageAttached: Boolean, audioAttached: Boolean, voiceAttached: Boolean,
                         reply: ConversationReply): ConversationBackend {
         check(state.engine?.isNativeQuarantined != true) { "Native model is still quarantined; ownership cannot be reused" }
+        val selected = selectedModel()
+        if (shouldReplaceResidentEngine(state.engine?.modelId, selected.id)) close()
         if (state.engine?.requiresConfirmedHistoryRebuild == true) reset()
         if (!voiceAttached) {
             // A prior direct-audio child has a fixed system preface. Change modes before
@@ -64,16 +66,16 @@ internal class ConversationModelSession(
             }
         }
         if (imageAttached) {
-            check(selectedModel().supportsVision) {
-                "${selectedModel().id} is text-only. Select a model with image input."
+            check(selected.supportsVision) {
+                "${selected.id} is text-only. Select a model with image input."
             }
             if (state.engine?.visionEnabled != true) close() else reset()
         }
         if (audioAttached) {
-            check(selectedModel().supportsAudio) { "This download does not support audio input." }
+            check(selected.supportsAudio) { "This download does not support audio input." }
             if (state.engine?.audioEnabled != true) close() else reset()
         }
-        if (voiceAttached && selectedModel().supportsAudio) {
+        if (voiceAttached && selected.supportsAudio) {
             // Resident engines are built in the canonical profile (audio
             // wired in whenever the model supports it), so an audio-capable
             // resident is left untouched: direct-voice turns deliberately
@@ -89,7 +91,7 @@ internal class ConversationModelSession(
         reply.benchmark.mark("model_load_started")
         val wasLoaded = state.engine != null
         val engine = state.engine ?: createResidentEngine(
-            selectedModel(), modelPath(selectedModel()), cachePath,
+            selected, modelPath(selected), cachePath,
             visionRequired = imageAttached
         ).also { state.engine = it; clearContextAccounting() }
         if (!wasLoaded) reply.loadMs += (System.nanoTime() - started) / 1_000_000
@@ -120,3 +122,7 @@ internal class ConversationModelSession(
         return HistoryBudget.window(promptHistory)
     }
 }
+
+/** A resident native engine belongs to the selected model identity, across every conversation mode. */
+internal fun shouldReplaceResidentEngine(residentModelId: String?, selectedModelId: String): Boolean =
+    residentModelId != null && residentModelId != selectedModelId
