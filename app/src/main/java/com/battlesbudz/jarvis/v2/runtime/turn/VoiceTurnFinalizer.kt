@@ -38,6 +38,7 @@ internal class VoiceTurnFinalizer(
             encoderDrained = speculationDrained && captureDrained && !lifetime.captionNativeReleaseFailed
             if (encoderDrained) lifetime.nativeAudioArtifact?.close()
             lifetime.preparation?.close()
+            lifetime.routeBPriming?.close()
             if (!actions.queue.hasUnfinished()) nativeState.engine?.onPromptSubmitted = { _, _ -> }
         } finally {
             lifetime.speechChunks.close()

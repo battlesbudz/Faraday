@@ -209,6 +209,88 @@ class RetainedPcmEncoderWorkerTest {
         }
         assertEquals(0, creates.get())
     }
+    /**
+     * Option A fake: rows are a pure function of completed steps — step s
+     * owns rows [s*12, s*12+12) with values s*1000 + index — so a snapshot
+     * and the sealed row set of the same pass must agree step for step.
+     * One step completes per 4 appended samples.
+     */
+    private class StepFakeEncoder : RetainedPcmEncoderWorker.Encoder<String> {
+        val chunks = mutableListOf<FloatArray>()
+        val seals = AtomicInteger()
+        fun totalRows(): Int = chunks.sumOf { it.size } / 4 * 12
+        fun rows(fromRow: Int, totalRows: Int) =
+            FloatArray((totalRows - fromRow) * 2) { (fromRow + it / 2) * 1000f + it % 2 }
+        override fun append(pcm: FloatArray) { chunks += pcm.copyOf() }
+        override fun provisionalRows(fromRow: Int): RetainedPcmEncoderWorker.ProvisionalRows? {
+            val total = totalRows()
+            if (fromRow >= total) return null
+            return RetainedPcmEncoderWorker.ProvisionalRows(fromRow, total, rows(fromRow, total))
+        }
+        override fun seal(): RetainedPcmEncoderWorker.Sealed<String> {
+            seals.incrementAndGet()
+            return RetainedPcmEncoderWorker.Sealed(chunks.sumOf { it.size }, "sealed")
+        }
+        override fun requestCancel() = Unit
+        override fun closeOnWorker(timeoutMs: Long) = true
+    }
+
+    @Test fun provisionalSnapshotsStreamCompletedStepsAndMatchTheSealedRowsStepForStep() = runBlocking {
+        val encoder = StepFakeEncoder()
+        val delivered = java.util.Collections.synchronizedList(
+            mutableListOf<Pair<Long, RetainedPcmEncoderWorker.ProvisionalRows>>())
+        val owner = RetainedPcmEncoderWorker({ encoder }, { true },
+            onProvisionalRows = { candidate, snapshot -> delivered += candidate to snapshot })
+        val packet = pcm(1, 2, 3, 4, 5, 6, 7, 8) // 8 samples = 2 steps = 24 rows
+        owner.onPcm(packet.copyOf())
+        owner.onPcm(packet.copyOf())
+        val result = withTimeout(3000) { owner.sealAfterCaptureJoined(packet + packet) }
+        assertEquals(16, result.pcmSampleCount)
+        assertEquals(1, encoder.seals.get())
+        // One snapshot per packet event, chained 0 -> 24 -> 48.
+        assertEquals(listOf(1L to 0, 1L to 24), delivered.map { it.first to it.second.firstRow })
+        assertEquals(listOf(24, 48), delivered.map { it.second.totalRows })
+        // Step-for-step equality against the same pass's full row set.
+        val full = encoder.rows(0, 48)
+        for ((_, snapshot) in delivered) {
+            assertTrue(snapshot.values.contentEquals(
+                full.copyOfRange(snapshot.firstRow * 2, snapshot.totalRows * 2)))
+        }
+        assertTrue(owner.closeAndDrain())
+    }
+
+    @Test fun provisionalDeliveryRestartsWithAFreshCandidate() = runBlocking {
+        val delivered = java.util.Collections.synchronizedList(
+            mutableListOf<Pair<Long, RetainedPcmEncoderWorker.ProvisionalRows>>())
+        val owner = RetainedPcmEncoderWorker({ StepFakeEncoder() }, { true },
+            onProvisionalRows = { candidate, snapshot -> delivered += candidate to snapshot })
+        val packet = pcm(1, 2, 3, 4)
+        owner.onPcm(packet.copyOf())
+        // The discard must land after candidate 1's packet was processed;
+        // its snapshot delivery is the processing receipt.
+        withTimeout(3000) { while (delivered.size < 1) { kotlinx.coroutines.delay(5) } }
+        owner.onCandidateDiscarded()
+        owner.onPcm(packet.copyOf())
+        val result = withTimeout(3000) { owner.sealAfterCaptureJoined(packet) }
+        assertEquals(2L, result.candidate)
+        assertEquals(listOf(1L, 2L), delivered.map { it.first })
+        assertEquals(listOf(0, 0), delivered.map { it.second.firstRow })
+        assertTrue(owner.closeAndDrain())
+    }
+
+    @Test fun encoderWithoutProvisionalSurfaceDeliversNothingAndSealsAsBefore() = runBlocking {
+        val encoder = FakeEncoder()
+        val delivered = mutableListOf<RetainedPcmEncoderWorker.ProvisionalRows>()
+        val owner = RetainedPcmEncoderWorker({ encoder }, { true },
+            onProvisionalRows = { _, snapshot -> delivered += snapshot })
+        val packet = pcm(1, 2, 3)
+        owner.onPcm(packet.copyOf())
+        val result = withTimeout(3000) { owner.sealAfterCaptureJoined(packet) }
+        assertEquals(3, result.pcmSampleCount)
+        assertTrue(delivered.isEmpty())
+        assertTrue(owner.closeAndDrain())
+    }
+
     @Test fun frozenCandidateUsesExactCountHashAndTerminatesEncoderBeforeHandoff() = runBlocking {
         val encoder = FakeEncoder()
         val owner = RetainedPcmEncoderWorker({ encoder }, { true })

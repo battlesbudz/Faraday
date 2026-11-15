@@ -34,6 +34,8 @@ internal data class ConversationInvocation(
     val sealedVoiceAudio: com.google.ai.edge.litertlm.Content.SealedAudioEmbeddings? = null,
     /** Candidate output is still held until exact final prompt/input and ordinary routing match. */
     val nativeSpeculation: com.battlesbudz.jarvis.v2.voice.NativeVoiceSpeculation? = null,
+    /** Route B: primed-audio owner for this turn, armed only for parity-eligible shapes. */
+    val primedVoiceAudio: com.battlesbudz.jarvis.v2.voice.PrimedAudioInput? = null,
     /**
      * This turn's final ASR transcript, when one exists. On a direct-audio
      * turn [prompt] is the audio boilerplate rather than the spoken words,

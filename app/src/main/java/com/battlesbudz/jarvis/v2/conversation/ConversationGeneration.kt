@@ -20,6 +20,7 @@ import com.battlesbudz.jarvis.v2.vision.PhoneVisionClient
 import com.battlesbudz.jarvis.v2.vision.VisionContextFormatter
 import com.battlesbudz.jarvis.v2.vision.VisionServerSettings
 import com.battlesbudz.jarvis.v2.voice.AudioToolGuard
+import com.battlesbudz.jarvis.v2.voice.CallVisualContext
 import com.battlesbudz.jarvis.v2.voice.FinalVoiceToolGuard
 import com.battlesbudz.jarvis.v2.voice.VoiceRepetitionGuard
 import com.battlesbudz.jarvis.v2.voice.comparison.LiveComparison
@@ -52,6 +53,17 @@ internal class ConversationGeneration(
      * fresh per turn so a Settings change applies without restart.
      */
     private val visionServerConfig: () -> VisionServerSettings.Config? = { null },
+    /**
+     * Video-call step 4: the live call camera's tracked scene as prompt
+     * context, read fresh per turn (the [visionServerConfig] pattern).
+     * [CallVisualContext.INACTIVE] unless a video call service is running,
+     * so ordinary turns are untouched; consulted only for voice /
+     * call-owned turns, and never for comparison trials. The argument is
+     * the turn engine's image capability, which gates snapshot synthesis:
+     * a vision-capable engine gets the retained frame attached (and the
+     * full 15-second track block); any other engine gets step 4's summary.
+     */
+    private val callVisualContext: (Boolean) -> CallVisualContext.Decision = { CallVisualContext.INACTIVE },
 ) {
     suspend fun generate(invocation: ConversationInvocation, contextLimit: Int,
                          routed: RoutedConversation, prepared: PreparedConversation,
@@ -127,6 +139,49 @@ internal class ConversationGeneration(
                 }
             } else null
         } else null
+        val directAudio = invocation.directVoiceAudio || invocation.comparison?.request?.path == LiveComparison.Path.GEMMA_DIRECT
+        // Video-call step 4: on a voice or call-owned turn, read the live
+        // call camera's tracked scene (steps 2-3) as prompt context. The
+        // decision is INACTIVE unless VideoCallService is running a call,
+        // so non-call turns assemble exactly as before; a comparison trial
+        // is never a real call and never consults it.
+        val visualDecision = if (invocation.comparison == null &&
+            (invocation.voiceAudio != null || invocation.incrementalVoice != null ||
+                invocation.callOwned || invocation.callIdentity != null)
+        ) callVisualContext(engine.imageInputCapable) else CallVisualContext.INACTIVE
+        visualDecision.diagnosticsLine?.let { diagnostics.summary(it) }
+        // Snapshot synthesis: the decision's image attaches only on the
+        // normal voice pipeline. A direct-audio turn submits audio, not
+        // text+image, so its snapshot stays unattached — said out loud in
+        // diagnostics rather than silently dropped.
+        val snapshotAttachment = visualDecision.snapshot?.takeUnless { directAudio }
+        if (visualDecision.snapshot != null && directAudio) {
+            diagnostics.summary("Call snapshot: attached=false reason=direct_audio_turn submitted=false")
+        } else if (snapshotAttachment == null) {
+            // No submission will be attempted on this turn, so the decision
+            // line is complete as emitted: attached=false, submitted=false.
+            visualDecision.snapshotLine?.let { diagnostics.summary("$it submitted=false") }
+        }
+        // An attached snapshot's line is deliberately NOT emitted yet: it is
+        // recorded after the native submission attempt, with the outcome
+        // fields that prove whether the model actually received the image
+        // (see recordSnapshotOutcome below). attached= alone was misleading
+        // on build 1624 — it recorded the decision, not the delivery.
+        // Direct audio submits audio only, so a snapshot decision's block
+        // must not be injected on such a turn either: the block tells the
+        // model an image is attached and its boxes mark positions in it,
+        // and with no image submitted the model would narrate detector
+        // labels as sight, owed no disclosure. The same scene decided as
+        // not image-capable yields the summary block, which claims no
+        // attachment; the snapshot decision above still drives the
+        // direct_audio_turn diagnostics line.
+        val visualBlock = if (visualDecision.snapshot != null && directAudio) {
+            callVisualContext(false).block
+        } else {
+            visualDecision.block
+        }
+        val promptContext = listOfNotNull(visionContext, visualBlock)
+            .joinToString("\n\n").takeIf { it.isNotBlank() }
         // Persistent voice-call conversation: a direct-audio turn whose
         // native conversation already holds this call's persona, call-start
         // memory packet and dialogue submits only the current request; the
@@ -141,24 +196,35 @@ internal class ConversationGeneration(
         // this turn's assembly to resident mode.
         val fullPromptText = if (reuseNativeContext) {
             turnPrompt.nativeContextResident = false
-            turnPrompt.assemble(invocation.prompt, visionContext, promptHistory, true,
+            turnPrompt.assemble(invocation.prompt, promptContext, promptHistory, true,
                 routed.plan.activeSubject, routed.plan.resolvedQuestion, prepared.referenceContext, contextLimit).text
         } else null
         turnPrompt.nativeContextResident = reuseNativeContext
-        val submission = turnPrompt.assemble(invocation.prompt, visionContext, promptHistory, !modelSession.hasContext,
+        val submission = turnPrompt.assemble(invocation.prompt, promptContext, promptHistory, !modelSession.hasContext,
             routed.plan.activeSubject, routed.plan.resolvedQuestion, prepared.referenceContext, contextLimit)
         if (reuseNativeContext) diagnostics.summary("Voice session reuse: resident_native_context=true " +
             "promptChars=${submission.text.length} fullPromptChars=${fullPromptText?.length ?: submission.text.length} " +
             "policy=delta_only")
         validatePrompt(invocation, routed, prepared, promptHistory, turnPrompt, submission, contextLimit)
-        val directAudio = invocation.directVoiceAudio || invocation.comparison?.request?.path == LiveComparison.Path.GEMMA_DIRECT
         check(invocation.sealedVoiceAudio == null || invocation.voiceAudioIsComplete) { "Incomplete native audio cannot be submitted" }
-        val input = ConversationInput(invocation.voiceAudio, directAudio, prepared.textInput, attachments.image, attachments.audio, invocation.sealedVoiceAudio, invocation.nativeSpeculation)
+        // A call turn never carries a chat attachment, so the image slot
+        // is free for the snapshot; an explicit chat image always wins.
+        val input = ConversationInput(invocation.voiceAudio, directAudio, prepared.textInput,
+            attachments.image ?: snapshotAttachment?.bytes, attachments.audio, invocation.sealedVoiceAudio, invocation.nativeSpeculation,
+            invocation.primedVoiceAudio)
+        var snapshotOutcomeRecorded = false
+        fun recordSnapshotOutcome() {
+            if (snapshotAttachment == null || snapshotOutcomeRecorded) return
+            snapshotOutcomeRecorded = true
+            val base = visualDecision.snapshotLine ?: return
+            diagnostics.summary(if (input.snapshotImageSubmitted) "$base submitted=true"
+                else "$base submitted=false submitError=${input.snapshotImageSubmitError ?: "not_attempted"}")
+        }
         // Visual input for the no-vision honesty guard: an attached image
         // or an injected visual-context block. Checked against the general
         // turn inputs so the guard ports to the video-call branch's live
         // visual context unchanged.
-        val hasVisualInput = input.imageBytes != null || visionContext != null
+        val hasVisualInput = input.imageBytes != null || promptContext != null
         if (invocation.sealedVoiceAudio != null) {
             reply.benchmark.configuration("native_audio_input_path", "incremental_encoder_sealed_conversation_v1")
             reply.benchmark.metric("native_audio_pcm_samples", invocation.sealedVoiceAudio.pcmSampleCount)
@@ -168,7 +234,7 @@ internal class ConversationGeneration(
         diagnostics.summary("Inference input: mode=" +
             (if (directAudio) if (invocation.directVoiceAudio) "gemma_direct_audio" else "diagnostic_direct_audio"
                 else if (prepared.textInput != null) "incremental_text" else if (invocation.voiceAudio != null) "voice_text"
-                else if (attachments.image != null) "image_text" else if (attachments.audio != null) "audio_file_text" else "text") +
+                else if (input.imageBytes != null) "image_text" else if (attachments.audio != null) "audio_file_text" else "text") +
             " audioBytes=${if (directAudio) invocation.voiceAudio?.size ?: 0 else attachments.audio?.size ?: 0} retainedAudioBytes=${invocation.voiceAudio?.size ?: 0} promptChars=${submission.text.length}" +
             " nativeAudioEncodeMs=${if (directAudio || attachments.audio != null) "unavailable" else "not_used"} queueMs=unavailable")
         var stoppedLoop = false
@@ -190,6 +256,12 @@ internal class ConversationGeneration(
             val onToken: (String) -> Unit = { token -> telemetry.token(token); stream.accept(token) }
             val promoted = if (directAudio) input.tryPromote(submission.text, onToken,
                 ordinaryReplyAccepted = !allowTools) else null
+            // A promoted speculative answer ends the turn without the
+            // ordinary pass; a held primed Session must be released before
+            // the tool-policy transition below touches the native lifecycle.
+            // (Policy-unreachable today — priming excludes the speculation
+            // lane — but a held Session must never outlive its turn.)
+            if (promoted != null) input.closePrimedAudio()
             if (promoted == null && !directAudio) invocation.nativeSpeculation?.beforeNativeMutation()
             // Last fence before the native policy transition mutates the
             // shared conversation: a superseded turn aborts here instead.
@@ -217,9 +289,20 @@ internal class ConversationGeneration(
             reply.benchmark.configuration("generation_recovery_reason", "runaway_repetition")
             diagnostics.important("Runaway repetition cancelled before speech publication; preserving valid opening.")
             GenerationResult(guard?.text.orEmpty(), -1L, null)
+        } catch (undeliverable: SnapshotImageUndeliverableException) {
+            // Snapshot honesty: the image reached no native route, so this
+            // turn must not describe the scene from the visual block's
+            // detector labels. Substitute the honest disclosure, mirroring
+            // the audio-access refusal fallback; the outcome line recorded
+            // below carries submitted=false and the failure reason.
+            if (snapshotAttachment == null) throw undeliverable
+            diagnostics.summary("Call snapshot: image undeliverable on every route; disclosure substituted")
+            GenerationResult(CallVisualContext.SNAPSHOT_DISCLOSURE, -1L, null)
         } catch (superseded: TurnSupersededException) {
+            recordSnapshotOutcome()
             throw superseded
         } catch (error: Throwable) {
+            recordSnapshotOutcome()
             // M7: a failure that lands after this turn was superseded is
             // dropped silently (as a supersession abort) instead of
             // surfacing over the replacement turn. Real failures of the
@@ -231,11 +314,16 @@ internal class ConversationGeneration(
             }
             throw error
         }
+        recordSnapshotOutcome()
+        input.routeBPrimingOutcome?.let { outcome ->
+            diagnostics.summary("Route B priming: outcome=$outcome audioTokens=${invocation.sealedVoiceAudio?.audioTokenCount ?: 0}")
+        }
         if (!stoppedLoop) telemetry.record("answer", generated, submission.text.length)
         telemetry.terminal(generated)
         val answer = ConversationAnswer(invocation, routed, prepared, promptHistory, turnPrompt,
-            engine, reply, submission.text, attachments.image, directAudio, stream, guard, telemetry,
-            visualContextInjected = visionContext != null, turnOwnership = turnOwnership)
+            engine, reply, submission.text, attachments.image ?: snapshotAttachment?.bytes,
+            directAudio, stream, guard, telemetry,
+            visualContextInjected = promptContext != null, turnOwnership = turnOwnership)
         val draft = ConversationDraft(answer, generated, input.nativeConversationContainsTurn,
             runawayLoopStopped = stoppedLoop)
         // M7: a superseded turn dispatches no actions and runs no

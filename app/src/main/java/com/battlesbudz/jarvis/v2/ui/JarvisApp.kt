@@ -75,6 +75,9 @@ fun JarvisApp(
     workflowSettings: kotlinx.coroutines.flow.StateFlow<com.battlesbudz.jarvis.v2.actions.WorkflowSettingsProjection?>? = null,
     onWorkflowSetEnabled: (String, Boolean) -> Unit = { _, _ -> },
     onConnectMcpServer: (String, String, String, (String) -> Unit) -> Unit = { _, _, _, done -> done("MCP setup is unavailable right now.") },
+    // Route B spike: incremental-prefill parity harness (development diagnostics).
+    routeBSpikeReport: kotlinx.coroutines.flow.StateFlow<String?>? = null,
+    onRunRouteBParitySpike: () -> Unit = {},
 ) {
     WithPipelineDiagnostics { benchmarkStore, callEvidence, codeAccess ->
         val setup = rememberModelSetupState(store, ModelSetupActions(
@@ -279,6 +282,8 @@ fun JarvisApp(
                                             workflowSettings = workflowSettings,
                                             onWorkflowSetEnabled = onWorkflowSetEnabled,
                                             onConnectMcpServer = onConnectMcpServer,
+                                            routeBSpikeReport = routeBSpikeReport,
+                                            onRunRouteBParitySpike = onRunRouteBParitySpike,
                                             callEvidenceActions = callEvidence,
                                             onOpenCodeProjects = { showingCodePicker = true },
                                         )

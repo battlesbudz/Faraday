@@ -46,6 +46,8 @@ internal data class PreparedVoiceTurn(
     val directAudioTurn: Boolean,
     val replyAsrEnabled: Boolean,
     val replyProbeEnabled: Boolean,
+    /** Route B: primed-audio owner for this direct-audio turn, when armed. */
+    val primedAudio: com.battlesbudz.jarvis.v2.voice.PrimedAudioInput? = null,
     /** True when this turn answers on the live persistent call conversation,
      * so recognition stages may run on it without resetting it. */
     val callSessionReusable: Boolean = false
@@ -63,7 +65,9 @@ internal data class FinalizedVoiceTurn(
     val initialActionPlan: ActionTurnPlan,
     val sealedVoiceAudio: com.google.ai.edge.litertlm.Content.SealedAudioEmbeddings? = null,
     val nativeAudioTiming: com.battlesbudz.jarvis.v2.voice.NativeAudioCaptureTiming? = null,
-    val nativeSpeculation: com.battlesbudz.jarvis.v2.voice.NativeVoiceSpeculation? = null
+    val nativeSpeculation: com.battlesbudz.jarvis.v2.voice.NativeVoiceSpeculation? = null,
+    /** Route B: primed-audio owner carried to the reply stage when the seal produced sealed audio. */
+    val primedAudio: com.battlesbudz.jarvis.v2.voice.PrimedAudioInput? = null
 )
 
 /** Intentional quiet/echo/control exits are distinct from stage exceptions/cancellation. */

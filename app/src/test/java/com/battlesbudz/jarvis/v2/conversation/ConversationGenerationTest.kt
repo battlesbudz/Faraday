@@ -17,6 +17,7 @@ import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkProvenance
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkPurpose
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkSubmission
 import com.battlesbudz.jarvis.v2.memory.MemoryDeliveryFence
+import com.battlesbudz.jarvis.v2.voice.CallVisualContext
 import com.battlesbudz.jarvis.v2.voice.NativeAudioCaptureTiming
 import com.battlesbudz.jarvis.v2.voice.NativePauseCertificate
 import com.battlesbudz.jarvis.v2.voice.NativePauseProposal
@@ -131,11 +132,16 @@ class ConversationGenerationTest {
     private suspend fun generateWithBackend(backend: ConversationBackend, audio: ByteArray?,
                                               phoneActions: ConversationActions? = null,
                                               plan: ActionTurnPlan = ActionTurnPlan.NotAction,
+                                              callVisualContext: (Boolean) -> CallVisualContext.Decision =
+                                                  { CallVisualContext.INACTIVE },
+                                              summaryLog: MutableList<String>? = null,
+                                              directAudio: Boolean = true,
                                               onNeedsApproval: (suspend (ActionRequest) -> com.battlesbudz.jarvis.v2.actions.ExecutionResult)? = null,
                                               sessionProbe: (ConversationModelSession) -> Unit = {}): ConversationDraft {
-        val diagnostics = ConversationDiagnostics({}, {}, {}, {})
+        val diagnostics = ConversationDiagnostics({}, {}, { line -> summaryLog?.add(line) }, {})
         val memory = MemoryDeliveryFence()
-        val input = ConversationInvocation("Hello", emptyList(), voiceAudio = audio, directVoiceAudio = audio != null)
+        val input = ConversationInvocation("Hello", emptyList(), voiceAudio = audio,
+            directVoiceAudio = audio != null && directAudio)
         val callbacks = ConversationCallbacks({}, {})
         val reply = ConversationReply("generation", PipelineBenchmarkCapture("generation", "text", 0,
             PipelineBenchmarkProvenance("test", 1)), true, memory, { it() }, {}, {}, {}, {}, { _, _, _ -> })
@@ -158,6 +164,7 @@ class ConversationGenerationTest {
             { _, _ -> error("No action admission") }, { _, _, _, _ -> error("No action dispatch") },
             {}, "conversation", { _, _, _ -> })
         val generation = ConversationGeneration(session, references, builder, { error("No attachment") }, diagnostics,
+            callVisualContext = callVisualContext,
             onNeedsApproval = onNeedsApproval)
         return generation.generate(input, 10_000,
             RoutedConversation(emptyList(), TurnPlan(TurnKind.NORMAL_CHAT), plan, null),
@@ -514,6 +521,239 @@ class ConversationGenerationTest {
             assertEquals(1, rollbacks)
             assertTrue(candidate.closeAndDrain())
         }
+    }
+
+    /** Plain-text backend for the step-4 wiring tests: records prompts, never calls tools. */
+    private class PlainTextBackend : ConversationBackend {
+        val requests = mutableListOf<String>()
+        override val modelId = "fake"
+        override var onPromptSubmitted: (String, Int) -> Unit = { _, _ -> }
+        override var onInferenceProgress: (InferenceProgress) -> Unit = {}
+        override var onBenchmarkSubmission: (PipelineBenchmarkSubmission) -> Unit = {}
+        override var benchmarkPurpose = PipelineBenchmarkPurpose.UNKNOWN
+        override fun inputContextDescription() = "fake"
+        override var toolsEnabled = false
+        override suspend fun setToolsEnabled(enabled: Boolean): Boolean {
+            val changed = toolsEnabled != enabled
+            toolsEnabled = enabled
+            return changed
+        }
+        private fun result(prompt: String, emit: (String) -> Unit): GenerationResult {
+            requests.add(prompt)
+            return GenerationResult("A fresh answer.", 1, null).also { emit(it.text) }
+        }
+        override suspend fun generate(prompt: String, onToken: (String) -> Unit) = result(prompt, onToken)
+        override suspend fun generateAudio(prompt: String, audioBytes: ByteArray, onToken: (String) -> Unit) =
+            result(prompt, onToken)
+        override suspend fun generate(prompt: String, imageBytes: ByteArray, onToken: (String) -> Unit): GenerationResult =
+            error("Unexpected image input")
+        override suspend fun sendToolResults(results: List<Pair<ToolCall, String>>, onToken: (String) -> Unit): GenerationResult =
+            error("Unrequested tools must not execute")
+    }
+
+    @Test fun callVisualBlockReachesVoicePromptAndDiagnostics() = runBlocking {
+        val backend = PlainTextBackend()
+        val summaries = mutableListOf<String>()
+        var consultations = 0
+        generateWithBackend(backend, byteArrayOf(1, 2, 3),
+            callVisualContext = {
+                consultations++
+                CallVisualContext.Decision("VISUAL BLOCK TEXT",
+                    "Call visual context: injected=true chars=17 snapshotAgeMs=700")
+            },
+            summaryLog = summaries)
+        assertEquals(1, consultations)
+        assertEquals(1, backend.requests.size)
+        assertTrue(backend.requests.single().contains("VISUAL BLOCK TEXT"))
+        assertTrue(summaries.any { it == "Call visual context: injected=true chars=17 snapshotAgeMs=700" })
+    }
+
+    @Test fun callVisualProviderIsNotConsultedForTextTurns() = runBlocking {
+        val backend = PlainTextBackend()
+        val summaries = mutableListOf<String>()
+        var consultations = 0
+        generateWithBackend(backend, null,
+            callVisualContext = {
+                consultations++
+                CallVisualContext.Decision("VISUAL BLOCK TEXT",
+                    "Call visual context: injected=true chars=17 snapshotAgeMs=700")
+            },
+            summaryLog = summaries)
+        assertEquals(0, consultations)
+        assertFalse(backend.requests.single().contains("VISUAL BLOCK TEXT"))
+        assertTrue(summaries.none { it.contains("Call visual context") })
+    }
+
+    @Test fun inactiveCallVisualDecisionLeavesVoicePromptAndDiagnosticsUntouched() = runBlocking {
+        val backend = PlainTextBackend()
+        val summaries = mutableListOf<String>()
+        generateWithBackend(backend, byteArrayOf(1, 2, 3),
+            callVisualContext = { CallVisualContext.INACTIVE }, summaryLog = summaries)
+        assertFalse(backend.requests.single().contains("Current visual context"))
+        assertTrue(summaries.none { it.contains("Call visual context") })
+    }
+
+    /** Snapshot synthesis: records which route each generation took. */
+    private class SnapshotBackend : ConversationBackend {
+        val textPrompts = mutableListOf<String>()
+        val imageRequests = mutableListOf<Pair<String, ByteArray>>()
+        val audioRequests = mutableListOf<String>()
+        var failImageGenerate = false
+        var failImageGenerateAfterToken = false
+        override val modelId = "fake"
+        override var onPromptSubmitted: (String, Int) -> Unit = { _, _ -> }
+        override var onInferenceProgress: (InferenceProgress) -> Unit = {}
+        override var onBenchmarkSubmission: (PipelineBenchmarkSubmission) -> Unit = {}
+        override var benchmarkPurpose = PipelineBenchmarkPurpose.UNKNOWN
+        override fun inputContextDescription() = "fake"
+        override var toolsEnabled = false
+        override val imageInputCapable = true
+        override suspend fun setToolsEnabled(enabled: Boolean): Boolean {
+            val changed = toolsEnabled != enabled
+            toolsEnabled = enabled
+            return changed
+        }
+        private fun result(prompt: String, emit: (String) -> Unit): GenerationResult =
+            GenerationResult("A fresh answer.", 1, null).also { emit(it.text) }
+        override suspend fun generate(prompt: String, onToken: (String) -> Unit): GenerationResult {
+            textPrompts += prompt
+            return result(prompt, onToken)
+        }
+        override suspend fun generateAudio(prompt: String, audioBytes: ByteArray, onToken: (String) -> Unit): GenerationResult {
+            audioRequests += prompt
+            return result(prompt, onToken)
+        }
+        override suspend fun generate(prompt: String, imageBytes: ByteArray, onToken: (String) -> Unit): GenerationResult {
+            if (failImageGenerate) throw IllegalStateException("native image reject")
+            if (failImageGenerateAfterToken) {
+                onToken("Partial sight answer.")
+                throw IllegalStateException("inference died mid-stream")
+            }
+            imageRequests += prompt to imageBytes
+            return result(prompt, onToken)
+        }
+        override suspend fun sendToolResults(results: List<Pair<ToolCall, String>>, onToken: (String) -> Unit): GenerationResult =
+            error("Unrequested tools must not execute")
+    }
+
+    private fun snapshotDecision(image: ByteArray) = CallVisualContext.Decision(
+        "SNAPSHOT BLOCK TEXT",
+        "Call visual context: injected=true mode=snapshot chars=19",
+        snapshot = CallVisualContext.SnapshotAttachment(image, frameAgeMs = 300L, tracksIncluded = 2, tracksOmitted = 0),
+        snapshotLine = "Call snapshot: attached=true frameAgeMs=300 frameBytes=${image.size} tracks=2 windowMs=15000 omitted=0",
+    )
+
+    @Test fun snapshotDecisionAttachesItsImageOnANonDirectVoiceTurn() = runBlocking {
+        val backend = SnapshotBackend()
+        val summaries = mutableListOf<String>()
+        val image = byteArrayOf(9, 8, 7)
+        var consultedCapability: Boolean? = null
+        generateWithBackend(backend, byteArrayOf(1, 2, 3), directAudio = false,
+            callVisualContext = { capable ->
+                consultedCapability = capable
+                snapshotDecision(image)
+            },
+            summaryLog = summaries)
+        assertEquals(true, consultedCapability)
+        assertEquals(1, backend.imageRequests.size)
+        assertTrue(image.contentEquals(backend.imageRequests.single().second))
+        assertTrue(backend.imageRequests.single().first.contains("SNAPSHOT BLOCK TEXT"))
+        assertTrue(backend.textPrompts.isEmpty())
+        assertTrue(backend.audioRequests.isEmpty())
+        // The outcome fields are recorded after the submission attempt:
+        // submitted=true proves the model received the image on this turn,
+        // where build 1624's attached=true line only proved the decision.
+        assertTrue(summaries.any {
+            it == "Call snapshot: attached=true frameAgeMs=300 frameBytes=3 tracks=2 windowMs=15000 omitted=0 submitted=true"
+        })
+    }
+
+    @Test fun snapshotDecisionStaysUnattachedOnADirectAudioTurn() = runBlocking {
+        val backend = SnapshotBackend()
+        val summaries = mutableListOf<String>()
+        val image = byteArrayOf(9, 8, 7)
+        generateWithBackend(backend, byteArrayOf(1, 2, 3), directAudio = true,
+            callVisualContext = { snapshotDecision(image) },
+            summaryLog = summaries)
+        assertTrue(backend.imageRequests.isEmpty())
+        assertEquals(1, backend.audioRequests.size)
+        assertTrue(summaries.any { it == "Call snapshot: attached=false reason=direct_audio_turn submitted=false" })
+        assertTrue(summaries.none { it.startsWith("Call snapshot: attached=true") })
+    }
+
+    @Test fun directAudioTurnGetsTheSummaryBlockNotTheSnapshotBlock() = runBlocking {
+        val backend = SnapshotBackend()
+        val summaries = mutableListOf<String>()
+        val image = byteArrayOf(9, 8, 7)
+        generateWithBackend(backend, byteArrayOf(1, 2, 3), directAudio = true,
+            callVisualContext = { capable ->
+                if (capable) snapshotDecision(image) else CallVisualContext.Decision(
+                    "SUMMARY BLOCK TEXT",
+                    "Call visual context: injected=true mode=summary chars=18")
+            },
+            summaryLog = summaries)
+        // The direct-audio submission carries no image, so its prompt
+        // must not carry the snapshot block either: that block tells the
+        // model an image is attached and its boxes mark positions in it.
+        // The summary block describes the same scene with no such claim.
+        assertTrue(backend.imageRequests.isEmpty())
+        assertEquals(1, backend.audioRequests.size)
+        assertTrue(backend.audioRequests.single().contains("SUMMARY BLOCK TEXT"))
+        assertFalse(backend.audioRequests.single().contains("SNAPSHOT BLOCK TEXT"))
+        assertTrue(summaries.any { it == "Call snapshot: attached=false reason=direct_audio_turn submitted=false" })
+    }
+
+    @Test fun snapshotTurnWhoseImageSubmissionFailsEverywhereGetsTheDisclosureNotALabelsAnswer() = runBlocking {
+        val backend = SnapshotBackend().apply { failImageGenerate = true }
+        val summaries = mutableListOf<String>()
+        val image = byteArrayOf(9, 8, 7)
+        val draft = generateWithBackend(backend, byteArrayOf(1, 2, 3), directAudio = false,
+            callVisualContext = { snapshotDecision(image) },
+            summaryLog = summaries)
+        // No route delivered the image: the spoken answer is the honest
+        // disclosure, never a scene description generated from the block's
+        // detector labels, and the diagnostics line proves the failure.
+        assertEquals(CallVisualContext.SNAPSHOT_DISCLOSURE, draft.generated.text)
+        assertTrue(backend.imageRequests.isEmpty())
+        assertTrue(summaries.any {
+            it == "Call snapshot: attached=true frameAgeMs=300 frameBytes=3 tracks=2 windowMs=15000 omitted=0" +
+                " submitted=false submitError=IllegalStateException: native image reject"
+        })
+    }
+
+    @Test fun imageInferenceFailureAfterOutputPropagatesInsteadOfDisclosure() = runBlocking {
+        val backend = SnapshotBackend().apply { failImageGenerateAfterToken = true }
+        val summaries = mutableListOf<String>()
+        val image = byteArrayOf(9, 8, 7)
+        // The image was accepted and output already streamed when
+        // inference died: that is an inference failure, not an
+        // image-delivery failure, so the original error propagates to
+        // the normal failure handling. Substituting the "couldn't see"
+        // disclosure here would contradict output the user already
+        // saw or heard.
+        val thrown = try {
+            generateWithBackend(backend, byteArrayOf(1, 2, 3), directAudio = false,
+                callVisualContext = { snapshotDecision(image) },
+                summaryLog = summaries)
+            null
+        } catch (error: IllegalStateException) {
+            error
+        }
+        assertEquals("inference died mid-stream", thrown?.message)
+        assertTrue(summaries.none { it.contains("disclosure substituted") })
+    }
+
+    @Test fun unattachedSnapshotDecisionRecordsSubmittedFalse() = runBlocking {
+        val backend = SnapshotBackend()
+        val summaries = mutableListOf<String>()
+        val decision = CallVisualContext.Decision(null,
+            "Call visual context: injected=false reason=video_off",
+            snapshotLine = "Call snapshot: attached=false reason=video_off")
+        generateWithBackend(backend, byteArrayOf(1, 2, 3), directAudio = false,
+            callVisualContext = { decision },
+            summaryLog = summaries)
+        assertTrue(backend.imageRequests.isEmpty())
+        assertTrue(summaries.any { it == "Call snapshot: attached=false reason=video_off submitted=false" })
     }
 
     @Test fun legacyMarkupSandboxCallOnATextTurnParksForApproval() = runBlocking {

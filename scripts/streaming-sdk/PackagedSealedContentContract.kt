@@ -38,6 +38,31 @@ fun main(args: Array<String>) {
     wire.addProperty("blob", "changed")
     verify(sealed.toJson().toString() == before)
     verify(sealed.toString() == "[SealedAudioEmbeddings]")
+    // projectedRows returns the same values as an independent copy: the spike
+    // harness slices these rows for chunked Session submissions.
+    val projected = sealed.projectedRows()
+    verify(projected.size == 2)
+    verify(projected[0] == 0.5f)
+    verify(projected[1].toRawBits() == Int.MIN_VALUE)
+    projected.fill(Float.NaN)
+    val projectedAgain = sealed.projectedRows()
+    verify(projectedAgain[0] == 0.5f)
+    verify(projectedAgain[1].toRawBits() == Int.MIN_VALUE)
+    // Provisional snapshots (Route B Option A): the holder owns a copy of
+    // the snapshot range, hands out independent copies, and wipes on demand.
+    // Exercised with synthetic 1536-wide rows — the production row width.
+    val snapshotSource = FloatArray(2 * 1536) { index -> index * 0.25f }
+    val snapshot = ProvisionalNativeAudio(
+        NativeAudioIdentity("synthetic-package-contract", 1), 3, 5, snapshotSource)
+    verify(snapshot.firstRow == 3 && snapshot.totalRows == 5 && snapshot.rowCount == 2)
+    val snapshotCopy = snapshot.copyRows()
+    verify(snapshotCopy.size == 2 * 1536 && snapshotCopy[0] == 0f && snapshotCopy[1536] == 384f)
+    snapshotSource.fill(Float.NaN)
+    verify(snapshot.copyRows()[1536] == 384f)
+    snapshotCopy.fill(Float.NaN)
+    verify(snapshot.copyRows()[1536] == 384f)
+    snapshot.wipe()
+    verify(snapshot.copyRows().all { it == 0f })
     val receipt = JsonObject().apply {
         addProperty("passed", true)
         addProperty("checks", checks)

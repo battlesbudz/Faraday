@@ -6,6 +6,7 @@ import com.battlesbudz.jarvis.v2.voice.CallFinalInput
 import com.battlesbudz.jarvis.v2.voice.CallPromotionLease
 import com.battlesbudz.jarvis.v2.voice.IncrementalVoiceInput
 import com.battlesbudz.jarvis.v2.voice.PiperVoiceOutput
+import com.battlesbudz.jarvis.v2.voice.PrimedAudioInput
 import com.battlesbudz.jarvis.v2.voice.SpeechDelivery
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CoroutineScope
@@ -25,6 +26,8 @@ internal class VoiceTurnLifetime(
     val promotionLease = CallPromotionLease()
     var preparation: IncrementalVoiceInput? = null
     var capture: AudioTurnCapture? = null
+    /** Route B (Option B): this turn's primed-audio owner, when armed. */
+    var routeBPriming: PrimedAudioInput? = null
     var nativeSpeculation: com.battlesbudz.jarvis.v2.voice.NativeVoiceSpeculation? = null
     var nativeAudioCapture: com.battlesbudz.jarvis.v2.voice.GemmaStreamingAudioCapture? = null
     @Volatile var nativeAudioArtifact: com.battlesbudz.jarvis.v2.ai.audio.GemmaStreamingArtifactStore.Lease? = null

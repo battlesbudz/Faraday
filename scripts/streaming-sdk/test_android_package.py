@@ -110,7 +110,7 @@ class AndroidPackagingContracts(unittest.TestCase):
     def test_pre_timing_owner_abi_is_rejected(self):
         methods = {name: descriptor for name, descriptor in OWNER['owner_jni_methods'].items()
                    if name not in {'nativeTimingHandshake', 'nativeTimingSnapshot'}}
-        self.assertEqual(6, len(methods))
+        self.assertEqual(7, len(methods))
         self.assertEqual('()[J', OWNER['owner_jni_methods']['nativeTimingHandshake'])
         self.assertEqual('(J)[J', OWNER['owner_jni_methods']['nativeTimingSnapshot'])
         with self.assertRaises(ValueError):

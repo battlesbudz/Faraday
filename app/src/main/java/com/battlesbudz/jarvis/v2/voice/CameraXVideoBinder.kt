@@ -30,7 +30,9 @@ enum class VideoError { PROVIDER_FAILED, NO_BACK_CAMERA, BIND_FAILED }
 /**
  * Real [CallVisionController.VideoBinder]: binds CameraX ImageAnalysis,
  * converts YUV frames to small JPEGs behind the cadence gate, and dispatches
- * to the [VisionFrameHub].
+ * to the [VisionFrameHub]. Step 5: the platform also binds a CameraX Preview
+ * in the same lifecycle and publishes it via [CallCameraPreview], so the
+ * call screen can show the very feed the frames come from.
  *
  * Battery-conscious by construction: 640x480 analysis resolution,
  * STRATEGY_KEEP_ONLY_LATEST (a slow consumer never queues frames), and the
@@ -310,6 +312,14 @@ class CameraXVideoBinder(
             // Keep it outside the lock so teardown never waits on JPEG work.
             val jpeg = jpegConverter(image) ?: return
             if (jpeg.size > MAX_JPEG_BYTES) return // fail closed on absurd frames
+            // Step 5: detection boxes are reported in this frame's own
+            // pixel space, and the preview overlay needs the frame's
+            // geometry (size + display rotation) to map them onto the
+            // upright preview. Read it here, while the image is open, and
+            // publish it with the dispatch below.
+            val frameWidth = image.width
+            val frameHeight = image.height
+            val frameRotationDegrees = image.imageInfo.rotationDegrees
             val delivery = synchronized(lock) {
                 // Validate and cache under the same lock as unbind's epoch
                 // invalidation. Only snapshot observer work here: calling
@@ -319,6 +329,7 @@ class CameraXVideoBinder(
                 cadence.markCaptured(now)
                 hub.prepareDispatch(jpeg, now)
             }
+            if (delivery != null) hub.noteFrameGeometry(frameWidth, frameHeight, frameRotationDegrees)
             hub.deliver(delivery)
         } finally {
             image.close()
@@ -495,11 +506,23 @@ private class CameraXPlatform(
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                         .build()
                     analysis.setAnalyzer(analyzerExecutor) { image -> analyzer(image) }
+                    // Step 5: a Preview use case rides the SAME bind — same
+                    // back camera, same lifecycle, no second camera session —
+                    // so the call screen shows exactly the feed the analysis
+                    // frames come from. It is published for the UI only once
+                    // the bind actually succeeds, and unpublished inside the
+                    // unbinder after the unbind itself returns, so a failed
+                    // detach (which leaves the use cases bound) never clears
+                    // a preview that is still live.
+                    val preview = androidx.camera.core.Preview.Builder()
+                        .setTargetResolution(Size(640, 480))
+                        .build()
                     val bound = try {
                         provider.bindToLifecycle(
                             lifecycleOwner,
                             CameraSelector.DEFAULT_BACK_CAMERA,
                             analysis,
+                            preview,
                         )
                         true
                     } catch (_: Exception) {
@@ -508,9 +531,13 @@ private class CameraXPlatform(
                     if (!bound) {
                         CameraXVideoBinder.AttachResult.Unavailable(VideoError.BIND_FAILED)
                     } else {
+                        CallCameraPreview.publish(preview)
                         CameraXVideoBinder.AttachResult.Attached(
                             MainThreadCameraHandle(
-                                unbinder = CameraXUnbinder { provider.unbind(analysis) },
+                                unbinder = CameraXUnbinder {
+                                    provider.unbind(analysis, preview)
+                                    CallCameraPreview.clear(preview)
+                                },
                                 mainExecutor = ContextCompat.getMainExecutor(context),
                             )
                         )

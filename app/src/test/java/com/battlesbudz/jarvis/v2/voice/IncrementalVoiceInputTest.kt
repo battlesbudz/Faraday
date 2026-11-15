@@ -9,13 +9,24 @@ import org.junit.Test
 class IncrementalVoiceInputTest {
     private class Native(val failFirst: Boolean = false) : VoicePrefillSession {
         val input = StringBuilder()
+        val images = mutableListOf<ByteArray>()
+        /** Append/image/decode call order, for snapshot-order pinning. */
+        val order = mutableListOf<String>()
         var decodes = 0
         var closes = 0
+        var failImageWith: Throwable? = null
         override fun append(text: String) {
             if (failFirst) error("prefill failed")
+            order += "append"
             input.append(text)
         }
+        override fun appendImage(imageBytes: ByteArray) {
+            failImageWith?.let { throw it }
+            order += "image"
+            images += imageBytes
+        }
         override suspend fun decode(onToken: (String) -> Unit): GenerationResult {
+            order += "decode"
             decodes++; onToken("Answer.")
             return GenerationResult("Answer.", 0, null)
         }
@@ -32,6 +43,7 @@ class IncrementalVoiceInputTest {
             val track = IncrementalVoiceInput(this, "User: ", {
                 object : VoicePrefillSession {
                     override fun append(text: String) {}
+                    override fun appendImage(imageBytes: ByteArray) {}
                     override suspend fun decode(onToken: (String) -> Unit): GenerationResult {
                         if (emitFirst) onToken("Already spoken.")
                         error("native failure")
@@ -61,6 +73,7 @@ class IncrementalVoiceInputTest {
         val track = IncrementalVoiceInput(this, "User: ", {
             object : VoicePrefillSession {
                 override fun append(text: String) {}
+                override fun appendImage(imageBytes: ByteArray) {}
                 override suspend fun decode(onToken: (String) -> Unit): GenerationResult = throw CancellationException("stop")
                 override fun close() { closed = true }
             }
@@ -181,6 +194,7 @@ class IncrementalVoiceInputTest {
         val events = Channel<String>(Channel.UNLIMITED)
         val track = IncrementalVoiceInput(this, "User: ", {
             object : VoicePrefillSession {
+                override fun appendImage(imageBytes: ByteArray) {}
                 override fun append(text: String) {
                     entered.complete(Unit)
                     check(release.await(3, java.util.concurrent.TimeUnit.SECONDS))
@@ -274,6 +288,7 @@ class IncrementalVoiceInputTest {
                     }
                     native.append(text)
                 }
+                override fun appendImage(imageBytes: ByteArray) = native.appendImage(imageBytes)
                 override suspend fun decode(onToken: (String) -> Unit) = native.decode(onToken)
                 override fun close() = native.close()
             }
@@ -333,6 +348,84 @@ class IncrementalVoiceInputTest {
             } finally { track.close() }
         }
         assertEquals(receipt(1_000_000_000), receipt(9_000_000_000))
+    }
+
+    @Test fun answerWithImageAppendsItAfterTheFinalTextAndBeforeDecode() = runBlocking {
+        val native = Native()
+        val events = Channel<String>(Channel.UNLIMITED)
+        val receipts = mutableListOf<String>()
+        val track = IncrementalVoiceInput(this, "User: ", { native },
+            log = { events.trySend(it); receipts.add(it) })
+        track.submit("What do you")
+        events.awaitEvent("input_partial")
+        track.submit("What do you see?")
+        events.awaitEvent("input_prefilled")
+        val image = byteArrayOf(1, 2, 3, 4)
+        track.answer("User: What do you see?", image, {})
+        // Exactly one image, after every text append, before the decode.
+        assertEquals(1, native.images.size)
+        assertTrue(image.contentEquals(native.images.single()))
+        assertEquals("image", native.order[native.order.size - 2])
+        assertEquals("decode", native.order.last())
+        assertTrue(receipts.single { it.startsWith("input_finalized ") }
+            .contains("imageAttached=true imageBytes=4"))
+        track.close()
+    }
+
+    @Test fun imageAcceptanceIsRecordedWhenTheSessionTakesTheImage() = runBlocking {
+        val native = Native()
+        val track = IncrementalVoiceInput(this, "User: ", { native })
+        track.answer("User: What do you see?", byteArrayOf(1, 2)) {}
+        assertTrue(track.imageSubmissionAccepted)
+        assertNull(track.imageSubmissionFailure)
+        track.close()
+    }
+
+    @Test fun imageRejectionIsRecordedWithTheSubmissionFailure() = runBlocking {
+        val failure = com.battlesbudz.jarvis.v2.ai.SnapshotImageSubmissionException(
+            IllegalStateException("Image must be preprocessed"))
+        val native = Native().apply { failImageWith = failure }
+        val track = IncrementalVoiceInput(this, "User: ", { native })
+        try {
+            track.answer("User: What do you see?", byteArrayOf(1, 2)) {}
+            fail("expected the submission failure to propagate")
+        } catch (expected: com.battlesbudz.jarvis.v2.ai.SnapshotImageSubmissionException) {
+            assertSame(failure, expected)
+        }
+        assertFalse(track.imageSubmissionAccepted)
+        assertSame(failure, track.imageSubmissionFailure)
+        track.close()
+    }
+
+    @Test fun answerWithoutImageNeverAppendsOne() = runBlocking {
+        val native = Native()
+        val receipts = mutableListOf<String>()
+        val track = IncrementalVoiceInput(this, "User: ", { native }, log = { receipts.add(it) })
+        track.answer("User: Hello?") {}
+        assertTrue(native.images.isEmpty())
+        assertFalse(native.order.contains("image"))
+        assertTrue(receipts.single { it.startsWith("input_finalized ") }
+            .contains("imageAttached=false imageBytes=0"))
+        track.close()
+    }
+
+    @Test fun imageRejectionFallsBackBeforeAnyOutput() = runBlocking {
+        var retries = 0
+        val track = IncrementalVoiceInput(this, "User: ", {
+            object : VoicePrefillSession {
+                override fun append(text: String) {}
+                override fun appendImage(imageBytes: ByteArray) { error("no vision") }
+                override suspend fun decode(onToken: (String) -> Unit): GenerationResult =
+                    error("must not decode")
+                override fun close() {}
+            }
+        })
+        val result = track.answerWithTextFallback("User: What do you see?", {}, byteArrayOf(9)) {
+            retries++
+            GenerationResult("Recovered with image", 0, null)
+        }
+        assertEquals("Recovered with image", result.text)
+        assertEquals(1, retries)
     }
 
     @Test fun overflowedCompletionOffsetIsUnavailable() = runBlocking {

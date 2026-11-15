@@ -10,6 +10,7 @@ import android.content.pm.ServiceInfo
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
 import com.battlesbudz.jarvis.v2.MainActivity
+import com.battlesbudz.jarvis.v2.vision.VisionServerSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -21,12 +22,15 @@ import kotlinx.coroutines.launch
  * and runs the frame-capture pipeline while a call is active.
  *
  * Audio stays entirely in VoiceCallService — this service never touches the
- * microphone, TTS, or audio routing. Lifecycle: capture starts per call via
- * [startCapture] (the call's identity owns the capture) and ends when that
- * call ends, by its own Stop action, by [onTaskRemoved], or automatically
- * when the voice session ends (it observes VoiceCallService.stopRequested
- * as a fail-safe). Capture never runs for a merely-armed wake session: a
- * spoken farewell ends the call's capture while wake listening stays armed.
+ * microphone, TTS, or audio routing. Lifecycle: capture is owned by a call's
+ * identity via [startCapture] and ends when that call ends, by its own Stop
+ * action, by [onTaskRemoved], or automatically when the voice session ends
+ * (it observes VoiceCallService.stopRequested as a fail-safe). Since step 5
+ * the start is user-driven: a call begins with video OFF, and the runtime
+ * calls [startCaptureFromToggle] / [stopCapture] as the user flips the call
+ * screen's video toggle — a call beginning no longer starts the camera.
+ * Capture never runs for a merely-armed wake session: a spoken farewell
+ * ends the call's capture while wake listening stays armed.
  *
  * If the camera permission is denied, the service still runs (so Stop works)
  * but never binds the camera: the call degrades to audio-only.
@@ -34,7 +38,13 @@ import kotlinx.coroutines.launch
 class VideoCallService : LifecycleService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private lateinit var controller: CallVisionController
-    private var status = "Video idle — starts with your next call"
+    // Video-call step 2 (frames to the Phone Inference server): the holder
+    // is created with the service so the registry and the diagnostics
+    // persistence can reach it before the observer exists.
+    private val serverVisionHolder = LatestServerVisionResult()
+    private var serverVisionObserver: CallServerVisionObserver? = null
+    private var visionHub: VisionFrameHub? = null
+    private var status = videoStatusText(CallVisionController.State.IDLE)
     private val foregroundNotification = VideoForegroundNotification(
         cameraType = ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA,
         fallbackType = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
@@ -106,6 +116,31 @@ class VideoCallService : LifecycleService() {
         CallVisionRegistry.hub = hub
         CallVisionRegistry.controller = controller
 
+        // Video-call step 2: loop the frames this pipeline already captures
+        // to the Phone Inference server (CallServerVisionObserver). The
+        // observer is registered for the service's whole lifetime — frames
+        // only flow while a call's capture is live, and its gating mirrors
+        // the chat-photo path — and it is unregistered and closed in
+        // closeVideo(). Every holder change persists the proof counters so
+        // Copy diagnostics can read them after the service has stopped.
+        visionHub = hub
+        val serverVision = CallServerVisionObserver(
+            holder = serverVisionHolder,
+            settings = { VisionServerSettings.snapshot(applicationContext) },
+            frameGeometry = { hub.lastFrameGeometry },
+        )
+        serverVisionObserver = serverVision
+        serverVisionHolder.changeListener = {
+            runCatching {
+                getSharedPreferences(ServerVisionDiagnostics.PREFS_NAME, MODE_PRIVATE)
+                    .edit()
+                    .putString(ServerVisionDiagnostics.KEY_LATEST_TEXT, serverVisionHolder.diagnosticsText())
+                    .apply()
+            }
+        }
+        hub.register(serverVision)
+        CallVisionRegistry.serverVision = serverVisionHolder
+
         // Fail-safe: a dead voice call must never leave the camera running.
         scope.launch {
             VoiceCallService.stopRequested.collect { stop ->
@@ -175,6 +210,14 @@ class VideoCallService : LifecycleService() {
             if (derived != null) {
                 notifyChanged(derived)
             }
+            // The farewell path ends the capture through the registry
+            // controller (inside resolveFarewellRefresh), bypassing
+            // STOP_CAPTURE: clear step 2's result here too when it did.
+            if (derived != null && ::controller.isInitialized &&
+                controller.state != CallVisionController.State.ACTIVE
+            ) {
+                serverVisionObserver?.onCaptureEnded()
+            }
         }
     }
 
@@ -183,10 +226,17 @@ class VideoCallService : LifecycleService() {
             STOP -> stopVideo()
             START_CAPTURE -> {
                 val callId = intent.getStringExtra(EXTRA_CALL_ID)
+                // Step 5: the user's video toggle is re-read at delivery,
+                // before admission can advance the generation. A start that
+                // was queued while video was on but is delivered after the
+                // user toggled off (or any stale start for a call whose
+                // video is off) must never start the camera: since step 5,
+                // capture runs only while the toggle is on.
                 // This is the main-thread admission point. An off-main update
                 // rejection after admission queues cleanup behind this command;
                 // it never holds the publication lock during controller work.
-                if (notificationLifecycle.isOpen && !callId.isNullOrBlank() && captureStarts.admit(callId) {
+                if (VoiceSessionUi.videoEnabled.value && notificationLifecycle.isOpen &&
+                    !callId.isNullOrBlank() && captureStarts.admit(callId) {
                     // A newer call obsoletes any farewell refresh still
                     // queued for an older one: bump the generation first so
                     // a delayed refresh can never overwrite this call's
@@ -198,6 +248,12 @@ class VideoCallService : LifecycleService() {
                     // A later permission grant cannot silently promote specialUse.
                     val granted = foregroundNotification.canCapture(CameraPermission.isGranted(this))
                     controller.start(granted, callId)
+                    // A live capture starts step 2 from a clean slate: the
+                    // previous call's result and proof counters never bleed
+                    // into this call's diagnostics.
+                    if (controller.state == CallVisionController.State.ACTIVE) {
+                        serverVisionObserver?.onCaptureStarted()
+                    }
                     // The status is derived from the controller state, so a
                     // refused bind (cleanup pending) can never read "Video on".
                     notifyChanged(videoStatusText(controller.state))
@@ -212,6 +268,9 @@ class VideoCallService : LifecycleService() {
                     // derived from the controller state, so an unresolved
                     // cleanup stays visible instead of reading idle.
                     controller.stopForCall(callId)
+                    if (controller.state != CallVisionController.State.ACTIVE) {
+                        serverVisionObserver?.onCaptureEnded()
+                    }
                     notifyChanged(videoStatusText(controller.state))
                 }
             }
@@ -244,6 +303,20 @@ class VideoCallService : LifecycleService() {
     }
 
     private fun closeVideo() {
+        // Step-2 teardown first, in its own guard: unregistering and closing
+        // the server-vision observer must never be skipped because camera
+        // teardown failed, and its own failure must never break that
+        // teardown. Idempotent — stopVideo() and onDestroy() both land here.
+        try {
+            serverVisionObserver?.let { observer ->
+                visionHub?.unregister(observer)
+                observer.close()
+            }
+            serverVisionObserver = null
+            serverVisionHolder.clear()
+        } catch (_: Exception) {
+            // A wedged observer must not take the call's teardown with it.
+        }
         try {
             notificationLifecycle.close {
                 scope.cancel()
@@ -302,6 +375,42 @@ class VideoCallService : LifecycleService() {
         }
 
         /**
+         * Step 5: the user turned video ON from the call screen during
+         * [callId]. A previous toggle-off fenced this call's identity (its
+         * STOP_CAPTURE ended the fence so a queued start could never land
+         * after the stop), and a resumed call's identity may still carry the
+         * fence from its earlier farewell. The user's explicit tap is a new
+         * intent for a live call, so revive the identity first, then take
+         * the normal [startCapture] path — whose request still verifies the
+         * call is the current one before anything is queued.
+         */
+        fun startCaptureFromToggle(context: Context, callId: String, currentCallId: () -> String?) {
+            captureStarts.revive(callId)
+            startCapture(context, callId, currentCallId)
+        }
+
+        /**
+         * Step 5: the user turned video OFF during [callId]. The call itself
+         * continues audio-only; only its capture stops, through the same
+         * STOP_CAPTURE path that fences queued starts for the call. When no
+         * service is running there is no capture to stop — but a start may
+         * still be queued for delivery, so fence it here instead of
+         * creating the service just to stop it.
+         */
+        fun stopCapture(context: Context, callId: String) {
+            if (callId.isBlank()) return
+            if (instance == null) {
+                captureStarts.end(callId)
+                return
+            }
+            context.startService(
+                Intent(context, VideoCallService::class.java)
+                    .setAction(STOP_CAPTURE)
+                    .putExtra(EXTRA_CALL_ID, callId),
+            )
+        }
+
+        /**
          * A spoken farewell ends the call's capture outside this service's
          * start/stop command path. Route the refresh to the live service
          * instance only: it ends [endedCallId]'s capture through the registry
@@ -355,6 +464,19 @@ internal class VideoCaptureStartFence {
         if (requestedCallId == callId) requestedCallId = null
     }
 
+    /**
+     * Step 5: clear [callId]'s ended fence because the user explicitly
+     * turned video back on for the call that owns the identity (a
+     * toggle-off fenced it, or a resumed call kept its earlier farewell's
+     * fence). Only the marker is cleared: [request] still re-verifies the
+     * call is current, and [admit] still re-checks at delivery, so a
+     * revived identity whose call has since ended admits nothing.
+     */
+    @Synchronized
+    fun revive(callId: String) {
+        if (endedCallId == callId) endedCallId = null
+    }
+
     @Synchronized
     fun admit(callId: String, onAdmitted: () -> Unit): Boolean {
         if (requestedCallId != callId || endedCallId == callId || currentCallId?.invoke() != callId) {
@@ -378,9 +500,19 @@ object CallVisionRegistry {
     var controller: CallVisionController? = null
         internal set
 
+    /**
+     * The live call's latest Phone Inference server result (video-call
+     * step 2), published by VideoCallService alongside the hub. Step 4
+     * reads the current scene from here; null when no video service runs.
+     */
+    @Volatile
+    var serverVision: LatestServerVisionResult? = null
+        internal set
+
     internal fun clear() {
         hub = null
         controller = null
+        serverVision = null
     }
 }
 

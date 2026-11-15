@@ -1,5 +1,6 @@
 # Feature and acceptance map
 
+
 # Memory Unit 4 entity/temporal prototype — 14 November 2026
 
 `MemoryEntityTemporalGraph` is an opt-in-disabled, ephemeral projection built
@@ -14,6 +15,208 @@ answer; ordinary entity questions still use approved-only links. On-device
 persistence/rebuild, broad entity resolution, real conversational query
 interpretation and production integration remain unverified and out of scope.
 See [the study](../../STUDY.md).
+
+
+## Route B incremental audio prefill spike — 1 November 2026
+
+A diagnostics-only spike (Battles's Decision 1) answering one question with
+evidence: does feeding a sealed utterance's encoder rows into a Session in
+~3 s chunks through the new bridge audio-preprocess entry produce the same
+result as the sealed one-shot submission of the same rows? The reviewed
+bridge gains `Session.preprocessAudioEmbeddings` plus its Kotlin handle type
+(mirroring the image preprocess entry): each chunk payload is built natively
+exactly as the Conversation route builds its sealed projected-audio payload
+(factory-derived begin-of-audio marker, `CreateTensorBuffer` embeddings
+tensor validated by `InputAudio::ValidateAudioEmbeddings`, projected
+end-of-audio marker), and submission consumes the payload, so the harness
+preprocesses fresh per chunk. `Content.SealedAudioEmbeddings.projectedRows()`
+exposes an independent copy of the sealed rows; the production
+`NativeAudioOwner`/`CompletedNativeAudio` contracts are unchanged. The
+harness lives behind a button in the call screen's development diagnostics:
+it encodes the bundled synthetic fixture through the production
+capture/encoder once (one stateful pass — chunked prefill slices that pass's
+rows, never re-encodes), then runs both arms on throwaway greedy sessions
+(topK=1, temperature 0, seed 0) with the production session turn shape.
+
+Acceptance checks:
+- JVM logic: `RouteBPrefillSpikeTest` pins chunk planning (72-row,
+  step-aligned chunks; markers only on first/last; a single chunk carries
+  both), exact slice/reassembly equality, per-arm event order (question
+  prefill, audio payloads, generation boundary), per-arm failure capture,
+  and the report's PASS rule (exact 0.0 row tolerance — slicing is
+  bookkeeping — plus identical greedy answers). The SDK packaged contract
+  additionally pins `projectedRows()` value/copy semantics against the real
+  classes.jar.
+- Failure case: a native rejection of any chunk (or of the one-shot payload)
+  fails that arm and the parity verdict, with the native error in the
+  report; nothing falls back to a labels-only or text-only answer.
+- Existing behavior that must remain intact: the sealed Conversation route
+  and every production voice path are untouched — the spike is reachable
+  only from the diagnostics button, uses throwaway sessions, and holds the
+  model lease under the runtime's idle guards.
+- Real model/device (device-owed, NOT CI-proven): Battles runs the harness
+  on the Fold 6 with stock Gemma 4 E2B selected; the pasted report's PARITY
+  line is the verdict. CI proves payload construction, packaging
+  inventories and harness logic only — it does not prove native gate
+  acceptance with a real model or answer parity. Scope limits: pinned E2B
+  only (the sealed encoder is E2B-only), a synthetic-tone fixture (not a
+  human recording, no just-recorded-utterance mode), and running the spike
+  resets the current conversation like starting a voice call does.
+
+## Route B Option B: Session-path text-prefix priming — 2 November 2026
+
+Production follow-on to the spike above (Battles's "Both — B now, A next"):
+for an eligible native-audio turn, the turn's text prefix (voice
+instructions, seeded confirmed history/context) is prefilled on a Session
+during capture (`voice/PrimedAudioInput`, armed by
+`runtime/turn/VoiceTurnPreparation`), the sealed encoder rows are chunk-fed
+into that session at finalization through the spike-proven bridge entry
+(`LiteRtVoicePrefillSession.appendAudio`, 72-row chunks, markers on the
+edges only), and decoding happens on the session — hiding the text prefill
+under the user's speech. The audio prefill itself still happens after the
+seal; hiding that is Option A's provisional-rows bridge work, not this
+change.
+
+Eligibility is an explicit gate (`ai/RouteBPrimingPolicy`) because a raw
+Session cannot be given what the Conversation route gives the model: the
+parity unit is the app-level decomposition (system slot, user text, tool
+declarations, audio payload), and the gate admits only decompositions that
+are Session-equal. Measured against production, NO current catalog shape
+qualifies: generation enables tools for every direct-audio turn on a
+tool-capable model (and every catalog audio model is tool-capable), and
+the fixed-voice-preface decomposition parks the instructions in the
+native system slot. Those shapes stay on the sealed Conversation route,
+so this change is behavior-preserving on the current catalog: preparation
+records `route_b_priming_armed=false:tools_enabled_for_turn` for ordinary
+direct-audio turns. The machinery arms unchanged the day a tools-disabled,
+preface-free audio configuration exists; `RouteBPromptParityTest` pins the
+boundary against the real prompt builder, preface stripper and tool
+catalog, and its catalog test fails first if the catalog changes.
+
+Acceptance checks:
+- JVM logic: `RouteBPrimingPolicyTest` (every exclusion reason, the one
+  eligible shape, reason precedence); `RouteBPromptParityTest` (above);
+  `PrimedAudioInputTest` (prefix prefilled during capture; remainder +
+  chunk feed + decode at finalization; prefix drift, priming failure and
+  audio rejection all fall back to the sealed route with the session
+  already closed; a failure after visible output never falls back);
+  `LiteRtVoicePrefillSessionTest` / `LiteRtNativeVoiceSessionTest`
+  (chunk order/sizes/markers, typed submission failures, one audio
+  payload per turn, image/audio mutual exclusion, poisoned-session
+  semantics); `ConversationSealedAudioInputTest` (a primed answer skips
+  the backend and does not mark the native conversation as containing
+  the turn; fallback and retry stay sealed; retry never reuses a spent
+  prefill).
+- Failure behavior: any priming failure before user-visible output
+  degrades silently to the sealed Conversation route — never to a failed
+  turn. The primed session is always closed before the sealed route runs
+  (the checked native lifecycle admits one child at a time), and on every
+  other exit — promoted speculation, a rejected turn, a generation
+  failure — the owner is closed by the generation, runtime, recognition
+  or finalizer owner respectively.
+- Real model/device (device-owed, NOT CI-proven): on this build's
+  successor, an ordinary voice-call turn's Copy Diagnostics shows
+  `route_b_priming_armed=false:tools_enabled_for_turn` and the turn
+  answers exactly as before — that IS the device check for this change,
+  since no catalog shape is eligible. A live primed turn (diagnostics
+  line `Route B priming: outcome=used`, gap to first audio shorter by
+  the text prefill) requires the future tools-disabled configuration
+  described above.
+
+## Route B Option A: provisional encoder rows during capture — 4 November 2026
+
+Second half of Battles's "Both — B now, A next" (2026-11-02), sent
+2026-11-04. The reviewed bridge gains a provisional-rows surface: while
+an utterance is being captured, the native audio owner can copy out the
+rows of encoder steps already completed (`Owner::ProvisionalRows`, JNI
+`nativeProvisionalRows`, `NativeAudioOwner.provisionalRowsOnWorker`).
+Finality is a property of the encoder's construction, not an assumption:
+a step's rows are computed once, from its own 48 Mel frames plus causal
+backend state committed by earlier steps, and appended to the owner's
+row vector exactly once; the sealed payload is that same vector plus the
+one final partial step Seal alone runs. While the owner is open the
+vector holds only completed non-final steps, so every provisional row is
+final and identical to the sealed row at the same index; partial groups
+are never exposed. The sealed path is byte-for-byte untouched and stays
+the certified fallback. Bridge inventory: patch set unchanged at 52
+files (all changes land in files the patch already creates); owner JNI
+methods 8 → 9, owner JNI exports 8 → 9, owner classes 24 → 26
+(`NativeAudioRowsWire`, `ProvisionalNativeAudio`); SDK-side inventories
+(84 classes, 34 JNI methods, 35 exports) unchanged; packaged contract
+checks 18 → 23.
+
+Wiring: `RetainedPcmEncoderWorker` surfaces snapshots between appends
+for encoders that support them (the production adapter over
+`NativeAudioOwner`); `GemmaStreamingAudioCapture.provisionalRowSink`
+forwards them only when a consumer is registered. On a gate-admitted
+turn, `PrimedAudioInput` feeds them into the primed Session during
+capture in the spike-proven 72-row chunk shape (`appendAudioChunk`,
+markers enforced: begin only on the first chunk, nothing after the end
+marker), always holding back the last chunk-sized block so the
+finalization tail can carry the projected end marker. At the seal,
+every fed row is verified against the sealed rows of the same pass —
+exact equality, the only honest tolerance for one encode pass. Any
+mismatch, missing row, feed failure, broken snapshot sequence, or
+bridge error discards the primed session and the sealed route answers,
+silently, as Option B's fallback behaves.
+
+One ordering boundary is load-bearing: the sealed route submits the
+turn's full text before any audio (`Contents.of(Text, audio)`), and the
+final prompt is the primed prefix plus a remainder that only exists at
+finalization (the audio-request text and any request-dependent suffix).
+An append-only Session cannot move already-fed rows behind that
+remainder, so a session holding provisional rows may answer only when
+the final prompt is exactly the primed prefix; an extended prompt
+discards it with reason `prompt_extended_after_audio` and the sealed
+route answers. Turns the parity gate rejects behave identically to
+build 1701. Battles ruled 2026-11-04 that no tool-free voice mode will
+be created, so no production turn shape is admitted today — Option A is
+live exactly where Option B is live, no wider. The only remaining route
+to a live Route B is growing the bridge so Sessions can carry tool
+declarations and a system instruction; that is a separate project,
+not approved and not part of this change.
+
+Acceptance checks:
+- Native logic: `lifecycle_tests` group `ProvisionalFinality` (9 groups)
+  pins the finality rule against an injected backend — snapshots before
+  any step, per-step snapshots exactly equal to the sealed prefix step
+  by step, partial groups never exposed, delta chaining, offset/identity
+  fencing, kBusy during an in-flight step, kNotOpen after seal,
+  kCancelled after cancel.
+- JVM logic: `RetainedPcmEncoderWorkerTest` (snapshots stream per
+  packet with a first-row chain, match the sealed rows step for step,
+  restart with a fresh candidate, absent surface delivers nothing);
+  `PrimedAudioInputTest` (provisional feed verifies at the seal and
+  decodes on the session with the spike chunk/marker shape; a corrupted
+  provisional row, a feed failure, a sequence break after feeding, and
+  an extended prompt each discard the session with their recorded
+  reason; a sequence break or a sub-chunk offer before any feed keeps
+  the Option B path intact); `LiteRtVoicePrefillSessionTest` (chunked
+  feeding assembles the one-shot payload exactly; marker discipline;
+  no chunk after the end marker; one-shot/chunk mixing rejected);
+  `RouteBPrefillSpikeTest` (the spike's per-snapshot verifier: exact
+  chain passes, divergence/gap/over-outstanding/absent streams fail).
+  `RouteBPromptParityTest`, `RouteBPrimingPolicyTest` and
+  `ConversationSealedAudioInputTest` pass unmodified in intent — the
+  gate and its admitted shapes are unchanged.
+- Failure behavior: any provisional failure before user-visible output
+  degrades silently to the sealed Conversation route; gate-rejected
+  turns see no provisional surface at all.
+- Real model/device (device-owed, NOT CI-proven): no admitted
+  production turn exists (see above), so a live provisionally fed turn
+  cannot be produced on device today. The strongest runnable proof is
+  the call screen's Route B spike: it encodes the fixture through the
+  production capture/encoder with the provisional sink registered, and
+  its report gains a PROVISIONAL section — PASS requires snapshots
+  delivered during the encode, each exactly equal to the sealed rows at
+  its indices, with at most the final partial step's rows outstanding.
+  An ordinary voice-call turn's Copy Diagnostics must still show
+  `route_b_priming_armed=false:tools_enabled_for_turn`, unchanged from
+  build 1701. On a future admitted shape, the diagnostics surface is
+  the `Voice route B` lines (`route_b_provisional_fed`,
+  `route_b_seal_verification ... maxAbsDiff=0.0 equal=true`) and the
+  `Route B priming: outcome=used provisionalOffered=… provisionalFed=…
+  sealMaxAbsDiff=0.0` line.
 
 ## Deadline-first endpointing — 5 November 2026
 
@@ -5005,6 +5208,132 @@ They do not establish actual Android input delivery, Compose rendering,
 accessibility overlay behavior, R8 compatibility or a verified APK. Build 1256
 remains failed evidence; a fresh full release gate for the exact repaired
 revision is required.
+
+## Video-call snapshot synthesis (October 30, 2026)
+
+Owner-approved design (2026-10-30): on a video-call turn, when the user
+finishes asking, attach ONE retained camera frame to Gemma together with
+the full object track list from the last 15 seconds, so the model grounds
+its answer in the scene instead of step 4's label summary alone (build
+1612's paste: 12 minted tracks reached the prompt as three toilets).
+
+Acceptance checks and their JVM coverage:
+
+- The newest dispatched frame (JPEG bytes, capture timestamp, pixel
+  geometry) is retained by `LatestServerVisionResult`, replaced wholesale
+  per frame, recorded by `CallServerVisionObserver` before the
+  vision-server gating (the frame serves the local model, not the
+  server), and dropped by the same `clear()`/`reset()` lifecycle as the
+  live detect entry — toggle-off and call end can never leave a stale
+  frame readable as current (`LatestServerVisionResultTest`,
+  `CallServerVisionObserverTest`).
+- A snapshot turn (video toggle on, live detect result fresh, retained
+  frame fresh, engine image-capable) replaces the summary block with
+  every track whose last-seen age is at most 15,000 ms — present or not,
+  one-frame tracks included — each rendered with its `#id`, label, latest
+  box in frame pixels and last-seen age, newest first, under a 2,400-char
+  budget that drops the oldest tracks first and counts the omission. The
+  framing states the boxes are pixels in the attached snapshot's own
+  frame, and keeps the quoted-data/not-instructions discipline
+  (`CallVisualContextTest`).
+- The image attaches exactly once, at turn finalization: the incremental
+  session appends it after the final question text and before decode
+  (`IncrementalVoiceInput` → `VoicePrefillSession.appendImage` → the
+  pinned SDK session's `InputData.Image` prefill); retries and the
+  incremental-failure fallback regenerate with the same image on the
+  conversation route, never a silent text-only downgrade
+  (`IncrementalVoiceInputTest`, `LiteRtVoicePrefillSessionTest`,
+  `TemplateVoiceSessionTest`, `ConversationGenerationTest`).
+- Honest fallbacks: video off, no frame, stale frame, a non-vision
+  engine, or a direct-audio turn each proceed with step 4's summary block
+  (or none) and a diagnostics line naming the reason; the per-turn
+  `Call snapshot: attached=…` line reports frame age, frame bytes, track
+  count, window and omissions (`CallVisualContextTest`,
+  `ConversationGenerationTest`).
+- The engine for a turn prepared with the video toggle on is created
+  vision-enabled through the existing reuse/rebuild check in
+  `VoiceTurnPreparation`, keyed like `audioEnabled`; repetition
+  suppression and the refusal backstop see image turns through the same
+  `ConversationInput` as text turns (call turns keep `imageUri == null`,
+  so the repetition guard still applies).
+- Preview telemetry: the overlay's result age is computed from a fresh
+  wall-clock read and clamped at zero (build 1612 printed
+  `lastDrawResultAgeMs=-682` from the 1-second tick clock)
+  (`PreviewOverlayTelemetryTest`).
+
+JVM tests pin behavior only; that the pinned LiteRT-LM session accepts
+the image on device, and that Gemma's answer grounds in the attached
+frame, remain Fold 6 phone proof (a "what do you see?" against a scene
+whose detector labels alone mislead, e.g. the car infotainment screen
+detected as a cell phone).
+
+## Video-call snapshot delivery repair (October 31, 2026)
+
+The October 30 section's phone proof FAILED on build 1624 (call
+5fdff010): the image never reached the model on either turn. The native
+Session gate (`PreprocessContents`) admits only preprocessed tensor
+images; the bridge submitted raw bytes, the append was rejected with
+"Image must be preprocessed before being used in SessionAdvanced", and
+the shipped text-only fallback answered from the detector labels. Two
+further defects compounded it: turn 1's engine was built
+vision-incapable because capability was sampled from the video toggle at
+preparation (every call starts with the toggle off), and the
+`Call snapshot: attached=true` line recorded the app-layer decision, not
+the native delivery. The owner chose the bridge-extension route
+(Option B) over rerouting snapshot turns through Conversation.
+
+Acceptance checks and their coverage:
+
+- Reviewed bridge extension (pinned 0.16.0 patch, 51 files): a native
+  preprocess entry point (`nativeCreatePreprocessedImage` /
+  `nativeDeletePreprocessedImage`, Kotlin `Session.preprocessImage`,
+  `PreprocessedImage`, `InputData.Preprocessed`) derives the
+  data-processor config from the session's own `LlmModelType` via the
+  same factory route ConversationImpl uses
+  (`CreateDataProcessorConfigFromLlmModelType`), builds the Gemma 4
+  `ImagePreprocessParameter` from that config alone, runs the same
+  `ImagePreprocessor::Create()` the Gemma4 processor constructs, and
+  stores the emitted BOI-text / preprocessed-image / InputImageEnd
+  sequence as a caller-owned payload; submission consumes it (the
+  native input sequence is move-only, so each submission preprocesses
+  fresh bytes and re-submitting a consumed handle fails loudly). Other
+  model types fail closed rather than approximating their
+  processors. Producer inventories re-derived, not hand-written:
+  17 Kotlin sources, 106 production classes (+2), 32 SDK JNI methods
+  (+2), 33 SDK JNI exports (+2); producer and quality helper suites pass.
+- Voice wiring: `LiteRtNativeVoiceSession.runPrefillImage` preprocesses
+  before submitting, in that order, and throws
+  `SnapshotImageSubmissionException` on any failure;
+  `IncrementalVoiceInput` records acceptance/failure per turn
+  (`LiteRtNativeVoiceSessionTest`, `IncrementalVoiceInputTest`).
+- First-turn capability: call turns key the engine's vision capability
+  to the selected model (`snapshotVisionCapability` in
+  `VoiceTurnPreparation`), never to the preparation-time toggle sample;
+  the attach decision still reads the toggle live at finalization, so
+  turning video on mid-call attaches on that same turn and the engine is
+  never rebuilt mid-question. Comparison trials keep the toggle sample
+  (`VoiceTurnPreparationTest`).
+- Honest outcomes: the `Call snapshot:` line is recorded after the
+  submission attempt and gains `submitted=true/false` (plus
+  `submitError=<short reason>` when false); `submitted=true` only when
+  an image-bearing route accepted the image for the answer. When no
+  route delivers the image, the spoken answer is
+  `CallVisualContext.SNAPSHOT_DISCLOSURE` — never a scene description
+  generated from the labels. Non-image turns' `final_text_once`
+  fallback, the repetition guard and the refusal backstop are unchanged
+  (`ConversationGenerationTest`, `ConversationInput` bookkeeping).
+
+Device proof still owed (Fold 6): install the branch build, start a
+call, turn video ON, and ask the FIRST question ("What do you see?") in
+the fan / car-screen scene. Success requires her answer to describe the
+actual fan or dashboard screen from the image, and the diagnostics paste
+to show the snapshot line ending `submitted=true` — attached=true alone
+no longer counts as delivery evidence.
+
+Known future cost, named not solved: this branch's bridge is LiteRT-LM
+0.16.0 while `feature/memory-rag` carries 0.18.0. The preprocess JNI
+surface added here must ride the eventual merge of the two bridge lines
+and be re-derived against the 0.18.0 inventories there.
 
 ## Voice-call session persistence and prompt diet — 9 November 2026
 

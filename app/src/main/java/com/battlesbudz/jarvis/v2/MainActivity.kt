@@ -184,8 +184,33 @@ class MainActivity : ComponentActivity() {
                 onDiscardModelDownload = modelSetup::discardDownload,
                 onImportModel = modelSetup::importModel,
                 onCopyDiagnostics = { _ -> copyDiagnostics() },
+                // Route B spike: incremental-prefill parity harness.
+                routeBSpikeReport = runtime.routeBSpikeReport,
+                onRunRouteBParitySpike = runtime::runRouteBPrefillParitySpike,
                 onSaveDiagnostics = { onResult -> saveDiagnostics(onResult) },
             )
+        }
+    }
+
+    /**
+     * Step 5: the camera permission prompt launched from the call screen's
+     * video toggle ([com.battlesbudz.jarvis.v2.voice.CameraPermission.request])
+     * lands here. A grant completes the pending enable — the runtime's
+     * toggle collector starts the current call's capture; a denial leaves
+     * the toggle off and the call audio-only, exactly like the previous
+     * degrade. The pending flag is consumed either way.
+     */
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != com.battlesbudz.jarvis.v2.voice.CameraPermission.REQUEST_CODE) return
+        val pending = com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.videoEnablePending
+        com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.videoEnablePending = false
+        if (pending && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.videoEnabled.value = true
         }
     }
 
@@ -239,6 +264,12 @@ class MainActivity : ComponentActivity() {
         // never whichever call happened most recently in another conversation.
         // A conversation with no recorded call gets the plain no-call line.
         // Comparison archives and full chat histories do not belong in a call failure report.
+// Video-call step 2 persists its proof counters separately (the video
+        // service owns them and this recorder cannot be shared safely), so
+        // they are appended when a video service has ever written them.
+        val serverVision = getSharedPreferences(
+            com.battlesbudz.jarvis.v2.voice.ServerVisionDiagnostics.PREFS_NAME, MODE_PRIVATE)
+            .getString(com.battlesbudz.jarvis.v2.voice.ServerVisionDiagnostics.KEY_LATEST_TEXT, null)
         // The microphone handoff block describes the live call only, so it
         // rides along only when the exported call is the live one.
         // The sandbox block (Phase 1 scope §12) rides along: install state,
@@ -250,7 +281,7 @@ class MainActivity : ComponentActivity() {
         val handoff = if (recorder.isLiveCallFor(conversationId)) {
             "\n\n${com.battlesbudz.jarvis.v2.voice.MicrophoneHandoff.diagnostics()}"
         } else ""
-        val diagnostics = "Jarvis OS V2 — Voice Call diagnostics for conversation $conversationId\n\n${recorder.exportForConversation(conversationId)}$handoff\n\n${com.battlesbudz.jarvis.v2.sandbox.SandboxDiagnostics.snapshot(this)}\n\n${com.battlesbudz.jarvis.v2.code.CodeDiagnostics.snapshot(this)}"
+        val diagnostics = "Jarvis OS V2 — Voice Call diagnostics for conversation $conversationId\n\n${recorder.exportForConversation(conversationId)}$handoff\n\n${com.battlesbudz.jarvis.v2.sandbox.SandboxDiagnostics.snapshot(this)}\n\n${com.battlesbudz.jarvis.v2.code.CodeDiagnostics.snapshot(this)}" + (serverVision?.let { "\n\n$it" } ?: "")
         val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("Jarvis diagnostics", diagnostics))
     }

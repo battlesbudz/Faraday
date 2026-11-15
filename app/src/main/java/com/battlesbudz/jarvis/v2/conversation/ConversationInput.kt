@@ -8,6 +8,15 @@ import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkPurpose
 import com.battlesbudz.jarvis.v2.voice.IncrementalVoiceInput
 import java.io.InputStream
 
+/**
+ * A snapshot turn's image could not be delivered on any native route. The
+ * generation owner substitutes the honest disclosure answer: a scene
+ * description generated from the detector labels alone is never spoken for
+ * an image the model did not receive.
+ */
+internal class SnapshotImageUndeliverableException(cause: Throwable) :
+    Exception("Snapshot image undeliverable: ${cause.message}", cause)
+
 /** Typed inference input selection, including the one permitted incremental-to-text fallback. */
 internal class ConversationInput(
     private val voiceAudio: ByteArray?,
@@ -16,11 +25,15 @@ internal class ConversationInput(
     val imageBytes: ByteArray?,
     val attachedAudio: ByteArray?,
     private val sealedVoiceAudio: com.google.ai.edge.litertlm.Content.SealedAudioEmbeddings? = null,
-    private val nativeSpeculation: com.battlesbudz.jarvis.v2.voice.NativeVoiceSpeculation? = null
+    private val nativeSpeculation: com.battlesbudz.jarvis.v2.voice.NativeVoiceSpeculation? = null,
+    private val primedAudio: com.battlesbudz.jarvis.v2.voice.PrimedAudioInput? = null
 ) {
     init {
         require(sealedVoiceAudio == null || directAudio && voiceAudio != null && textInput == null) {
             "Sealed native audio requires one complete direct-audio request"
+        }
+        require(primedAudio == null || sealedVoiceAudio != null) {
+            "Primed audio requires the turn's sealed native audio"
         }
     }
     /** True when this turn carries audio the model is expected to hear:
@@ -28,8 +41,27 @@ internal class ConversationInput(
     val carriesAudioInput: Boolean get() = directAudio || attachedAudio != null
     var incrementalFallbackUsed = false
         private set
+    /**
+     * Snapshot turns only: true when an image-bearing generation route
+     * accepted this turn's image for the answer — the incremental session's
+     * preprocessed submission, or the conversation-route regeneration. A
+     * submission no completed generation used does not count: diagnostics
+     * must prove the model actually received the image, not merely that an
+     * append was attempted.
+     */
+    var snapshotImageSubmitted: Boolean = false
+        private set
+    /** Snapshot turns only: short reason the final image submission failed, when none succeeded. */
+    var snapshotImageSubmitError: String? = null
+        private set
     private var speculativeResultUsed = false
-    val nativeConversationContainsTurn: Boolean get() = !speculativeResultUsed && (textInput == null || incrementalFallbackUsed)
+    /** Route B: true when the primed Session produced this turn's answer. */
+    var primedUsed: Boolean = false
+        private set
+    /** Route B outcome for diagnostics: "used", or "fallback:<reason>" when the sealed route answered. */
+    var routeBPrimingOutcome: String? = null
+        private set
+    val nativeConversationContainsTurn: Boolean get() = !speculativeResultUsed && !primedUsed && (textInput == null || incrementalFallbackUsed)
 
     /**
      * Attempts the speculative promotion on its own, without any ordinary
@@ -68,25 +100,92 @@ internal class ConversationInput(
      * exists. The direct-audio branch uses the full ordinary audio input,
      * never a spent prefill.
      */
+    /** Releases a primed session this generation will not use (e.g. a promoted speculative answer). */
+    suspend fun closePrimedAudio() { primedAudio?.close() }
+
     suspend fun generateFallback(engine: ConversationBackend, prompt: String, onToken: (String) -> Unit,
                          onIncrementalFallback: (Throwable) -> Unit): GenerationResult = when {
+        directAudio && primedAudio != null && sealedVoiceAudio != null -> {
+            // Route B: the primed Session answers when it provably holds
+            // this exact turn; its own fallback is the ordinary sealed
+            // submission below, so a priming failure degrades silently to
+            // the sealed route instead of failing the turn. Retry never
+            // re-enters here — a spent prefill is not authoritative input.
+            val result = primedAudio.answerWithSealedFallback(prompt, sealedVoiceAudio, onToken) {
+                engine.generateSealedAudio(prompt, sealedVoiceAudio, onToken)
+            }
+            primedUsed = primedAudio.usedPriming
+            routeBPrimingOutcome = if (primedUsed) "used"
+                else "fallback:${primedAudio.fallbackReason ?: "unknown"}"
+            // Option A evidence rides the same diagnostics line: rows fed
+            // provisionally during capture and the seal-verification result.
+            if (primedAudio.provisionalRowsOffered > 0 || primedAudio.provisionalRowsFed > 0) {
+                routeBPrimingOutcome += " provisionalOffered=${primedAudio.provisionalRowsOffered}" +
+                    " provisionalFed=${primedAudio.provisionalRowsFed}" +
+                    " sealMaxAbsDiff=${primedAudio.provisionalSealMaxAbsDiff ?: "not_verified"}"
+            }
+            result
+        }
         directAudio -> {
             if (sealedVoiceAudio != null) engine.generateSealedAudio(prompt, sealedVoiceAudio, onToken)
             else engine.generateAudio(prompt, requireNotNull(voiceAudio), onToken)
         }
         textInput != null -> {
             engine.onPromptSubmitted(prompt, 0)
-            textInput.answerWithTextFallback(prompt, onToken) { error ->
+            val result = textInput.answerWithTextFallback(prompt, onToken, imageBytes) { error ->
                 onIncrementalFallback(error)
                 incrementalFallbackUsed = true
                 engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
-                engine.generate(prompt, onToken)
+                // Snapshot synthesis: when this turn carries an image (a
+                // chat photo, or a call turn's retained snapshot), the
+                // fallback regenerates WITH it on the conversation route —
+                // never a silent text-only downgrade of an image turn. If
+                // that submission also fails, the image turn is
+                // undeliverable and the generation owner substitutes the
+                // honest disclosure instead of a labels-only answer.
+                if (imageBytes != null) generateWithImage(engine, prompt, imageBytes, onToken)
+                else engine.generate(prompt, onToken)
             }
+            if (imageBytes != null && textInput.imageSubmissionAccepted) snapshotImageSubmitted = true
+            result
         }
         // Retained voice audio accompanies ASR text but must not override that mode.
-        voiceAudio != null -> engine.generate(prompt, onToken)
+        voiceAudio != null -> if (imageBytes != null) generateWithImage(engine, prompt, imageBytes, onToken)
+            else engine.generate(prompt, onToken)
         else -> retry(engine, prompt, onToken)
     }
+
+    /**
+     * One image-bearing generation attempt with submission bookkeeping: a
+     * success proves the model received the image on this route. A failure
+     * before any output is a delivery failure — the image reached no
+     * route — and is recorded and rethrown as
+     * [SnapshotImageUndeliverableException] so the generation owner can
+     * keep the turn honest. A failure after output has streamed is an
+     * inference failure instead: the model demonstrably received the
+     * image and began answering, so the original error propagates to the
+     * normal failure handling rather than dressing itself as an
+     * image-delivery failure (which would substitute the "couldn't see"
+     * disclosure over output the user already saw or heard).
+     */
+    private suspend fun generateWithImage(engine: ConversationBackend, prompt: String,
+                                          image: ByteArray, onToken: (String) -> Unit): GenerationResult {
+        var outputStarted = false
+        try {
+            return engine.generate(prompt, image) { token ->
+                if (token.isNotBlank()) outputStarted = true
+                onToken(token)
+            }.also { snapshotImageSubmitted = true }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (error: Throwable) {
+            if (outputStarted) throw error
+            snapshotImageSubmitError = shortSubmitError(error)
+            throw SnapshotImageUndeliverableException(error)
+        }
+    }
+
+    private fun shortSubmitError(error: Throwable): String =
+        "${error.javaClass.simpleName}: ${error.message?.replace('\n', ' ')?.take(80) ?: "no message"}"
 
     /** Retry keeps the authoritative direct-audio/image/file attachment, never a spent prefill. */
     suspend fun retry(engine: ConversationBackend, prompt: String, onToken: (String) -> Unit): GenerationResult {

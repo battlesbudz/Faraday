@@ -7,6 +7,46 @@ import kotlinx.coroutines.channels.Channel
 /** One append-only native input track. No answer tokens or tool calls during listening. */
 interface VoicePrefillSession : AutoCloseable {
     fun append(text: String)
+
+    /**
+     * Snapshot synthesis: append ONE image to the pending turn, after the
+     * question's text and before [decode] — the image lands inside the
+     * user turn, exactly once per turn, only at finalization. Sessions
+     * whose native side cannot accept an image throw; the caller's text
+     * fallback then regenerates with the image on the conversation route
+     * instead of silently dropping it.
+     */
+    fun appendImage(imageBytes: ByteArray)
+
+    /**
+     * Route B (Option B): append the turn's sealed native-audio embeddings,
+     * after the final text and before [decode] — the audio lands inside the
+     * user turn, exactly once per turn, only at finalization. [rows] is the
+     * sealed content's full row matrix (tokenCount x embeddingWidth). Only
+     * sessions backed by the reviewed bridge's preprocessed-audio entry can
+     * accept it; any other session throws, and the caller's fallback then
+     * regenerates on the sealed Conversation route instead of dropping the
+     * audio or answering from text alone.
+     */
+    fun appendAudio(rows: FloatArray, tokenCount: Int, embeddingWidth: Int) {
+        throw UnsupportedOperationException("This session cannot accept preprocessed audio embeddings")
+    }
+
+    /**
+     * Route B (Option A): append ONE chunk of the turn's audio rows, in row
+     * order, as the rows become available — during capture for provisional
+     * chunks, at finalization for the rest. The begin marker rides only the
+     * turn's first audio chunk and the projected end marker only its last,
+     * exactly as the one-shot [appendAudio] plan places them, so a chunked
+     * turn assembles the same payload as the sealed one-shot submission.
+     * Sessions that cannot accept chunked audio throw; a caller feeding
+     * provisionally must then discard the session and answer on the sealed
+     * route instead of mixing shapes.
+     */
+    fun appendAudioChunk(rows: FloatArray, tokenCount: Int, embeddingWidth: Int,
+                         includeBeginMarker: Boolean, includeEndMarker: Boolean) {
+        throw UnsupportedOperationException("This session cannot accept chunked audio embeddings")
+    }
     suspend fun decode(onToken: (String) -> Unit): GenerationResult
 }
 
@@ -29,6 +69,17 @@ class IncrementalVoiceInput(
     private var closed = false
     private var chunks = 0
     private var prefillMs = 0L
+    /**
+     * Snapshot turns: true once the turn's image was accepted by the native
+     * session — or, for buffered template sessions whose submission happens
+     * inside decode, once that decode completed. Read by the generation
+     * owner to record whether the model actually received the image.
+     */
+    var imageSubmissionAccepted: Boolean = false
+        private set
+    /** Snapshot turns: the failure that kept the image from the model, if any. */
+    var imageSubmissionFailure: Throwable? = null
+        private set
     private var contextPrefillCompletedAtNanos: Long? = null
     private var firstWordPrefillCompletedAtNanos: Long? = null
     private var lastWordPrefillCompletedAtNanos: Long? = null
@@ -89,7 +140,8 @@ class IncrementalVoiceInput(
         worker.join()
     }
 
-    suspend fun answer(finalPrompt: String, onToken: (String) -> Unit): GenerationResult {
+    suspend fun answer(finalPrompt: String, imageBytes: ByteArray? = null,
+                       onToken: (String) -> Unit): GenerationResult {
         seal()
         check(!closed && !consumed)
         consumed = true
@@ -115,6 +167,7 @@ class IncrementalVoiceInput(
         // the real append call for ephemeral common-clock begin/end observations.
         log("input_finalized reuse=$reuse reuseReason=$reuseReason chunks=$chunks retainedChars=${if (reuse) retained.length else 0} " +
             "finalPromptChars=${finalPrompt.length} listeningPrefillMs=$prefillMs audioSubmitted=false " +
+            "imageAttached=${imageBytes != null} imageBytes=${imageBytes?.size ?: 0} " +
             "prefillTimingSchema=seal_relative_v1 " +
             "contextPrefillCompletedOffsetMs=${completionOffsetMs(contextPrefillCompletedAtNanos)} " +
             "firstWordPrefillCompletedOffsetMs=${completionOffsetMs(firstWordPrefillCompletedAtNanos)} " +
@@ -122,8 +175,25 @@ class IncrementalVoiceInput(
         val remaining = if (reuse) finalPrompt.substring(retained.length) else finalPrompt
         val finalStarted = nowNanos()
         if (remaining.isNotEmpty()) native.append(remaining)
+        // Snapshot synthesis: the turn's one image goes in only now —
+        // question complete, after the final text, before decode. A
+        // session that rejects it throws and the caller's fallback
+        // regenerates with the image on the conversation route.
+        if (imageBytes != null) {
+            try {
+                native.appendImage(imageBytes)
+                imageSubmissionAccepted = true
+            } catch (error: Exception) {
+                imageSubmissionFailure = error
+                throw error
+            }
+        }
         log("input_final_prefill remainingChars=${remaining.length} finalPrefillMs=${(nowNanos() - finalStarted).coerceAtLeast(0) / 1_000_000}")
-        return native.decode(onToken)
+        val result = native.decode(onToken)
+        // Buffered template sessions submit the image inside decode; a
+        // completed decode is their acceptance signal.
+        if (imageBytes != null) imageSubmissionAccepted = true
+        return result
     }
 
     private fun completionOffsetMs(completedAtNanos: Long?): String {
@@ -140,14 +210,15 @@ class IncrementalVoiceInput(
     suspend fun answerWithTextFallback(
         finalPrompt: String,
         onToken: (String) -> Unit,
+        imageBytes: ByteArray? = null,
         retry: suspend (Exception) -> GenerationResult
     ): GenerationResult {
         var outputStarted = false
         try {
-            return answer(finalPrompt) { token ->
+            return answer(finalPrompt, imageBytes = imageBytes, onToken = { token ->
                 if (token.isNotBlank()) outputStarted = true
                 onToken(token)
-            }
+            })
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (error: Exception) {
             close()

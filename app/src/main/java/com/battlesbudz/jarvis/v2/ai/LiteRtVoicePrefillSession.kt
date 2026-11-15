@@ -22,6 +22,19 @@ internal interface VoiceNativeCallback {
 
 internal interface VoiceNativeSession : AutoCloseable {
     fun runPrefill(input: List<String>)
+    /** Snapshot synthesis: prefill one image into the pending turn. */
+    fun runPrefillImage(imageBytes: ByteArray)
+    /**
+     * Route B: prefill one chunk of a sealed utterance's encoder rows into
+     * the pending turn. The begin marker rides only the first chunk and the
+     * projected end marker only the last, mirroring the sealed route's
+     * single payload. Sessions without the bridge's preprocessed-audio
+     * entry throw [UnsupportedOperationException].
+     */
+    fun runPrefillAudio(rows: FloatArray, tokenCount: Int, embeddingWidth: Int,
+                        includeBeginMarker: Boolean, includeEndMarker: Boolean) {
+        throw UnsupportedOperationException("This native session cannot accept preprocessed audio")
+    }
     fun generateContentStream(input: List<String>, callback: VoiceNativeCallback)
     fun cancelProcess()
     /** Includes native callbacks returning; terminal notification alone is insufficient. */
@@ -45,6 +58,12 @@ internal class LiteRtVoicePrefillSession(private val session: VoiceNativeSession
     private var promptChars = 0
     private var prefillFailure: Throwable? = null
     private var prefillReported = false
+    /** Snapshot synthesis: bytes of the one image appended to this turn. */
+    private var appendedImageBytes = 0
+    /** Route B: audio tokens appended to this turn; at most one payload per turn. */
+    private var appendedAudioTokens = 0
+    /** Route B: true once a chunk carrying the projected end marker landed. */
+    private var audioPayloadComplete = false
     override fun append(text: String) {
         synchronized(accessLock) {
             check(!closed && !decoding && !nativeBorrowed && prefillFailure == null)
@@ -66,6 +85,107 @@ internal class LiteRtVoicePrefillSession(private val session: VoiceNativeSession
             synchronized(accessLock) { nativeBorrowed = false }
         }
     }
+    /**
+     * Snapshot synthesis: the turn's one image, appended after the final
+     * text chunk and before [decode], so it lands inside the user turn.
+     * Requires a started session (the question's text went first — an
+     * image-only turn is not a shape this pipeline submits) and at most
+     * one image per session. A native rejection is recorded as the
+     * session's prefill failure and thrown, so the caller's fallback can
+     * regenerate with the image on the conversation route.
+     */
+    override fun appendImage(imageBytes: ByteArray) {
+        synchronized(accessLock) {
+            check(!closed && !decoding && !nativeBorrowed && prefillFailure == null)
+            check(started) { "Snapshot image requires the question text to be prefilled first" }
+            check(appendedImageBytes == 0) { "Only one snapshot image per turn" }
+            nativeBorrowed = true
+        }
+        val began = System.nanoTime()
+        prefillChunks++
+        try {
+            onBenchmarkNativeWorkStarted()
+            session.runPrefillImage(imageBytes)
+            appendedImageBytes = imageBytes.size
+        } catch (error: Throwable) {
+            prefillFailure = error
+            throw error
+        } finally {
+            prefillNanos += (System.nanoTime() - began).coerceAtLeast(0)
+            synchronized(accessLock) { nativeBorrowed = false }
+        }
+    }
+    /**
+     * Route B (Option B): the turn's sealed audio, appended after the final
+     * text and before [decode], in the spike-proven chunk plan (72-row,
+     * step-aligned chunks; begin marker on the first, projected end marker
+     * on the last). Requires a started session (the turn's text went first —
+     * an audio-only turn is not a shape this pipeline submits), no image on
+     * the turn, and at most one audio payload per session. A native
+     * rejection is recorded as the session's prefill failure and thrown, so
+     * the caller's fallback can regenerate on the sealed Conversation route
+     * with the same rows.
+     */
+    override fun appendAudio(rows: FloatArray, tokenCount: Int, embeddingWidth: Int) {
+        require(tokenCount >= 1 && embeddingWidth >= 1 && rows.size == tokenCount * embeddingWidth) {
+            "Sealed audio rows must be a tokenCount x embeddingWidth matrix"
+        }
+        synchronized(accessLock) {
+            check(!closed && !decoding && !nativeBorrowed && prefillFailure == null)
+            check(started) { "Route B audio requires the turn text to be prefilled first" }
+            check(appendedImageBytes == 0) { "Route B audio turns never carry a snapshot image" }
+            check(appendedAudioTokens == 0) { "Only one audio payload per turn" }
+        }
+        for (chunk in RouteBPrefillSpike.planAudioChunks(tokenCount)) {
+            val slice = rows.copyOfRange(chunk.startRow * embeddingWidth,
+                (chunk.startRow + chunk.rowCount) * embeddingWidth)
+            appendAudioChunk(slice, chunk.rowCount, embeddingWidth,
+                chunk.includeBeginMarker, chunk.includeEndMarker)
+        }
+    }
+
+    /**
+     * Route B (Option A): one chunk of the turn's audio payload, fed in row
+     * order as rows become available. Marker discipline is enforced, not
+     * assumed: the begin marker must ride the first chunk (and only it), and
+     * no chunk may follow the chunk that carried the end marker — so any
+     * interleaving of provisional and finalization chunks assembles exactly
+     * the payload [appendAudio] would have built in one call. A native
+     * rejection is recorded as the session's prefill failure and thrown,
+     * poisoning the session like any other failed prefill: a caller feeding
+     * provisionally must discard it and answer on the sealed route.
+     */
+    override fun appendAudioChunk(rows: FloatArray, tokenCount: Int, embeddingWidth: Int,
+                                  includeBeginMarker: Boolean, includeEndMarker: Boolean) {
+        require(tokenCount >= 1 && embeddingWidth >= 1 && rows.size == tokenCount * embeddingWidth) {
+            "Audio chunk rows must be a tokenCount x embeddingWidth matrix"
+        }
+        synchronized(accessLock) {
+            check(!closed && !decoding && !nativeBorrowed && prefillFailure == null)
+            check(started) { "Route B audio requires the turn text to be prefilled first" }
+            check(appendedImageBytes == 0) { "Route B audio turns never carry a snapshot image" }
+            check(!audioPayloadComplete) { "The turn's audio payload is already complete" }
+            check(includeBeginMarker == (appendedAudioTokens == 0)) {
+                "The begin marker rides only the turn's first audio chunk"
+            }
+            nativeBorrowed = true
+        }
+        val began = System.nanoTime()
+        prefillChunks++
+        try {
+            onBenchmarkNativeWorkStarted()
+            session.runPrefillAudio(rows, tokenCount, embeddingWidth,
+                includeBeginMarker, includeEndMarker)
+            appendedAudioTokens += tokenCount
+            if (includeEndMarker) audioPayloadComplete = true
+        } catch (error: Throwable) {
+            prefillFailure = error
+            throw error
+        } finally {
+            prefillNanos += (System.nanoTime() - began).coerceAtLeast(0)
+            synchronized(accessLock) { nativeBorrowed = false }
+        }
+    }
     override suspend fun decode(onToken: (String) -> Unit): GenerationResult {
         currentCoroutineContext().ensureActive()
         synchronized(accessLock) {
@@ -79,7 +199,10 @@ internal class LiteRtVoicePrefillSession(private val session: VoiceNativeSession
         val finalInput = listOf("<turn|>\n<|turn>model\n")
         val began = System.nanoTime()
         val benchmark = NativeInferenceBenchmark(benchmarkModelId, benchmarkPurpose,
-            PipelineBenchmarkWarmState.UNKNOWN, "incremental_text", initializationMs = benchmarkInitializationMs,
+            PipelineBenchmarkWarmState.UNKNOWN,
+            if (appendedImageBytes > 0) "incremental_image_text"
+            else if (appendedAudioTokens > 0) "incremental_audio_text" else "incremental_text",
+            imageBytes = appendedImageBytes, initializationMs = benchmarkInitializationMs,
             sink = benchmarkSink)
         val tokens = Channel<String>(Channel.UNLIMITED)
         val ownerJob = currentCoroutineContext()[Job]

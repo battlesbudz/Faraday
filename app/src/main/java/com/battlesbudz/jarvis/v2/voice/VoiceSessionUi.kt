@@ -33,6 +33,23 @@ object VoiceSessionUi {
      */
     val sessionAlive = MutableStateFlow(false)
     val paused = MutableStateFlow(false)
+    /**
+     * Video-call step 5: the call screen's video toggle. Capture no longer
+     * starts automatically when a call begins — [JarvisRuntime] resets this
+     * to false at every call start and collects it: true starts the current
+     * call's capture (camera, frame loop, visual context), false stops it
+     * and clears the injected visual context. The call screen's video button
+     * is the only writer besides those resets.
+     */
+    val videoEnabled = MutableStateFlow(false)
+    /**
+     * A video-enable tap is waiting on the camera permission prompt: the
+     * call screen sets this before launching the prompt through
+     * [CameraPermission.request], and MainActivity's permission result
+     * consumes it — grant flips [videoEnabled] on, denial leaves it off.
+     */
+    @Volatile
+    var videoEnablePending: Boolean = false
     internal val failure = MutableStateFlow<VoiceCallFailure?>(null)
     internal fun reportFailure(conversationId: String, message: String) {
         failure.value = VoiceCallFailure(conversationId, message)

@@ -204,6 +204,9 @@ internal class ConversationCoordinator(
                 runCatching { input.incrementalVoice?.close() }.exceptionOrNull()?.let {
                     if (it !== error) error.addSuppressed(it)
                 }
+                runCatching { input.primedVoiceAudio?.close() }.exceptionOrNull()?.let {
+                    if (it !== error) error.addSuppressed(it)
+                }
                 runCatching { modelSession.close() }.exceptionOrNull()?.let {
                     if (it !== error) error.addSuppressed(it)
                 }
@@ -224,6 +227,7 @@ internal class ConversationCoordinator(
                         if (input.voiceAudio == null && !input.callOwned) modelSession.residentBackend?.onPromptSubmitted = { _, _ -> }
                     }
                     input.incrementalVoice?.close()
+                    input.primedVoiceAudio?.close()
                 } finally {
                     // Clear the native-mutation fence only if it is still
                     // this turn's; a replacement turn's fence stays.

@@ -145,6 +145,7 @@ internal class OrdinaryVoiceReplyStage(
                             benchmarkCapture = observation.benchmark,
                             sealedVoiceAudio = finalized.sealedVoiceAudio,
                             nativeSpeculation = finalized.nativeSpeculation,
+                            primedVoiceAudio = finalized.primedAudio,
                             asrTranscript = finalized.asrTranscript
                         ), ConversationCallbacks(
                             onLiveInference = { submittedAt, firstTokenAt, tokensPerSecond, durable ->
