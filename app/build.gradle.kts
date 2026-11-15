@@ -270,8 +270,21 @@ dependencies {
     // LiteRT-LM cannot feed embeddings (DESIGN.md section 1). Coexistence is
     // proven by verifyLiteRtCoexistence; the only caller in U0 is the fenced
     // ai/OmniRuntime.kt stub.
-    implementation("com.google.ai.edge.litert:litert:2.3.0")
-    implementation("com.google.ai.edge.litert:litert-gpu:2.3.0")
+    // The lifecycle exclusion is load-bearing (U0, CI run 1895):
+    // litert-api 2.3.0's POM drags androidx.lifecycle:lifecycle-runtime
+    // 2.10.0, whose bundled lint detector is binary-incompatible with
+    // AGP 8.7.3's lint (IncompatibleClassChangeError on the Kotlin
+    // analysis API's KaCallableMemberCall) and crashes
+    // lintVitalAnalyzeRelease. The app keeps its own lifecycle 2.8.7;
+    // litert-api references only long-stable lifecycle types
+    // (Lifecycle, LifecycleOwner, LifecycleCoroutineScope), all present
+    // in 2.8.7, so linkage is unaffected.
+    implementation("com.google.ai.edge.litert:litert:2.3.0") {
+        exclude(group = "androidx.lifecycle", module = "lifecycle-runtime")
+    }
+    implementation("com.google.ai.edge.litert:litert-gpu:2.3.0") {
+        exclude(group = "androidx.lifecycle", module = "lifecycle-runtime")
+    }
     implementation("org.jetbrains.kotlin:kotlin-reflect:2.3.21")
     sherpaSdk("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.7@aar")
     implementation(files(sherpaDir.map { it.file("classes.jar") }).builtBy(extractSherpa))
