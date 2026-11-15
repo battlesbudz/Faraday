@@ -1,33 +1,40 @@
-# Memory Unit 4 prototype report
+# Latency next slice report
 
-## Changes
+## Changes and rationale
 
-- `STUDY.md`: records what the current hybrid recall misses, grounded in the SQLite ledger, record model, correction lifecycle, expiry and tombstone semantics. Defines the prototype's example questions and scope.
-- `app/src/main/java/com/battlesbudz/jarvis/v2/memory/MemoryEntityTemporalGraph.kt`: adds an ephemeral entity/correction projection, fixture-query surface and a disabled fence. The builder uses a supplied snapshot; it persists nothing and is not wired into recall. It ignores expired/restricted/secret records and excludes any row whose event is tombstoned.
-- `app/src/test/java/com/battlesbudz/jarvis/v2/memory/MemoryEntityTemporalGraphTest.kt`: pins person linking/aggregation, current value plus historical correction, entity/temporal example questions, secret/deletion filtering and the disabled flag.
-- `docs/verification/features.md`: adds the acceptance boundary and explicitly records coverage gaps.
+- `app/src/main/java/com/battlesbudz/jarvis/v2/ai/ConversationPromptBuilder.kt`: shortened the voice-only supporting-context wrapper by 58 characters in the representative wrapper (`201 -> 143`); it still labels quoted material as data, denies instruction/tool authority, prevents overriding the current message or corrections, and closes the block. Added a compact voice tool-result format. In the example unknown-completion receipt (`Open app` / `open_app` / `Launch requested.`), the rendered boilerplate falls from 693 to 470 characters (223 fewer). It retains request/tool/status/Android result, faithful status reporting, the sent-but-unconfirmed distinction, the no-blanket-background-refusal rule, and the unlocked/foreground/system-assistant guidance. The existing nonvoice receipt format is unchanged.
+- `app/src/main/java/com/battlesbudz/jarvis/v2/conversation/ConversationGeneration.kt`: selects the compact receipt format for voice-audio and call-owned turns only; all other turns retain the existing format. Tool eligibility and execution are untouched.
+- `app/src/test/java/com/battlesbudz/jarvis/v2/ai/ConversationPromptBuilderTest.kt`: pins voice supporting-context framing and the compact action receipt's required fields/rules and size reduction.
+
+## Audit findings
+
+1. **Repeated prefill:** retained direct-audio call turns submit only the current message when their own call context remains resident. Existing `ConversationCallSessionReuseTest` pins the delta, fresh full prompt, reset-and-reseed retry, and text-mode behavior. Transcribed voice uses `IncrementalVoiceInput`: it pre-appends the static prefix and stable transcript words while listening; final submission appends only the remainder when the hypothesis and prefix remain valid. It rebuilds once when the transcript revises or the prefix changes. I found no repeated static prefix on that successful path. Reuse remains scoped to the existing call identity and resident engine checks; no cross-conversation reuse was added.
+2. **Prompt diet:** changed only voice supporting-context framing and voice tool-result boilerplate. Tool-selection prompts, model tools, action guards, memory contents, continuity/capture evidence, and the full voice behavior rules remain intact. Memory and context records themselves can still be large; changing their selection or truncation would need separate behavior evidence.
+3. **Clause-level speech start:** already wired. `ConversationGeneration` streams safe opening text through `VoiceRepetitionGuard`; `OrdinaryVoiceReplyStage` sends each token to the speech channel; `PiperVoiceOutput` uses `PiperTextStream`, whose opening path releases `openingClauseEnd` as soon as its safety floor is met (currently four words and 24 characters). Existing `PiperTextStreamTest` and `FirstPiperClauseTest` cover this. No change was needed.
 
 ## Deliberately not done
 
-- No changes to production recall ranking, memory approval/capture thresholds, embeddings, dream synthesis, UI or ledger schema.
-- No persistence for the graph; it is rebuilt from a snapshot.
-- No attempt at broad natural-language entity resolution or general-purpose NER.
-- No Gradle, Android SDK, build, APK, network or device work, per the task constraints.
+- Did not rebuild persistent sessions or shared-engine composition.
+- Did not remove tools from voice turns or change endpointing.
+- Did not alter ASR/model/native bridge, memory selection, tool policy, or speech boundary thresholds.
+- Did not run Gradle, build an APK, access network services, or publish artifacts, per task instructions.
 
-## Tests
+## Tests and checks
 
-Added `MemoryEntityTemporalGraphTest` with fixture data. It pins the three study examples (“What do I know about Maya?”, “When did I move?”, “What was my old address?”), the new current answer and the old version timeline, and verifies deleted/tombstoned and secret content do not enter graph answers. Tests were not run because Gradle/build execution was explicitly prohibited and this VM has no Android SDK; `kotlinc` is also unavailable. `git diff --check` passed.
+- Added `voiceToolReceiptIsShortAndPreservesEveryOutcomeRule` to pin compact voice receipt content and reduction.
+- Updated `finalVoicePromptPreservesListeningPrefixWithLateQuotedContext` to pin the compact but still fenced supporting-context wrapper.
+- Existing `ConversationCallSessionReuseTest` pins per-call session reuse and reset/reseed behavior; existing clause tests pin early speech release.
+- Ran `git diff --check` successfully. No JVM/Gradle tests were run in this environment.
 
 ## Risks and owner review
 
-- Name extraction is intentionally heuristic and English/proper-name biased; it can miss aliases and can treat sentence-initial capitalized words as names. Entity resolution needs a stricter identity policy before production use.
-- Correction history relies on explicit `correctsMemoryId` edges. Independently captured contradictory facts are not inferred as a correction.
-- Review Kotlin compilation/API compatibility in CI; this environment could only perform whitespace/diff checks.
-- The disabled constant alone is not a runtime configuration mechanism; production remains isolated because no caller is wired. Enabling later requires deliberate caller wiring and privacy/approval review.
+- Prompt character counts are literal character counts, not model token counts. Actual latency impact depends on tokenizer, prefill behavior and the selected model; the action receipt saves the most where a voice turn executes a tool.
+- Review that the compact status language remains clear for all `ExecutionResult.Outcome` values, especially unknown completion and needs-unlock. The status mapping itself remains unchanged.
+- This does not address the measured final-transcription wait or prove a phone-side reduction in first-token latency. The recognized audio path still depends on capture/ASR completion and model-device behavior.
 
-## On-phone proof
+## On-phone proof for Battles
 
-No current app screen exposes this disabled prototype, so a phone build should show unchanged memory capture and recall. After the owner deliberately wires/enables it in a future build, a controlled local-ledger fixture would demonstrate “Maya” aggregating two approved notes and a correction question showing the newer value with the older value and timestamps. A deleted fixture and a secret-bearing fixture should produce no graph output, and normal recall should remain unchanged until that separate enablement is approved.
+Run a voice call turn that performs a phone action with an unconfirmed result, then inspect the captured inference/tool-result prompt to confirm the shorter authoritative receipt preserves the correct status and foreground/system-assistant guidance. Compare before/after `first_token`/submission timing on the same device, model, utterance and thermal state. Also capture a normal spoken answer and confirm Piper begins after the first eligible short clause; compare the existing voice diagnostics for final-ASR and first-token durations. Repeat a follow-up in the same call and verify session-reuse diagnostics show a resident context; start a new call and verify it begins fresh. This repo-only change has no phone measurement yet.
 
 ---
 

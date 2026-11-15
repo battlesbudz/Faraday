@@ -1,44 +1,42 @@
-# PR #29 prototype test fix
+# PR #27 release compile fix
 
-## Failing tests and fixes
+## Root cause
 
-- `correctionAnswersCurrentValueAndExplainsPriorValueAndChangeTime`: the
-  projection calculated `MemoryFactVersion` entries for superseded records, but
-  retained only approved records in its `records` map. `history()` traverses
-  that map, so it could not follow the current correction's
-  `correctsMemoryId` edge to the prior value. The current-value query could
-  still select the approved correction, but the history query returned only
-  that row and omitted the prior value and its end time. The builder now keeps
-  all eligible approved and superseded rows for history traversal. Current
-  query selection remains approved-only, and the version timestamps continue
-  to come from the correction's source timestamp.
+`ConversationGeneration` passed `receipt.result.succeeded` (a `Boolean`) as the
+fourth positional argument to `buildToolResultContext` and also supplied the
+named `voice` argument. The overload that accepts `voice` takes
+`ExecutionResult.Outcome`; the legacy Boolean overload has no `voice` parameter,
+so neither overload matched the call.
 
-- `temporalQueriesUseFixtureQuestionsAndProjectionStaysFenced`: the
-  “What was my old address?” fixture matched the current approved address, but
-  its correction history could not reach the superseded Watertown row for the
-  same reason. Retaining eligible superseded rows makes the existing history
-  path answer both this fixture and “When did I move?” in chronological order.
-  The disabled-flag assertion was already consistent with the implementation;
-  it was not changed.
+## Fix
+
+The call now passes `receipt.result.outcome`, which is the actual
+`ExecutionResult.Outcome` property. This keeps the voice receipt selected when
+`invocation.voiceAudio != null || invocation.callOwned` and preserves the
+existing outcome-specific faithful-status mapping, including unknown completion
+and needs-unlock. No prompt text, status mapping, or test expectation changed.
+
+## Call sites checked
+
+A repository-wide Kotlin search for `buildToolResultContext(` found:
+
+- `app/src/main/java/com/battlesbudz/jarvis/v2/conversation/ConversationGeneration.kt:431` — the sole production call site; fixed to pass `receipt.result.outcome`.
+- `app/src/main/java/com/battlesbudz/jarvis/v2/ai/ConversationPromptBuilder.kt:113` — typed-outcome overload declaration.
+- `app/src/main/java/com/battlesbudz/jarvis/v2/ai/ConversationPromptBuilder.kt:160,165` — legacy Boolean overload and its delegation; it maps `true` to `SUCCEEDED` and `false` to `FAILED`.
+- `app/src/test/java/com/battlesbudz/jarvis/v2/ai/ConversationPromptBuilderTest.kt:54,56,133,145,149,157,159` — test calls use typed outcomes or intentionally exercise the legacy Boolean overload. None combines a Boolean argument with `voice`.
+
+No other mismatched call sites were found.
 
 ## Files changed
 
-- `app/src/main/java/com/battlesbudz/jarvis/v2/memory/MemoryEntityTemporalGraph.kt`
-  now retains eligible superseded rows for history traversal. Entity links and
-  current-value query selection still use approved rows only.
-- `FIX-REPORT.md` records the CI failure causes and fix.
-
-The tests were not edited. Projection construction remains in-memory from the
-supplied snapshot and adds no persistence or production caller. The disabled
-`MemoryEntityTemporalPrototype.ENABLED` fence remains `false`. Existing build
-filtering still excludes expired, restricted, secret-bearing, and tombstoned
-records; tombstones provide no content and cannot recreate nodes. Entity links
-and current answers are still limited to approved rows.
+- `app/src/main/java/com/battlesbudz/jarvis/v2/conversation/ConversationGeneration.kt`
+- `FIX-REPORT.md`
 
 ## Verification
 
-`git diff --check` was run. Gradle, builds, and other test execution were not
-run, as required by the task.
+- `git diff --check` — run for this fix.
+- Gradle/build/test checks — not run, as instructed.
+- No network, PR, or merge actions were performed. Changes remain uncommitted.
 
 ---
 
