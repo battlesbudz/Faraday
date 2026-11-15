@@ -104,6 +104,57 @@ val verifyWebShellAsset by tasks.registering {
     }
 }
 tasks.matching { it.name == "assembleRelease" }.configureEach { dependsOn(verifyWebShellAsset) }
+// LFM3-Omni U0 coexistence spike (~/workspace/lfm3-omni/DESIGN.md sections 7-8):
+// Maven LiteRT 2.3.0 (CompiledModel API) now packages beside the reviewed
+// LiteRT-LM 0.18.1 streaming bridge AAR. This check inventories every packaged
+// ARM64 native library in the release APK and fails unless both runtimes are
+// present and exactly one libLiteRt.so shipped: the Maven 2.3.0 build, proven
+// by its published size. If a future bridge build ever ships its own
+// libLiteRt.so, packaging fails on the duplicate path first; resolve it with
+// an explicit pickFirst here, never by dropping a runtime.
+val verifyLiteRtCoexistence by tasks.registering {
+    group = "verification"
+    description = "Fails unless the packaged release APK carries both the reviewed bridge runtime and Maven LiteRT 2.3.0, with exactly one libLiteRt.so."
+    dependsOn("packageRelease")
+    val apkFile = layout.buildDirectory.file("outputs/apk/release/app-release.apk")
+    inputs.file(apkFile)
+    doLast {
+        val apk = apkFile.get().asFile
+        check(apk.isFile) { "Release APK not found at ${apk.path}; packageRelease should have produced it." }
+        ZipFile(apk).use { zip ->
+            val libs = zip.entries().asSequence()
+                .filter { it.name.startsWith("lib/arm64-v8a/") && it.name.endsWith(".so") }
+                .map { it.name.removePrefix("lib/arm64-v8a/") to it.size }
+                .toList()
+            println("LiteRT coexistence inventory for ${apk.name} (${apk.length()} bytes), lib/arm64-v8a:")
+            libs.sortedBy { it.first }.forEach { (name, size) -> println("  $name $size") }
+            val names = libs.map { it.first }
+            // The reviewed bridge AAR's dlopen roots (scripts/streaming-sdk
+            // package_android_aar.py ROOTS + android-prebuilts.json).
+            val bridgeRoots = listOf(
+                "liblitertlm_jni.so", "libnative_audio_owner_jni.so",
+                "libGemmaModelConstraintProvider.so", "libLiteRtGpuAccelerator.so",
+                "libLiteRtOpenClAccelerator.so", "libLiteRtTopKOpenClSampler.so",
+                "libLiteRtTopKWebGpuSampler.so", "libLiteRtWebGpuAccelerator.so",
+                "libwebgpu_dawn.so",
+            )
+            // Maven LiteRT 2.3.0: litert (libLiteRt.so), litert-api
+            // (liblitert_jni.so), litert-gpu (libLiteRtClGlAccelerator.so).
+            val mavenLibs = listOf("libLiteRt.so", "liblitert_jni.so", "libLiteRtClGlAccelerator.so")
+            val missing = (bridgeRoots + mavenLibs).filter { it !in names }
+            check(missing.isEmpty()) {
+                "LiteRT coexistence failed: missing packaged native libraries $missing in ${apk.name}."
+            }
+            val liteRtEntries = libs.filter { it.first == "libLiteRt.so" }
+            check(liteRtEntries.size == 1 && liteRtEntries.single().second == 5_629_696L) {
+                "LiteRT coexistence failed: expected exactly one libLiteRt.so of 5629696 bytes " +
+                    "(Maven LiteRT 2.3.0, arm64-v8a); found $liteRtEntries."
+            }
+            println("LiteRT coexistence verified: bridge roots ${bridgeRoots.size}, Maven 2.3.0 libs ${mavenLibs.size}, one libLiteRt.so (Maven 2.3.0).")
+        }
+    }
+}
+tasks.matching { it.name == "assembleRelease" }.configureEach { dependsOn(verifyLiteRtCoexistence) }
 tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(validateStreamingSdk, extractSherpa, buildSherpa, prepareWhisperQnn, copyWebShell) }
 android {
     sourceSets.getByName("main").assets.srcDir(whisperQnnDir.map { it.dir("assets") })
@@ -166,6 +217,11 @@ android {
     kotlin {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_17)
+            // LiteRT 2.3.0's Kotlin API (litert-api-2.3.0) carries Kotlin 2.4
+            // metadata (mv = [2, 4, 0], verified from the published AAR);
+            // this project's Kotlin 2.3.21 compiler reads it only with the
+            // metadata check skipped (LFM3-Omni DESIGN.md section 8.1(b)).
+            freeCompilerArgs.add("-Xskip-metadata-version-check")
         }
     }
     // The sandbox rootfs asset must stay stored uncompressed: the installer
@@ -208,6 +264,14 @@ dependencies {
     implementation(files(litertLmBridgeAar).builtBy(validateStreamingSdk))
     // A local AAR carries no Maven POM/transitive metadata.
     implementation("com.google.code.gson:gson:2.13.2")
+    // LFM3-Omni (DESIGN.md section 7, unit U0): Maven LiteRT 2.3.0's
+    // CompiledModel API packages beside the reviewed bridge AAR above; the
+    // Omni path drives the .litertlm bundle sections directly because
+    // LiteRT-LM cannot feed embeddings (DESIGN.md section 1). Coexistence is
+    // proven by verifyLiteRtCoexistence; the only caller in U0 is the fenced
+    // ai/OmniRuntime.kt stub.
+    implementation("com.google.ai.edge.litert:litert:2.3.0")
+    implementation("com.google.ai.edge.litert:litert-gpu:2.3.0")
     implementation("org.jetbrains.kotlin:kotlin-reflect:2.3.21")
     sherpaSdk("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.7@aar")
     implementation(files(sherpaDir.map { it.file("classes.jar") }).builtBy(extractSherpa))
