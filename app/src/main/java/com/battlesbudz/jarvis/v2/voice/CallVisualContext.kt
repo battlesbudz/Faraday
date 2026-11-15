@@ -197,7 +197,10 @@ object CallVisualContext {
             val line = trackLine(group)
             val projectedOmitted = inWindow.size - accounted - group.size
             val omissionLineLength = if (projectedOmitted > 0) {
-                1 + "Additional tracked objects omitted: $projectedOmitted.".length
+                // The eventual count can grow if a later line fails the
+                // budget check, so reserve enough digits for every in-window track.
+                1 + ("Additional tracked objects omitted: ${inWindow.size} " +
+                    "(tracksOmitted=${inWindow.size}).").length
             } else 0
             // Reserve room for the explicit raw-track omission count.
             if (blockLength + 1 + line.length + omissionLineLength > MAX_SNAPSHOT_BLOCK_CHARS) break
@@ -208,7 +211,8 @@ object CallVisualContext {
         if (trackLines.isEmpty() && inWindow.isEmpty()) trackLines += "none detected."
         val included = accounted
         val omitted = inWindow.size - included
-        if (omitted > 0) trackLines += "Additional tracked objects omitted: $omitted."
+        if (omitted > 0) trackLines +=
+            "Additional tracked objects omitted: $omitted (tracksOmitted=$omitted)."
         val block = (header + trackLines).joinToString("\n")
         val oneFrameIncluded = inWindow.take(included).count { it.lastSeenMs == it.firstSeenMs }
         val line = "Call visual context: injected=true mode=snapshot chars=${block.length} snapshotAgeMs=$resultAgeMs" +
