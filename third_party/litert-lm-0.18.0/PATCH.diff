@@ -3477,7 +3477,7 @@ index 5c9f382..bfd91e1 100644
  using litert::lm::InputImage;
 +using litert::lm::InputImageEnd;
  using litert::lm::InputText;
-@@ -179,60 +186,247 @@ jobject CreateBenchmarkInfoJni(
+@@ -179,60 +186,250 @@ jobject CreateBenchmarkInfoJni(
  
 -// Converts a Java InputData array to a C++ vector of InputData.
 -std::vector<InputData> GetNativeInputData(JNIEnv* env,
@@ -3616,6 +3616,9 @@ index 5c9f382..bfd91e1 100644
 +  if (include_end_marker) {
 +    contents.emplace_back(InputAudioEnd(/*projected_audio=*/true));
 +  }
++  return contents;
++}
++
 +// Converts Session InputData without continuing JNI calls under a pending Java exception.
 +// Local refs and pinned strings/arrays are released even on C++ allocation failure. A partial
 +// vector is never consumed: every failure preserves/raises an exception checked by the caller.
