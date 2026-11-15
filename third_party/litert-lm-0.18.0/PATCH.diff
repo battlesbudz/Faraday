@@ -2839,7 +2839,7 @@ index 12e042b..1983d9d 100644
 +import java.nio.ByteBuffer
 +import java.nio.ByteOrder
  import kotlin.io.encoding.Base64
-@@ -205,2 +207,80 @@ sealed class Content {
+@@ -205,2 +207,96 @@ sealed class Content {
  
 +  /**
 +   * A completed native-audio request, already projected by the trained audio adapter.
@@ -2880,6 +2880,22 @@ index 12e042b..1983d9d 100644
 +      }
 +
 +    override fun toString() = "[SealedAudioEmbeddings]"
++
++    /**
++     * Returns a copy of the projected soft-token rows this sealed content carries:
++     * [audioTokenCount] rows of [embeddingWidth] values in row-major order,
++     * excluding the end-of-audio row (the runtime supplies that marker). These
++     * are exactly the values the Conversation route submits for this content.
++     * Session-route consumers that build their own submissions from a sealed
++     * capture — for example a chunked-prefill harness feeding the same rows in
++     * slices — read them here instead of re-encoding the audio.
++     */
++    fun projectedRows(): FloatArray {
++      val rows = FloatArray(audioTokenCount * embeddingWidth)
++      ByteBuffer.wrap(encodedBytes).order(ByteOrder.LITTLE_ENDIAN)
++        .asFloatBuffer().get(rows)
++      return rows
++    }
 +
 +    companion object {
 +      /** Copies finite, post-adapter values from a genuinely completed capture. */
