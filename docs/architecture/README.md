@@ -32,6 +32,7 @@ for the decision to keep package/collaborator boundaries before adding build mod
 | `JarvisAppComposition` | Compatibility composition adapter supplying only benchmark-store and call-evidence dependencies to UI |
 | `JarvisRuntime.get(applicationContext)` | Process composition/lifecycle facade wiring typed owners/ports, shared history and compatibility entry adapters |
 | `runtime/turn/VoiceTurnRunner` | Admits and orders typed voice stages, with fenced terminal errors/rearm policy; resource release belongs to finalizer |
+| `runtime/turn/OmniVoiceCallSession` / `OmniVoiceCallLoop` | Owns one sequential Omni conversation per call, adapts U3 captured audio to U2 and U4 streaming output, drives turns until call end, and performs text-only rollover at the 4,096-position boundary |
 | `voice/VoiceCallService` | User-started foreground microphone/playback eligibility, notification controls and wake lock |
 | `voice/VideoCallService` / `VideoForegroundNotification` / `VideoNotificationLifecycle` / `CallVisionController` / `CameraXVideoBinder` | Call-scoped camera foreground eligibility, terminal notification publication/removal, capture generation, bounded cleanup and in-memory frames; independent of audio ownership |
 | `voice/VoiceSessionController` | Call identity, transcript, delivered reply/action state and persisted call record |

@@ -1,6 +1,20 @@
 # Feature and acceptance map
 
 
+# LFM3-Omni U5 call-session seam — 15 November 2026
+
+`OmniVoiceCallSession` retains one Omni conversation across sequential captured
+audio turns, resets at call start/end, streams answer audio through the U4 sink,
+and re-prefills text-only history at the 3,800-position boundary while enforcing
+the 4,096-position cap. `OmniVoiceCallSessionTest` covers multi-turn continuation,
+oldest-pair trimming, hang-up during generation and strict model-route selection.
+The runtime selects a separate Omni call owner for model ID `LFM3-Omni-2B` and
+does not fall through to the Gemma runner if that owner has not been composed.
+This source snapshot does not contain the U2/U3/U4 production adapters, so engine,
+continuous microphone, streamed AudioTrack, persisted-call diagnostics, full
+app composition and real-model/device coverage remain unverified for integration.
+
+
 # Memory Unit 4 entity/temporal prototype — 14 November 2026
 
 `MemoryEntityTemporalGraph` is an opt-in-disabled, ephemeral projection built

@@ -1104,6 +1104,9 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
                 }
             })
     }
+    /** U2/U3/U4 composition installs the Omni call owner; the Gemma runner stays unchanged. */
+    @Volatile internal var omniVoiceCallOwner: com.battlesbudz.jarvis.v2.runtime.turn.OmniVoiceCallOwner? = null
+
     private val voiceTurns: VoiceTurnRunner by lazy {
         val call = VoiceCallAccess(voiceCallState, voiceSessionController, VoiceCallEvents(
             post = { mainHandler.post(it) }, report = { sessionReport(it) },
@@ -1248,7 +1251,20 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     private fun startConversation(input: ConversationInvocation, callbacks: ConversationCallbacks): Job? =
         conversationCoordinator.start(input, callbacks).also { if (it != null) conversationJob = it }
 
-    fun runVoiceTurn(): Unit = voiceTurns.start()
+    fun runVoiceTurn() {
+        if (com.battlesbudz.jarvis.v2.runtime.turn.OmniVoiceCallRoute.isOmni(modelStore.selectedModel().id)) {
+            val owner = omniVoiceCallOwner
+            if (owner == null) {
+                val message = "Omni Voice Call is unavailable because its runtime/capture/output owner is not connected."
+                diagnosticRecorder.recordImportant(message)
+                sessionReport(message)
+                return
+            }
+            owner.start()
+        } else {
+            voiceTurns.start()
+        }
+    }
 
     fun onServiceStopped() {
         endVoiceCall()
@@ -1288,6 +1304,10 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         returnToWakeCuePending.set(!stopSession)
         resumeCommandCue.set(false)
         val endedCallId = voiceSessionController.currentCallId()
+        // The Omni owner stops U3 capture and U4 playback for this exact call;
+        // its runtime state is cleared while model residency remains selected.
+        runCatching { omniVoiceCallOwner?.stop(endedCallId) }
+            .onFailure { diagnosticRecorder.recordImportant("Omni call teardown failed: ${it.javaClass.simpleName}") }
         // Typed-turn/farewell paths can bypass the voice-turn finalizer. Revoke
         // only this exact ended call, without waiting for the shadow native worker.
         runtimeVoiceResources.smartTurn.closeCall(endedCallId)
