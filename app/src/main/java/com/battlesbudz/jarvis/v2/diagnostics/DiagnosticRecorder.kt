@@ -12,6 +12,8 @@ class DiagnosticRecorder(
     private val important = mutableListOf<String>()
     private val summaries = mutableListOf<String>()
     private val turnEvidence = linkedMapOf<String, String>()
+    /** Omni-only observations stay separate so Gemma call records retain their existing shape. */
+    private val omniVoiceEvidence = mutableListOf<String>()
 
     /** Conversation the live session's call belongs to; null for non-call sessions. */
     private var sessionConversationId: String? = null
@@ -54,8 +56,9 @@ class DiagnosticRecorder(
             entries.clear()
             important.clear()
             summaries.clear()
+            omniVoiceEvidence.clear()
             turnEvidence.clear()
-            val editor = preferences.edit().remove("diagnostics_inference_prompts").remove("diagnostics_turn_evidence").remove("diagnostics_summaries").remove("diagnostics_important").putString("diagnostics_session", sessionLabel)
+            val editor = preferences.edit().remove("diagnostics_inference_prompts").remove("diagnostics_turn_evidence").remove("diagnostics_summaries").remove("diagnostics_important").remove("diagnostics_omni_voice_evidence").putString("diagnostics_session", sessionLabel)
                 .putString("diagnostics_call_archive", archivedCallsJson())
                 .putString("diagnostics", "[]")
             if (conversationId == null) editor.remove("diagnostics_session_conversation")
@@ -159,6 +162,14 @@ class DiagnosticRecorder(
             }.getOrDefault(emptyList()).forEach(summaries::add)
         }
         synchronized(entries) {
+            omniVoiceEvidence.clear()
+            runCatching {
+                val saved = JSONArray(preferences.getString("diagnostics_omni_voice_evidence", "[]"))
+                ((saved.length() - MAX_OMNI_VOICE_EVIDENCE).coerceAtLeast(0) until saved.length())
+                    .forEach { omniVoiceEvidence.add(saved.getString(it).take(1200)) }
+            }
+        }
+        synchronized(entries) {
             turnEvidence.clear()
             runCatching {
                 val saved = org.json.JSONObject(preferences.getString("diagnostics_turn_evidence", "{}"))
@@ -180,8 +191,10 @@ class DiagnosticRecorder(
 
     fun snapshot(): String {
         val body = synchronized(entries) {
-            "Running build: $buildLabel\n$sessionLabel\n\nExact Gemma prompt submissions (latest 24; includes drafts and retries):\n${inferencePrompts.joinToString("\n\n")}\n\nRetained turn evidence (up to 12 turns):\n${turnEvidence.values.joinToString("\n\n")}\n\nTiming and recognition summaries:\n${summaries.joinToString("\n\n")}\n\nCall actions and turns:\n${important.joinToString("\n\n")}\n\nRecent audio events:\n" + entries.takeLast(100).joinToString("\n\n")
+            val base = "Running build: $buildLabel\n$sessionLabel\n\nExact Gemma prompt submissions (latest 24; includes drafts and retries):\n${inferencePrompts.joinToString("\n\n")}\n\nRetained turn evidence (up to 12 turns):\n${turnEvidence.values.joinToString("\n\n")}\n\nTiming and recognition summaries:\n${summaries.joinToString("\n\n")}\n\nCall actions and turns:\n${important.joinToString("\n\n")}\n\nRecent audio events:\n" + entries.takeLast(100).joinToString("\n\n")
                 .ifBlank { "No runtime events in this session yet." }
+            if (omniVoiceEvidence.isEmpty()) base
+            else "$base\n\nOmni voice diagnostics:\n${omniVoiceEvidence.joinToString("\n\n")}" 
         }
         val section = runCatching { liveSection?.invoke() }.getOrNull()?.takeIf { it.isNotBlank() }
         return if (section == null) body else "$body\n\n$section"
@@ -206,6 +219,9 @@ class DiagnosticRecorder(
                 put("summaries", JSONArray().also { array -> summaries.forEach(array::put) })
                 put("callActionsAndTurns", JSONArray().also { array -> important.forEach(array::put) })
                 put("recentAudioEvents", JSONArray().also { array -> entries.takeLast(100).forEach(array::put) })
+                if (omniVoiceEvidence.isNotEmpty()) {
+                    put("omniVoiceDiagnostics", JSONArray().also { array -> omniVoiceEvidence.forEach(array::put) })
+                }
                 put("liveSection", section ?: org.json.JSONObject.NULL)
             }
         }
@@ -251,6 +267,39 @@ class DiagnosticRecorder(
         }
     }
 
+    /** Record the concrete Omni driver selected for this call (for example CompiledModel CPU/GPU). */
+    fun recordOmniRuntimePath(runtimePath: String) = recordOmniVoiceEvidence("runtimePath=$runtimePath")
+
+    /** Record monotonic endpoint-to-first-nonempty-playback latency in milliseconds. */
+    fun recordOmniFirstSoundLatency(latencyMs: Long) =
+        recordOmniVoiceEvidence("firstSoundLatencyMs=${latencyMs.coerceAtLeast(0)}")
+
+    /** Record one VAD/playback gate decision and its observed response. */
+    fun recordOmniBargeIn(event: String, confirmedSpeechMs: Long, stopLatencyMs: Long?) {
+        val stop = stopLatencyMs?.coerceAtLeast(0)?.toString() ?: "unavailable"
+        recordOmniVoiceEvidence(
+            "bargeIn=$event confirmedSpeechMs=${confirmedSpeechMs.coerceAtLeast(0)} stopLatencyMs=$stop"
+        )
+    }
+
+    /** Record one between-turn context rollover, including any transcript history dropped to fit. */
+    fun recordOmniRollover(position: Int, transcriptTokens: Int, droppedTurnPairs: Int, prefillMs: Long?) {
+        val prefill = prefillMs?.coerceAtLeast(0)?.toString() ?: "in_progress"
+        recordOmniVoiceEvidence(
+            "rollover position=$position transcriptTokens=$transcriptTokens " +
+                "droppedTurnPairs=$droppedTurnPairs prefillMs=$prefill"
+        )
+    }
+
+    private fun recordOmniVoiceEvidence(entry: String) {
+        synchronized(entries) {
+            omniVoiceEvidence.add("atMs=${System.currentTimeMillis()}\n${entry.take(1200)}")
+            while (omniVoiceEvidence.size > MAX_OMNI_VOICE_EVIDENCE) omniVoiceEvidence.removeAt(0)
+            val saved = JSONArray().also { array -> omniVoiceEvidence.forEach(array::put) }
+            preferences.edit().putString("diagnostics_omni_voice_evidence", saved.toString()).apply()
+        }
+    }
+
     fun record(entry: String) {
         synchronized(entries) {
             entries.add("atMs=${System.currentTimeMillis()}\n${entry.take(1_200)}")
@@ -268,5 +317,6 @@ class DiagnosticRecorder(
 
         private const val CALL_LABEL_PREFIX = "Voice Call "
         private const val MAX_ARCHIVED_CALLS = 8
+        private const val MAX_OMNI_VOICE_EVIDENCE = 64
     }
 }
