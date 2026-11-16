@@ -2054,6 +2054,24 @@ class ReleaseJourneyTest {
 
     @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
     @Test fun test30_phoneCallOverlaysUnifiedChatAndKeepsVoiceNoteMic() {
+        // The live-transcript update recomposes the overlay, which can invalidate an
+        // accessibility node between find and read; re-query a fresh node on
+        // StaleObjectException, assertions unchanged. A single retry proved
+        // insufficient (the re-fetch itself went stale at :2121), so retry in a
+        // bounded loop. For clicks the stale failure happens before the tap is
+        // dispatched, so the retry cannot double-tap.
+        fun <T> staleSafe(read: () -> T): T {
+            var last: StaleObjectException? = null
+            repeat(10) {
+                try {
+                    return read()
+                } catch (e: StaleObjectException) {
+                    last = e
+                    SystemClock.sleep(100)
+                }
+            }
+            throw last!!
+        }
         val prefs = context.getSharedPreferences("release-call-overlay", android.content.Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
         val history = ConversationHistory(prefs)
@@ -2098,10 +2116,10 @@ class ReleaseJourneyTest {
             device.waitForIdle()
             assertNotNull(find(By.res("chat_voice_input")))
             busy.value = true
-            assertFalse(waitUntilDisabled(By.res("voice_call_open")).isEnabled)
+            assertFalse(staleSafe { waitUntilDisabled(By.res("voice_call_open")).isEnabled })
             busy.value = false
             enabled(By.res("voice_call_open"))
-            find(By.res("voice_call_open")).click()
+            staleSafe { find(By.res("voice_call_open")).click() }
             assertNotNull("Voice button opens the in-window call controls", find(By.res("voice_call_overlay")))
             assertNotNull(find(By.res("voice_start")))
             assertNotNull("The separate dictation microphone stays in the composer", find(By.res("chat_voice_input")))
@@ -2112,32 +2130,25 @@ class ReleaseJourneyTest {
                 history.updateReply(history.current.value.id, "streaming-voice", "Transcript is updating while I speak", false)
             }
             VoiceSessionUi.liveTranscript.value = liveCaption
-            // The live-transcript update above recomposes the overlay, which can
-            // invalidate the accessibility node between find and getText; re-query
-            // a fresh node once on StaleObjectException, assertions unchanged.
-            val liveTranscriptText = try {
-                find(By.res("voice_call_live_transcript")).text
-            } catch (_: StaleObjectException) {
-                find(By.res("voice_call_live_transcript")).text
-            }
+            val liveTranscriptText = staleSafe { find(By.res("voice_call_live_transcript")).text }
             assertEquals("Live speech appears without minimizing", liveTranscriptText)
             assertNotNull(find(By.res("voice_call_status")))
             assertFalse("The call pill must not duplicate the persistent character", device.hasObject(By.res("voice_call_orb")))
             assertNotNull(find(By.res("voice_call_end")))
             assertNotNull(find(By.res("voice_call_pause")))
             assertFalse("A minimize control is not part of the call overlay", device.hasObject(By.res("voice_call_minimize")))
-            val liveTranscript = find(By.text("Transcript is updating while I speak"))
-            val overlayBounds = find(By.res("voice_call_overlay")).visibleBounds
-            val transcriptBounds = find(By.res("conversation_transcript")).visibleBounds
+            assertNotNull(find(By.text("Transcript is updating while I speak")))
+            val overlayBounds = staleSafe { find(By.res("voice_call_overlay")).visibleBounds }
+            val transcriptBounds = staleSafe { find(By.res("conversation_transcript")).visibleBounds }
             assertTrue("Call controls must be visible in the chat window", overlayBounds.width() > 0 && overlayBounds.height() > 0)
             assertTrue("The call controls must leave most chat width clear", overlayBounds.width() < transcriptBounds.width() / 2)
             assertFalse("Live text must remain outside the floating controls", android.graphics.Rect.intersects(
-                find(By.res("voice_call_live_transcript")).visibleBounds, overlayBounds))
+                staleSafe { find(By.res("voice_call_live_transcript")).visibleBounds }, overlayBounds))
             assertTrue("The conversation viewport remains on screen under the bubble", transcriptBounds.width() > 0 && transcriptBounds.height() > 0)
-            assertTrue("The live chat transcript remains visible with the bubble", liveTranscript.visibleBounds.width() > 0)
-            assertTrue("The existing draft survives opening the bubble", find(By.res("chat_composer")).text.contains("Keep my draft"))
+            assertTrue("The live chat transcript remains visible with the bubble", staleSafe { find(By.text("Transcript is updating while I speak")).visibleBounds.width() > 0 })
+            assertTrue("The existing draft survives opening the bubble", staleSafe { find(By.res("chat_composer")).text.contains("Keep my draft") })
             assertEquals("Keeping the bubble open must not end the call", 0, ends.get())
-            find(By.res("voice_call_open")).click()
+            staleSafe { find(By.res("voice_call_open")).click() }
             assertNotNull(find(By.res("voice_call_overlay")))
             assertEquals(0, ends.get())
             captureEvidence("test30_activeVoiceOrb")
