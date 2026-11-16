@@ -1637,8 +1637,14 @@ class ReleaseJourneyTest {
             assertTrue("The deleted detail must leave the UI before optional article navigation", device.wait(
                 Until.gone(By.res("memory_detail_$indigoId")), 15_000
             ))
-            // A deletion can remove the page that was open. Return only when the page remains.
-            device.findObject(By.res("memory_article_back"))?.click()
+            // Deleting the open record leaves its remembered detailId in MemoryScreen until
+            // BackHandler clears it. The page can still be selected, so unwind only as far
+            // as needed to make the search control visible.
+            val memorySearch = By.res("memory_search_input")
+            for (backAttempt in 0 until 2) {
+                if (device.wait(Until.hasObject(memorySearch), 1_000)) break
+                device.pressBack()
+            }
             stableFixedMemoryControl(By.res("memory_search_input"))
             searchMemory("indigo notebooks", By.text("No approved memories match that search."))
             searchMemory("sapphire notebooks", By.text("No approved memories match that search."))

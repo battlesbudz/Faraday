@@ -94,12 +94,19 @@ class AudioTurnCapture(
     val audioIsComplete: Boolean get() = capturedPcmBytes <= maxAudioDurationMs.toLong() * 32
     @Volatile var recognitionIssue: String? = null
         private set
-    private val preRoll = RollingAudioBuffer(AudioFormat(input.sampleRateHz), maxDurationMs = 1200)
+    private var preRoll = RollingAudioBuffer(AudioFormat(input.sampleRateHz), maxDurationMs = 1200)
     private val recoveryAudio = RollingAudioBuffer(AudioFormat(input.sampleRateHz), maxDurationMs = 25_000)
     private val lifecycle = Mutex()
     private var collectionJob: Job? = null
     private var detector: SpeechDetector? = null
     private var transcriber: StreamingTranscriber? = null
+
+    /** Configure a call-specific bounded onset buffer before capture starts. */
+    internal fun configurePreRollDuration(maxDurationMs: Long) {
+        require(maxDurationMs > 0) { "Pre-roll duration must be positive." }
+        check(collectionJob == null && !stopped) { "Pre-roll can only be configured before capture starts." }
+        preRoll = RollingAudioBuffer(AudioFormat(input.sampleRateHz), maxDurationMs)
+    }
     @Volatile var finalTranscript: String = ""
         private set
     /** Observational only: a skipped caption is never reported as final ASR. */

@@ -1,6 +1,40 @@
 # Feature and acceptance map
 
 
+## LFM3-Omni U3 audio input — 15 November 2026
+
+The Omni audio encoder runs the extracted bundle's `audio/encode` graph with
+LiteRT `CompiledModel` on CPU. It accepts normalized 16 kHz mono input in graph
+windows of at most 30 seconds, zero-pads a final partial window, and inserts
+only rows selected by the graph's validity mask. `OmniTurnCapture` delegates
+microphone ownership, Silero framing, raw audio retention and endpointing to
+the existing `AudioTurnCapture`; it uses the deadline-first 300 ms silence
+policy and optional existing Smart Turn observer, with a six-second bounded
+pre-roll and a 30-second auto-submit cap. This path supplies no Whisper
+transcriber and does not alter Gemma's capture defaults.
+
+Acceptance checks:
+
+- JVM logic: `OmniAudioEncoderTest` pins little-endian PCM16 normalization,
+  fixed graph-window/padding behavior, zero-window omission for empty input,
+  and mask-valid row copying. `OmniTurnEndpointPolicyTest` pins the U3 rate,
+  pre-roll and cap, submission at 300 ms without Smart Turn, and the existing
+  single 300 ms extension only for a sane high-confidence unfinished verdict.
+- Failure behavior: odd PCM16 byte lengths, non-finite float samples, input
+  longer than 30 seconds, malformed feature/mask dimensions and non-canonical
+  captured WAVs fail closed before rows are returned to the runtime. A
+  Smart-Turn-unavailable capture still reaches its 300 ms deadline; no
+  transcript or Whisper result is required to submit audio.
+- Existing behavior: Gemma's `AudioTurnCapture` constructor/default pre-roll,
+  endpoint mode and ASR behavior remain unchanged; Omni applies its larger
+  pre-roll through a pre-start method on its own capture instance.
+- Android integration / real model/device: not verified in this workspace.
+  CompiledModel invocation against the downloaded Omni section, microphone/VAD
+  acoustics, real Smart Turn loading and measured 30-second turnaround remain
+  device-owed. The audio encoder stays on CPU as specified; no Fold 6 timing
+  claim follows from these JVM tests.
+
+
 # Memory Unit 4 entity/temporal prototype — 14 November 2026
 
 `MemoryEntityTemporalGraph` is an opt-in-disabled, ephemeral projection built
