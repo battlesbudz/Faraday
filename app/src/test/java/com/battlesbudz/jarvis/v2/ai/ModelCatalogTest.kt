@@ -50,6 +50,43 @@ class ModelCatalogTest {
         assertEquals(ModelCatalog.gemma4E2b, ModelCatalog.resolve("Gemma-4-E4B-Abliterated"))
     }
 
+    @Test fun lfm3OmniIsAMultiFileBundleWithEveryFilePinned() {
+        val omni = ModelCatalog.lfm3Omni2b
+        assertEquals(omni, ModelCatalog.find("LFM3-Omni-2B"))
+        assertEquals("LFM3-Omni-2B_int8.litertlm", omni.fileName)
+        assertEquals("Liquid AI", omni.provider)
+        assertTrue(omni.supportsAudio)
+        assertFalse(omni.supportsVision)
+        // Tools join the Omni path in their own unit; the catalog must not
+        // offer them before the runtime can serve them.
+        assertFalse(omni.supportsTools)
+        assertFalse(omni.incrementalGemmaInput)
+        assertEquals(4096, omni.contextTokens)
+        assertEquals(2_519_286_908L, omni.derivedBytes)
+        // downloadBytes counts the whole bundle: the primary file plus the
+        // three speech companions, each pinned at the same HF revision.
+        assertEquals(4_012_449_712L, omni.downloadBytes)
+        assertEquals(3_226_750_192L, omni.primaryDownloadBytes()!!)
+        assertEquals(3, omni.companionFiles.size)
+        assertEquals(omni.downloadBytes!!,
+            omni.primaryDownloadBytes()!! + omni.companionFiles.sumOf { it.downloadBytes })
+        assertEquals(listOf("LFM3-Omni-2B_int8.litertlm",
+            "LFM3-Omni-2B_depth_frame2_f32.tflite",
+            "LFM3-Omni-2B_frame_embed_f32.tflite",
+            "LFM3-Omni-2B_codec_decoder_f12_f32.tflite"), omni.bundleFileNames())
+        omni.companionFiles.forEach { companion ->
+            assertTrue(companion.expectedSha256.matches(Regex("[a-f0-9]{64}")))
+            assertTrue(companion.downloadUrl.startsWith("https://huggingface.co/"))
+            assertFalse(companion.downloadUrl.contains("/resolve/main/"))
+            assertTrue(companion.downloadBytes > 0L)
+        }
+        // Every other catalog model remains a single-file download.
+        ModelCatalog.all.filter { it.id != omni.id }.forEach {
+            assertTrue(it.id, it.companionFiles.isEmpty())
+            assertEquals(it.downloadBytes, it.primaryDownloadBytes())
+        }
+    }
+
     @Test fun qwenSelectionsDoNotEnableGemmaOnlyPaths() {
         assertEquals(13, ModelCatalog.qwen.size)
         ModelCatalog.qwen.forEach { spec ->

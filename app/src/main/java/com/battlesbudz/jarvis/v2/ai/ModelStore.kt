@@ -3,6 +3,8 @@ package com.battlesbudz.jarvis.v2.ai
 import com.battlesbudz.jarvis.v2.ai.storage.modelFiles
 import com.battlesbudz.jarvis.v2.ai.storage.removeModelFiles
 import com.battlesbudz.jarvis.v2.ai.storage.removePartialDownloadFiles
+import com.battlesbudz.jarvis.v2.ai.storage.companionFilePresent
+import com.battlesbudz.jarvis.v2.ai.storage.companionFileVerified
 import com.battlesbudz.jarvis.v2.ai.storage.DownloadSpaceBudget
 import com.battlesbudz.jarvis.v2.ai.storage.ModelDownloader
 import com.battlesbudz.jarvis.v2.ai.storage.DownloadedModelLookup
@@ -37,7 +39,9 @@ class ModelStore @JvmOverloads constructor(
         if (activeImports.get() == 0 && preferences.getBoolean("import_in_progress", false)) {
             preferences.edit().putBoolean("import_in_progress", false).apply()
             modelDirectory.listFiles()
-                ?.filter { it.name.endsWith(".part") && ModelCatalog.all.none { spec -> it.name == "${spec.fileName}.part" } }
+                ?.filter { it.name.endsWith(".part") && ModelCatalog.all.none { spec ->
+                    spec.bundleFileNames().any { name -> it.name == "$name.part" }
+                } }
                 ?.forEach { it.delete() }
         }
     }
@@ -79,7 +83,11 @@ class ModelStore @JvmOverloads constructor(
         require(ModelCatalog.find(spec.id) == spec) { "Unsupported model." }
         check(isModelOperationActive()) { "Model deletion requires exclusive ownership." }
         check(!operations.downloading(spec.id)) { "Cancel this model's download before deleting it." }
-        removeModelFiles(modelDirectory, spec.fileName, compiledCacheDirectory(spec))
+        // Every file of the bundle goes: the primary file and each companion,
+        // with their partial downloads and checkpoints.
+        spec.bundleFileNames().forEach { name ->
+            removeModelFiles(modelDirectory, name, compiledCacheDirectory(spec))
+        }
         // Installs from before the compiled-cache move kept it under the
         // evictable cache directory; remove that too so deleting a model
         // frees everything it did before the move.
@@ -89,23 +97,29 @@ class ModelStore @JvmOverloads constructor(
         }
         val key = fingerprintKey(spec)
         val editor = preferences.edit()
-        listOf(key, "${key}_length", "${key}_modified", "${key}_invalid",
-            "${key}_enforce_catalog_hash", smokeTestKey(spec), "smoke_test_attempted_${spec.id}")
+        (listOf(key, "${key}_length", "${key}_modified", "${key}_invalid",
+            "${key}_enforce_catalog_hash", smokeTestKey(spec), "smoke_test_attempted_${spec.id}") +
+            spec.companionFiles.flatMap { companion ->
+                val companionKey = companionKey(spec, companion)
+                listOf(companionKey, "${companionKey}_length", "${companionKey}_modified",
+                    "${companionKey}_invalid")
+            })
             .forEach { editor.remove(it) }
         if (spec == ModelCatalog.gemma4E2b) editor.remove("smoke_test_passed")
         check(editor.commit()) { "Model removed, but its test state could not be cleared." }
     }
 
     /**
-     * Bytes held by an unfinished download of this model: the partial file
-     * plus its chunk checkpoints. Zero when no resumable state exists. This
-     * is the "saved progress" a pause keeps and a cancel discards; the
-     * installed model file and the compiled caches are not part of it.
+     * Bytes held by an unfinished download of this model: the partial files
+     * plus their chunk checkpoints, across the primary file and every
+     * companion. Zero when no resumable state exists. This is the "saved
+     * progress" a pause keeps and a cancel discards; the installed model
+     * files and the compiled caches are not part of it.
      */
-    fun partialDownloadBytes(spec: LocalModelSpec): Long {
-        val partial = File(modelDirectory, "${spec.fileName}.part")
-        val chunks = File(modelDirectory, "${spec.fileName}.part.chunks")
-        return (if (partial.isFile) partial.length() else 0L) +
+    fun partialDownloadBytes(spec: LocalModelSpec): Long = spec.bundleFileNames().sumOf { name ->
+        val partial = File(modelDirectory, "$name.part")
+        val chunks = File(modelDirectory, "$name.part.chunks")
+        (if (partial.isFile) partial.length() else 0L) +
             (if (chunks.exists()) directoryBytes(chunks) else 0L)
     }
 
@@ -121,13 +135,15 @@ class ModelStore @JvmOverloads constructor(
         require(ModelCatalog.find(spec.id) == spec) { "Unsupported model." }
         check(isModelOperationActive()) { "Discarding a partial download requires exclusive ownership." }
         check(!operations.downloading(spec.id)) { "Stop this model's download before discarding it." }
-        removePartialDownloadFiles(modelDirectory, spec.fileName)
+        spec.bundleFileNames().forEach { name -> removePartialDownloadFiles(modelDirectory, name) }
     }
 
-    fun storedBytes(spec: LocalModelSpec): Long = modelFiles(modelDirectory, spec.fileName)
-        .sumOf { it.length() } + File(modelDirectory, "${spec.fileName}.part.chunks").let { chunks ->
-            if (chunks.exists()) chunks.walkTopDown().filter { it.isFile }.sumOf { it.length() } else 0L
-        } + directoryBytes(compiledCacheDirectory(spec)) +
+    fun storedBytes(spec: LocalModelSpec): Long = spec.bundleFileNames().sumOf { name ->
+        modelFiles(modelDirectory, name).sumOf { it.length() } +
+            File(modelDirectory, "$name.part.chunks").let { chunks ->
+                if (chunks.exists()) chunks.walkTopDown().filter { it.isFile }.sumOf { it.length() } else 0L
+            }
+    } + directoryBytes(compiledCacheDirectory(spec)) +
         // A pre-move install's cache still occupies space until it is deleted
         // or the system evicts it; count it while it exists.
         directoryBytes(legacyCompiledCacheDirectory(spec))
@@ -135,8 +151,19 @@ class ModelStore @JvmOverloads constructor(
     private fun directoryBytes(directory: File): Long =
         if (directory.exists()) directory.walkTopDown().filter { it.isFile }.sumOf { it.length() } else 0L
 
+    /**
+     * Installed means the whole bundle: the primary file plus every
+     * companion present as its exact pinned artifact. A partial bundle —
+     * a companion missing or truncated — reads as not installed, so no
+     * surface can offer a model its runtime would fail to open.
+     */
     fun hasModel(spec: LocalModelSpec): Boolean =
-        fileFor(spec).let { it.isFile && it.length() > 0L }
+        fileFor(spec).let { it.isFile && it.length() > 0L } &&
+            spec.companionFiles.all { companionFilePresent(companionFileFor(spec, it), it) }
+
+    /** The stored file for one of [spec]'s companion files. */
+    fun companionFileFor(spec: LocalModelSpec, companion: ModelCompanionFile): File =
+        File(modelDirectory, companion.fileName)
 
     fun isReady(): Boolean =
         hasModel(selectedModel())
@@ -169,11 +196,25 @@ class ModelStore @JvmOverloads constructor(
     }
 
     /**
-     * Verifies that the file is unchanged since it was accepted by setup.
-     * A first verification pins an imported file's SHA-256 so a later file
-     * replacement cannot silently pass the smoke test.
+     * Verifies the whole installation: the primary file (see
+     * [verifyPrimaryFile]) and every companion file. A multi-file bundle
+     * is verified only when all of its files are, so a partial or corrupt
+     * bundle never passes as an installed model.
      */
     fun verifyIntegrity(
+        spec: LocalModelSpec,
+        onProgress: (processedBytes: Long, totalBytes: Long) -> Unit = { _, _ -> }
+    ): Boolean {
+        if (!verifyPrimaryFile(spec, onProgress)) return false
+        return spec.companionFiles.all { verifyCompanion(spec, it, onProgress) }
+    }
+
+    /**
+     * Verifies that the primary file is unchanged since it was accepted by
+     * setup. A first verification pins an imported file's SHA-256 so a
+     * later file replacement cannot silently pass the smoke test.
+     */
+    private fun verifyPrimaryFile(
         spec: LocalModelSpec,
         onProgress: (processedBytes: Long, totalBytes: Long) -> Unit = { _, _ -> }
     ): Boolean {
@@ -211,6 +252,52 @@ class ModelStore @JvmOverloads constructor(
             .apply()
         return true
     }
+
+    /**
+     * One companion's integrity. Companions are download-only artifacts,
+     * so the catalog hash is always enforced — no import path could
+     * legitimately install different bytes. A verified companion is
+     * remembered by length and modification time, like the primary file,
+     * so repeat checks do not rehash hundreds of megabytes; losing that
+     * record (upgrade, restore) simply re-verifies from the bytes.
+     */
+    private fun verifyCompanion(
+        spec: LocalModelSpec,
+        companion: ModelCompanionFile,
+        onProgress: (processedBytes: Long, totalBytes: Long) -> Unit = { _, _ -> }
+    ): Boolean {
+        val file = companionFileFor(spec, companion)
+        if (!companionFilePresent(file, companion)) return false
+        val key = companionKey(spec, companion)
+        val length = file.length()
+        val modified = file.lastModified()
+        if (preferences.getBoolean("${key}_invalid", false)) return false
+        if (preferences.getString(key, null) != null &&
+            preferences.getLong("${key}_length", -1L) == length &&
+            preferences.getLong("${key}_modified", -1L) == modified
+        ) {
+            return true
+        }
+        onProgress(0L, length)
+        if (!companionFileVerified(file, companion)) {
+            preferences.edit()
+                .putLong("${key}_length", length)
+                .putLong("${key}_modified", modified)
+                .putBoolean("${key}_invalid", true)
+                .apply()
+            return false
+        }
+        preferences.edit()
+            .putString(key, companion.expectedSha256.lowercase())
+            .putLong("${key}_length", length)
+            .putLong("${key}_modified", modified)
+            .putBoolean("${key}_invalid", false)
+            .apply()
+        return true
+    }
+
+    private fun companionKey(spec: LocalModelSpec, companion: ModelCompanionFile): String =
+        "${fingerprintKey(spec)}_companion_${companion.fileName}"
 
     fun smokeTestPassed(spec: LocalModelSpec = selectedModel()): Boolean {
         return preferences.getBoolean(smokeTestKey(spec),
@@ -272,6 +359,9 @@ class ModelStore @JvmOverloads constructor(
                 return@runCatching fileFor(spec)
             }
             checkDownloadSpace(spec)
+            if (spec.companionFiles.isNotEmpty()) {
+                return@runCatching downloadBundle(spec, reportProgress, onStatus, onStall)
+            }
             // Try the exact Downloads lookup first, but preserve download as
             // the explicit one-tap setup fallback when Android hides the file
             // from the app's background provider query.
@@ -342,23 +432,180 @@ class ModelStore @JvmOverloads constructor(
     }.onFailure { if (it is CancellationException) throw it }
 
     /**
+     * Installs a multi-file bundle: the primary file first (Downloads
+     * import or verified download, exactly as a single-file model), then
+     * every companion in catalog order. Each file is hash-verified before
+     * it is installed, files already verified are skipped, and the bundle
+     * counts as installed only once [verifyIntegrity] passes for all of
+     * them — a partial bundle stays resumable state, never an installed
+     * model. Progress is reported against the whole bundle, so the
+     * transfer reads as one download of [LocalModelSpec.downloadBytes].
+     */
+    private suspend fun downloadBundle(
+        spec: LocalModelSpec,
+        onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit,
+        onStatus: (String) -> Unit,
+        onStall: (String?) -> Unit
+    ): File {
+        val bundleTotal = spec.downloadBytes?.takeIf { it > 0L } ?: -1L
+        fun slice(base: Long): (Long, Long) -> Unit = { processed, _ ->
+            if (bundleTotal > 0L) onProgress(base + processed, bundleTotal)
+            else onProgress(processed, -1L)
+        }
+        val primaryBytes = spec.primaryDownloadBytes() ?: fileFor(spec).length()
+        if (!verifyPrimaryFile(spec, slice(0L))) {
+            installPrimaryFile(spec, primaryBytes, slice(0L), onStatus, onStall)
+        }
+        var base = primaryBytes
+        for (companion in spec.companionFiles) {
+            if (!verifyCompanion(spec, companion, slice(base))) {
+                installCompanionFile(spec, companion, slice(base), onStatus, onStall)
+            }
+            base += companion.downloadBytes
+        }
+        check(verifyIntegrity(spec)) {
+            "The downloaded model failed integrity verification. It was not installed. Retry the download."
+        }
+        if (bundleTotal > 0L) onProgress(bundleTotal, bundleTotal)
+        return fileFor(spec)
+    }
+
+    /**
+     * Obtains and installs a bundle's primary file: the exact Downloads
+     * lookup and import first, then the verified download — the same
+     * route a single-file model takes in [downloadOrReuse].
+     */
+    private suspend fun installPrimaryFile(
+        spec: LocalModelSpec,
+        primaryBytes: Long,
+        onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit,
+        onStatus: (String) -> Unit,
+        onStall: (String?) -> Unit
+    ) {
+        onStatus("Searching Downloads for the exact filename: ${spec.fileName}")
+        val firstLookup = withTimeoutOrNull(30_000L) {
+            DownloadLookupResult.Completed(downloadedModels.find(spec))
+        }
+        val exactDownload = when (firstLookup) {
+            is DownloadLookupResult.Completed -> firstLookup.uri
+            null -> {
+                onStatus("The Downloads index is slow. Retrying the exact filename check…")
+                when (val retry = withTimeoutOrNull(30_000L) {
+                    DownloadLookupResult.Completed(downloadedModels.find(spec))
+                }) {
+                    is DownloadLookupResult.Completed -> retry.uri
+                    null -> error("Could not finish checking Downloads for ${spec.fileName}. No download was started.")
+                }
+            }
+        }
+        if (exactDownload != null) {
+            onStatus("Found ${spec.fileName} in Downloads. Verifying that exact file…")
+            onStatus("Importing the existing AI model from Downloads…")
+            if (importExactDownloadedModel(exactDownload, spec, onProgress, onStatus) != null) return
+        }
+        onStatus("No exact ${spec.fileName} file was found in Downloads. Starting the verified download…")
+        onStatus("Downloading the selected AI model from the verified model source…")
+        val url = requireNotNull(spec.downloadUrl) { "No automatic download is configured for ${spec.id}." }
+        val destination = fileFor(spec)
+        val temporary = File(modelDirectory, "${spec.fileName}.part")
+        // A stopped worker may already have assembled the complete file.
+        // Verify it before contacting the host or restarting its transfer.
+        val completedDownload = temporary.isFile &&
+            temporary.length() == primaryBytes && spec.expectedSha256 != null &&
+            temporary.sha256(onProgress) == spec.expectedSha256
+        if (!completedDownload) downloader.download(
+            url = url,
+            temporary = temporary,
+            onProgress = onProgress,
+            onStatus = onStatus,
+            onStall = onStall,
+            expectedSha256 = spec.expectedSha256
+        )
+        check(temporary.isFile && temporary.length() > 0L) { "The downloaded model is empty." }
+        onStatus("Verifying the downloaded AI model…")
+        val actualSha256 = temporary.sha256(onProgress)
+        spec.expectedSha256?.let { expected ->
+            if (!actualSha256.equals(expected, ignoreCase = true)) {
+                temporary.delete()
+                error("The downloaded model failed integrity verification. It was not installed. Retry the download.")
+            }
+        }
+        check(temporary.renameTo(destination)) { "Unable to finalize the downloaded model." }
+        val key = fingerprintKey(spec)
+        preferences.edit()
+            .putString(key, actualSha256)
+            .putLong("${key}_length", destination.length())
+            .putLong("${key}_modified", destination.lastModified())
+            .putBoolean("${key}_invalid", false)
+            .putBoolean("${key}_enforce_catalog_hash", true)
+            .putBoolean(smokeTestKey(spec), false)
+            .putBoolean("smoke_test_attempted_${spec.id}", false)
+            .commit().also { check(it) { "The model was installed but its verification state could not be saved. Check the installed model again." } }
+    }
+
+    /**
+     * Downloads, verifies and installs one companion file of a bundle.
+     * The transfer is resumable like the primary file's; a completed
+     * partial that already hashes to the pinned value is installed
+     * without contacting the host.
+     */
+    private suspend fun installCompanionFile(
+        spec: LocalModelSpec,
+        companion: ModelCompanionFile,
+        onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit,
+        onStatus: (String) -> Unit,
+        onStall: (String?) -> Unit
+    ) {
+        onStatus("Downloading ${companion.fileName}…")
+        val destination = companionFileFor(spec, companion)
+        val temporary = File(modelDirectory, "${companion.fileName}.part")
+        val completedDownload = temporary.isFile &&
+            temporary.length() == companion.downloadBytes &&
+            temporary.sha256(onProgress).equals(companion.expectedSha256, ignoreCase = true)
+        if (!completedDownload) downloader.download(
+            url = companion.downloadUrl,
+            temporary = temporary,
+            onProgress = onProgress,
+            onStatus = onStatus,
+            onStall = onStall,
+            expectedSha256 = companion.expectedSha256
+        )
+        check(temporary.isFile && temporary.length() > 0L) { "The downloaded model file is empty." }
+        onStatus("Verifying ${companion.fileName}…")
+        val actualSha256 = temporary.sha256(onProgress)
+        if (!actualSha256.equals(companion.expectedSha256, ignoreCase = true)) {
+            temporary.delete()
+            error("The downloaded model failed integrity verification. It was not installed. Retry the download.")
+        }
+        check(temporary.renameTo(destination)) { "Unable to finalize the downloaded model file." }
+        val key = companionKey(spec, companion)
+        preferences.edit()
+            .putString(key, actualSha256)
+            .putLong("${key}_length", destination.length())
+            .putLong("${key}_modified", destination.lastModified())
+            .putBoolean("${key}_invalid", false)
+            .apply()
+    }
+
+    /**
      * Fail before the first byte moves when this phone cannot hold the model
-     * plus its compiled cache, naming the shortfall. Runs only once the
-     * installed-file check above has failed, so a verified model already on
-     * the phone is never refused. Bytes this model already occupies —
-     * including a resumable partial download — count toward the budget. A
-     * failed space probe never blocks setup: the check guards downloads, it
-     * does not gate on its own measurement.
+     * plus its compiled cache — and, for a multi-file bundle, the sections
+     * it derives on device after install — naming the shortfall. Runs only
+     * once the installed-file check above has failed, so a verified model
+     * already on the phone is never refused. Bytes this model already
+     * occupies — including a resumable partial download — count toward the
+     * budget. A failed space probe never blocks setup: the check guards
+     * downloads, it does not gate on its own measurement.
      */
     private fun checkDownloadSpace(spec: LocalModelSpec) {
         val modelBytes = spec.downloadBytes?.takeIf { it > 0L } ?: return
         val allocatable = allocatableBytes() ?: return
         val existing = storedBytes(spec)
-        val shortfall = DownloadSpaceBudget.shortfallBytes(modelBytes, existing, allocatable)
+        val shortfall = DownloadSpaceBudget.shortfallBytes(modelBytes, existing, allocatable, spec.derivedBytes)
         check(shortfall <= 0L) {
             "Not enough free space for ${spec.id}. Free up about ${ModelGuidance.gb(shortfall)} " +
                 "and try again: the model and its cache need " +
-                "${ModelGuidance.gb(DownloadSpaceBudget.budgetBytes(modelBytes))} in total, " +
+                "${ModelGuidance.gb(DownloadSpaceBudget.budgetBytes(modelBytes, spec.derivedBytes))} in total, " +
                 "${ModelGuidance.gb(existing)} is already on this phone for it, and " +
                 "${ModelGuidance.gb(allocatable)} can be made available."
         }

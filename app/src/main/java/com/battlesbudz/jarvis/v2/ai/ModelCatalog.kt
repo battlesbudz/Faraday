@@ -1,5 +1,20 @@
 package com.battlesbudz.jarvis.v2.ai
 
+/**
+ * One extra file a multi-file model bundle needs beside its primary file.
+ * A bundle counts as installed only when the primary file and every
+ * companion are present and verified against their pinned hashes.
+ * Companions are download-only artifacts (no import path), stored flat in
+ * the models directory under [fileName]; [downloadUrl] may point into a
+ * publisher subdirectory.
+ */
+data class ModelCompanionFile(
+    val fileName: String,
+    val downloadUrl: String,
+    val expectedSha256: String,
+    val downloadBytes: Long
+)
+
 data class LocalModelSpec(
     val id: String,
     val fileName: String,
@@ -17,7 +32,11 @@ data class LocalModelSpec(
     val provider: String = if (id.startsWith("Qwen")) "Alibaba · Qwen" else "Google",
     val reasoning: Boolean = id.contains("Thinking"),
     val experimental: Boolean = true,
-    val requiresAccess: Boolean = false
+    val requiresAccess: Boolean = false,
+    /** Bytes this model derives on the device after install (extracted bundle sections); the download space budget counts them before the first byte moves. */
+    val derivedBytes: Long = 0L,
+    /** Extra pinned files a multi-file bundle needs beside [fileName]; empty for single-file models. [downloadBytes] counts the whole bundle. */
+    val companionFiles: List<ModelCompanionFile> = emptyList()
 )
 
 /** Publisher filenames often differ from Jarvis's installed filename. */
@@ -27,6 +46,16 @@ internal fun LocalModelSpec.importFileNames(): Set<String> = buildSet {
         val publishedName = java.net.URI(url).path.substringAfterLast('/')
         if (publishedName.endsWith(".litertlm")) add(publishedName)
     }
+}
+
+/** Every stored file name this model's installation comprises: the primary file, then its companions. */
+internal fun LocalModelSpec.bundleFileNames(): List<String> =
+    listOf(fileName) + companionFiles.map { it.fileName }
+
+/** Bytes of the primary file alone; [LocalModelSpec.downloadBytes] counts the whole bundle. */
+internal fun LocalModelSpec.primaryDownloadBytes(): Long? = downloadBytes?.let { total ->
+    if (companionFiles.isEmpty()) total
+    else (total - companionFiles.sumOf { it.downloadBytes }).takeIf { it > 0L } ?: total
 }
 
 object ModelCatalog {
@@ -52,6 +81,53 @@ object ModelCatalog {
         supportsTools = true, incrementalGemmaInput = true,
         downloadBytes = 3659530240L, description = "Larger assistant · more memory and longer waits",
         downloadUrl = "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/1fc8912676889ed3aeec478c92c1e239bed08928/gemma-4-E4B-it.litertlm?download=true"
+    )
+
+    // LFM3-Omni-2B is a multi-file bundle: the primary .litertlm plus the
+    // three speech graphs its runtime drives directly (depth decoder,
+    // frame embedder, codec decoder). downloadBytes counts the whole
+    // bundle; every file is pinned by SHA-256 at the recorded Hugging Face
+    // revision, and the bundle reports installed only when all four files
+    // are present and verified. The speech codec window (~5 KB) is pinned
+    // by the speech-output unit that parses it, not here.
+    val lfm3Omni2b = LocalModelSpec(
+        id = "LFM3-Omni-2B",
+        fileName = "LFM3-Omni-2B_int8.litertlm",
+        expectedSha256 = "959617973a7ddcb3d887fa0d9891d79556a266490d5c432b02a18ffcac3124ed",
+        // The Omni runtime drives the bundle's language model on CPU; the
+        // speech graphs choose their own accelerators inside that runtime.
+        recommendedGpu = false, supportsVision = false, supportsAudio = true,
+        // Tools join the Omni path in their own unit; until then no surface
+        // may offer tools this model cannot yet serve.
+        supportsTools = false, incrementalGemmaInput = false,
+        contextTokens = 4096,
+        downloadBytes = 4_012_449_712L,
+        // Sections the runtime extracts from the bundle on first open
+        // (decoder + embedder + audio encoder, per the pinned section map).
+        derivedBytes = 2_519_286_908L,
+        description = "Voice conversation · hears and speaks in one model · INT8",
+        provider = "Liquid AI",
+        downloadUrl = "https://huggingface.co/litert-community/LFM3-Omni-2B-LiteRT/resolve/7c22c5187003d0cff8e5d1dc6ed4b45da48ee456/LFM3-Omni-2B_int8.litertlm?download=true",
+        companionFiles = listOf(
+            ModelCompanionFile(
+                fileName = "LFM3-Omni-2B_depth_frame2_f32.tflite",
+                downloadUrl = "https://huggingface.co/litert-community/LFM3-Omni-2B-LiteRT/resolve/7c22c5187003d0cff8e5d1dc6ed4b45da48ee456/speech/LFM3-Omni-2B_depth_frame2_f32.tflite?download=true",
+                expectedSha256 = "19646b570f453711a60add2523febb4884e3214e8c3b7f5ca898dc29dae3d60a",
+                downloadBytes = 435_046_636L
+            ),
+            ModelCompanionFile(
+                fileName = "LFM3-Omni-2B_frame_embed_f32.tflite",
+                downloadUrl = "https://huggingface.co/litert-community/LFM3-Omni-2B-LiteRT/resolve/7c22c5187003d0cff8e5d1dc6ed4b45da48ee456/speech/LFM3-Omni-2B_frame_embed_f32.tflite?download=true",
+                expectedSha256 = "71b68529124ef770a495554ea6928f42a66c8c0f2756df2452b15b22bdbc707d",
+                downloadBytes = 198_281_972L
+            ),
+            ModelCompanionFile(
+                fileName = "LFM3-Omni-2B_codec_decoder_f12_f32.tflite",
+                downloadUrl = "https://huggingface.co/litert-community/LFM3-Omni-2B-LiteRT/resolve/7c22c5187003d0cff8e5d1dc6ed4b45da48ee456/speech/LFM3-Omni-2B_codec_decoder_f12_f32.tflite?download=true",
+                expectedSha256 = "7134523fb54c2fd9b31697373b37e1a5bd1669c3a432ab7896a8a7d070f38ed3",
+                downloadBytes = 152_370_912L
+            )
+        )
     )
 
     // The DuoNeural abliterated Gemma 4 entries (E2B + E4B) were removed from
@@ -169,7 +245,7 @@ object ModelCatalog {
         )
     )
 
-    val all = listOf(gemma4E2b, gemma4E4b) + qwen + CommunityModels.all
+    val all = listOf(gemma4E2b, gemma4E4b, lfm3Omni2b) + qwen + CommunityModels.all
 
     fun find(id: String?): LocalModelSpec? = all.firstOrNull { it.id == id }
 

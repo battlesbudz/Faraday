@@ -30,4 +30,15 @@ class DownloadSpaceBudgetTest {
         // A model already occupying more than its budget needs nothing.
         assertEquals(0L, DownloadSpaceBudget.shortfallBytes(100L, 200L, 0L))
     }
+
+    @Test fun derivedBytesAreAddedOnTopOfTheCacheBudget() {
+        // Sections a bundle extracts on device are a straight addition:
+        // they are neither part of the download nor covered by its cache half.
+        assertEquals(150L, DownloadSpaceBudget.budgetBytes(100L, 0L))
+        assertEquals(200L, DownloadSpaceBudget.budgetBytes(100L, 50L))
+        assertEquals(0L, DownloadSpaceBudget.shortfallBytes(100L, 0L, 200L, 50L))
+        assertEquals(50L, DownloadSpaceBudget.shortfallBytes(100L, 0L, 150L, 50L))
+        // Bytes already on disk still credit against the larger budget.
+        assertEquals(0L, DownloadSpaceBudget.shortfallBytes(100L, 200L, 0L, 50L))
+    }
 }

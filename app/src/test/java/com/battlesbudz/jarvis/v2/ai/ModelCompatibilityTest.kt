@@ -28,7 +28,7 @@ class ModelCompatibilityTest {
             "gemma-4-31B-it-litert-lm",
             "granite-4.0-350m-litert-lm"
         )
-        assertEquals(72, ModelCatalog.all.size)
+        assertEquals(73, ModelCatalog.all.size)
         removed.forEach { id ->
             assertNull(id, ModelCatalog.find(id))
             assertEquals(ModelCatalog.gemma4E2b, ModelCatalog.resolve(id))

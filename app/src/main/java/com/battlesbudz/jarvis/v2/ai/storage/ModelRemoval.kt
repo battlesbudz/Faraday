@@ -1,5 +1,6 @@
 package com.battlesbudz.jarvis.v2.ai.storage
 
+import com.battlesbudz.jarvis.v2.ai.ModelCompanionFile
 import java.io.File
 
 /** Only the selected model's app-owned files; never the user's Downloads folder. */
@@ -38,3 +39,23 @@ internal fun removePartialDownloadFiles(directory: File, fileName: String) {
         "Could not remove the model download checkpoints. Please try again."
     }
 }
+
+/**
+ * A companion file counts as present only as the exact pinned artifact:
+ * the file exists with exactly the catalogued byte count. A missing or
+ * truncated companion reads as absent, so a partial bundle is never
+ * reported installed. The hash itself is [companionFileVerified]'s job;
+ * presence is the cheap check install state is built on.
+ */
+internal fun companionFilePresent(file: File, companion: ModelCompanionFile): Boolean =
+    file.isFile && file.length() == companion.downloadBytes
+
+/**
+ * Full integrity of one companion: present as the exact pinned artifact
+ * and hashing to the catalogued SHA-256. Companions are download-only —
+ * no import path could legitimately substitute different bytes — so the
+ * catalog hash is always enforced here.
+ */
+internal fun companionFileVerified(file: File, companion: ModelCompanionFile): Boolean =
+    companionFilePresent(file, companion) &&
+        file.sha256().equals(companion.expectedSha256, ignoreCase = true)
