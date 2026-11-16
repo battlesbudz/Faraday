@@ -637,6 +637,18 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             modelStore.endModelOperation()
         }
     }
+    // LFM3-Omni U5 fix (run 1935): this lazy MUST stay declared above the
+    // init block. Init builds OmniVoiceCallOwner with callResources, which
+    // forces this delegate; Kotlin initializes properties in declaration
+    // order, so a lazy declared after init still has a null backing field
+    // while init runs and Lazy.getValue() throws NPE at startup. The lazy
+    // body itself still runs on first access (in init, after
+    // diagnosticRecorder is assigned), so this move changes no behavior.
+    private val runtimeVoiceResources by lazy {
+        RuntimeVoiceResources(applicationContext, runtimeScope,
+            recordDiagnostic = diagnosticRecorder::recordImportant,
+            onLevel = { com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.level.value = it })
+    }
     /** U2/U3/U4 composition installs the Omni call owner; the Gemma runner stays unchanged. */
     @Volatile internal var omniVoiceCallOwner: com.battlesbudz.jarvis.v2.runtime.turn.OmniVoiceCallOwner? = null
 
@@ -951,11 +963,6 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         else "That conversation is already gone."
     }
 
-    private val runtimeVoiceResources by lazy {
-        RuntimeVoiceResources(applicationContext, runtimeScope,
-            recordDiagnostic = diagnosticRecorder::recordImportant,
-            onLevel = { com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.level.value = it })
-    }
     private val callResources get() = runtimeVoiceResources.resources
     private val latestStatus get() = voiceCallState.latestStatus
     private val pendingVoiceCorrection get() = voiceCallState.pendingVoiceCorrection
