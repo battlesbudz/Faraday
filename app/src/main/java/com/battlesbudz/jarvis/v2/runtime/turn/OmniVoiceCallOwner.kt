@@ -18,7 +18,7 @@ import com.battlesbudz.jarvis.v2.ai.OmniSpeechStack
 import com.battlesbudz.jarvis.v2.ai.OmniSpeechTokens
 import com.battlesbudz.jarvis.v2.diagnostics.DiagnosticRecorder
 import com.battlesbudz.jarvis.v2.voice.AudioInput
-import com.battlesbudz.jarvis.v2.voice.OmniTurnCapture
+import com.battlesbudz.jarvis.v2.voice.OmniTurnCapture as U3OmniTurnCapture
 import com.battlesbudz.jarvis.v2.voice.SileroSpeechDetector
 import com.battlesbudz.jarvis.v2.voice.SpeechAudioTrackFactory
 import com.battlesbudz.jarvis.v2.voice.VoiceCallResources
@@ -36,6 +36,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -127,7 +128,7 @@ internal class OmniVoiceCallOwnerImpl(
     }
 
     private suspend fun runLoop(callId: String) {
-        val myJob = coroutineContext[Job]
+        val myJob = currentCoroutineContext()[Job]
         try {
             val callStack = try {
                 ensureStack()
@@ -490,7 +491,7 @@ internal class OmniCallEngineImpl(
 }
 
 /**
- * [OmniTurnCapture] over U3's per-turn capture. One fresh U3 capture (and
+ * [U3OmniTurnCapture] over U3's per-turn capture. One fresh U3 capture (and
  * one fresh Silero detector, which the capture closes on stop) per turn, over
  * the call's borrowed microphone — the U3 capture is per-turn by
  * construction, so call scope lives here, not in U3. Endpoint time is
@@ -514,7 +515,7 @@ internal class OmniCallCapture(
     override suspend fun awaitTurn(): OmniCapturedTurn {
         check(active) { "omni_call_capture_not_started" }
         val input = borrowMicrophone("omni-turn")
-        val capture = OmniTurnCapture(
+        val capture = U3OmniTurnCapture(
             input = input,
             scope = scope,
             createDetector = { SileroSpeechDetector.create(assets) },

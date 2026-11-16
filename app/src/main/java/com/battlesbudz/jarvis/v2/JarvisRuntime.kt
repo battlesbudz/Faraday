@@ -637,6 +637,9 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             modelStore.endModelOperation()
         }
     }
+    /** U2/U3/U4 composition installs the Omni call owner; the Gemma runner stays unchanged. */
+    @Volatile internal var omniVoiceCallOwner: com.battlesbudz.jarvis.v2.runtime.turn.OmniVoiceCallOwner? = null
+
     init {
         // M4: the browser runtime gate opens exactly when the production
         // runtime path (decorator + session owner + approval UI) is installed
@@ -1118,8 +1121,6 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
                 }
             })
     }
-    /** U2/U3/U4 composition installs the Omni call owner; the Gemma runner stays unchanged. */
-    @Volatile internal var omniVoiceCallOwner: com.battlesbudz.jarvis.v2.runtime.turn.OmniVoiceCallOwner? = null
 
     private val voiceTurns: VoiceTurnRunner by lazy {
         val call = VoiceCallAccess(voiceCallState, voiceSessionController, VoiceCallEvents(
