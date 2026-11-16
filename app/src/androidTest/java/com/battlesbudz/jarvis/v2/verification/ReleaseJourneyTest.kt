@@ -1637,8 +1637,14 @@ class ReleaseJourneyTest {
             assertTrue("The deleted detail must leave the UI before optional article navigation", device.wait(
                 Until.gone(By.res("memory_detail_$indigoId")), 15_000
             ))
-            // A deletion can remove the page that was open. Return only when the page remains.
-            device.findObject(By.res("memory_article_back"))?.click()
+            // Deleting the open record leaves its remembered detailId in MemoryScreen until
+            // BackHandler clears it. The page can still be selected, so unwind only as far
+            // as needed to make the search control visible.
+            val memorySearch = By.res("memory_search_input")
+            for (backAttempt in 0 until 2) {
+                if (device.wait(Until.hasObject(memorySearch), 1_000)) break
+                device.pressBack()
+            }
             stableFixedMemoryControl(By.res("memory_search_input"))
             searchMemory("indigo notebooks", By.text("No approved memories match that search."))
             searchMemory("sapphire notebooks", By.text("No approved memories match that search."))
@@ -3143,7 +3149,7 @@ class ReleaseJourneyTest {
                     SystemClock.sleep(100)
                     continue
                 }
-                if (swipes.incrementAndGet() > 14) break
+                if (swipes.incrementAndGet() > 24) break
                 val viewport = list.visibleBounds
                 check(viewport.width() > 0 && viewport.height() > 96) { "Benchmark scroll viewport is unavailable" }
                 val bounds = control?.visibleBounds
@@ -3219,19 +3225,24 @@ class ReleaseJourneyTest {
                     "Benchmark swipe dispatch failed"
                 }
                 device.waitForIdle((deadline - SystemClock.uptimeMillis()).coerceAtLeast(1))
-                if (SystemClock.uptimeMillis() >= deadline) break
                 SystemClock.sleep((deadline - SystemClock.uptimeMillis()).coerceIn(0, 150))
-                val fresh = benchmarkObserveTarget(selector, deadline)
+                // A gesture dispatched inside the budget can land the control fully
+                // visible just as the deadline expires (foldable run 1925, test45:
+                // the final fine stroke put pipeline_benchmark_copy_text at safe
+                // bounds — proven by the failure screenshot — but the old code broke
+                // on the deadline before ever observing the landing). Observe the
+                // landing inside one bounded grace window; the control is returned
+                // only if it passes the same bounds check as any in-budget find.
+                val observationDeadline = deadline + 1_500
+                val fresh = benchmarkObserveTarget(selector, observationDeadline)
                 val freshReady = fresh != null && hasRequiredBounds(fresh)
                 val freshBounds = fresh?.visibleBounds
                 val freshList = benchmarkScrollList()
                 val freshViewport = freshList?.visibleBounds
                 val after = if (freshReady) null else freshList?.let { benchmarkViewportObservation(it) }
                 android.util.Log.i("JarvisVerification", "benchmark_navigation_observed selector=$selector direction=$direction mode=${if (hold) "held_text" else if (fine) "fine" else "blind"} requireSafeTapBounds=$requireSafeTapBounds afterTarget=$freshBounds afterViewport=$freshViewport afterRows=${if (freshReady) "not_required_ready" else after?.receipt} ready=$freshReady gestures=${swipes.get()} reversedAtEdge=$reversedAtEdge gestureMs=${SystemClock.uptimeMillis() - scrollStarted} remainingMs=${deadline - SystemClock.uptimeMillis()}")
-                if (fresh != null && freshReady) {
-                    if (SystemClock.uptimeMillis() < deadline) return fresh
-                    break
-                }
+                if (fresh != null && freshReady) return fresh
+                if (SystemClock.uptimeMillis() >= deadline) break
                 val moved = after != null && after.signature != before.signature
                 unchangedGestures = if (moved) 0 else unchangedGestures + 1
                 android.util.Log.i("JarvisVerification", "benchmark_navigation selector=$selector direction=$direction moved=$moved unchangedGestures=$unchangedGestures gestures=${swipes.get()} gestureMs=${SystemClock.uptimeMillis() - scrollStarted} remainingMs=${deadline - SystemClock.uptimeMillis()}")
@@ -3263,7 +3274,12 @@ class ReleaseJourneyTest {
 
     private fun benchmarkClickEnabled(selector: BySelector, towardTop: Boolean = false, inDialog: Boolean = false,
         holdDiscovery: Boolean = false, sparseHeldDiscovery: Boolean = false) {
-        val deadline = SystemClock.uptimeMillis() + 15_000
+        // 30 s, not 15 s: on the foldable emulator each blind discovery gesture
+        // plus its observation costs ~1.5 s, and test45's copy_text target was
+        // not even composed for the first five gestures (~10 s) of the old
+        // budget in run 1925, leaving the two fine alignment gestures no room
+        // to be observed. Ready controls still return immediately.
+        val deadline = SystemClock.uptimeMillis() + 30_000
         val swipes = AtomicInteger()
         while (SystemClock.uptimeMillis() < deadline) {
             val ready = observeBenchmarkNavigation {
