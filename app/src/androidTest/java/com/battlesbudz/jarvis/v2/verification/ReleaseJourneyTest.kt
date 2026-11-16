@@ -3188,7 +3188,23 @@ class ReleaseJourneyTest {
                     (android.graphics.Rect.intersects(viewport, knownBounds) || nearbyOutside)
                 val gap = if (knownBounds == null) 0 else if (direction == Direction.UP)
                     viewport.top + alignmentInset - knownBounds.top else knownBounds.bottom - (viewport.bottom - alignmentInset)
-                val hold = (holdTextDiscovery || sparseHeldTextDiscovery) && !fine
+                // Run 1930, test45, API 30: pipeline_benchmark_quality_save sits
+                // directly below the quality_verify checkbox, one row past the
+                // viewport edge at search start — yet twelve blind full strokes
+                // (1064 px, 12 steps) never observed it once. The fast swipe
+                // flings the LazyColumn past the finger stroke, so the narrow
+                // band holding the button is skipped between at-rest viewports
+                // on both the DOWN pass (quality section -> process_cpu metrics)
+                // and the reversed UP pass (metrics -> top header). The fine
+                // path cannot engage while the target has never been observed.
+                // A never-observed target therefore gets the existing slow held
+                // half-viewport stroke — the same discovery that resolved NOISY
+                // and the quality verdict buttons in this run — whose at-rest
+                // landing cannot overshoot the band and whose successive
+                // viewports overlap by half the viewport. Once the target is
+                // observed, fine alignment takes over unchanged. Budgets, swipe
+                // cap and bounds checks are untouched.
+                val hold = (holdTextDiscovery || sparseHeldTextDiscovery || knownBounds == null) && !fine
                 // A small visible fragment at the scroll edge does not reveal the
                 // control's full vertical extent. For a pending physical tap, move
                 // it inward with the existing fine cap instead of trusting that
