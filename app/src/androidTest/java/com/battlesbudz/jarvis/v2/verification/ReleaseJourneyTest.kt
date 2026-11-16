@@ -2130,7 +2130,11 @@ class ReleaseJourneyTest {
                 history.updateReply(history.current.value.id, "streaming-voice", "Transcript is updating while I speak", false)
             }
             VoiceSessionUi.liveTranscript.value = liveCaption
-            val liveTranscriptText = staleSafe { find(By.res("voice_call_live_transcript")).text }
+            // The transcript is a conditional LazyColumn tail item. Let the
+            // armed/live state recompose, then bring that item into the
+            // compact viewport before reading its accessibility node.
+            device.waitForIdle()
+            val liveTranscriptText = staleSafe { scrollTo(By.res("voice_call_live_transcript")).text }
             assertEquals("Live speech appears without minimizing", liveTranscriptText)
             assertNotNull(find(By.res("voice_call_status")))
             assertFalse("The call pill must not duplicate the persistent character", device.hasObject(By.res("voice_call_orb")))
