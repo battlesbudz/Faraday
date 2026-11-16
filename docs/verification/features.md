@@ -1,6 +1,38 @@
 # Feature and acceptance map
 
 
+## LFM3-Omni U6 duplex capture component — 15 November 2026
+
+`voice/OmniDuplexCapture` is the call-lifetime mic pump for the Omni path. It
+uses Silero-compatible `SpeechDetector` decisions without a Whisper probe,
+requires a longer VAD confirmation window during assistant playback, and gates
+playback echo against recent PCM rendered by U4's speaker sink. Confirmed speech
+signals U5's synchronous cancel/flush hook; captured PCM includes six seconds
+of pre-roll, ends at the 300 ms deadline unless Smart Turn supplies one
+high-confidence unfinished hold, and is capped at 30 seconds. Gemma capture
+and its Whisper-backed interruption policy are unchanged.
+
+Acceptance checks:
+- JVM logic: `OmniDuplexCaptureTest` covers the two VAD windows, candidate reset
+  on playback echo, a delayed echo segment from the pinned recorded speech
+  fixture, mixed user speech, six-second pre-roll, single Smart Turn extension,
+  and cap precedence. These tests were added but not run in this snapshot.
+- Failure case: a playback-correlated VAD candidate does not confirm; a real
+  user signal mixed with playback remains eligible; a Smart Turn hold cannot
+  extend more than one deadline window; the audio cap seals even when a hold is
+  requested.
+- Existing behavior: the Gemma BargeInAudioInput/Whisper-probe path and all
+  existing audio-input contracts are untouched. No UI or instrumentation
+  constructor changed.
+- Android/model/device (not verified): the U5 call integration must acquire
+  the existing communication route, enable Android AEC/noise suppression,
+  provide U4's actual mono playback PCM at 24 kHz, cancel generation and flush
+  AudioTrack from `onBargeIn`, and consume `TurnReady` while generation runs.
+  Echo correlation threshold and confirmation timing still require recorded
+  playback fixtures on the target phone; this snapshot contains the U6
+  component but no U3/U4/U5 call pipeline.
+
+
 # Memory Unit 4 entity/temporal prototype — 14 November 2026
 
 `MemoryEntityTemporalGraph` is an opt-in-disabled, ephemeral projection built

@@ -33,6 +33,7 @@ for the decision to keep package/collaborator boundaries before adding build mod
 | `JarvisRuntime.get(applicationContext)` | Process composition/lifecycle facade wiring typed owners/ports, shared history and compatibility entry adapters |
 | `runtime/turn/VoiceTurnRunner` | Admits and orders typed voice stages, with fenced terminal errors/rearm policy; resource release belongs to finalizer |
 | `voice/VoiceCallService` | User-started foreground microphone/playback eligibility, notification controls and wake lock |
+| `voice/OmniDuplexCapture` | U6 call-lifetime microphone pump for Omni: VAD-only barge-in, playback-reference echo gate, pre-roll turn PCM and deadline-first endpointing; U5 supplies the route/cancel/flush and consumes completed turns |
 | `voice/VideoCallService` / `VideoForegroundNotification` / `VideoNotificationLifecycle` / `CallVisionController` / `CameraXVideoBinder` | Call-scoped camera foreground eligibility, terminal notification publication/removal, capture generation, bounded cleanup and in-memory frames; independent of audio ownership |
 | `voice/VoiceSessionController` | Call identity, transcript, delivered reply/action state and persisted call record |
 | `work/ProcessConversationAdmission` | One shared atomic admission owner for conversation and model-file operations; `ConversationWork` is its compatibility view |
