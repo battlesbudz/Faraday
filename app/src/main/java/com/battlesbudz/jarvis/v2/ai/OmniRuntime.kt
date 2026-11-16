@@ -12,6 +12,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.zip.Inflater
 import java.util.zip.InflaterInputStream
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.asCoroutineDispatcher
 import org.json.JSONObject
 
 /** U2's text-only driver for the LFM3 bundle. All CompiledModel calls run on its dedicated worker. */
@@ -68,6 +70,30 @@ internal object OmniRuntime {
 
     /** Verifies the pinned bundle, extracts decoder/embedder and inflates its tokenizer exactly once per file revision. */
     fun open(context: Context, bundle: File, cacheRoot: File = File(context.filesDir, "lfm3_sections")): OmniEngine {
+        val components = openBundleComponents(context, bundle, cacheRoot)
+        return OmniTextEngine(components.tokenizer, components.runner, components.worker)
+    }
+
+    /**
+     * The same opened bundle for the voice-call driver (U5 seam 1): the
+     * runner and tokenizer the call engine needs, the environment the audio
+     * encoder and speech graphs share, and the one dedicated worker every
+     * LiteRT call runs on. The caller owns the returned components — see
+     * [OmniBundleComponents.close]. [open] keeps its own ownership by
+     * wrapping them in [OmniTextEngine] instead, and must never also close
+     * them through here.
+     */
+    internal fun openCallComponents(
+        context: Context,
+        bundle: File,
+        cacheRoot: File = File(context.filesDir, "lfm3_sections"),
+    ): OmniBundleComponents = openBundleComponents(context, bundle, cacheRoot)
+
+    private fun openBundleComponents(
+        context: Context,
+        bundle: File,
+        cacheRoot: File,
+    ): OmniBundleComponents {
         val map = JSONObject(context.assets.open(MAP_ASSET).bufferedReader().use { it.readText() })
         require(bundle.isFile && bundle.length() == map.getLong("bundle_bytes")) { "LFM3 bundle size mismatch" }
         require(map.getString("bundle_sha256") == BUNDLE_SHA) { "Unexpected LFM3 bundle map revision" }
@@ -126,10 +152,10 @@ internal object OmniRuntime {
         val knownState = signatures.getJSONArray("state").let { a -> List(a.length()) { a.getString(it) } }
         val worker = Executors.newSingleThreadExecutor { task -> Thread(task, "Jarvis-Omni").apply { isDaemon = true } }
         return try {
-            worker.submit<OmniEngine> {
+            worker.submit<OmniBundleComponents> {
                 val env = createEnvironment()
                 val runner = OmniLmRunner(decoder, embedder, cpuOptions(), env, knownPrefill, knownState)
-                OmniTextEngine(tokenizer, runner, worker)
+                OmniBundleComponents(tokenizer, runner, env, worker)
             }.get()
         } catch (failure: Throwable) {
             worker.shutdownNow()
@@ -144,6 +170,25 @@ internal object OmniRuntime {
             while (true) { val n = input.read(buffer); if (n < 0) break; digest.update(buffer, 0, n) }
         }
         return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+}
+
+/** The opened bundle pieces shared by the text engine and the voice-call driver. Single ownership: whoever receives these components closes them exactly once — the text path through [OmniTextEngine], the call path through [close]. */
+internal class OmniBundleComponents(
+    val tokenizer: OmniTokenizer,
+    val runner: OmniLmRunner,
+    val environment: Environment,
+    internal val worker: ExecutorService,
+) {
+    internal val dispatcher: CoroutineDispatcher get() = worker.asCoroutineDispatcher()
+
+    /** Closes the runner on its worker, then shuts the worker down. Call only off the Omni worker. */
+    internal fun close() {
+        try {
+            runCatching { worker.submit(Runnable { runner.close() }).get() }
+        } finally {
+            worker.shutdown()
+        }
     }
 }
 
