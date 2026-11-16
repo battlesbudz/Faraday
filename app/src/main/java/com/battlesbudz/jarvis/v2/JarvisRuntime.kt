@@ -136,6 +136,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         set(value) { voiceCallState.acceptedSession = value }
     internal lateinit var modelStore: ModelStore
     internal var conversationEngine: LiteRtLmEngine? = null
+    /** Dedicated LFM3 runtime; it never occupies or masquerades as the bridge engine. */
+    internal var omniEngine: com.battlesbudz.jarvis.v2.ai.OmniEngine? = null
 
     /** The code projects' store (code-and-export Unit 1), rooted in the sandbox workspace. */
     internal val codeProjectStore: CodeProjectStore by lazy {
@@ -1260,6 +1262,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             acceptedVoiceActions.awaitIdle()
             if (!voiceSessionArmed && ConversationWork.activeJobs.get() == 0 && modelStore.tryBeginModelOperation()) {
                 try {
+                    omniEngine?.close()
+                    omniEngine = null
                     conversationEngine?.close()
                     conversationEngine = null
                     nativeConversationHasContext = false
@@ -1377,6 +1381,7 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
 
     /** Reset the native conversation without tearing down the initialized Engine. */
     internal suspend fun resetNativeConversation() {
+        omniEngine?.resetConversation()
         conversationEngine?.resetConversation()
         nativeConversationHasContext = false
         conversationCharacters = 0
@@ -1415,7 +1420,7 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
  */
 private object RuntimeEngineSlotAccess : EngineSlot.Access {
     override fun engineLoaded(): Boolean =
-        JarvisRuntime.peekInstance()?.conversationEngine != null
+        JarvisRuntime.peekInstance()?.let { it.conversationEngine != null || it.omniEngine != null } ?: false
 
     override fun sessionActive(): Boolean {
         val runtime = JarvisRuntime.peekInstance() ?: return false
@@ -1428,7 +1433,7 @@ private object RuntimeEngineSlotAccess : EngineSlot.Access {
         store: ModelStore,
     ): LocalModelEngine {
         val runtime = JarvisRuntime.get(app)
-        check(runtime.conversationEngine == null) { "dream_engine_slot_occupied" }
+        check(runtime.conversationEngine == null && runtime.omniEngine == null) { "dream_engine_slot_occupied" }
         val engine = LiteRtLmEngineFactory.createInitialized(
             modelId = spec.id,
             modelPath = store.fileFor(spec).path,

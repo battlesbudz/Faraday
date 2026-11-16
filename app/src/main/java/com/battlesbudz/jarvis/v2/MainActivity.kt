@@ -38,6 +38,8 @@ class MainActivity : ComponentActivity() {
                         runtime.voiceTurnJob?.isCompleted == false || ConversationWork.activeJobs.get() != 0
 
                 override fun closeConversation(resetCharacters: Boolean) {
+                    runtime.omniEngine?.close()
+                    runtime.omniEngine = null
                     runtime.conversationEngine?.close()
                     runtime.conversationEngine = null
                     runtime.nativeConversationHasContext = false

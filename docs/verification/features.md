@@ -1,5 +1,24 @@
 # Feature and acceptance map
 
+# LFM3-Omni U2 runtime core — 15 November 2026
+
+The text-only `OmniRuntime` drives the pinned LFM3 `.litertlm` bundle sections
+through LiteRT `CompiledModel`, with a bundle tokenizer and host-owned decoder
+state. `OmniLmRunner.reset()` returns its position to zero and writes zeros to
+every KV/conv buffer. One dedicated worker serializes LiteRT calls. Runtime
+selection teardown closes Omni and bridge owners through the existing model
+setup session; the dream slot treats either as resident.
+
+Acceptance checks added in `OmniTokenizerTest`: byte-level BPE fixture,
+special-token handling, text prompt framing, prefill exact-cover planning and
+the fake-engine reset seam. A malformed bundle or a section whose digest does
+not match its map entry fails before graph creation; Gemma stays on its current
+bridge path. These JVM tests were not run in this environment.
+The model conversation route remains on the existing LiteRT-LM backend; chat
+routing to `OmniEngine`, real model `prompt_ids` parity, LiteRT execution and
+device behavior are not established by U2's local checks. Physical device and
+real bundle coverage remain pending.
+
 
 # Memory Unit 4 entity/temporal prototype — 14 November 2026
 

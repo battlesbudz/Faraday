@@ -1,0 +1,14 @@
+{
+  "bundle_bytes": 3226750192,
+  "bundle_sha256": "959617973a7ddcb3d887fa0d9891d79556a266490d5c432b02a18ffcac3124ed",
+  "sections": {
+    "tokenizer": {"begin": 49152, "end": 2623427, "sha256": "00b70753b3d704e0b4a50ad259049b5c3a21764bd0b956030b594640591c78df", "format": "u64le_size+zlib"},
+    "decoder": {"begin": 2637824, "end": 1793140336, "sha256": "a71be337df6dee4abe02a245ca3de3ad225d5700593cb77cb75131b45c2151d1"},
+    "embedder": {"begin": 1793146880, "end": 2056829088, "sha256": "a6e228188eaf8dab5937168e1725f0d2ac7a75d0ef15845992546337c794194a"},
+    "audio": {"begin": 2056830976, "end": 2521933164, "sha256": "cb411308b21ba1cf65162f85ead010325c0a3316cc865f5c330f7548040ce5bf"}
+  },
+  "decoder_signatures": {
+    "prefill": [1024, 256, 64, 16, 4, 1],
+    "state": ["kv_cache_c_0", "kv_cache_c_1", "kv_cache_c_11", "kv_cache_c_13", "kv_cache_c_15", "kv_cache_c_17", "kv_cache_c_19", "kv_cache_c_21", "kv_cache_c_23", "kv_cache_c_3", "kv_cache_c_5", "kv_cache_c_7", "kv_cache_c_9", "kv_cache_k_10", "kv_cache_k_12", "kv_cache_k_14", "kv_cache_k_16", "kv_cache_k_18", "kv_cache_k_2", "kv_cache_k_20", "kv_cache_k_22", "kv_cache_k_4", "kv_cache_k_6", "kv_cache_k_8", "kv_cache_v_10", "kv_cache_v_12", "kv_cache_v_14", "kv_cache_v_16", "kv_cache_v_18", "kv_cache_v_2", "kv_cache_v_20", "kv_cache_v_22", "kv_cache_v_4", "kv_cache_v_6", "kv_cache_v_8"]
+  }
+}
