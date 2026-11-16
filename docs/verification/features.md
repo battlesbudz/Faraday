@@ -53,6 +53,22 @@ Acceptance checks:
   device-owed. The audio encoder stays on CPU as specified; no Fold 6 timing
   claim follows from these JVM tests.
 
+## LFM3-Omni U4 speech output — implementation handoff
+
+`ai/OmniSpeechOutput.kt` ports the sample's greedy/interleaved generation
+loop, depth-frame inputs (12 codebooks, 4+4+4 reveal, clamped uniforms,
+last-64 presence history and all-code EOS normalization), frame embedding,
+stateful f12 codec calls, 320-sample overlap-add and queued PCM sink. The
+JVM acceptance fixture pins fast-sampler choices against the sample
+reference sampler and scripts six text slots, twelve speech frames,
+TEXT_END, EOS and stop behavior (`OmniSpeechOutputTest`). These checks are
+written but were not run in this workspace. The CompiledModel graph drivers,
+their bundle-specific state tensor list, actual graph signatures, audio
+playback queue adapter, real model output, GPU availability and phone audio
+performance remain integration/device verification items for U2/U5/U8.
+
+Existing Gemma paths and call-screen wiring are unchanged in this unit.
+
 
 # Memory Unit 4 entity/temporal prototype — 14 November 2026
 
@@ -7401,3 +7417,4 @@ the build, open a conversation and load the model with a chat,
 then go to the model browser and switch E2B to E4B — the exact
 case that failed on build 1823 — and confirm it switches; then
 run a short voice call and one code-mode round on the new model.
+
