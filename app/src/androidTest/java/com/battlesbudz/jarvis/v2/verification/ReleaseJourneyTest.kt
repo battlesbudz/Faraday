@@ -2112,7 +2112,15 @@ class ReleaseJourneyTest {
                 history.updateReply(history.current.value.id, "streaming-voice", "Transcript is updating while I speak", false)
             }
             VoiceSessionUi.liveTranscript.value = liveCaption
-            assertEquals("Live speech appears without minimizing", find(By.res("voice_call_live_transcript")).text)
+            // The live-transcript update above recomposes the overlay, which can
+            // invalidate the accessibility node between find and getText; re-query
+            // a fresh node once on StaleObjectException, assertions unchanged.
+            val liveTranscriptText = try {
+                find(By.res("voice_call_live_transcript")).text
+            } catch (_: StaleObjectException) {
+                find(By.res("voice_call_live_transcript")).text
+            }
+            assertEquals("Live speech appears without minimizing", liveTranscriptText)
             assertNotNull(find(By.res("voice_call_status")))
             assertFalse("The call pill must not duplicate the persistent character", device.hasObject(By.res("voice_call_orb")))
             assertNotNull(find(By.res("voice_call_end")))
