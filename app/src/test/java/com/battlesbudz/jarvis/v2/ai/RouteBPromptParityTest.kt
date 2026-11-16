@@ -84,9 +84,48 @@ class RouteBPromptParityTest {
         // The fact that keeps the gate closed today: if a future catalog
         // adds a tools-disabled audio model, this test fails first and the
         // priming policy gets revisited deliberately, not by accident.
-        val audioModels = ModelCatalog.all.filter { it.supportsAudio }
+        // The revisit happened for LFM3-Omni-2B (2026-11-15): it is a
+        // tools-disabled audio model, but it is not an incremental one —
+        // it has no Session input path on the bridge at all (its own
+        // runtime drives it), so the policy's MODEL_NOT_INCREMENTAL
+        // exclusion keeps priming off it; bundleAudioModelsStaySealedForPriming
+        // pins that below. This invariant therefore covers the bridge's
+        // own audio models, the ones this gate can actually be asked to
+        // prime: all of them are tool-capable and incremental.
+        val audioModels = ModelCatalog.all.filter { it.supportsAudio && it.companionFiles.isEmpty() }
         assertTrue(audioModels.isNotEmpty())
         assertTrue(audioModels.all { it.supportsTools && it.incrementalGemmaInput })
         assertEquals(audioModels.size, audioModels.count { it.supportsTools })
+    }
+
+    @Test fun bundleAudioModelsStaySealedForPriming() {
+        // The production shape for a bundle audio model, filled from the
+        // spec exactly as VoiceTurnPreparation fills it: priming must stay
+        // off, and for the recorded reason — no incremental Session input
+        // path — not merely because tools happen to be disabled today. If
+        // a bundle audio model ever gains incremental input, this fails
+        // first and the parity question is revisited before priming can arm.
+        val bundleAudio = ModelCatalog.all.filter { it.supportsAudio && it.companionFiles.isNotEmpty() }
+        assertTrue(bundleAudio.isNotEmpty())
+        bundleAudio.forEach { spec ->
+            assertFalse(spec.id, spec.incrementalGemmaInput)
+            val verdict = RouteBPrimingPolicy.evaluate(
+                RouteBPrimingPolicy.Shape(
+                    directAudioTurn = true,
+                    sealedAudioAvailable = true,
+                    comparisonActive = false,
+                    incrementalGemmaInput = spec.incrementalGemmaInput,
+                    toolsEnabledForTurn = spec.supportsTools,
+                    toolPolicyTransitionPending = false,
+                    snapshotImageAttached = false,
+                    speculationLanePresent = false,
+                    sessionAvailable = true,
+                    schedulerAdmitted = true
+                )
+            )
+            assertEquals(spec.id,
+                RouteBPrimingPolicy.Verdict.Ineligible(RouteBPrimingPolicy.Reason.MODEL_NOT_INCREMENTAL),
+                verdict)
+        }
     }
 }
