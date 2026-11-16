@@ -2136,7 +2136,14 @@ class ReleaseJourneyTest {
                 history.updateReply(history.current.value.id, "streaming-voice", "Transcript is updating while I speak", false)
             }
             VoiceSessionUi.liveTranscript.value = liveCaption
-            val liveTranscriptText = staleSafe { find(By.res("voice_call_live_transcript")).text }
+            // The live-transcript item is the last LazyColumn item and is only
+            // composed when the list is at its tail (run 1931, foldable: the
+            // list sat parked on messages 5-10, the streaming message and the
+            // live item were never composed, and find() waited the full 15 s).
+            // The tail-scroll deliberately does not yank a mid-list reader, so
+            // the test scrolls to the tail itself before reading the live text.
+            // Assertions below are unchanged.
+            val liveTranscriptText = staleSafe { scrollTo(By.res("voice_call_live_transcript")).text }
             assertEquals("Live speech appears without minimizing", liveTranscriptText)
             assertNotNull(find(By.res("voice_call_status")))
             assertFalse("The call pill must not duplicate the persistent character", device.hasObject(By.res("voice_call_orb")))
@@ -3202,9 +3209,20 @@ class ReleaseJourneyTest {
                 // and the quality verdict buttons in this run — whose at-rest
                 // landing cannot overshoot the band and whose successive
                 // viewports overlap by half the viewport. Once the target is
-                // observed, fine alignment takes over unchanged. Budgets, swipe
-                // cap and bounds checks are untouched.
-                val hold = (holdTextDiscovery || sparseHeldTextDiscovery || knownBounds == null) && !fine
+                // observed, fine alignment takes over unchanged.
+                // Run 1931: that held stroke must stay scoped to API 30. Applied
+                // to every never-observed target it broke test45's copy_text on
+                // all three API 36 profiles: each held gesture costs ~2.7-2.95 s
+                // (51 steps plus observation), so gestures 7-9 burned the whole
+                // 30 s budget before the target was even observed, and the fine
+                // stroke that finally landed it ready had only 217 ms left for
+                // the stability re-check. Blind discovery passed copy_text on
+                // API 36 in run 1930, so API 35+ keeps the blind stroke for
+                // never-observed targets; only API 30 keeps the held stroke,
+                // where the quality_save overshoot was actually observed.
+                // Budgets, swipe cap and bounds checks are untouched.
+                val hold = (holdTextDiscovery || sparseHeldTextDiscovery ||
+                    (android.os.Build.VERSION.SDK_INT == 30 && knownBounds == null)) && !fine
                 // A small visible fragment at the scroll edge does not reveal the
                 // control's full vertical extent. For a pending physical tap, move
                 // it inward with the existing fine cap instead of trusting that
@@ -3296,6 +3314,17 @@ class ReleaseJourneyTest {
         // budget in run 1925, leaving the two fine alignment gestures no room
         // to be observed. Ready controls still return immediately.
         val deadline = SystemClock.uptimeMillis() + 30_000
+        // Run 1931, test45, API 36 (16K): the fine stroke finally landed
+        // copy_text ready with only 217 ms of the 30 s deadline left, and the
+        // stability re-check below (waitForIdle + 300 ms sleep + re-query, all
+        // gated on the deadline) had no room to run, so a found-ready control
+        // was thrown away. The re-check gets a bounded 3 s grace past the
+        // deadline — the same grace philosophy as benchmarkFindVisible's
+        // 1_500 ms observation grace — and a control verified stable inside
+        // that grace is clicked, not discarded by the deadline break below.
+        // The re-check itself is unchanged: enabled, safe bounds, identical
+        // bounds. Nothing else about the budget moves.
+        val stabilityDeadline = deadline + 3_000
         val swipes = AtomicInteger()
         while (SystemClock.uptimeMillis() < deadline) {
             val ready = observeBenchmarkNavigation {
@@ -3306,10 +3335,10 @@ class ReleaseJourneyTest {
                         alignForTap = true)
                     if (control.isEnabled) {
                         val before = control.visibleBounds
-                        device.waitForIdle((deadline - SystemClock.uptimeMillis()).coerceAtLeast(1))
+                        device.waitForIdle((stabilityDeadline - SystemClock.uptimeMillis()).coerceAtLeast(1))
                         SystemClock.sleep(300)
                         val fresh = benchmarkFindNavigationObject(selector)
-                        if (SystemClock.uptimeMillis() < deadline && fresh != null && fresh.isEnabled &&
+                        if (SystemClock.uptimeMillis() < stabilityDeadline && fresh != null && fresh.isEnabled &&
                             benchmarkHasSafeBounds(fresh) && fresh.visibleBounds == before) ready = fresh
                     } else SystemClock.sleep(100)
                 } catch (_: StaleObjectException) {
@@ -3317,13 +3346,16 @@ class ReleaseJourneyTest {
                 }
                 ready
             }
-            // The observation scope has restored the original idle timeout before any tap.
-            if (SystemClock.uptimeMillis() >= deadline) break
+            // A control verified stable inside the grace window is clicked even
+            // if the deadline passed during its re-check; only a control that
+            // never verified stable is discarded by the deadline break below.
             ready?.let {
                 it.click() // Exactly one tap; a dispatch error is never retried.
                 device.waitForIdle()
                 return
             }
+            // The observation scope has restored the original idle timeout before any tap.
+            if (SystemClock.uptimeMillis() >= deadline) break
         }
         throw AssertionError("Benchmark control did not become stably enabled inside its viewport: $selector")
     }
