@@ -143,15 +143,15 @@ internal class OmniVoiceCallOwnerImpl(
                 return
             }
             runCatching { VoiceCallService.updateStatus("Listening") }
+            val output = OmniAudioTrackOutput(
+                log = { diagnosticRecorder.record("Voice output: $it") },
+            )
             val capture = OmniDuplexCallCapture(
                 scope = scope,
                 assets = context.assets,
                 borrowMicrophone = { label -> voiceResources.borrowMicrophone(label, communication = true) },
                 output = output,
                 log = { diagnosticRecorder.record("Voice input: $it") },
-            )
-            val output = OmniAudioTrackOutput(
-                log = { diagnosticRecorder.record("Voice output: $it") },
             )
             val isActive = { voiceSessionController.currentCallId() == callId }
             val session = OmniVoiceCallSession(
