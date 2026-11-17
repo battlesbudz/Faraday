@@ -78,6 +78,16 @@ internal data class OmniCallAnswer(
     val graphTimingsMs: Map<String, Long> = emptyMap(),
 )
 
+/** U6 duplex coordination, supplied by the call-scoped capture adapter. Null on non-duplex paths. */
+internal interface OmniDuplexSessionHooks {
+    /** True while Omni is generating or playing back an answer. */
+    fun setAssistantActive(active: Boolean)
+    /** True once a confirmed barge-in has asked the current answer to stop. */
+    fun bargeInRequested(): Boolean
+    /** Clear a consumed barge-in request before the next answer starts. */
+    fun clearBargeInRequest()
+}
+
 /**
  * Owns one persistent Omni conversation for one Voice Call. The host transcript
  * survives runtime resets; at a boundary near 3,800 positions it is re-prefilled
@@ -89,6 +99,7 @@ internal class OmniVoiceCallSession(
     private val output: OmniCallSpeechOutput,
     private val diagnostics: (Event) -> Unit,
     private val isCallActive: () -> Boolean,
+    private val duplexHooks: OmniDuplexSessionHooks? = null,
 ) {
     sealed interface Event {
         data class Turn(val endpointAtMs: Long, val firstSoundAtMs: Long?, val graphTimingsMs: Map<String, Long>) : Event
@@ -108,7 +119,10 @@ internal class OmniVoiceCallSession(
         started = true
     }
 
-    /** Runs one clean sequential turn. Barge-in remains owned by U6. */
+    /** Runs one turn. With U6 wired, the capture runs for the whole call and a
+     * confirmed barge-in stops the answer at its next step boundary; the
+     * interrupting turn is then the next turn. A barged-in answer is recorded
+     * as the assistant message up to the tokens it generated. */
     suspend fun runTurn(): OmniCallAnswer {
         check(started && !closed) { "omni_call_session_not_active" }
         if (!isCallActive()) throw CancellationException("omni_voice_call_ended")
@@ -117,13 +131,18 @@ internal class OmniVoiceCallSession(
         if (!isCallActive()) throw CancellationException("omni_voice_call_ended")
 
         output.beginTurn()
+        duplexHooks?.setAssistantActive(true)
         val answer = try {
             engine.answerAudio(captured.pcm16kMono, output, shouldStop = {
-                !isCallActive() || engine.contextPositions >= MAX_CONTEXT_POSITIONS
+                !isCallActive() || engine.contextPositions >= MAX_CONTEXT_POSITIONS ||
+                    duplexHooks?.bargeInRequested() == true
             })
         } catch (cancelled: CancellationException) {
             output.stopAndFlush()
             throw cancelled
+        } finally {
+            duplexHooks?.setAssistantActive(false)
+            duplexHooks?.clearBargeInRequest()
         }
         if (!isCallActive()) {
             output.stopAndFlush()

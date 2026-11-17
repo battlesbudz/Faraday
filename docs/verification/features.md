@@ -86,6 +86,41 @@ AudioTrack playback through the U4 sink, composed into the runtime for model ID
 audio performance remain device verification items for U8.
 
 
+## LFM3-Omni U6 duplex capture component — 15 November 2026
+
+`voice/OmniDuplexCapture` is the call-lifetime mic pump for the Omni path. It
+uses Silero-compatible `SpeechDetector` decisions without a Whisper probe,
+requires a longer VAD confirmation window during assistant playback, and gates
+playback echo against recent PCM rendered by U4's speaker sink. Confirmed speech
+signals U5's synchronous cancel/flush hook; captured PCM includes six seconds
+of pre-roll, ends at the 300 ms deadline unless Smart Turn supplies one
+high-confidence unfinished hold, and is capped at 30 seconds. Gemma capture
+and its Whisper-backed interruption policy are unchanged.
+
+Acceptance checks:
+- JVM logic: `OmniDuplexCaptureTest` covers the two VAD windows, candidate reset
+  on playback echo, a delayed echo segment from the pinned recorded speech
+  fixture, mixed user speech, six-second pre-roll, single Smart Turn extension,
+  and cap precedence. These tests passed on the U6 unit branch (CI run 1918,
+  all green) and run in the unit suite.
+- Failure case: a playback-correlated VAD candidate does not confirm; a real
+  user signal mixed with playback remains eligible; a Smart Turn hold cannot
+  extend more than one deadline window; the audio cap seals even when a hold is
+  requested.
+- Existing behavior: the Gemma BargeInAudioInput/Whisper-probe path and all
+  existing audio-input contracts are untouched. No UI or instrumentation
+  constructor changed.
+- Android/model/device (not verified): the U6 integration wires the component
+  into the U5 call session (`OmniDuplexCallCapture`): the call's communication
+  route supplies the microphone with Android AEC/noise suppression, U4's
+  rendered mono 24 kHz PCM is registered with the echo guard at the
+  playback-head position, `onBargeIn` cancels generation at its next step
+  boundary and flushes AudioTrack, and `TurnReady` feeds U3's audio encoder
+  while generation runs. The Smart Turn hold is not wired yet, so turns submit
+  at the 300 ms deadline. Echo correlation threshold and confirmation timing
+  still require recorded playback fixtures on the target phone.
+
+
 # Memory Unit 4 entity/temporal prototype — 14 November 2026
 
 `MemoryEntityTemporalGraph` is an opt-in-disabled, ephemeral projection built

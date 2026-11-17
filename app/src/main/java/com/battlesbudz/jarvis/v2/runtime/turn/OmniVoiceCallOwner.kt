@@ -1,7 +1,6 @@
 package com.battlesbudz.jarvis.v2.runtime.turn
 
 import android.content.Context
-import android.content.res.AssetManager
 import android.media.AudioTrack
 import android.os.Build
 import android.os.SystemClock
@@ -17,9 +16,6 @@ import com.battlesbudz.jarvis.v2.ai.OmniSpeechRng
 import com.battlesbudz.jarvis.v2.ai.OmniSpeechStack
 import com.battlesbudz.jarvis.v2.ai.OmniSpeechTokens
 import com.battlesbudz.jarvis.v2.diagnostics.DiagnosticRecorder
-import com.battlesbudz.jarvis.v2.voice.AudioInput
-import com.battlesbudz.jarvis.v2.voice.OmniTurnCapture as U3OmniTurnCapture
-import com.battlesbudz.jarvis.v2.voice.SileroSpeechDetector
 import com.battlesbudz.jarvis.v2.voice.SpeechAudioTrackFactory
 import com.battlesbudz.jarvis.v2.voice.VoiceCallResources
 import com.battlesbudz.jarvis.v2.voice.VoiceCallService
@@ -61,6 +57,12 @@ import kotlinx.coroutines.withContext
  * - U4: the speech stack ([OmniSpeechOutputFactory]) drives the
  *   interleaved generator; its [com.battlesbudz.jarvis.v2.ai.OmniPcmSink]
  *   feeds a 24 kHz [AudioTrack] through [OmniAudioTrackOutput].
+ * - U6: [OmniDuplexCallCapture] replaces the per-turn U3 wrapper with the
+ *   duplex pump for the whole call: one communication-route microphone
+ *   borrow, VAD-only barge-in that cancels generation and flushes the
+ *   AudioTrack, and completed turns from the pump's `TurnReady` events.
+ *   Rendered 24 kHz PCM is registered with the echo guard at the
+ *   playback-head position, never as future queued chunks.
  *
  * The call stack is created lazily on the first Omni call start and kept
  * resident across calls of the same model (U5's `endCall` contract: clear
@@ -141,10 +143,11 @@ internal class OmniVoiceCallOwnerImpl(
                 return
             }
             runCatching { VoiceCallService.updateStatus("Listening") }
-            val capture = OmniCallCapture(
+            val capture = OmniDuplexCallCapture(
                 scope = scope,
                 assets = context.assets,
                 borrowMicrophone = { label -> voiceResources.borrowMicrophone(label, communication = true) },
+                output = output,
                 log = { diagnosticRecorder.record("Voice input: $it") },
             )
             val output = OmniAudioTrackOutput(
@@ -157,6 +160,7 @@ internal class OmniVoiceCallOwnerImpl(
                 output = output,
                 diagnostics = ::onSessionEvent,
                 isCallActive = isActive,
+                duplexHooks = capture,
             )
             try {
                 OmniVoiceCallLoop(session, isActive, ::onAnswer).run()
@@ -491,56 +495,6 @@ internal class OmniCallEngineImpl(
 }
 
 /**
- * [U3OmniTurnCapture] over U3's per-turn capture. One fresh U3 capture (and
- * one fresh Silero detector, which the capture closes on stop) per turn, over
- * the call's borrowed microphone — the U3 capture is per-turn by
- * construction, so call scope lives here, not in U3. Endpoint time is
- * [SystemClock.elapsedRealtime] at completion detection, the same monotonic
- * domain the playback adapter reports first sound in. U3 supplies no
- * transcript text, so [OmniCapturedTurn.transcriptText] stays null and the
- * session records the spoken turn as unavailable text.
- */
-internal class OmniCallCapture(
-    private val scope: CoroutineScope,
-    private val assets: AssetManager,
-    private val borrowMicrophone: suspend (String) -> AudioInput,
-    private val log: (String) -> Unit = {},
-) : OmniTurnCapture {
-    private var active = false
-
-    override suspend fun startCall() {
-        active = true
-    }
-
-    override suspend fun awaitTurn(): OmniCapturedTurn {
-        check(active) { "omni_call_capture_not_started" }
-        val input = borrowMicrophone("omni-turn")
-        val capture = U3OmniTurnCapture(
-            input = input,
-            scope = scope,
-            createDetector = { SileroSpeechDetector.create(assets) },
-            log = log,
-        )
-        capture.start()
-        try {
-            val completed = capture.awaitTurnCompletion()
-            val endpointAtMs = SystemClock.elapsedRealtime()
-            val pcmBytes = capture.stopPcm16()
-            if (!completed) throw CancellationException("omni_turn_capture_ended")
-            return OmniCapturedTurn(OmniAudioEncoder.pcm16ToFloat(pcmBytes), endpointAtMs, null)
-        } catch (failure: Throwable) {
-            // Always release the mic and detector, even on hang-up mid-turn.
-            runCatching { capture.stopPcm16() }
-            throw failure
-        }
-    }
-
-    override fun close() {
-        active = false
-    }
-}
-
-/**
  * [OmniCallSpeechOutput] on a 24 kHz mono [AudioTrack] built by the
  * existing [SpeechAudioTrackFactory]. `firstSoundAtMonotonicMs` is the
  * [SystemClock.elapsedRealtime] instant the playback head first advances
@@ -557,6 +511,19 @@ internal class OmniAudioTrackOutput(
     @Volatile private var firstSound: Long? = null
     @Volatile private var stopped: Boolean = false
     @Volatile private var firstChunkPending: Boolean = true
+    /** PCM written to the track but not yet rendered, in write order. Each entry
+     * covers [startFrame, startFrame + frames) of the cumulative frames written
+     * since the track was created or last flushed — the same domain as
+     * [AudioTrack.playbackHeadPosition]. Bytes reach the U6 echo guard only
+     * once the head has passed them, so the guard's reference holds audio that
+     * was actually audible, never future queued audio. */
+    private val pendingPcm = ArrayDeque<PendingPcm>()
+    private var writtenFrames = 0L
+    private var releasedFrames = 0L
+
+    private data class PendingPcm(val startFrame: Long, val pcm: ByteArray) {
+        val frames: Long get() = pcm.size / 2L
+    }
 
     override val firstSoundAtMonotonicMs: Long? get() = firstSound
 
@@ -589,6 +556,7 @@ internal class OmniAudioTrackOutput(
                 continue
             }
             offset += written
+            recordWritten(shorts, offset - written, written)
             if (firstChunkPending) {
                 firstChunkPending = false
                 observeFirstSound(audioTrack)
@@ -596,9 +564,73 @@ internal class OmniAudioTrackOutput(
         }
     }
 
+    /**
+     * Hands U4's rendered PCM to [onRenderedPcm] in rendered playback order:
+     * only the bytes whose frames the playback head has passed. The duplex
+     * adapter polls this while the call runs; a flush resets the head and
+     * drops the pending queue, since flushed audio is never audible.
+     */
+    fun releaseRendered(onRenderedPcm: (ByteArray) -> Unit) {
+        val ready = synchronized(lock) {
+            val audioTrack = track ?: return
+            val head = try {
+                audioTrack.playbackHeadPosition.toLong()
+            } catch (_: IllegalStateException) {
+                return
+            }
+            if (head < releasedFrames) {
+                // The head moved backwards (flush): restart accounting in the
+                // new head domain and drop audio that never rendered.
+                pendingPcm.clear()
+                writtenFrames = head
+                releasedFrames = head
+                return
+            }
+            val due = mutableListOf<ByteArray>()
+            while (pendingPcm.isNotEmpty()) {
+                val first = pendingPcm.first()
+                if (head <= first.startFrame) break
+                val end = first.startFrame + first.frames
+                if (head >= end) {
+                    due += pendingPcm.removeFirst().pcm
+                    releasedFrames = end
+                } else {
+                    val cutFrames = (head - first.startFrame).toInt()
+                    val cutBytes = cutFrames * 2
+                    due += first.pcm.copyOfRange(0, cutBytes)
+                    pendingPcm.removeFirst()
+                    pendingPcm.addFirst(PendingPcm(head, first.pcm.copyOfRange(cutBytes, first.pcm.size)))
+                    releasedFrames = head
+                    break
+                }
+            }
+            due
+        }
+        ready.forEach(onRenderedPcm)
+    }
+
+    private fun recordWritten(shorts: ShortArray, from: Int, frames: Int) {
+        if (frames <= 0) return
+        val bytes = ByteArray(frames * 2)
+        for (i in 0 until frames) {
+            val value = shorts[from + i].toInt()
+            bytes[i * 2] = value.toByte()
+            bytes[i * 2 + 1] = (value shr 8).toByte()
+        }
+        synchronized(lock) {
+            pendingPcm.addLast(PendingPcm(writtenFrames, bytes))
+            writtenFrames += frames
+        }
+    }
+
     override fun stopAndFlush() {
         synchronized(lock) {
             stopped = true
+            // flush() resets the playback head to zero: flushed audio never
+            // renders, so drop it and restart frame accounting.
+            pendingPcm.clear()
+            writtenFrames = 0
+            releasedFrames = 0
             val audioTrack = track
             if (audioTrack != null) {
                 runCatching { audioTrack.pause() }
@@ -610,6 +642,9 @@ internal class OmniAudioTrackOutput(
     override fun close() {
         val audioTrack = synchronized(lock) {
             stopped = true
+            pendingPcm.clear()
+            writtenFrames = 0
+            releasedFrames = 0
             track.also { track = null }
         }
         if (audioTrack != null) trackFactory.releaseAfterWriterStops(audioTrack)
