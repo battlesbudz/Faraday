@@ -23,6 +23,7 @@ import com.battlesbudz.jarvis.v2.voice.SpeechAudioTrackFactory
 import com.battlesbudz.jarvis.v2.voice.VoiceCallResources
 import com.battlesbudz.jarvis.v2.voice.VoiceCallService
 import com.battlesbudz.jarvis.v2.voice.VoiceSessionController
+import com.battlesbudz.jarvis.v2.voice.VoiceSessionUi
 import com.google.ai.edge.litert.Accelerator
 import com.google.ai.edge.litert.CompiledModel
 import java.io.File
@@ -110,7 +111,13 @@ internal class OmniVoiceCallOwnerImpl(
     override fun start() {
         val callId = voiceSessionController.currentCallId()
         if (callId == null) {
+            // Defensive: the route establishes the call record before
+            // start() (OmniVoiceCallStart), so this means a caller bypassed
+            // it. Fail visibly — the build-1942 hang wrote only the
+            // diagnostics line below and left the UI at Preparing forever.
             diagnosticRecorder.recordImportant("Omni Voice Call cannot start: no active call.")
+            diagnosticRecorder.recordOmniPrep("startFailed=no-active-call")
+            failCall("Voice Call turn failed: Omni Voice Call could not start. Please try again.")
             return
         }
         synchronized(lock) {
@@ -158,12 +165,14 @@ internal class OmniVoiceCallOwnerImpl(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Throwable) {
-                val message = "Omni Voice Call is unavailable: ${failure.message ?: failure.javaClass.simpleName}"
+                val detail = failure.message ?: failure.javaClass.simpleName
+                val message = "Omni Voice Call is unavailable: $detail"
                 diagnosticRecorder.recordImportant(message)
-                report(message)
+                diagnosticRecorder.recordOmniPrep("stackFailed=$detail")
+                failCall("Voice Call turn failed: $message")
                 return
             }
-            runCatching { VoiceCallService.updateStatus("Listening") }
+            runCatching { VoiceCallService.updateStatus(LISTENING_STATUS) }
             val output = OmniAudioTrackOutput(
                 log = { diagnosticRecorder.record("Voice output: $it") },
             )
@@ -196,9 +205,10 @@ internal class OmniVoiceCallOwnerImpl(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Throwable) {
-            diagnosticRecorder.recordImportant(
-                "Omni Voice Call ended with error: ${failure.message ?: failure.javaClass.simpleName}"
-            )
+            val detail = failure.message ?: failure.javaClass.simpleName
+            diagnosticRecorder.recordImportant("Omni Voice Call ended with error: $detail")
+            diagnosticRecorder.recordOmniPrep("loopFailed=$detail")
+            failCall("Voice Call turn failed: Omni Voice Call ended with an error: $detail")
         } finally {
             synchronized(lock) {
                 if (activeCallId == callId) activeCallId = null
@@ -211,7 +221,21 @@ internal class OmniVoiceCallOwnerImpl(
         if (answer.text.isNotBlank()) {
             runCatching { voiceSessionController.appendTranscript("Jarvis", answer.text) }
         }
-        runCatching { VoiceCallService.updateStatus("Listening") }
+        runCatching { VoiceCallService.updateStatus(LISTENING_STATUS) }
+    }
+
+    /**
+     * Surface an Omni call failure the way the Gemma route surfaces a turn
+     * failure (VoiceTurnRunner): a dismissible failure card scoped to the
+     * call's conversation plus a terminal status — never only a diagnostics
+     * line, which is what left build 1942 sitting at Preparing forever.
+     * Without a call record there is no conversation to scope the card to,
+     * so the status channel alone carries it.
+     */
+    private fun failCall(message: String) {
+        val conversationId = voiceSessionController.currentConversationId()
+        if (conversationId != null) VoiceSessionUi.reportFailure(conversationId, message)
+        else report(message)
     }
 
     private fun onSessionEvent(event: OmniVoiceCallSession.Event) {
@@ -258,6 +282,12 @@ internal class OmniVoiceCallOwnerImpl(
         }
         stack?.let { return it }
         check(modelStore.isUsable(spec)) { "LFM3-Omni-2B is not installed or failed verification." }
+        // Build-1942 fix: breadcrumb before the long, silent first-run build
+        // (bundle hash/extract plus native graph creation) so a stuck or
+        // failed preparation leaves Omni evidence and a live status instead
+        // of an empty diagnostics section at Preparing.
+        diagnosticRecorder.recordOmniPrep("stackBuildStarted model=${spec.id}")
+        report("Preparing Omni Voice Call — loading the speech stack…")
         val bundle = modelStore.fileFor(spec)
         val components = OmniRuntime.openCallComponents(context, bundle)
         try {
@@ -294,6 +324,7 @@ internal class OmniVoiceCallOwnerImpl(
             diagnosticRecorder.recordOmniRuntimePath(
                 "CompiledModel depth=${depthAcceleratorLabel()} lm=CPU audio-encoder=CPU codec=CPU"
             )
+            diagnosticRecorder.recordOmniPrep("stackReady model=${spec.id}")
             OmniCallStack(components, engine, encoder, speechStack).also { stack = it }
         } catch (failure: Throwable) {
             runCatching { components.close() }
@@ -323,6 +354,13 @@ internal class OmniVoiceCallOwnerImpl(
     }
 
     companion object {
+        /**
+         * The exact listening status the shared call UI maps to its listening
+         * phase — the same string the Gemma route emits. A bare "Listening"
+         * matched no mapping and left a working Omni call displaying
+         * Preparing (build 1942).
+         */
+        const val LISTENING_STATUS = "Voice Call is listening — speak now."
         const val DEPTH_FILE = "LFM3-Omni-2B_depth_frame2_f32.tflite"
         const val FRAME_FILE = "LFM3-Omni-2B_frame_embed_f32.tflite"
         const val CODEC_FILE = "LFM3-Omni-2B_codec_decoder_f12_f32.tflite"

@@ -1349,6 +1349,12 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
                 sessionReport(message)
                 return
             }
+            // Build-1942 fix: the Omni route bypasses the Gemma voice-turn
+            // machinery that owns beginCall(), so establish the call record
+            // here (same ownership pattern: one active call, bound to the
+            // open conversation) — without it the owner can never start.
+            com.battlesbudz.jarvis.v2.runtime.turn.OmniVoiceCallStart.ensureCallRecord(
+                voiceSessionController, conversationHistory.current.value.id)
             owner.start()
         } else {
             voiceTurns.start()

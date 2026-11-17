@@ -40,6 +40,20 @@ class DiagnosticRecorderTest {
         assertTrue(recorder.snapshot().contains("prompt-number-6-END"))
         assertTrue(recorder.snapshot().contains("prompt-number-29-END"))
     }
+    @Test fun omniPrepBreadcrumbsAndFailuresLandInTheOmniEvidenceSection() {
+        // Build-1942 fix: a stuck Omni call prep must leave evidence — before
+        // the fix nothing was recorded until the speech stack had fully
+        // built, so a prep failure left no Omni section at all.
+        val recorder = DiagnosticRecorder(preferences(), "test")
+        recorder.startSession("Jarvis session — awaiting wake word")
+        assertFalse(recorder.snapshot().contains("Omni voice diagnostics:"))
+        recorder.recordOmniPrep("stackBuildStarted model=LFM3-Omni-2B")
+        recorder.recordOmniPrep("stackFailed=boom")
+        val snapshot = recorder.snapshot()
+        assertTrue(snapshot.contains("Omni voice diagnostics:"))
+        assertTrue(snapshot.contains("prep=stackBuildStarted model=LFM3-Omni-2B"))
+        assertTrue(snapshot.contains("prep=stackFailed=boom"))
+    }
     @Test fun snapshotCarriesTheEmbeddingsLineFromFakedServices() {
         // The standard diagnostics export is the recorder snapshot (both Copy
         // Diagnostics assembly sites build on it). With the live section bound to

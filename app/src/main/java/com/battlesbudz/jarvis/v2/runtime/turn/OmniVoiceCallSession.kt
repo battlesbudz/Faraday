@@ -1,6 +1,7 @@
 package com.battlesbudz.jarvis.v2.runtime.turn
 
 import android.os.SystemClock
+import com.battlesbudz.jarvis.v2.voice.VoiceSessionController
 import kotlinx.coroutines.CancellationException
 
 /** Stable catalog identity for routing call turns away from the Gemma bridge. */
@@ -16,6 +17,24 @@ internal interface OmniVoiceCallOwner {
 
     /** Model selection owns closing the runtime: cancel any call loop, then close the graphs. Never blocks the caller. */
     fun closeRuntime()
+}
+
+/**
+ * Call-record ownership for the Omni route (build-1942 fix). The Gemma route
+ * establishes its call record inside the voice-turn machinery
+ * (VoiceTurnPreparation.beginOwnedCall); the Omni route bypasses that
+ * machinery, so nothing ever called beginCall and the owner's start() found
+ * no active call on every fresh session. The route therefore establishes the
+ * record here, with the same ownership pattern: at most one active call,
+ * begun under the controller's lock and bound to the open conversation, and
+ * ended by the shared finishVoiceCall path (which also stops the owner).
+ */
+internal object OmniVoiceCallStart {
+    /** Returns the active call id, beginning the call first when none exists. */
+    fun ensureCallRecord(controller: VoiceSessionController, conversationId: String): String =
+        synchronized(controller) {
+            controller.currentCallId() ?: controller.beginCall(conversationId).id
+        }
 }
 
 /** A completed U3 audio turn. Samples are mono 16 kHz float PCM, ready for Omni's audio encoder. */
