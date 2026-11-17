@@ -10,6 +10,7 @@ import java.security.MessageDigest
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import java.util.concurrent.TimeUnit
 import java.util.zip.Inflater
 import java.util.zip.InflaterInputStream
 import kotlinx.coroutines.CoroutineDispatcher
@@ -20,6 +21,16 @@ import org.json.JSONObject
 internal object OmniRuntime {
     private const val MAP_ASSET = "lfm3_omni_sections.json"
     private const val BUNDLE_SHA = "959617973a7ddcb3d887fa0d9891d79556a266490d5c432b02a18ffcac3124ed"
+
+    /**
+     * Bounds the native runner creation the caller's thread waits on. The
+     * voice-call owner runs this inside its stack mutex: an unbounded wait
+     * there would trap the mutex and every later shutdown (stop/closeRuntime
+     * serialize behind it) behind one wedged native create, forever. A
+     * timeout fails the open — the caller surfaces it and can retry — while
+     * the abandoned worker is shut down by the catch below.
+     */
+    private const val CREATE_TIMEOUT_MS = 120_000L
 
     fun cpuOptions(): CompiledModel.Options = CompiledModel.Options(Accelerator.CPU)
     fun createEnvironment(): Environment = Environment.create()
@@ -156,7 +167,7 @@ internal object OmniRuntime {
                 val env = createEnvironment()
                 val runner = OmniLmRunner(decoder, embedder, cpuOptions(), env, knownPrefill, knownState)
                 OmniBundleComponents(tokenizer, runner, env, worker)
-            }.get()
+            }.get(CREATE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         } catch (failure: Throwable) {
             worker.shutdownNow()
             throw failure
@@ -185,10 +196,17 @@ internal class OmniBundleComponents(
     /** Closes the runner on its worker, then shuts the worker down. Call only off the Omni worker. */
     internal fun close() {
         try {
-            runCatching { worker.submit(Runnable { runner.close() }).get() }
+            // Bounded for the same reason as the create wait: the call owner
+            // closes the stack under its mutex, so a wedged native close
+            // must not trap shutdown behind it.
+            runCatching { worker.submit(Runnable { runner.close() }).get(CLOSE_TIMEOUT_MS, TimeUnit.MILLISECONDS) }
         } finally {
             worker.shutdown()
         }
+    }
+
+    private companion object {
+        const val CLOSE_TIMEOUT_MS = 30_000L
     }
 }
 

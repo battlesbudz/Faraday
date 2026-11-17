@@ -17,6 +17,14 @@ internal interface OmniVoiceCallOwner {
 
     /** Model selection owns closing the runtime: cancel any call loop, then close the graphs. Never blocks the caller. */
     fun closeRuntime()
+
+    /**
+     * True while the call speech stack is built and resident. DESIGN section
+     * 2, decision 5: the dream pass's engine slot must report Omni residency
+     * truthfully, and the stack stays resident between calls, so this — not
+     * the never-assigned text-engine slot — is the residency that matters.
+     */
+    fun isRuntimeResident(): Boolean
 }
 
 /**

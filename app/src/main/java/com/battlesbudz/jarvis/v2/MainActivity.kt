@@ -40,6 +40,12 @@ class MainActivity : ComponentActivity() {
                 override fun closeConversation(resetCharacters: Boolean) {
                     runtime.omniEngine?.close()
                     runtime.omniEngine = null
+                    // DESIGN section 2, decision 4: a model switch tears down
+                    // whichever runtime is active. The Omni call speech stack
+                    // is a runtime too and stays resident after a call ends,
+                    // so it closes here — otherwise the next model loads
+                    // beside it. closeRuntime never blocks the caller.
+                    runCatching { runtime.omniVoiceCallOwner?.closeRuntime() }
                     runtime.conversationEngine?.close()
                     runtime.conversationEngine = null
                     runtime.nativeConversationHasContext = false

@@ -1346,7 +1346,10 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             if (owner == null) {
                 val message = "Omni Voice Call is unavailable because its runtime/capture/output owner is not connected."
                 diagnosticRecorder.recordImportant(message)
-                sessionReport(message)
+                // Surface as a failed call state, not a bare status that
+                // leaves the UI at Preparing (build-1942 failure class).
+                com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.reportFailure(
+                    conversationHistory.current.value.id, "Voice Call turn failed: $message")
                 return
             }
             // Build-1942 fix: the Omni route bypasses the Gemma voice-turn
@@ -1534,7 +1537,14 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
  */
 private object RuntimeEngineSlotAccess : EngineSlot.Access {
     override fun engineLoaded(): Boolean =
-        JarvisRuntime.peekInstance()?.let { it.conversationEngine != null || it.omniEngine != null } ?: false
+        JarvisRuntime.peekInstance()?.let {
+            // DESIGN section 2, decision 5: Omni residency is reported
+            // truthfully — the call speech stack stays resident between
+            // calls, so the dream must skip contention while it is loaded,
+            // exactly as for a resident bridge engine.
+            it.conversationEngine != null || it.omniEngine != null ||
+                it.omniVoiceCallOwner?.isRuntimeResident() == true
+        } ?: false
 
     override fun sessionActive(): Boolean {
         val runtime = JarvisRuntime.peekInstance() ?: return false
@@ -1547,7 +1557,8 @@ private object RuntimeEngineSlotAccess : EngineSlot.Access {
         store: ModelStore,
     ): LocalModelEngine {
         val runtime = JarvisRuntime.get(app)
-        check(runtime.conversationEngine == null && runtime.omniEngine == null) { "dream_engine_slot_occupied" }
+        check(runtime.conversationEngine == null && runtime.omniEngine == null &&
+            runtime.omniVoiceCallOwner?.isRuntimeResident() != true) { "dream_engine_slot_occupied" }
         val engine = LiteRtLmEngineFactory.createInitialized(
             modelId = spec.id,
             modelPath = store.fileFor(spec).path,

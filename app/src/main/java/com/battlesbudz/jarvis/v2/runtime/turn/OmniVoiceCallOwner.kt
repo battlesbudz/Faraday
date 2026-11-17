@@ -106,7 +106,10 @@ internal class OmniVoiceCallOwnerImpl(
     @Volatile private var activeCallId: String? = null
     private var loopJob: Job? = null
     private val stackMutex = Mutex()
-    private var stack: OmniCallStack? = null
+    /** Mutated only under [stackMutex]; volatile so [isRuntimeResident] can read it lock-free. */
+    @Volatile private var stack: OmniCallStack? = null
+
+    override fun isRuntimeResident(): Boolean = stack != null
 
     override fun start() {
         val callId = voiceSessionController.currentCallId()
@@ -736,6 +739,8 @@ internal class OmniAudioTrackOutput(
     @Volatile private var firstSound: Long? = null
     @Volatile private var stopped: Boolean = false
     @Volatile private var firstChunkPending: Boolean = true
+    /** One diagnostics line per turn when playback writes start failing; reset every [beginTurn]. */
+    @Volatile private var writeFailureLogged: Boolean = false
     /** PCM written to the track but not yet rendered, in write order. Each entry
      * covers [startFrame, startFrame + frames) of the cumulative frames written
      * since the track was created or last flushed — the same domain as
@@ -757,6 +762,7 @@ internal class OmniAudioTrackOutput(
             stopped = false
             firstSound = null
             firstChunkPending = true
+            writeFailureLogged = false
             ensureTrackLocked().play()
         }
     }
@@ -772,10 +778,16 @@ internal class OmniAudioTrackOutput(
             if (stopped) return
             val written = try {
                 audioTrack.write(shorts, offset, shorts.size - offset, AudioTrack.WRITE_BLOCKING)
-            } catch (_: IllegalStateException) {
+            } catch (error: IllegalStateException) {
+                // A dead track drops the chunk rather than killing the call,
+                // but never silently: one diagnostics line per turn.
+                logWriteFailure("track write failed: ${error.message ?: "released"}")
                 return
             }
-            if (written < 0) return
+            if (written < 0) {
+                logWriteFailure("track write returned $written")
+                return
+            }
             if (written == 0) {
                 delay(5)
                 continue
@@ -832,6 +844,12 @@ internal class OmniAudioTrackOutput(
             due
         }
         ready.forEach(onRenderedPcm)
+    }
+
+    private fun logWriteFailure(detail: String) {
+        if (writeFailureLogged) return
+        writeFailureLogged = true
+        log("playback $detail")
     }
 
     private fun recordWritten(shorts: ShortArray, from: Int, frames: Int) {
