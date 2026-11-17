@@ -173,6 +173,11 @@ internal class OmniVoiceCallOwnerImpl(
                 borrowMicrophone = { label -> voiceResources.borrowMicrophone(label, communication = true) },
                 output = output,
                 log = { diagnosticRecorder.record("Voice input: $it") },
+                // U8: accepted and rejected barge-in gate decisions go to the
+                // Omni diagnostics evidence, not the generic call record.
+                onBargeInEvent = { event, confirmedSpeechMs, stopLatencyMs ->
+                    diagnosticRecorder.recordOmniBargeIn(event, confirmedSpeechMs, stopLatencyMs)
+                },
             )
             val isActive = { voiceSessionController.currentCallId() == callId }
             val session = OmniVoiceCallSession(
@@ -213,16 +218,29 @@ internal class OmniVoiceCallOwnerImpl(
         when (event) {
             is OmniVoiceCallSession.Event.Turn -> {
                 val latency = event.firstSoundAtMs?.let { it - event.endpointAtMs }
+                // U8: endpoint-to-first-nonempty-playback latency on the
+                // monotonic clock; both instants are elapsedRealtime.
+                if (latency != null) diagnosticRecorder.recordOmniFirstSoundLatency(latency)
                 diagnosticRecorder.recordImportant(
                     "Omni call turn: endpoint→first-sound ${latency?.let { "$it ms" } ?: "unknown"}; " +
                         "graphs=${event.graphTimingsMs.entries.joinToString { "${it.key}=${it.value}ms" }}"
                 )
             }
-            is OmniVoiceCallSession.Event.ContextRollover ->
+            is OmniVoiceCallSession.Event.ContextRolloverStarted ->
+                // U8: rollover begins; prefill has not run, so it reports in_progress.
+                diagnosticRecorder.recordOmniRollover(
+                    event.position, event.transcriptTokens, droppedTurnPairs = 0, prefillMs = null
+                )
+            is OmniVoiceCallSession.Event.ContextRollover -> {
+                // U8: rollover completed, with the elapsed re-prefill time.
+                diagnosticRecorder.recordOmniRollover(
+                    event.oldPositions, event.prefilledPositions, event.droppedPairs, event.prefillMs
+                )
                 diagnosticRecorder.recordImportant(
                     "Omni call rollover: ${event.oldPositions} → ${event.prefilledPositions} positions, " +
                         "${event.droppedPairs} pair(s) dropped"
                 )
+            }
             is OmniVoiceCallSession.Event.MissingInputTranscript ->
                 diagnosticRecorder.recordImportant(
                     "Omni call turn: no transcript for captured speech (endpoint ${event.endpointAtMs}); " +
@@ -272,6 +290,10 @@ internal class OmniVoiceCallOwnerImpl(
             }
             val (encoder, speechStack) = built
             val engine = OmniCallEngineImpl(components, encoder, speechStack, sink, dispatchToolCalls)
+            // U8: record the concrete driver/accelerator actually selected for this call.
+            diagnosticRecorder.recordOmniRuntimePath(
+                "CompiledModel depth=${depthAcceleratorLabel()} lm=CPU audio-encoder=CPU codec=CPU"
+            )
             OmniCallStack(components, engine, encoder, speechStack).also { stack = it }
         } catch (failure: Throwable) {
             runCatching { components.close() }
@@ -288,11 +310,16 @@ internal class OmniVoiceCallOwnerImpl(
     }
 
     /** DESIGN section 2: depth runs on GPU fp16 on Qualcomm, CPU elsewhere. */
-    private fun depthOptions(): CompiledModel.Options {
+    private fun depthOptions(): CompiledModel.Options =
+        if (depthAcceleratorLabel() == "GPU-fp16") CompiledModel.Options(Accelerator.GPU)
+        else OmniRuntime.cpuOptions()
+
+    /** U8: the depth decoder's accelerator label; the single source of truth for [depthOptions]. */
+    private fun depthAcceleratorLabel(): String {
         val hardware = Build.HARDWARE ?: ""
         val soc = if (Build.VERSION.SDK_INT >= 31) Build.SOC_MODEL ?: "" else ""
         val qualcomm = hardware.contains("qcom", ignoreCase = true) || soc.contains("SM8")
-        return if (qualcomm) CompiledModel.Options(Accelerator.GPU) else OmniRuntime.cpuOptions()
+        return if (qualcomm) "GPU-fp16" else "CPU"
     }
 
     companion object {

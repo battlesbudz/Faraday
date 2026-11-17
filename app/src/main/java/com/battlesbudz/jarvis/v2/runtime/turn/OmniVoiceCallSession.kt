@@ -1,5 +1,6 @@
 package com.battlesbudz.jarvis.v2.runtime.turn
 
+import android.os.SystemClock
 import kotlinx.coroutines.CancellationException
 
 /** Stable catalog identity for routing call turns away from the Gemma bridge. */
@@ -103,7 +104,9 @@ internal class OmniVoiceCallSession(
 ) {
     sealed interface Event {
         data class Turn(val endpointAtMs: Long, val firstSoundAtMs: Long?, val graphTimingsMs: Map<String, Long>) : Event
-        data class ContextRollover(val oldPositions: Int, val prefilledPositions: Int, val droppedPairs: Int) : Event
+        /** U8: a rollover has begun; prefill has not run yet, so prefillMs is unknown here. */
+        data class ContextRolloverStarted(val position: Int, val transcriptTokens: Int) : Event
+        data class ContextRollover(val oldPositions: Int, val prefilledPositions: Int, val droppedPairs: Int, val prefillMs: Long) : Event
         data class MissingInputTranscript(val endpointAtMs: Long) : Event
     }
 
@@ -161,6 +164,12 @@ internal class OmniVoiceCallSession(
     private suspend fun rolloverIfNeeded() {
         val occupied = engine.contextPositions
         if (occupied < ROLLOVER_AT) return
+        // U8: report the rollover as it begins (prefill not yet run) so a
+        // long re-prefill is visible in diagnostics, then report completion
+        // with the elapsed prefill time. Rollover runs only between turns,
+        // never mid-answer; only complete turn pairs are ever dropped.
+        diagnostics(Event.ContextRolloverStarted(occupied, engine.estimateTextPositions(transcript)))
+        val prefillStart = SystemClock.elapsedRealtime()
         var retained = transcript.toMutableList()
         var droppedPairs = 0
         while (retained.isNotEmpty() && engine.estimateTextPositions(retained) > MAX_CONTEXT_POSITIONS) {
@@ -170,10 +179,11 @@ internal class OmniVoiceCallSession(
         }
         engine.resetConversation()
         engine.prefillText(retained)
+        val prefillMs = SystemClock.elapsedRealtime() - prefillStart
         check(engine.contextPositions <= MAX_CONTEXT_POSITIONS) { "omni_text_rollover_exceeded_context" }
         transcript.clear()
         transcript.addAll(retained)
-        diagnostics(Event.ContextRollover(occupied, engine.contextPositions, droppedPairs))
+        diagnostics(Event.ContextRollover(occupied, engine.contextPositions, droppedPairs, prefillMs))
     }
 
     suspend fun closeCall() {

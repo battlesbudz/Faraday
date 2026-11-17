@@ -21,15 +21,36 @@ internal class OmniDuplexBargeInGate(
     private var candidateSinceMs: Long? = null
     private var confirmed = false
 
+    /**
+     * U8: measured durations for the diagnostics evidence. [lastConfirmedSpeechMs]
+     * is the VAD-positive non-echo speech that earned the last confirmation;
+     * [lastRejectedSpeechMs] is the candidate the echo check killed, if any;
+     * [echoRejectedCandidates] counts such rejections. Properties only — the
+     * constructor is untouched, so the gate's unit tests are unaffected.
+     */
+    var lastConfirmedSpeechMs: Long = 0L
+        private set
+    var lastRejectedSpeechMs: Long = 0L
+        private set
+    var echoRejectedCandidates: Int = 0
+        private set
+
     fun update(speech: Boolean, playing: Boolean, playbackEcho: Boolean, nowMs: Long): Decision {
         if (confirmed) return Decision.CONFIRMED
         if (!speech || playing && playbackEcho) {
+            if (playing && playbackEcho) {
+                candidateSinceMs?.let { since ->
+                    lastRejectedSpeechMs = nowMs - since
+                    echoRejectedCandidates++
+                }
+            }
             candidateSinceMs = null
             return Decision.WAIT
         }
         val since = candidateSinceMs ?: nowMs.also { candidateSinceMs = it }
         val required = if (playing) playbackConfirmationMs else idleConfirmationMs
         if (nowMs - since < required) return Decision.WAIT
+        lastConfirmedSpeechMs = nowMs - since
         confirmed = true
         return Decision.CONFIRMED
     }
@@ -242,6 +263,14 @@ internal class OmniDuplexCapture(
 
     private val eventChannel = Channel<Event>(Channel.BUFFERED)
     val events: Flow<Event> = eventChannel.receiveAsFlow()
+
+    /** U8: invoked when the echo guard rejects a VAD candidate. Set by the call adapter; null keeps prior behavior. */
+    var onEchoRejected: (() -> Unit)? = null
+
+    /** U8: measured confirmed-speech duration of the last accepted gate decision. */
+    val lastConfirmedSpeechMs: Long get() = gate.lastConfirmedSpeechMs
+    /** U8: speech duration of the last candidate the echo check rejected. */
+    val lastRejectedSpeechMs: Long get() = gate.lastRejectedSpeechMs
     private var pump: Job? = null
     private var detector: SpeechDetector? = null
     @Volatile private var closed = false
@@ -280,7 +309,13 @@ internal class OmniDuplexCapture(
         val isEcho = audible && echoGuard.isPlaybackEcho(pcm)
         turnBuffer.observe(pcm, decision.isSpeech && !isEcho, now)
         if (!turnBuffer.isActive()) {
+            val rejectionsBefore = gate.echoRejectedCandidates
             val gateDecision = gate.update(decision.isSpeech, responseActive, isEcho, now)
+            if (gate.echoRejectedCandidates > rejectionsBefore) {
+                // U8: echo rejection only ever records the decision — playback
+                // and capture continue untouched.
+                onEchoRejected?.invoke()
+            }
             if (gateDecision == OmniDuplexBargeInGate.Decision.CONFIRMED) {
                 gate.reset()
                 val interrupted = responseActive

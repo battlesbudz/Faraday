@@ -42,6 +42,13 @@ internal class OmniDuplexCallCapture(
     private val borrowMicrophone: suspend (String) -> AudioInput,
     private val output: OmniAudioTrackOutput,
     private val log: (String) -> Unit = {},
+    /**
+     * U8: receives accepted and rejected barge-in gate decisions for the
+     * Omni diagnostics evidence. Null leaves the capture behavior unchanged.
+     * No instrumentation test constructs this adapter (verified against the
+     * branch's test tree), so a defaulted callback here is safe.
+     */
+    private val onBargeInEvent: ((event: String, confirmedSpeechMs: Long, stopLatencyMs: Long?) -> Unit)? = null,
 ) : OmniTurnCapture, OmniDuplexSessionHooks {
     private var duplex: OmniDuplexCapture? = null
     private var releaseTicker: Job? = null
@@ -65,12 +72,28 @@ internal class OmniDuplexCallCapture(
                 // Non-suspending hook, called on the capture pump: stop the
                 // answer at its next step boundary and flush what is playing.
                 bargeInFlag = true
-                output.stopAndFlush()
+                val stopStart = SystemClock.elapsedRealtime()
+                val stopped = runCatching { output.stopAndFlush() }.isSuccess
+                // U8: the accepted gate decision and the time the stop took;
+                // null when no stop completed. The pump reports the measured
+                // confirmed-speech duration (the gate only confirms after its
+                // playback confirmation window). The duplex pump is always
+                // assigned by the time this hook can fire.
+                onBargeInEvent?.invoke(
+                    "accepted",
+                    duplex?.lastConfirmedSpeechMs ?: 0L,
+                    if (stopped) SystemClock.elapsedRealtime() - stopStart else null,
+                )
             },
             smartTurnWantsMore = { false },
             onLog = log,
         )
         duplex = capture
+        // U8: a candidate the echo guard rejects never stops playback or
+        // capture — only the gate decision is recorded, for device tuning.
+        capture.onEchoRejected = {
+            onBargeInEvent?.invoke("rejected-echo", capture.lastRejectedSpeechMs, null)
+        }
         capture.start()
         // The echo guard's reference must track what the speaker actually
         // rendered, not what was written: poll the playback head and release
