@@ -82,7 +82,8 @@ class OmniVoiceCallSessionTest {
         val output = FakeOutput()
         private val capture = FakeCapture()
 
-        fun session() = OmniVoiceCallSession(engine, capture, output, events::add, isCallActive = { active })
+        fun session() = OmniVoiceCallSession(engine, capture, output, events::add,
+            isCallActive = { active }, clockMs = { 1_000L })
     }
 
     private class FakeEngine(private val isActive: () -> Boolean) : OmniCallEngine {
