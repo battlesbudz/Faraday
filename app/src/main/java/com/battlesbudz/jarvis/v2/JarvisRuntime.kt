@@ -9,6 +9,7 @@ import com.battlesbudz.jarvis.v2.actions.ExternalActionExecutor
 import com.battlesbudz.jarvis.v2.actions.ExternalAgentAccess
 import com.battlesbudz.jarvis.v2.actions.ExternalAgentGrant
 import com.battlesbudz.jarvis.v2.actions.ExternalAgentProvider
+import com.battlesbudz.jarvis.v2.actions.NativeActionDecoder
 import com.battlesbudz.jarvis.v2.actions.ToolTaskLedger
 import com.battlesbudz.jarvis.v2.ai.CodeModeEngine
 import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngine
@@ -19,6 +20,7 @@ import com.battlesbudz.jarvis.v2.ai.ModelCatalog
 import com.battlesbudz.jarvis.v2.ai.createResidentEngine
 import com.battlesbudz.jarvis.v2.ai.ModelStore
 import com.battlesbudz.jarvis.v2.ai.ReferenceGroundingClient
+import com.battlesbudz.jarvis.v2.ai.ToolCall
 import com.battlesbudz.jarvis.v2.chat.ShortTermConversationContext
 import com.battlesbudz.jarvis.v2.code.CodeEngineAccess
 import com.battlesbudz.jarvis.v2.code.CodeProjectStore
@@ -80,6 +82,7 @@ import com.battlesbudz.jarvis.v2.runtime.turn.VoiceTurnRunner
 import com.battlesbudz.jarvis.v2.runtime.turn.VoiceTypedInputOwnership
 import com.battlesbudz.jarvis.v2.vision.VisionServerSettings
 import com.battlesbudz.jarvis.v2.sandbox.SandboxStore
+import com.battlesbudz.jarvis.v2.voice.AudioToolGuard
 import com.battlesbudz.jarvis.v2.voice.AudioTurnCapture
 import com.battlesbudz.jarvis.v2.voice.PiperVoiceOutput
 import com.battlesbudz.jarvis.v2.voice.SharedPreferencesVoiceCallStore
@@ -418,6 +421,67 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         conversationId: String): com.battlesbudz.jarvis.v2.actions.ExecutionResult =
         phoneTaskCoordinator.parkSandboxRunForApproval(request, conversationId)
 
+    /**
+     * LFM3-Omni U7: voice-tool dispatch for Omni calls, installed on the
+     * call owner. Mirrors the direct-audio pattern in ConversationGeneration's
+     * audioPlanFromCalls: an Omni call carries no transcript for the
+     * deterministic router, so the plan is built from the model's own calls
+     * after strict decoding and the [AudioToolGuard] allowlist/argument checks
+     * (at most 3 steps), and [ConversationActions.runNative] then applies the
+     * normal validation, approval callback, executor, receipt and audit
+     * handling.
+     * Returns one executor result message per dispatched call, in dispatch
+     * order — the engine appends each as a `tool` role message and continues
+     * generation; empty when nothing was valid or nothing executed, in which
+     * case the engine ends the turn without dispatching anything. Never
+     * executes from the parser or from `OpenApiTool.execute`.
+     */
+    private suspend fun dispatchOmniVoiceToolCalls(calls: List<ToolCall>): List<String> {
+        val valid = calls.mapNotNull { call ->
+            val request = NativeActionDecoder.decodeStrict(call) ?: run {
+                diagnosticRecorder.recordImportant("Omni voice tool dropped call=${call.name} reason=strict_decode_failed")
+                return@mapNotNull null
+            }
+            if (!AudioToolGuard.allows(request)) {
+                diagnosticRecorder.recordImportant("Omni voice tool dropped call=${call.name} reason=audio_guard")
+                return@mapNotNull null
+            }
+            call to request
+        }.take(3)
+        if (valid.isEmpty()) return emptyList()
+        val plan = ActionTurnPlan.Ready(valid.map { (_, request) ->
+            ActionTurnPlan.Step(request, "[audio input]")
+        })
+        val actions = ConversationActions(
+            executor = { browserRuntime.decorate(AndroidMobileActionExecutor(this, canLaunchDirectly = { activityVisible },
+                onDiagnostic = diagnosticRecorder::recordImportant,
+                sandboxRun = ::runSandboxToolCommand)) },
+            admit = ::admitPhoneTask, execute = ::executePhoneAction, cancelUnfinished = ::cancelPhoneTask,
+            conversationId = conversationHistory.current.value.id,
+            // The spoken continuation is the user-facing result; the
+            // per-action acknowledgement is recorded for diagnostics only.
+            onActionResult = { name, message, succeeded ->
+                diagnosticRecorder.recordImportant("Omni voice tool result name=$name succeeded=$succeeded message=$message")
+            })
+        val outcome = actions.runNative(plan, valid.map { it.first }, nextCalls = { emptyList() },
+            // Same approval parking as the coordinator's turns: model-proposed
+            // screen mutations, browse_submit and run_in_sandbox never
+            // auto-dispatch; they park for the user's explicit approval.
+            onNeedsApproval = { request ->
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    val conversationId = conversationHistory.current.value.id
+                    when {
+                        request.name == "browse_submit" -> parkBrowseSubmitForApproval(request, conversationId)
+                        request.name == "run_in_sandbox" -> parkSandboxRunForApproval(request, conversationId)
+                        else -> parkScreenTaskForApproval(request)
+                    }
+                }
+            })
+        diagnosticRecorder.recordImportant("Omni voice tool dispatch steps=${valid.map { it.first.name }} " +
+            "completed=${outcome.completed} receipts=${outcome.receipts.size} result=${outcome.message}")
+        return outcome.receipts.map { it.result.message }
+    }
+
     // -- Sandbox Phase 2: the executor bridge behind run_in_sandbox --------
     // A dedicated manager/runner pair on the application context, the same
     // shape the settings section composes for its proof console; all state
@@ -708,6 +772,9 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             voiceResources = callResources,
             diagnosticRecorder = diagnosticRecorder,
             report = { sessionReport(it) },
+            // LFM3-Omni U7: the call engine's voice-tool dispatch. Built
+            // here, invoked only when the model emits a tool call mid-turn.
+            dispatchToolCalls = { calls -> dispatchOmniVoiceToolCalls(calls) },
         )
         // Every standard Copy Diagnostics export carries the memory-embeddings and
         // dream-journal lines, probed read-only from the live services at copy time

@@ -4,6 +4,8 @@ import android.content.Context
 import android.media.AudioTrack
 import android.os.Build
 import android.os.SystemClock
+import com.battlesbudz.jarvis.v2.actions.MobileActionToolDefinitions
+import com.battlesbudz.jarvis.v2.ai.Lfm3ToolProtocol
 import com.battlesbudz.jarvis.v2.ai.LocalModelSpec
 import com.battlesbudz.jarvis.v2.ai.ModelStore
 import com.battlesbudz.jarvis.v2.ai.OmniAudioEncoder
@@ -15,6 +17,7 @@ import com.battlesbudz.jarvis.v2.ai.OmniSpeechOutputFactory
 import com.battlesbudz.jarvis.v2.ai.OmniSpeechRng
 import com.battlesbudz.jarvis.v2.ai.OmniSpeechStack
 import com.battlesbudz.jarvis.v2.ai.OmniSpeechTokens
+import com.battlesbudz.jarvis.v2.ai.ToolCall
 import com.battlesbudz.jarvis.v2.diagnostics.DiagnosticRecorder
 import com.battlesbudz.jarvis.v2.voice.SpeechAudioTrackFactory
 import com.battlesbudz.jarvis.v2.voice.VoiceCallResources
@@ -63,6 +66,15 @@ import kotlinx.coroutines.withContext
  *   AudioTrack, and completed turns from the pump's `TurnReady` events.
  *   Rendered 24 kHz PCM is registered with the echo guard at the
  *   playback-head position, never as future queued chunks.
+ * - U7: [Lfm3ToolProtocol] is wired into the call generation path (seam 5).
+ *   The host loop watches the decoded text stream, halts generation on a
+ *   complete `<tool_call>`, never plays audio belonging to a tool-call block
+ *   (the speech sink drops chunks offered after the block begins), dispatches
+ *   through [dispatchToolCalls] — the existing direct-audio action path
+ *   installed by runtime composition — appends each result as a `tool` role
+ *   message, and continues generation in the same conversation state. No
+ *   `<tools>` block is declared in the voice system prompt yet and Omni
+ *   `supportsTools` stays false until voice tool fixtures pass.
  *
  * The call stack is created lazily on the first Omni call start and kept
  * resident across calls of the same model (U5's `endCall` contract: clear
@@ -79,6 +91,15 @@ internal class OmniVoiceCallOwnerImpl(
     private val voiceResources: VoiceCallResources,
     private val diagnosticRecorder: DiagnosticRecorder,
     private val report: (String) -> Unit,
+    /**
+     * U7: voice-tool dispatch installed by runtime composition. Given the
+     * tool calls parsed from one generated round, dispatches them through
+     * the existing direct-audio action path and returns one executor result
+     * message per dispatched call, in order; empty when nothing was valid
+     * or nothing executed. Null leaves tool calls unexecuted: the turn ends
+     * as a normal answer with the tool-call markup stripped from its text.
+     */
+    private val dispatchToolCalls: (suspend (List<ToolCall>) -> List<String>)? = null,
 ) : OmniVoiceCallOwner {
     private val lock = Any()
     @Volatile private var activeCallId: String? = null
@@ -250,7 +271,7 @@ internal class OmniVoiceCallOwnerImpl(
                 encoder to speechStack
             }
             val (encoder, speechStack) = built
-            val engine = OmniCallEngineImpl(components, encoder, speechStack, sink)
+            val engine = OmniCallEngineImpl(components, encoder, speechStack, sink, dispatchToolCalls)
             OmniCallStack(components, engine, encoder, speechStack).also { stack = it }
         } catch (failure: Throwable) {
             runCatching { components.close() }
@@ -303,8 +324,21 @@ internal class OmniCallStack(
 /** The speech stack's sink: enqueues generated PCM for the active turn's drain. Never blocks. */
 internal class OmniPcmQueueSink : com.battlesbudz.jarvis.v2.ai.OmniPcmSink {
     @Volatile var activeQueue: Channel<FloatArray>? = null
-    override fun offer(pcm24k: FloatArray): Boolean =
-        activeQueue?.trySend(pcm24k)?.isSuccess ?: false
+    /**
+     * U7: while the current generation round's decoded text holds a
+     * tool-call block, chunks offered here are dropped at the source and
+     * never queued — audio belonging to a tool-call block is never played.
+     * Set and cleared on the Omni worker (or before generation starts), so
+     * no chunk can straddle the decision: the codec emits one chunk per
+     * 12-frame audio block, and the watch runs during the text slots that
+     * precede it. Dropped offers report success so the codec keeps streaming
+     * the answer's state forward.
+     */
+    @Volatile var suppressOffers: Boolean = false
+    override fun offer(pcm24k: FloatArray): Boolean {
+        if (suppressOffers) return true
+        return activeQueue?.trySend(pcm24k)?.isSuccess ?: false
+    }
 }
 
 /**
@@ -327,6 +361,7 @@ internal class OmniCallEngineImpl(
     private val audioEncoder: OmniAudioEncoder,
     private val speechStack: OmniSpeechStack,
     private val sink: OmniPcmQueueSink,
+    private val toolDispatcher: (suspend (List<ToolCall>) -> List<String>)? = null,
 ) : OmniCallEngine {
     @Volatile private var observedPositions: Int = 0
     @Volatile private var lastTextToken: Int = -1
@@ -405,9 +440,46 @@ internal class OmniCallEngineImpl(
         }
         val prefillMs = SystemClock.elapsedRealtime() - prefillStart
 
+        // U7 tool-call watch. The host loop decodes the round's text at the
+        // end of each text block and whenever the text phase ends, so a
+        // marker is always caught during the text slots that precede the
+        // audio block that would speak it:
+        // - `<tool_call>` (or a trailing fragment of it, so a marker split
+        //   across text blocks cannot leak its first half as speech) sets the
+        //   sink's suppression: chunks offered after the block began are
+        //   dropped at the source and never played.
+        // - a complete `</tool_call>` halts generation at the next step
+        //   boundary, so the call block is never spoken and never completed
+        //   past its closing tag.
+        // A full decode per token is avoided: decoding rebuilds the whole
+        // vocabulary map on every call, so the watch decodes only at text
+        // block boundaries and phase ends. The slot counter resets at every
+        // decode, so it is zero at each text run's start and a decode always
+        // lands on or before the run's last token. The tool declarations
+        // come from the same catalog the resident profile attaches for Gemma.
+        val tools = MobileActionToolDefinitions.all()
         val textIds = ArrayList<Int>()
         var lastToken = -1
-        val genStart = SystemClock.elapsedRealtime()
+        // Decoded text of the current generation round only; the watch and
+        // the per-round parse both read this, while textIds keeps the whole
+        // turn for the returned answer.
+        val roundTokens = ArrayList<Int>()
+        // Text slots since the last watch decode; reset at every decode so
+        // the count restarts at each text run.
+        var tokensSinceWatch = 0
+        var toolCallComplete = false
+        // Runs on the Omni worker inside the token callback, so the sink flag
+        // it sets is in place before the audio block that follows this text
+        // block. Suppression is speculative on a trailing marker fragment
+        // and is re-evaluated at the next boundary, so a fragment that never
+        // becomes a call costs at most one audio block of speech.
+        fun watchToolCallBoundary() {
+            val roundText = components.tokenizer.decode(roundTokens.toIntArray())
+            sink.suppressOffers = "<tool_call>" in roundText || endsWithToolCallPrefix(roundText)
+            if ("</tool_call>" in roundText) toolCallComplete = true
+            tokensSinceWatch = 0
+        }
+        var genMsTotal = 0L
         val queue = Channel<FloatArray>(capacity = 4)
         sink.activeQueue = queue
         try {
@@ -418,31 +490,97 @@ internal class OmniCallEngineImpl(
                         output.playChunk(chunk)
                     }
                 }
-                withContext(components.dispatcher) {
-                    val maxSteps = (components.runner.cacheLength - components.runner.pos - 8)
-                        .coerceIn(1, MAX_GENERATE_STEPS)
-                    speechStack.generator.generate(
-                        initialHidden = hidden,
-                        initialMode = OmniSpeechGenerator.Mode.INTERLEAVED,
-                        maxSteps = maxSteps,
-                        rng = OmniSpeechRng(42),
-                        onTextToken = { token ->
-                            lastToken = token
-                            if (token !in CONTROL_TOKENS) textIds += token
-                        },
-                        stop = { shouldStop() || components.runner.pos >= MAX_CONTEXT_POSITIONS },
-                    )
-                    observedPositions = components.runner.pos
+                var hiddenState = hidden
+                var toolRounds = 0
+                while (true) {
+                    toolCallComplete = false
+                    roundTokens.clear()
+                    tokensSinceWatch = 0
+                    sink.suppressOffers = false
+                    val roundStart = SystemClock.elapsedRealtime()
+                    withContext(components.dispatcher) {
+                        val maxSteps = (components.runner.cacheLength - components.runner.pos - 8)
+                            .coerceIn(1, MAX_GENERATE_STEPS)
+                        speechStack.generator.generate(
+                            initialHidden = hiddenState,
+                            initialMode = OmniSpeechGenerator.Mode.INTERLEAVED,
+                            maxSteps = maxSteps,
+                            rng = OmniSpeechRng(42),
+                            onTextToken = { token ->
+                                lastToken = token
+                                // Every text-branch token consumes a text
+                                // slot, control tokens included.
+                                tokensSinceWatch++
+                                if (token !in CONTROL_TOKENS) {
+                                    textIds += token
+                                    roundTokens += token
+                                }
+                                // TEXT_END / IM_END close the text phase;
+                                // a full text block ends here. Other control
+                                // tokens only consume their slot.
+                                if (token == OmniSpeechTokens.TEXT_END || token == OmniSpeechTokens.IM_END ||
+                                    tokensSinceWatch >= OmniSpeechTokens.TEXT_SLOTS) {
+                                    watchToolCallBoundary()
+                                }
+                            },
+                            stop = {
+                                shouldStop() || toolCallComplete ||
+                                    components.runner.pos >= MAX_CONTEXT_POSITIONS
+                            },
+                        )
+                        observedPositions = components.runner.pos
+                    }
+                    genMsTotal += SystemClock.elapsedRealtime() - roundStart
+                    // Barge-in, hang-up or the context cap ends the turn
+                    // without dispatching: the user has taken the turn back.
+                    if (shouldStop()) break
+                    val roundText = components.tokenizer.decode(roundTokens.toIntArray())
+                    val calls = Lfm3ToolProtocol.parseCalls(roundText, tools)
+                    if (calls.isEmpty()) break
+                    val dispatcher = toolDispatcher ?: break
+                    if (toolRounds >= MAX_TOOL_ROUNDS) break
+                    // Dispatch suspends (admission on Main, execution off
+                    // Main, approval UI when gated) while the drain keeps
+                    // playing the already-queued pre-detection speech.
+                    // Nothing is executed from the parser or from
+                    // OpenApiTool.execute: the dispatcher owns validation,
+                    // approval, execution, receipts and audit.
+                    val results = dispatcher(calls)
+                    if (results.isEmpty()) break
+                    // Continue generation in the same conversation state:
+                    // close the assistant turn that emitted the call, append
+                    // each executor result as a `tool` role message, and
+                    // reopen the assistant turn for the spoken answer.
+                    hiddenState = withContext(components.dispatcher) {
+                        val continuation = buildString {
+                            if (lastToken != OmniSpeechTokens.IM_END) append("<|im_end|>\n")
+                            for (result in results) {
+                                append(Lfm3ToolProtocol.renderToolResultMessage(result)).append('\n')
+                            }
+                            append("<|im_start|>assistant\n<think></think>")
+                        }
+                        val ids = components.tokenizer.encode(continuation)
+                        val rows = ids.map { components.runner.embedToken(it) }
+                        val state = components.runner.extend(rows, decodeLast = true)
+                            ?: error("Omni tool-result prefill produced no hidden state")
+                        observedPositions = components.runner.pos
+                        state
+                    }
+                    toolRounds++
                 }
                 queue.close()
                 drain.join()
             }
         } finally {
             sink.activeQueue = null
+            sink.suppressOffers = false
         }
-        val genMs = SystemClock.elapsedRealtime() - genStart
+        val genMs = genMsTotal
         lastTextToken = lastToken
-        val text = components.tokenizer.decode(textIds.toIntArray()).trim()
+        // Tool-call markup is never answer text: strip complete blocks and
+        // any trailing incomplete block, so neither the transcript nor the
+        // spoken continuation can carry it.
+        val text = stripToolCallMarkup(components.tokenizer.decode(textIds.toIntArray())).trim()
         return OmniCallAnswer(
             text = text,
             graphTimingsMs = mapOf(
@@ -451,6 +589,26 @@ internal class OmniCallEngineImpl(
                 "speech_generate_ms" to genMs,
             ),
         )
+    }
+
+    private fun endsWithToolCallPrefix(text: String): Boolean {
+        val marker = "<tool_call>"
+        for (length in 1 until marker.length) {
+            if (text.endsWith(marker.substring(0, length))) return true
+        }
+        return false
+    }
+
+    /** Removes complete `<tool_call>...</tool_call>` blocks and any trailing incomplete block. */
+    private fun stripToolCallMarkup(text: String): String {
+        var result = text
+        while (true) {
+            val start = result.indexOf("<tool_call>")
+            if (start < 0) return result
+            val end = result.indexOf("</tool_call>", start)
+            result = if (end < 0) result.substring(0, start)
+            else result.substring(0, start) + result.substring(end + "</tool_call>".length)
+        }
     }
 
     private fun audioPromptText(): String {
@@ -484,6 +642,8 @@ internal class OmniCallEngineImpl(
     companion object {
         const val MAX_CONTEXT_POSITIONS = OmniVoiceCallSession.MAX_CONTEXT_POSITIONS
         const val MAX_GENERATE_STEPS = 1200
+        /** U7: bounds the dispatch-and-continue cycles in one voice turn, so a model that keeps emitting calls cannot extend a call indefinitely. */
+        const val MAX_TOOL_ROUNDS = 3
         val CONTROL_TOKENS = setOf(
             OmniSpeechTokens.IM_END,
             OmniSpeechTokens.TEXT_END,

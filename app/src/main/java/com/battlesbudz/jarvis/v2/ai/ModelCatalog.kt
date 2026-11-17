@@ -97,8 +97,11 @@ object ModelCatalog {
         // The Omni runtime drives the bundle's language model on CPU; the
         // speech graphs choose their own accelerators inside that runtime.
         recommendedGpu = false, supportsVision = false, supportsAudio = true,
-        // Tools join the Omni path in their own unit; until then no surface
-        // may offer tools this model cannot yet serve.
+        // U7 wired the tool protocol into the Omni call path (detect, halt,
+        // suppress tool-block audio, dispatch via the direct-audio action
+        // path, continue from the tool result), but real-weight generation
+        // and spoken tool turns are still unproven, so no surface may offer
+        // tools until voice tool fixtures pass.
         supportsTools = false, incrementalGemmaInput = false,
         contextTokens = 4096,
         downloadBytes = 4_012_449_712L,

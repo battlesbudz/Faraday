@@ -1,0 +1,36 @@
+{
+  "fixedPrompt": {
+    "system": "Answer directly.",
+    "utterance": "Set the media volume to 35 percent.",
+    "tools": [
+      {"name":"set_volume","description":"Set phone media volume.","parameters":{"type":"object","properties":{"level":{"type":"integer","description":"Percent."}},"required":["level"],"additionalProperties":false}},
+      {"name":"read_battery","description":"Read battery status.","parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false}}
+    ],
+    "expected": "<|startoftext|><|im_start|>system\nAnswer directly.\n<tools>\n{\"name\":\"set_volume\",\"description\":\"Set phone media volume.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"integer\",\"description\":\"Percent.\"}},\"required\":[\"level\"],\"additionalProperties\":false}}\n{\"name\":\"read_battery\",\"description\":\"Read battery status.\",\"parameters\":{\"type\":\"object\",\"properties\":{},\"required\":[],\"additionalProperties\":false}}\n</tools><|im_end|>\n<|im_start|>user\nSet the media volume to 35 percent.<|im_end|>\n<|im_start|>assistant\n<think></think>"
+  },
+  "validOutputs": [
+    {
+      "prompt": "Set the media volume to 35 percent.",
+      "output": "<think>Change the volume.</think><tool_call>\n<function=set_volume>\n<parameter=level>\n35\n</parameter>\n</function>\n</tool_call>",
+      "expected": [{"name":"set_volume","arguments":"{\"level\":35}"}]
+    },
+    {
+      "prompt": "Read battery and then set volume.",
+      "output": "<tool_call><function=read_battery></function></tool_call> and <tool_call><function=set_volume><parameter=level>35</parameter></function></tool_call>",
+      "expected": [{"name":"read_battery","arguments":"{}"},{"name":"set_volume","arguments":"{\"level\":35}"}]
+    },
+    {
+      "prompt": "Set volume to 35.",
+      "output": "<tool_call><function=set_volume><parameter=level>35</parameter></function></tool_call>",
+      "expected": [{"name":"set_volume","arguments":"{\"level\":35}"}]
+    }
+  ],
+  "malformedOutputs": [
+    "<tool_call><function=set_volume><parameter=level>35</parameter></tool_call>",
+    "<tool_call><function=unknown_tool></function></tool_call>",
+    "<tool_call><function=set_volume><parameter=level>35</parameter><parameter=level>40</parameter></function></tool_call>",
+    "<tool_call><function=set_volume>unparsed text<parameter=level>35</parameter></function></tool_call>",
+    "<tool_call><function=set_volume><parameter=level>35</parameter></function>extra</tool_call>"
+  ],
+  "mixedMalformedAndValid": "<tool_call><function=set_volume><parameter=level>35</parameter><parameter=level>40</parameter></function></tool_call><tool_call><function=read_battery></function></tool_call>"
+}

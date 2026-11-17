@@ -2143,6 +2143,7 @@ class ReleaseJourneyTest {
             // The tail-scroll deliberately does not yank a mid-list reader, so
             // the test scrolls to the tail itself before reading the live text.
             // Assertions below are unchanged.
+            device.waitForIdle()
             val liveTranscriptText = staleSafe { scrollTo(By.res("voice_call_live_transcript")).text }
             assertEquals("Live speech appears without minimizing", liveTranscriptText)
             assertNotNull(find(By.res("voice_call_status")))

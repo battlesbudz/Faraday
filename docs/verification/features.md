@@ -121,6 +121,38 @@ Acceptance checks:
   still require recorded playback fixtures on the target phone.
 
 
+# LFM3-Omni tool protocol — U7
+
+U7 adds only the LFM3 declaration/parser/result-message boundary. It renders
+the existing `MobileActionToolDefinitions` JSON schemas inside `<tools>`,
+translates complete `<tool_call>` blocks into the shared `ToolCall` values,
+and formats executor output as a LFM3 `tool` role message. The eval runner
+resets before each text fixture and returns calls only; it never dispatches or
+executes them. Production callers must continue through the normal action
+planner, strict schema validation, approval UI, dispatcher and audit journal.
+The U7 integration wires the protocol into the U5/U6 call path: the host loop
+watches the decoded text stream, halts generation on a complete call, never
+plays audio belonging to a tool-call block, dispatches through the existing
+direct-audio action path (`AudioToolGuard` allowlist + `runNative`), appends
+the result as a `tool` role message, and continues generation in the same
+Omni conversation state.
+
+Acceptance checks:
+- JVM logic: `Lfm3ToolProtocolTest` pins a fixed chat prompt, valid single and
+  multiple calls, exact argument JSON, numeric-looking string preservation,
+  malformed/unknown/duplicate calls, isolation of a valid call beside a
+  malformed one, safe tool-result formatting, and the read-only runner reset.
+- Failure behavior: incomplete markup, unknown function names, duplicate
+  parameters and malformed structure yield no candidate call; no parser or
+  eval helper can execute a tool. Existing Gemma declarations, markup parsing,
+  approval, execution and audit behavior remain unchanged.
+- Real model/device (not proven): fixtures are fixed text inputs and do not
+  establish that LFM3-Omni emits these calls. Model-generated text and spoken
+  tool turns remain unverified; `supportsTools` stays disabled for Omni until
+  voice fixtures pass. The `<tools>` block is not yet added to the voice system
+  prompt, so nothing invites the model to call tools in a call yet.
+
+
 # Memory Unit 4 entity/temporal prototype — 14 November 2026
 
 `MemoryEntityTemporalGraph` is an opt-in-disabled, ephemeral projection built
