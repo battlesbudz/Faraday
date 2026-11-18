@@ -39,3 +39,6 @@ Run these steps on Justin's target phone, using the exact integrated build under
    - **FAIL:** Prior transcript/tool state appears in the new conversation, the answer relies on the previous call, or the runtime cannot start a fresh turn. Report both conversation identifiers and the visible carried-over state.
 
 Attach the exported per-conversation Copy Diagnostics text for the Omni call. Include any rollover records if the call exercised a context rollover; absence of rollover is expected for this short proof.
+
+
+<!-- Release re-issued 2026-11-17 (build 1945) from the same code as build 1944 (head 5d9491ce) after the 1944 release assets would not finish downloading on device. No code change. -->
