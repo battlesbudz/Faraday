@@ -584,3 +584,5 @@
 # Maven LiteRT 2.3.0 stays linked in the release build until U2 wires real
 # callers. See docs/verification/streaming-sdk.md.
 -keep class com.battlesbudz.jarvis.v2.ai.OmniRuntime { *; }
+
+# Build 1945 release re-issue (2026-11-17): comment only, no rule changes.
