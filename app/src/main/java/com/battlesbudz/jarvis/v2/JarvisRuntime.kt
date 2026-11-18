@@ -1356,9 +1356,52 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             // machinery that owns beginCall(), so establish the call record
             // here (same ownership pattern: one active call, bound to the
             // open conversation) — without it the owner can never start.
-            com.battlesbudz.jarvis.v2.runtime.turn.OmniVoiceCallStart.ensureCallRecord(
-                voiceSessionController, conversationHistory.current.value.id)
-            owner.start()
+            val startCall = {
+                com.battlesbudz.jarvis.v2.runtime.turn.OmniVoiceCallStart.ensureCallRecord(
+                    voiceSessionController, conversationHistory.current.value.id)
+                owner.start()
+            }
+            // DESIGN section 2, decision 4: exactly one model runtime
+            // resident at a time. A prior chat leaves the bridge engine
+            // holding its model — for Omni, this same 3.2 GB bundle through
+            // LiteRT-LM — and the call stack then builds a second full
+            // native stack beside it. On build 1944 the process died
+            // mid-build with no managed failure recorded: the signature of
+            // a memory kill under exactly that co-residency. Model switch
+            // already sheds in the other direction (it closes the Omni
+            // stack); a fresh call start sheds the bridge engine first,
+            // under the same idle preconditions the call UI enforces.
+            val shed = com.battlesbudz.jarvis.v2.runtime.turn.OmniCallStartPolicy.shouldShedResidentEngine(
+                engineResident = conversationEngine != null || omniEngine != null,
+                callInProgress = voiceSessionController.currentCallId() != null,
+                conversationWorkActive = ConversationWork.activeJobs.get() != 0,
+                modelOperationActive = modelStore.isModelOperationActive(),
+            )
+            if (!shed) {
+                startCall()
+                return
+            }
+            runtimeScope.launch {
+                diagnosticRecorder.recordOmniPrep("bridgeEngineShedBeforeOmniCall")
+                // Slot first, then close — the dream unload's order, so
+                // nothing can pick up an engine already on its way down.
+                // runtimeScope runs on Dispatchers.Default: engine
+                // lifecycle control requires a non-main thread.
+                val omni = omniEngine
+                omniEngine = null
+                if (omni != null) runCatching { omni.close() }
+                val engine = conversationEngine
+                conversationEngine = null
+                nativeConversationHasContext = false
+                conversationCharacters = 0
+                if (engine != null) runCatching { engine.close() }
+                // The window is short, but if the session ended or the
+                // selection changed while the engine closed, this start no
+                // longer belongs to anything — drop it.
+                if (!voiceSessionArmed) return@launch
+                if (!com.battlesbudz.jarvis.v2.runtime.turn.OmniVoiceCallRoute.isOmni(modelStore.selectedModel().id)) return@launch
+                startCall()
+            }
         } else {
             voiceTurns.start()
         }

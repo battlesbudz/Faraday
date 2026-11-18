@@ -293,8 +293,13 @@ internal class OmniVoiceCallOwnerImpl(
         report("Preparing Omni Voice Call — loading the speech stack…")
         val bundle = modelStore.fileFor(spec)
         val components = OmniRuntime.openCallComponents(context, bundle)
+        // Stage breadcrumbs: build 1944 died somewhere inside this build
+        // with only stackBuildStarted on record. If the process ever dies
+        // here again, the last stage on record localizes it.
+        diagnosticRecorder.recordOmniPrep("stackStage=componentsOpen")
         try {
             val audioSection = OmniRuntime.extractSection(context, bundle, "audio")
+            diagnosticRecorder.recordOmniPrep("stackStage=audioSectionReady")
             val depthFile = companionFile(spec, DEPTH_FILE)
             val frameFile = companionFile(spec, FRAME_FILE)
             val codecFile = companionFile(spec, CODEC_FILE)
@@ -307,6 +312,7 @@ internal class OmniVoiceCallOwnerImpl(
             val sink = OmniPcmQueueSink()
             val built = withContext(components.dispatcher) {
                 val encoder = OmniAudioEncoder(audioSection, components.environment)
+                diagnosticRecorder.recordOmniPrep("stackStage=audioEncoderReady")
                 val speechStack = OmniSpeechOutputFactory.createStack(
                     runner = components.runner,
                     depthFile = depthFile,
@@ -322,6 +328,7 @@ internal class OmniVoiceCallOwnerImpl(
                 encoder to speechStack
             }
             val (encoder, speechStack) = built
+            diagnosticRecorder.recordOmniPrep("stackStage=speechStackReady")
             val engine = OmniCallEngineImpl(components, encoder, speechStack, sink, dispatchToolCalls)
             // U8: record the concrete driver/accelerator actually selected for this call.
             diagnosticRecorder.recordOmniRuntimePath(

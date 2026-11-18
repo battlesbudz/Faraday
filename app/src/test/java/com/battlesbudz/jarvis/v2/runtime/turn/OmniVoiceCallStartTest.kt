@@ -8,7 +8,9 @@ import com.battlesbudz.jarvis.v2.voice.VoiceSessionState
 import com.battlesbudz.jarvis.v2.voice.VoiceSessionUi
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -47,6 +49,32 @@ class OmniVoiceCallStartTest {
         assertEquals(existing.id, callId)
         assertEquals("chat-1", controller.currentConversationId())
         assertEquals(1, store.calls.size)
+    }
+
+    @Test fun shedPolicyShedsAnIdleResidentEngineAtAFreshCallStart() {
+        assertTrue(OmniCallStartPolicy.shouldShedResidentEngine(
+            engineResident = true, callInProgress = false,
+            conversationWorkActive = false, modelOperationActive = false))
+    }
+
+    @Test fun shedPolicyKeepsThePreviousBehaviorInEveryOtherState() {
+        // Nothing resident: nothing to shed.
+        assertFalse(OmniCallStartPolicy.shouldShedResidentEngine(
+            engineResident = false, callInProgress = false,
+            conversationWorkActive = false, modelOperationActive = false))
+        // A call is already in progress (typed input / restart): not a
+        // fresh start, the resident state is the call's own world.
+        assertFalse(OmniCallStartPolicy.shouldShedResidentEngine(
+            engineResident = true, callInProgress = true,
+            conversationWorkActive = false, modelOperationActive = false))
+        // A reply is still generating on the engine: never close it
+        // mid-flight.
+        assertFalse(OmniCallStartPolicy.shouldShedResidentEngine(
+            engineResident = true, callInProgress = false,
+            conversationWorkActive = true, modelOperationActive = false))
+        assertFalse(OmniCallStartPolicy.shouldShedResidentEngine(
+            engineResident = true, callInProgress = false,
+            conversationWorkActive = false, modelOperationActive = true))
     }
 
     @Test fun omniListeningStatusMapsOutOfPreparing() {

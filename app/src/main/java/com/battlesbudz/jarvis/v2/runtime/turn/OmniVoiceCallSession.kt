@@ -45,6 +45,25 @@ internal object OmniVoiceCallStart {
         }
 }
 
+/**
+ * Residency decision for an Omni call start (DESIGN section 2, decision 4:
+ * exactly one model runtime resident at a time). A fresh call start sheds a
+ * resident bridge conversation engine before the call stack builds — but
+ * only when this really is a fresh start (no call already in progress) and
+ * the engine is idle: no conversation work running and no model operation
+ * holding the lease. The call UI already refuses to start a call over a
+ * running reply; this is the same precondition at the runtime seam, and
+ * every other state keeps the previous start behavior untouched.
+ */
+internal object OmniCallStartPolicy {
+    fun shouldShedResidentEngine(
+        engineResident: Boolean,
+        callInProgress: Boolean,
+        conversationWorkActive: Boolean,
+        modelOperationActive: Boolean,
+    ): Boolean = engineResident && !callInProgress && !conversationWorkActive && !modelOperationActive
+}
+
 /** A completed U3 audio turn. Samples are mono 16 kHz float PCM, ready for Omni's audio encoder. */
 internal data class OmniCapturedTurn(
     val pcm16kMono: FloatArray,
