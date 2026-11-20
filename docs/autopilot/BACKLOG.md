@@ -4,7 +4,9 @@ Ordered by priority. Autopilot takes the first item whose status is `todo` and
 whose blockers are clear. Each item lists its acceptance check; "device" means
 it can only be closed by Justin on the Fold 6 (see `DEVICE_CHECKS.md`).
 Status: `todo`, `doing`, `ci` (pushed, waiting on CI), `device` (CI green,
-waiting on Justin), `done`, `blocked` (say why).
+waiting on Justin), `done`, `blocked` (say why), `dropped` (duplicate or
+not needed; say why), `audit` (must be checked against existing code by V0
+before anyone works on it).
 
 Autopilot may add, split, reorder within a goal, or refine items as it learns.
 Only Justin changes goal order.
@@ -13,13 +15,14 @@ Only Justin changes goal order.
 
 | ID | Item | Acceptance | Status |
 | --- | --- | --- | --- |
-| V1 | One latency budget per voice turn: export speech-end → final transcript → first token → first speakable text → first PCM → first audible, as one record with stage deltas | JVM tests with a fake clock prove every stage is recorded once per turn and missing stages stay null; the recorded-speech CI job prints the budget for its fixture | todo |
-| V2 | CI latency replay: run the recorded-speech fixture through the production turn path on the CI host and fail on a >20% regression of the stages CI can measure | New CI step with stored baseline; fixture timings in the job summary | todo |
-| V3 | Cut dead waits at end of turn: audit the 1500 ms uncertain / 3000+ ms hesitation windows and Smart Turn fallback; shorten where the endpoint model is confident | JVM tests: confident complete question ends ≤ 350 ms after silence; hesitation still waits; resumed speech still restarts | todo |
-| V4 | Start speech on the first complete clause instead of waiting for a full passage, while keeping Justin's 320-char passage policy for the rest | JVM tests on passage planner; needs Justin's OK before changing the opening policy (add a device check) | todo |
-| V5 | Bring `feature/lfm3-omni-u8` up to date with `main` and green in CI on its own branch; list what it still needs for a duplex call | CI green on the Omni branch; gap list written into this backlog | todo |
-| V6 | Barge-in timing: log confirmed-speech → playback-stop; target ≤ 300 ms | JVM test of stop path with fake audio; device check for real echo | todo |
-| V7 | Device run of the latency budget on the Fold 6 (E2B and E4B) | device | todo |
+| V0 | Audit G1 against existing code: for V2–V7, search the voice telemetry (`ReplyMetrics` TTFT/TTF-SW, `PipelineBenchmark` spans incl. `first_piper_text`/`first_piper_pcm`, `LiveComparison` reports, `VoiceTurnTrace`, the `Recorded speech recognition` CI job, Smart Turn/endpoint code, barge-in code). For each item write what already exists (file + metric names) and mark it `dropped`, rewrite it to only the missing part, or set it back to `todo` | Each V2–V7 row cites the existing code it checked; no item left in `audit` | todo |
+| V1 | ~~One latency budget per voice turn~~ | Dropped: duplicated existing TTFT/TTF-SW, `LiveComparison` and `PipelineBenchmark` stage timings. Built in 95d8aa67, reverted in b56f07dd | dropped |
+| V2 | CI latency replay: run the recorded-speech fixture through the production turn path on the CI host and fail on a >20% regression of the stages CI can measure | New CI step with stored baseline; fixture timings in the job summary | audit |
+| V3 | Cut dead waits at end of turn: audit the 1500 ms uncertain / 3000+ ms hesitation windows and Smart Turn fallback; shorten where the endpoint model is confident | JVM tests: confident complete question ends ≤ 350 ms after silence; hesitation still waits; resumed speech still restarts | audit |
+| V4 | Start speech on the first complete clause instead of waiting for a full passage, while keeping Justin's 320-char passage policy for the rest | JVM tests on passage planner; needs Justin's OK before changing the opening policy (add a device check) | audit |
+| V5 | Bring `feature/lfm3-omni-u8` up to date with `main` and green in CI on its own branch; list what it still needs for a duplex call | CI green on the Omni branch; gap list written into this backlog | audit |
+| V6 | Barge-in timing: log confirmed-speech → playback-stop; target ≤ 300 ms | JVM test of stop path with fake audio; device check for real echo | audit |
+| V7 | Device run on the Fold 6 (E2B and E4B) reporting the existing per-reply TTFT/TTF-SW and pipeline benchmark stage timings | device | audit |
 
 ## G2 — Snake one-shot
 

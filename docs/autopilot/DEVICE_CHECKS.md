@@ -7,4 +7,4 @@ copied diagnostics/latency record). Autopilot reads PR comments every run.
 
 | ID | Build/commit | What to do | What to send back | Status |
 | --- | --- | --- | --- | --- |
-| V7-A | 95d8aa67 (V1) | Install the build, start a voice call, ask 3 short questions on warm E2B (then E4B), tap Copy Diagnostics | The three `Voice latency budget turn=…` lines | waiting for CI |
+| V7-A | 95d8aa67 (V1) | Withdrawn: V1 duplicated existing telemetry and was reverted | — | withdrawn |

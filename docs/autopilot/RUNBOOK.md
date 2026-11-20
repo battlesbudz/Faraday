@@ -35,12 +35,20 @@ that exact commit (`gh run list --branch feature/autopilot`).
 
 1. Take the first `todo` item in the highest-priority goal (G1 first) whose
    blockers are clear. Mark it `doing`.
-2. Before coding, write its observable acceptance checks (including a failure
+2. Check for existing work before designing anything. Search the repo
+   (`git grep` for the feature's concepts, metric names, class names, CI job
+   names; `docs/architecture/README.md`; `docs/verification/features.md`) and
+   recent PRs/branches. In the log entry, list what already exists with file
+   paths. If the item is already implemented, mark it `dropped` with the
+   evidence and pick the next item. If it is partly implemented, extend the
+   existing owner instead of adding a parallel one. Justin has built a lot
+   already; assume something similar exists until the search shows otherwise.
+3. Before coding, write its observable acceptance checks (including a failure
    case and an existing behavior that must stay intact) into the log entry.
-3. Implement with the smallest change that meets them, following
+4. Implement with the smallest change that meets them, following
    `docs/architecture/README.md` ownership rules. Add or update tests and the
    feature map in `docs/verification/features.md`.
-4. Run what this machine can run: `python3 scripts/dev.py check`, and any
+5. Run what this machine can run: `python3 scripts/dev.py check`, and any
    focused JVM tests if the Android SDK is available. If the item is too big
    for one run, split it in the backlog and land a coherent first slice.
 
