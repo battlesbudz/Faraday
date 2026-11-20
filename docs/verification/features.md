@@ -1,5 +1,21 @@
 # Feature and acceptance map
 
+## Recorded-speech timing trend (autopilot V2 slice 1) — 20 November 2026
+
+The `Recorded speech recognition` job now runs `scripts/recorded_audio_timing.py`
+after the gate, even when the gate fails. It compares each check's host Whisper
+`elapsed_ms` from `recorded-audio/report.json` with
+`scripts/verification/recorded_audio_timing_baseline.json`, writes a table to the
+job summary, keeps `recorded-audio/timing-trend.json` in the artifact, and emits
+a `::warning::` when a check is more than 20% slower. It never fails the job:
+shared-runner noise is not measured yet. A missing baseline or timing is shown as
+"not recorded", never 0. WER, first/last-word, provenance and receipt gates are
+unchanged. Python tests in `scripts/test_recorded_audio.py` cover faster, within,
+slower, missing-baseline, missing-timing and missing-report cases. This is Linux
+CPU recognition time, not Android turn latency or device performance. The
+baseline comes from a single run (43951238289, a0718b3c). Slice 2 makes it a
+gate only after at least five runs show noise well under 20%.
+
 
 # Memory Unit 4 entity/temporal prototype — 14 November 2026
 

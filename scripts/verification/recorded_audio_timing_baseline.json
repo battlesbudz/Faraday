@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "warn_slower_ratio": 0.2,
+  "source": "Android APK run 43951238289 (a0718b3c), Recorded speech recognition job, GitHub-hosted ubuntu-latest",
+  "checks": {
+    "whisper_recorded_boundaries": {"elapsed_ms": 1079.007},
+    "whisper_recorded_quiet_ending": {"elapsed_ms": 1027.841}
+  }
+}
