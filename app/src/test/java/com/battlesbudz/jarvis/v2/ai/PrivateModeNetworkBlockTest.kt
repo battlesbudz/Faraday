@@ -16,7 +16,7 @@ import java.net.URL
 
 /**
  * Private/incognito mode must make zero external network calls that could leak
- * what the user is asking about: web search (browse_* tools), Wikipedia, and
+ * what the user is asking about: web browsing (browse_* tools), web_search/web_fetch, Wikipedia, and
  * Wikidata lookups are all blocked, with an honest signal instead of silence.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -108,6 +108,26 @@ class PrivateModeNetworkBlockTest {
             assertNull("$tool must stay available outside private mode",
                 probe.missingReason(ActionRequest(tool)))
         }
+    }
+
+    @Test fun privateModeBlocksWebReadTools() {
+        val probe = AndroidToolCapabilityProbe(context, isPrivate = { true })
+        val requests = listOf(
+            ActionRequest("web_search", mapOf("query" to "cat")),
+            ActionRequest("web_fetch", mapOf("url" to "https://example.com"))
+        )
+        for (request in requests) {
+            val reason = probe.missingReason(request)
+            assertNotNull("${request.name} must be blocked in private mode", reason)
+            assertTrue("${request.name} block must say why, was: $reason",
+                reason!!.contains("private", ignoreCase = true))
+        }
+    }
+
+    @Test fun nonPrivateModeDoesNotBlockWebReadTools() {
+        val probe = AndroidToolCapabilityProbe(context, isPrivate = { false })
+        assertNull(probe.missingReason(ActionRequest("web_search", mapOf("query" to "cat"))))
+        assertNull(probe.missingReason(ActionRequest("web_fetch", mapOf("url" to "https://example.com"))))
     }
 
     @Test fun privateModeDoesNotBlockNonBrowseTools() {

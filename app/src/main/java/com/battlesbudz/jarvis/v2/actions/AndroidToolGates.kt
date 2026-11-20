@@ -28,8 +28,8 @@ class AndroidToolCapabilityProbe(
     private val isPrivate: () -> Boolean = { false }
 ) : ToolCapabilityProbe {
     override fun missingReason(request: ActionRequest): String? {
-        if (isPrivate() && request.name.startsWith("browse_"))
-            return "Web browsing is disabled in private chats to keep this conversation fully offline."
+        if (isPrivate() && (request.name.startsWith("browse_") || request.name in MobileToolCatalog.WEB_READ_TOOL_NAMES))
+            return "Web access is disabled in private chats to keep this conversation fully offline."
         return when (request.name) {
             "read_battery" ->
                 if (context.getSystemService(BatteryManager::class.java) == null)
