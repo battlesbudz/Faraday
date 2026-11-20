@@ -667,6 +667,9 @@ jobs:
           key: recorded-audio-models-v1-${{ hashFiles('scripts/check_recorded_audio.py') }}
       - name: Recognize recorded phrase boundaries and quiet endings
         run: python3 scripts/check_recorded_audio.py --models acoustic-models --out recorded-audio --source-commit "$GITHUB_SHA" --download-models
+      - name: Summarize recorded speech timing against baseline (warning only)
+        if: always()
+        run: python3 scripts/recorded_audio_timing.py --report recorded-audio/report.json --json-out recorded-audio/timing-trend.json
       - name: Retain recorded-audio results including failures
         if: always()
         uses: actions/upload-artifact@v4

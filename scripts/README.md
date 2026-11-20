@@ -90,6 +90,7 @@ release contract. These helpers each validate a specific boundary:
 | `verification/profiles.json`, `profiles.py` | One device provisioning, artifact-selection and receipt contract for the required matrix. |
 | `verification/previous_release.py` | Fetch and checksum an actual earlier published APK for replacement-install upgrade tests. |
 | `check_recorded_audio.py` | Execute pinned host Whisper weights on recorded phrase boundaries and quiet endings with scored evidence. |
+| `recorded_audio_timing.py`, `verification/recorded_audio_timing_baseline.json` | Warning-only job-summary table comparing each recorded-speech check's host `elapsed_ms` with the stored baseline; never fails the job. |
 | `check_page_sizes.py` | Audit every native ELF and direct-load APK alignment, including RELRO writable-page conflicts. |
 | `verification/local_gate.py` | Build the signed release/test APKs and run the emulator gate in an already configured repair environment. |
 | `verification/repair.py` | Bound local repair/retest attempts and retain failures; stop changes to protected acceptance infrastructure. |
