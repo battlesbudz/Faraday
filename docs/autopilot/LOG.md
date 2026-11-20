@@ -21,3 +21,12 @@ what changed, what is next. Keep entries to a few lines.
   `git -c credential.helper='!gh auth git-credential'` against github.com with
   `GIT_CONFIG_GLOBAL=/dev/null`.
 - Next: check both runs; on green mark V1 `device` (V7-A) and start V2.
+
+## 2026-11-20 — Review fix + CI flake (manual session)
+
+- 0e646a8c: `FINAL_TRANSCRIPT` is marked only when ASR already produced a transcript;
+  direct-audio and fallback-transcription turns leave it null (Devin Review finding).
+- 10077c54: `test30_phoneCallOverlaysUnifiedChatAndKeepsVoiceNoteMic` failed on
+  `30-phone-normal` in main run 44785186686 with `StaleObjectException` reading the
+  live caption; the test now matches the caption in the selector.
+- Next: confirm the 10077c54 runs are green before starting V2.
