@@ -3,6 +3,16 @@
 Newest first. One entry per run: date, item, commit(s), CI run URL and result,
 what changed, what is next. Keep entries to a few lines.
 
+## 2026-11-20 — V2 slice 1: recorded-speech timing trend (status: ci)
+
+- Item: V2 slice 1. Commit d75ac2d9. CI: [push run 44801589531](https://github.com/battlesbudz/Faraday/actions/runs/44801589531), [PR run 44801599998](https://github.com/battlesbudz/Faraday/actions/runs/44801599998); both in progress at log time. Previous run 44794792874 (2f239771) was still in progress too, so it is unchecked; the next run checks both.
+- Existing work found: `scripts/check_recorded_audio.py` records per-check `elapsed_ms` in `recorded-audio/report.json` and `validate_report` requires it to be finite and > 0. `scripts/verification/receipt.py` validates that report. There was no baseline, comparison or summary output. `apk_size_report.py` is the existing baseline-compare pattern; job summaries are written by `receipt.py` and the APK size steps.
+- Change: new `scripts/recorded_audio_timing.py` (compare/render/main) and `scripts/verification/recorded_audio_timing_baseline.json`. A new `if: always()` step in `verify-recorded-audio` writes the table to `$GITHUB_STEP_SUMMARY` and `recorded-audio/timing-trend.json` (uploaded with the artifact), with `::warning::` above +20%. `check_recorded_audio.py` is untouched, so the model cache key and receipt contract are unchanged.
+- Acceptance: (1) faster/within/slower verdicts with ms and % deltas; (2) failure case: a missing baseline, NaN/0 timing or missing report shows "not recorded" or "no checks", never 0, and the step still exits 0; (3) the stored baseline covers every check in `acoustic_scenarios.json`; (4) still intact: WER/first/last-word/provenance gates and existing tests unchanged. Covered by 5 new tests in `scripts/test_recorded_audio.py`. `python3 scripts/dev.py check` passed locally.
+- Baseline caveat: only one earlier report could be downloaded (run 43951238289, a0718b3c, `feature/lfm3-omni`: 1079/1028 ms). Most artifacts sit on `productionresultssa1.blob.core.windows.net`, which this box's allowlist blocks; network access was requested. Slice 2 must re-seed from ≥5 `timing-trend.json` artifacts before any gate.
+- Git proxy still returns 403; the `GIT_CONFIG_GLOBAL=/dev/null` + `gh auth git-credential` workaround works. `git_view_pr` also returns Unauthorized; PR comments were read with `gh api`, and there were no new `battlesbudz` comments.
+- Next: confirm the job summary table appears in 44801589531 and that the run is green, then mark V2 slice 1 `done` (no device check: host-only). Next G1 `todo` is V5 slice 1, then V6.
+
 ## 2026-11-20 — V0 G1 audit (status: done)
 
 - Item: V0. Docs-only change (`docs/autopilot/**`). The push trigger skips `docs/**` via `paths-ignore`, but the `pull_request` trigger has no path filter. CI: PR run [44795923619](https://github.com/battlesbudz/Faraday/actions/runs/44795923619) on 68cd8ee2 (the next PR run supersedes it). Branch code is also covered by [push run 44794792874](https://github.com/battlesbudz/Faraday/actions/runs/44794792874) on 2f239771. Both were in progress at log time.
