@@ -32,12 +32,43 @@ internal object OmniRuntime {
      */
     private const val CREATE_TIMEOUT_MS = 120_000L
 
-    fun cpuOptions(): CompiledModel.Options = CompiledModel.Options(Accelerator.CPU)
+    private const val CPU_THREADS = 4
+
+    /** Directory holding the XNNPACK weight-cache files, one per Omni graph. */
+    fun weightCacheDir(context: Context): File =
+        File(context.filesDir, "xnnpack_cache").apply { check(isDirectory || mkdirs()) }
+
+    /**
+     * CPU options for one Omni graph, mirroring Google's photo_voice_chat
+     * sample (Accel.options / Accel.cached): [CPU_THREADS] threads and a
+     * per-graph XNNPACK weight-cache file keyed by the model file's size
+     * and modification time. The cache is load-bearing, not an
+     * optimization: without it XNNPACK packs the weights once per
+     * signature — the decoder has seven — in anonymous memory, and on
+     * device the first decoder create grew the process until it died
+     * inside stage 1 with no managed failure on record (builds
+     * 1944/1946). With the file, the packed weights live in the file
+     * once, shared by every signature, in kernel-reclaimable pages.
+     */
+    fun cpuOptions(model: File, tag: String, cacheDir: File): CompiledModel.Options =
+        CompiledModel.Options(Accelerator.CPU).apply {
+            cpuOptions = CompiledModel.CpuOptions(
+                numThreads = CPU_THREADS,
+                xnnPackWeightCachePath = File(
+                    cacheDir, "$tag-${model.length()}-${model.lastModified()}.xnnpack_cache",
+                ).absolutePath,
+            )
+        }
+
     fun createEnvironment(): Environment = Environment.create()
 
     /** Opens one already extracted section. Kept as a small API for section-specific units. */
-    fun openSection(section: File, environment: Environment): CompiledModel =
-        CompiledModel.create(section.absolutePath, cpuOptions(), environment)
+    fun openSection(section: File, environment: Environment, cacheDir: File): CompiledModel =
+        CompiledModel.create(
+            section.absolutePath,
+            cpuOptions(section, section.nameWithoutExtension, cacheDir),
+            environment,
+        )
 
     /** Extracts another pinned bundle section (U3 uses this for the audio encoder) under the same SHA gates. */
     fun extractSection(context: Context, bundle: File, sectionName: String): File {
@@ -98,12 +129,14 @@ internal object OmniRuntime {
         context: Context,
         bundle: File,
         cacheRoot: File = File(context.filesDir, "lfm3_sections"),
-    ): OmniBundleComponents = openBundleComponents(context, bundle, cacheRoot)
+        onStage: (String) -> Unit = {},
+    ): OmniBundleComponents = openBundleComponents(context, bundle, cacheRoot, onStage)
 
     private fun openBundleComponents(
         context: Context,
         bundle: File,
         cacheRoot: File,
+        onStage: (String) -> Unit = {},
     ): OmniBundleComponents {
         val map = JSONObject(context.assets.open(MAP_ASSET).bufferedReader().use { it.readText() })
         require(bundle.isFile && bundle.length() == map.getLong("bundle_bytes")) { "LFM3 bundle size mismatch" }
@@ -112,8 +145,12 @@ internal object OmniRuntime {
         val bundleMarker = File(root, "bundle.verified")
         val bundleFingerprint = "${bundle.length()}:${bundle.lastModified()}:$BUNDLE_SHA"
         if (!bundleMarker.isFile || bundleMarker.readText() != bundleFingerprint) {
+            onStage("stage1=bundleVerifyStarted")
             require(sha256(bundle) == BUNDLE_SHA) { "LFM3 bundle SHA-256 mismatch" }
             bundleMarker.writeText(bundleFingerprint)
+            onStage("stage1=bundleVerified")
+        } else {
+            onStage("stage1=bundleVerifySkipped")
         }
         val sections = map.getJSONObject("sections")
         fun extract(name: String): File {
@@ -123,6 +160,7 @@ internal object OmniRuntime {
             val expected = spec.getString("sha256")
             if (!target.isFile || target.length() != spec.getLong("end") - spec.getLong("begin") ||
                 !marker.isFile || marker.readText() != expected) {
+                onStage("stage1=sectionExtractStarted section=$name")
                 target.delete()
                 val digest = MessageDigest.getInstance("SHA-256")
                 RandomAccessFile(bundle, "r").use { input ->
@@ -142,6 +180,9 @@ internal object OmniRuntime {
                 val actual = digest.digest().joinToString("") { "%02x".format(it) }
                 check(actual == expected) { "$name section SHA-256 mismatch: $actual" }
                 marker.writeText(expected)
+                onStage("stage1=sectionReady section=$name")
+            } else {
+                onStage("stage1=sectionReady section=$name cached")
             }
             return target
         }
@@ -158,14 +199,22 @@ internal object OmniRuntime {
         check(tokenizerSha == tokSpec.getString("sha256")) { "tokenizer section SHA-256 mismatch" }
         val tokenizer = InflaterInputStream(tokenizerBytes.inputStream(8, tokenizerBytes.size - 8), Inflater())
             .bufferedReader(Charsets.UTF_8).use(OmniTokenizer::load)
+        onStage("stage1=tokenizerReady")
         val signatures = map.getJSONObject("decoder_signatures")
         val knownPrefill = signatures.getJSONArray("prefill").let { a -> IntArray(a.length()) { a.getInt(it) } }
         val knownState = signatures.getJSONArray("state").let { a -> List(a.length()) { a.getString(it) } }
+        val weightCacheDir = weightCacheDir(context)
         val worker = Executors.newSingleThreadExecutor { task -> Thread(task, "Jarvis-Omni").apply { isDaemon = true } }
         return try {
             worker.submit<OmniBundleComponents> {
                 val env = createEnvironment()
-                val runner = OmniLmRunner(decoder, embedder, cpuOptions(), env, knownPrefill, knownState)
+                onStage("stage1=environmentReady")
+                val runner = OmniLmRunner(
+                    decoder, embedder,
+                    cpuOptions(decoder, "decoder", weightCacheDir),
+                    cpuOptions(embedder, "embedder", weightCacheDir),
+                    env, knownPrefill, knownState, onStage,
+                )
                 OmniBundleComponents(tokenizer, runner, env, worker)
             }.get(CREATE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         } catch (failure: Throwable) {
@@ -275,6 +324,14 @@ private class OmniTextEngine(
 /** Typed text prompt template follows LFM3's im_start/im_end message framing. */
 internal object OmniChatPrompt {
     const val SYSTEM = "You are Jarvis, a helpful assistant. Respond with text."
+
+    /**
+     * Voice-chat variant (LFM3-Omni model card, voice-chat mode): on a
+     * call the assistant answers in interleaved text and speech, so the
+     * system instruction must say so — the text SYSTEM above would steer
+     * the call toward text-only answers.
+     */
+    const val VOICE_SYSTEM = "You are Jarvis, a helpful assistant. Respond with interleaved text and audio."
     fun userTurn(userText: String, startsConversation: Boolean): String = if (startsConversation) {
         "<|startoftext|><|im_start|>system\n$SYSTEM<|im_end|>\n" +
             "<|im_start|>user\n$userText<|im_end|>\n<|im_start|>assistant\n<think></think>"

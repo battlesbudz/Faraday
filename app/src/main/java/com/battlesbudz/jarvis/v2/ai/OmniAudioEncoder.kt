@@ -1,6 +1,5 @@
 package com.battlesbudz.jarvis.v2.ai
 
-import com.google.ai.edge.litert.Accelerator
 import com.google.ai.edge.litert.CompiledModel
 import com.google.ai.edge.litert.Environment
 import java.io.File
@@ -13,10 +12,11 @@ import java.io.File
 internal class OmniAudioEncoder(
     sectionFile: File,
     environment: Environment,
+    options: CompiledModel.Options,
 ) : AutoCloseable {
     private val model = CompiledModel.create(
         sectionFile.absolutePath,
-        CompiledModel.Options(Accelerator.CPU),
+        options,
         environment,
     )
     private val signature = "encode"

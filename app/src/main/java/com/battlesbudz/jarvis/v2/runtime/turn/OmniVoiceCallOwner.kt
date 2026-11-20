@@ -292,7 +292,10 @@ internal class OmniVoiceCallOwnerImpl(
         diagnosticRecorder.recordOmniPrep("stackBuildStarted model=${spec.id}")
         report("Preparing Omni Voice Call — loading the speech stack…")
         val bundle = modelStore.fileFor(spec)
-        val components = OmniRuntime.openCallComponents(context, bundle)
+        val components = OmniRuntime.openCallComponents(
+            context, bundle,
+            onStage = { diagnosticRecorder.recordOmniPrep(it) },
+        )
         // Stage breadcrumbs: build 1944 died somewhere inside this build
         // with only stackBuildStarted on record. If the process ever dies
         // here again, the last stage on record localizes it.
@@ -310,16 +313,21 @@ internal class OmniVoiceCallOwnerImpl(
                 .filter { it != "codes" && it != "start" }
             require(codecStateNames.isNotEmpty()) { "Codec decoder has no state inputs in its 'decode' signature." }
             val sink = OmniPcmQueueSink()
+            val weightCacheDir = OmniRuntime.weightCacheDir(context)
             val built = withContext(components.dispatcher) {
-                val encoder = OmniAudioEncoder(audioSection, components.environment)
+                val encoder = OmniAudioEncoder(
+                    audioSection, components.environment,
+                    OmniRuntime.cpuOptions(audioSection, "audio", weightCacheDir),
+                )
                 diagnosticRecorder.recordOmniPrep("stackStage=audioEncoderReady")
                 val speechStack = OmniSpeechOutputFactory.createStack(
                     runner = components.runner,
                     depthFile = depthFile,
                     frameFile = frameFile,
                     codecFile = codecFile,
-                    depthOptions = depthOptions(),
-                    cpuOptions = OmniRuntime.cpuOptions(),
+                    depthOptions = depthOptions(depthFile),
+                    frameOptions = OmniRuntime.cpuOptions(frameFile, "frame", weightCacheDir),
+                    codecOptions = OmniRuntime.cpuOptions(codecFile, "codec", weightCacheDir),
                     environment = components.environment,
                     codecStateNames = codecStateNames,
                     codecWindow = codecOverlapAddWindow(),
@@ -351,9 +359,9 @@ internal class OmniVoiceCallOwnerImpl(
     }
 
     /** DESIGN section 2: depth runs on GPU fp16 on Qualcomm, CPU elsewhere. */
-    private fun depthOptions(): CompiledModel.Options =
+    private fun depthOptions(depthFile: File): CompiledModel.Options =
         if (depthAcceleratorLabel() == "GPU-fp16") CompiledModel.Options(Accelerator.GPU)
-        else OmniRuntime.cpuOptions()
+        else OmniRuntime.cpuOptions(depthFile, "depth", OmniRuntime.weightCacheDir(context))
 
     /** U8: the depth decoder's accelerator label; the single source of truth for [depthOptions]. */
     private fun depthAcceleratorLabel(): String {
@@ -495,6 +503,9 @@ internal class OmniCallEngineImpl(
             require(ids.count { it == OmniSpeechTokens.AUDIO } == 1) {
                 "Omni audio prompt must hold exactly one <|audio|> placeholder"
             }
+            require(ids.last() == OmniSpeechTokens.MIXED_START) {
+                "Omni audio prompt must open the assistant turn with <|mixed_start|>"
+            }
             val expanded = IntArray(ids.size - 1 + audioRows.size)
             var at = 0
             for (id in ids) {
@@ -632,7 +643,7 @@ internal class OmniCallEngineImpl(
                             for (result in results) {
                                 append(Lfm3ToolProtocol.renderToolResultMessage(result)).append('\n')
                             }
-                            append("<|im_start|>assistant\n<think></think>")
+                            append("<|im_start|>assistant\n<think></think><|mixed_start|>")
                         }
                         val ids = components.tokenizer.encode(continuation)
                         val rows = ids.map { components.runner.embedToken(it) }
@@ -687,9 +698,13 @@ internal class OmniCallEngineImpl(
     }
 
     private fun audioPromptText(): String {
-        val system = OmniChatPrompt.SYSTEM
+        val system = OmniChatPrompt.VOICE_SYSTEM
+        // Model card, voice-chat mode: the answer opens with
+        // <think></think><|mixed_start|> — the mixed_start token is part of
+        // the prefill (the sample's ChatPrompt.ask appends it the same
+        // way), not a token left for the sampler to produce.
         val userTurn = "<|im_start|>user\n<|vision_start|><|audio|><|vision_end|><|im_end|>\n" +
-            "<|im_start|>assistant\n<think></think>"
+            "<|im_start|>assistant\n<think></think><|mixed_start|>"
         return if (components.runner.pos == 0) {
             "<|startoftext|><|im_start|>system\n$system<|im_end|>\n$userTurn"
         } else {
@@ -701,7 +716,7 @@ internal class OmniCallEngineImpl(
     private fun renderTranscriptText(transcript: List<OmniCallMessage>): String {
         val sb = StringBuilder()
         sb.append("<|startoftext|><|im_start|>system\n")
-            .append(OmniChatPrompt.SYSTEM).append("<|im_end|>\n")
+            .append(OmniChatPrompt.VOICE_SYSTEM).append("<|im_end|>\n")
         for (message in transcript) {
             when (message.role) {
                 OmniCallRole.USER ->

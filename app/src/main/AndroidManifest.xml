@@ -36,6 +36,7 @@
         android:fullBackupContent="@xml/backup_rules_legacy"
         android:dataExtractionRules="@xml/backup_rules"
         android:networkSecurityConfig="@xml/network_security_config"
+        android:largeHeap="true"
         android:supportsRtl="true">
         <provider android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.benchmark-exports"

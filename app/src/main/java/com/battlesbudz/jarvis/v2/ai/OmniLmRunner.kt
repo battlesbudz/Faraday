@@ -5,17 +5,39 @@ import com.google.ai.edge.litert.Environment
 import com.google.ai.edge.litert.TensorBuffer
 import java.io.File
 
+/**
+ * Creates one LM graph with a breadcrumb on each side of the native
+ * create: builds 1944/1946 died inside the first create with no managed
+ * failure on record, so the started/created pair is what localizes a
+ * recurrence to the exact graph.
+ */
+private fun createOmniGraph(
+    file: File,
+    options: CompiledModel.Options,
+    environment: Environment,
+    tag: String,
+    onStage: (String) -> Unit,
+): CompiledModel {
+    onStage("stage1=${tag}CreateStarted")
+    val model = CompiledModel.create(file.absolutePath, options, environment)
+    onStage("stage1=${tag}Created")
+    return model
+}
+
 /** Host-owned decoder buffers and token embedder. LiteRT calls are deliberately serialized by the owning engine. */
 internal class OmniLmRunner(
     decoderFile: File,
     embedderFile: File,
     options: CompiledModel.Options,
+    embedderOptions: CompiledModel.Options,
     environment: Environment,
     knownPrefill: IntArray,
     knownState: List<String>,
+    /** Stage-1 breadcrumbs (the call owner wires these to diagnostics; no-op on the text path). */
+    onStage: (String) -> Unit = {},
 ) : AutoCloseable {
-    private val decoder = CompiledModel.create(decoderFile.absolutePath, options, environment)
-    private val embedder = CompiledModel.create(embedderFile.absolutePath, options, environment)
+    private val decoder = createOmniGraph(decoderFile, options, environment, "decoder", onStage)
+    private val embedder = createOmniGraph(embedderFile, embedderOptions, environment, "embedder", onStage)
     val prefillLengths = knownPrefill.sortedArrayDescending()
     private val stateNames = knownState
     private val stateSizes = stateNames.associateWith { elements(decoder.getInputTensorType(it, "decode")) }
@@ -49,6 +71,7 @@ internal class OmniLmRunner(
         require(prefillLengths.isNotEmpty() && prefillLengths.last() == 1) { "invalid decoder prefill signatures" }
         require(stateNames.isNotEmpty()) { "decoder has no KV/conv state" }
         reset()
+        onStage("stage1=runnerReady")
     }
 
     fun reset() {
