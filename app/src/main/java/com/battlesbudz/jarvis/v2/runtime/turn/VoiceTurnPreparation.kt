@@ -238,7 +238,10 @@ internal class VoiceTurnPreparation(
                 com.battlesbudz.jarvis.v2.voice.NormalReplyPlayback.from(
                     request.asrTurnId, delivery, System.nanoTime() / 1_000_000
                 )?.let { lifetime.normalReplyPlayback.complete(it) }
-            }, onMetrics = observation.telemetry::recordTts, onTiming = observation.benchmark::markAt)
+            }, onMetrics = observation.telemetry::recordTts, onTiming = { name, at ->
+                observation.benchmark.markAt(name, at)
+                observation.telemetry.recordOutputTiming(name, at)
+            })
         lifetime.output = output
         call.state.output = output
         output.setInterrupted(com.battlesbudz.jarvis.v2.voice.MicrophoneHandoff.interrupted.value)

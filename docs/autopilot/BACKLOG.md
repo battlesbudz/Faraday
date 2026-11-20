@@ -13,7 +13,7 @@ Only Justin changes goal order.
 
 | ID | Item | Acceptance | Status |
 | --- | --- | --- | --- |
-| V1 | One latency budget per voice turn: export speech-end → final transcript → first token → first speakable text → first PCM → first audible, as one record with stage deltas | JVM tests with a fake clock prove every stage is recorded once per turn and missing stages stay null; the recorded-speech CI job prints the budget for its fixture | todo |
+| V1 | One latency budget per voice turn: export speech-end → final transcript → first token → first speakable text → first PCM → first audible, as one record with stage deltas | JVM tests with a fake clock prove every stage is recorded once per turn and missing stages stay null; the recorded-speech CI job prints the budget for its fixture | ci |
 | V2 | CI latency replay: run the recorded-speech fixture through the production turn path on the CI host and fail on a >20% regression of the stages CI can measure | New CI step with stored baseline; fixture timings in the job summary | todo |
 | V3 | Cut dead waits at end of turn: audit the 1500 ms uncertain / 3000+ ms hesitation windows and Smart Turn fallback; shorten where the endpoint model is confident | JVM tests: confident complete question ends ≤ 350 ms after silence; hesitation still waits; resumed speech still restarts | todo |
 | V4 | Start speech on the first complete clause instead of waiting for a full passage, while keeping Justin's 320-char passage policy for the rest | JVM tests on passage planner; needs Justin's OK before changing the opening policy (add a device check) | todo |

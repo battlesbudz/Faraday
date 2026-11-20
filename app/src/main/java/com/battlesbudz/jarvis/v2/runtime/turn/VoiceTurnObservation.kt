@@ -71,6 +71,7 @@ internal class VoiceTurnObservation(
         if (lifetime.finalSpeechDelivery.get()?.state == SpeechDeliveryState.FAILED)
             benchmark.noteOutcome(PipelineBenchmarkOutcome.ERROR, "speech_delivery_failed")
         benchmark.metric("speech_end_to_first_answer_playback_ms", telemetry.speechEndToReplyMs.get().takeIf { it >= 0 })
+        telemetry.publishLatencyBudget()
         benchmark.finish(outcome, lifetime.expectedResourceCall, failure)?.let {
             store.append(it, telemetry.hypothesis, expectedHypothesisEpoch = hypothesisEpoch)
         }
