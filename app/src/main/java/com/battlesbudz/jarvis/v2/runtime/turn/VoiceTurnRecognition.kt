@@ -63,6 +63,7 @@ internal class VoiceTurnRecognition(
         }
         val endpointAt = System.nanoTime()
         observation.telemetry.finalReadyAt.set(endpointAt)
+        observation.telemetry.markLatency(com.battlesbudz.jarvis.v2.diagnostics.VoiceLatencyBudget.Stage.FINAL_TRANSCRIPT, endpointAt / 1_000_000)
         val audioBytes = prepared.correction?.wav ?: prepared.activeCapture.stop()
         request.comparison?.wav = audioBytes.copyOf()
         val speculativeCaptureConfirmed = lifetime.nativeSpeculation?.confirmCapture(
@@ -85,10 +86,6 @@ internal class VoiceTurnRecognition(
             throw kotlinx.coroutines.CancellationException("voice_call_changed_during_recognition")
         }
         val asrTranscript = prepared.correction?.transcript ?: prepared.activeCapture.finalTranscript
-        // Only an ASR transcript that already exists at capture completion is a final-transcript
-        // edge; direct-audio and fallback-transcription turns leave the stage unobserved.
-        if (com.battlesbudz.jarvis.v2.voice.VoiceTranscriptResolver.hasTranscript(asrTranscript))
-            observation.telemetry.markLatency(com.battlesbudz.jarvis.v2.diagnostics.VoiceLatencyBudget.Stage.FINAL_TRANSCRIPT, endpointAt / 1_000_000)
         // One observation of evidence that ALREADY exists after the existing capture join.
         // Missing final evidence stays missing; this check cannot refresh or finalize ASR.
         val rejectedByPlaybackEcho = asrTranscript.isNotBlank() && resources.resources.rejectsFollowupEcho(
