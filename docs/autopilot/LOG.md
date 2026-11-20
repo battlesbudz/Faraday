@@ -3,6 +3,16 @@
 Newest first. One entry per run: date, item, commit(s), CI run URL and result,
 what changed, what is next. Keep entries to a few lines.
 
+## 2026-11-20 — V0 G1 audit (status: done)
+
+- Item: V0. Docs-only change (`docs/autopilot/**`). The `Android APK` workflow skips `docs/**` via `paths-ignore`, so this commit has no CI run of its own. Branch code CI is run [44794792874](https://github.com/battlesbudz/Faraday/actions/runs/44794792874) (push) and [44794803573](https://github.com/battlesbudz/Faraday/actions/runs/44794803573) (PR) on 2f239771. Both were in progress at log time.
+- Acceptance: (1) every V2–V7 row cites the file and metric names it checked; (2) no row left in `audit`; (3) failure case: an item that already meets its acceptance is `dropped`, not re-implemented (V3, V4); (4) still intact: no code, test or gate changed.
+- Existing work found: V2 → `scripts/check_recorded_audio.py` `elapsed_ms` (no baseline). V3 → `AdaptiveTurnEnd` 350 ms `complete_and_stable`, `NativePauseEndpointPolicy`, `SmartTurnShadow` 250 ms deadline. V4 → `PiperTextStream` first clause + 320 chars (`first-clause-v3`). V5 → U2–U7 sit on separate branches that are not in u8. V6 → `VoiceTurnTrace` `INTERRUPTION_CONFIRMED`/`PLAYBACK_STOP_REQUESTED`, `EndpointingSummary` "stop latency … not recorded". V7 → issued as device check V7-B.
+- Result: V3 and V4 dropped. V2, V5 and V6 rewritten to only their missing parts. V7 → `device`.
+- CI notes: main run 44785186686 (a048eec0) failed only `30-phone-normal`, the flake that 10077c54 fixes. Every earlier autopilot push run was cancelled by the next push, so 10077c54 is still unverified; 44794792874 is its first full run.
+- Git proxy still returns 403. The LOG workaround (`GIT_CONFIG_GLOBAL=/dev/null` + `gh auth git-credential`) works.
+- Next: check 44794792874; then V2 slice 1, which is the first `todo` in G1.
+
 ## 2026-11-20 — V1 reverted as a duplicate (manual session)
 
 - Justin pointed out per-turn latency breakdowns already exist. Confirmed:
