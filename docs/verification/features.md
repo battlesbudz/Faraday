@@ -1,30 +1,5 @@
 # Feature and acceptance map
 
-# Voice latency budget record (autopilot V1) — 20 November 2026
-
-Each voice turn now keeps one `VoiceLatencyBudget` (diagnostics) owned by
-`VoiceTurnTelemetry`: speech end → final transcript → first model token →
-first speakable text handed to Piper → first PCM → first audible playback
-head, on the monotonic millisecond clock. Each stage keeps its first
-observation; unobserved stages and reversed deltas stay null. At turn finish
-`VoiceTurnObservation` publishes it once: a `Voice latency budget turn=…`
-summary line and `latency_budget` turn evidence in Copy Diagnostics, plus
-`latency_budget_*_ms` benchmark metrics. The recorded-speech CI job
-(`scripts/check_recorded_audio.py`) writes the same stage names to its report
-and job summary; only speech end → final transcript is measurable there.
-
-Acceptance checks:
-- JVM: `VoiceLatencyBudgetTest` (fake clock: every stage recorded once with
-  deltas, repeats ignored, missing stages null never zero, reversed deltas
-  null, JSON/metrics/rendered line); `VoiceTurnTelemetryTest`
-  (`first_piper_text`/`first_piper_pcm` map to their stages, unknown edges are
-  ignored, one budget record per published turn with null first-audible).
-- Python: `test_recorded_audio.py` budget tests; receipt validation unchanged.
-- Existing behavior intact: benchmark stage marks, TTF-SW live metrics and
-  `speech_end_to_first_answer_playback_ms` are unchanged.
-- Not covered: real-model, physical-audio and Fold 6 timings (device check
-  V7-A in `docs/autopilot/DEVICE_CHECKS.md`).
-
 
 # Memory Unit 4 entity/temporal prototype — 14 November 2026
 

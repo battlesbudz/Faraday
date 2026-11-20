@@ -167,28 +167,6 @@ class RecordedAudioContractTests(unittest.TestCase):
                 gate.download("https://invalid.test/model", target, 4, gate.sha256(b"good"))
             self.assertEqual(b"good", target.read_bytes())
 
-    def test_latency_budget_measures_transcript_stage_and_leaves_device_stages_null(self):
-        checks = self.report()["checks"]
-        checks[0]["elapsed_ms"] = 412.5
-        checks[-1]["elapsed_ms"] = float("nan")
-        budget = gate.latency_budget(checks)
-        self.assertEqual(list(gate.LATENCY_STAGES), budget["stages"])
-        first = budget["checks"][checks[0]["name"]]
-        self.assertEqual(412.5, first["stage_deltas_ms"]["final_transcript"])
-        for stage in ("first_token", "first_speakable_text", "first_pcm", "first_audible"):
-            self.assertIsNone(first["stage_deltas_ms"][stage])
-        self.assertIsNone(first["speech_end_to_first_audible_ms"])
-        if len(checks) > 1:
-            self.assertIsNone(budget["checks"][checks[-1]["name"]]["stage_deltas_ms"]["final_transcript"])
-        table = gate.latency_budget_markdown(budget)
-        self.assertIn("412 ms", table)
-        self.assertIn("→ first_audible", table)
-
-    def test_latency_budget_does_not_change_receipt_validation(self):
-        report = self.report()
-        report["latency_budget"] = gate.latency_budget(report["checks"])
-        gate.validate_report(report, self.SOURCE)
-
 
 if __name__ == "__main__":
     unittest.main()

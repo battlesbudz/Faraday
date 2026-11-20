@@ -14,7 +14,6 @@ import importlib.metadata
 import io
 import json
 import math
-import os
 from pathlib import Path
 import re
 import sys
@@ -220,40 +219,6 @@ def recognize_whisper(recognizer, pcm: bytes) -> tuple[str, str]:
     return stream.result.text, str(stream.result)
 
 
-LATENCY_STAGES = ("speech_end", "final_transcript", "first_token", "first_speakable_text", "first_pcm", "first_audible")
-
-
-def latency_budget(checks: list[dict]) -> dict:
-    """Per-fixture voice latency budget with the same stage names as the app's VoiceLatencyBudget.
-
-    The host decodes each fixture after its last sample, so recognition elapsed time is the
-    speech-end -> final-transcript delta. Model, TTS and playback stages are not run here and
-    stay null rather than zero.
-    """
-    budgets = {}
-    for item in checks:
-        elapsed = item.get("elapsed_ms")
-        measured = isinstance(elapsed, (int, float)) and math.isfinite(elapsed) and elapsed > 0
-        deltas = {stage: None for stage in LATENCY_STAGES[1:]}
-        deltas["final_transcript"] = round(elapsed, 3) if measured else None
-        budgets[item.get("name", "unnamed")] = {"stage_deltas_ms": deltas,
-                                                 "speech_end_to_first_audible_ms": None}
-    return {"stages": list(LATENCY_STAGES), "clock": "host_monotonic", "checks": budgets,
-            "not_measured": "first_token, first_speakable_text, first_pcm and first_audible need the Android turn path"}
-
-
-def latency_budget_markdown(budget: dict) -> str:
-    stages = budget["stages"][1:]
-    header = "| Fixture | " + " | ".join(f"→ {stage}" for stage in stages) + " | total |"
-    rows = [header, "|" + " --- |" * (len(stages) + 2)]
-    for name, item in budget["checks"].items():
-        cells = [("—" if item["stage_deltas_ms"][stage] is None else f"{item['stage_deltas_ms'][stage]:.0f} ms") for stage in stages]
-        total = item["speech_end_to_first_audible_ms"]
-        rows.append(f"| {name} | " + " | ".join(cells) + f" | {'—' if total is None else f'{total:.0f} ms'} |")
-    return "### Voice latency budget (CI host, recorded fixture)\n\n" + "\n".join(rows) + \
-        f"\n\nNot measured on this host: {budget['not_measured']}.\n"
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--models", type=Path, required=True)
@@ -287,11 +252,6 @@ def main() -> int:
                     "elapsed_ms": round((time.monotonic() - start) * 1000, 3), **result}
             report["checks"].append(item)
             print(json.dumps(item), flush=True)
-        report["latency_budget"] = latency_budget(report["checks"])
-        print(json.dumps({"latency_budget": report["latency_budget"]}), flush=True)
-        if os.environ.get("GITHUB_STEP_SUMMARY"):
-            with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
-                summary.write(latency_budget_markdown(report["latency_budget"]))
         report["status"] = "passed" if all(item["status"] == "passed" for item in report["checks"]) else "failed"
         validate_report(report, args.source_commit)
     except Exception as error:

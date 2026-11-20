@@ -63,7 +63,6 @@ internal class VoiceTurnRecognition(
         }
         val endpointAt = System.nanoTime()
         observation.telemetry.finalReadyAt.set(endpointAt)
-        observation.telemetry.markLatency(com.battlesbudz.jarvis.v2.diagnostics.VoiceLatencyBudget.Stage.FINAL_TRANSCRIPT, endpointAt / 1_000_000)
         val audioBytes = prepared.correction?.wav ?: prepared.activeCapture.stop()
         request.comparison?.wav = audioBytes.copyOf()
         val speculativeCaptureConfirmed = lifetime.nativeSpeculation?.confirmCapture(
@@ -75,7 +74,6 @@ internal class VoiceTurnRecognition(
         }
         (prepared.correction?.speechEndedAtMs ?: prepared.activeCapture.lastSpeechAtMs)?.let {
             request.comparison?.mark("speech_end", it); observation.telemetry.speechEndedAt.set(it)
-            observation.telemetry.markLatency(com.battlesbudz.jarvis.v2.diagnostics.VoiceLatencyBudget.Stage.SPEECH_END, it)
             observation.benchmark.markAt("speech_ended", it)
             observation.telemetry.publishLiveMetrics { metrics -> metrics.speechEnded(it) }
         }

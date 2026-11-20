@@ -4,7 +4,6 @@ import com.battlesbudz.jarvis.v2.diagnostics.DiagnosticRecorder
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkAsr
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkCapture
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkTts
-import com.battlesbudz.jarvis.v2.diagnostics.VoiceLatencyBudget
 import com.battlesbudz.jarvis.v2.voice.AsrCaptureMetrics
 import com.battlesbudz.jarvis.v2.voice.AsrComparisonStore
 import com.battlesbudz.jarvis.v2.voice.AsrEngine
@@ -49,30 +48,6 @@ internal class VoiceTurnTelemetry(
     private val liveMetrics = java.util.concurrent.atomic.AtomicReference(
         LiveReplyMetrics(asrTurnId, conversationId))
     private val liveMetricsActive = java.util.concurrent.atomic.AtomicBoolean(false)
-    private val latencyBudget = java.util.concurrent.atomic.AtomicReference(VoiceLatencyBudget(asrTurnId))
-
-    /** First observation of each stage wins; monotonic milliseconds. */
-    fun markLatency(stage: VoiceLatencyBudget.Stage, atMs: Long) {
-        latencyBudget.updateAndGet { it.mark(stage, atMs) }
-    }
-    fun latencyBudget(): VoiceLatencyBudget = latencyBudget.get()
-
-    /** Speech-output timing edges; also forwarded to the benchmark by the caller. */
-    fun recordOutputTiming(name: String, atMs: Long) {
-        when (name) {
-            "first_piper_text" -> markLatency(VoiceLatencyBudget.Stage.FIRST_SPEAKABLE_TEXT, atMs)
-            "first_piper_pcm" -> markLatency(VoiceLatencyBudget.Stage.FIRST_PCM, atMs)
-        }
-    }
-
-    /** Called once at turn finish: one budget record per turn in diagnostics and the benchmark. */
-    fun publishLatencyBudget() {
-        val budget = latencyBudget.get()
-        budget.metrics().forEach { (name, value) -> benchmark.metric(name, value) }
-        val line = budget.render()
-        diagnosticRecorder.recordSummary(line)
-        diagnosticRecorder.recordTurnEvidence(asrTurnId, "latency_budget", budget.json().toString())
-    }
     fun activateLiveMetrics() {
         if (liveMetricsActive.compareAndSet(false, true)) {
             speechEndedAt.get().takeIf { it != 0L }?.let { ended ->
@@ -208,7 +183,6 @@ internal class VoiceTurnTelemetry(
         if (firstPlayback.compareAndSet(true, false) && finalReadyAt.get() != 0L) {
             val playbackAtNs = System.nanoTime()
             val playbackAt = playbackAtNs / 1_000_000
-            markLatency(VoiceLatencyBudget.Stage.FIRST_AUDIBLE, playbackAt)
             val nativeTiming = nativeAudioTiming.get()?.metrics(playbackAtNs)
             publishLiveMetrics { metrics ->
                 var updated = metrics.firstActualPlayback(playbackAt)

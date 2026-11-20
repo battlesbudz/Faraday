@@ -156,7 +156,6 @@ internal class OrdinaryVoiceReplyStage(
                                     if (tokensPerSecond != null && tokensPerSecond.isFinite()) updated = updated.copy(estimatedTokensPerSecond = tokensPerSecond)
                                     updated
                                 }
-                                firstTokenAt?.let { observation.telemetry.markLatency(com.battlesbudz.jarvis.v2.diagnostics.VoiceLatencyBudget.Stage.FIRST_TOKEN, it) }
                                 observation.telemetry.publishLiveMetrics { metrics ->
                                     var updated = metrics
                                     submittedAt?.let { updated = updated.submitted(it) }

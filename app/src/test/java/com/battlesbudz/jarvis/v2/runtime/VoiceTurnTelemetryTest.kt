@@ -6,7 +6,6 @@ import com.battlesbudz.jarvis.v2.diagnostics.DiagnosticRecorder
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkCapture
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkOutcome
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkProvenance
-import com.battlesbudz.jarvis.v2.diagnostics.VoiceLatencyBudget
 import com.battlesbudz.jarvis.v2.voice.AsrCaptureMetrics
 import com.battlesbudz.jarvis.v2.voice.AsrComparisonStore
 import com.battlesbudz.jarvis.v2.voice.AsrEngine
@@ -17,7 +16,6 @@ import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -31,11 +29,10 @@ class VoiceTurnTelemetryTest {
     private val suffix = UUID.randomUUID().toString()
     private fun preferences(name: String) = context.getSharedPreferences("$name-$suffix", Context.MODE_PRIVATE)
 
-    private fun telemetry(captionAsrEnabled: Boolean, capture: PipelineBenchmarkCapture,
-                          recorder: DiagnosticRecorder = DiagnosticRecorder(preferences("diagnostics"))) =
+    private fun telemetry(captionAsrEnabled: Boolean, capture: PipelineBenchmarkCapture) =
         VoiceTurnTelemetry("turn-1", "conversation-1", AsrEngine.WHISPER, TtsEngine.PIPER_NORTHERN,
             captionAsrEnabled, capture, VoiceTurnTrace("turn-1"), null,
-            recorder, AsrComparisonStore(preferences("asr")),
+            DiagnosticRecorder(preferences("diagnostics")), AsrComparisonStore(preferences("asr")),
             TtsComparisonStore(preferences("tts")))
 
     private fun capture() = PipelineBenchmarkCapture("turn-1", "voice", 1_000L,
@@ -125,34 +122,5 @@ class VoiceTurnTelemetryTest {
         assertEquals(350L, asr.targetSilenceMs)
         assertEquals("smart_turn_complete", asr.endpointCue)
         assertEquals("smart_turn", asr.endpointAuthority)
-    }
-    @Test fun latencyBudgetMapsOutputTimingAndPublishesOneRecordPerTurn() {
-        val capture = capture()
-        val recorder = DiagnosticRecorder(preferences("diagnostics"))
-        val telemetry = telemetry(captionAsrEnabled = true, capture, recorder)
-        telemetry.markLatency(VoiceLatencyBudget.Stage.SPEECH_END, 5_000)
-        telemetry.markLatency(VoiceLatencyBudget.Stage.FINAL_TRANSCRIPT, 5_350)
-        telemetry.markLatency(VoiceLatencyBudget.Stage.FIRST_TOKEN, 5_600)
-        telemetry.recordOutputTiming("first_piper_text", 5_640)
-        telemetry.recordOutputTiming("first_piper_pcm", 5_800)
-        telemetry.recordOutputTiming("first_piper_text", 9_000)
-        telemetry.recordOutputTiming("unrelated_edge", 5_700)
-        val budget = telemetry.latencyBudget()
-        assertEquals(40L, budget.deltaMs(VoiceLatencyBudget.Stage.FIRST_SPEAKABLE_TEXT))
-        assertEquals(160L, budget.deltaMs(VoiceLatencyBudget.Stage.FIRST_PCM))
-        // No playback head observed: first audible and the total stay unknown.
-        assertNull(budget.at(VoiceLatencyBudget.Stage.FIRST_AUDIBLE))
-        assertNull(budget.speechEndToFirstAudibleMs)
-        telemetry.publishLatencyBudget()
-        val metrics = checkNotNull(capture.finish(PipelineBenchmarkOutcome.COMPLETE)).observedMetrics
-        assertEquals(350.0, metrics["latency_budget_speech_end_to_final_transcript_ms"])
-        assertEquals(250.0, metrics["latency_budget_final_transcript_to_first_token_ms"])
-        assertTrue(metrics.containsKey("latency_budget_first_pcm_to_first_audible_ms"))
-        assertNull(metrics["latency_budget_first_pcm_to_first_audible_ms"])
-        assertNull(metrics["latency_budget_speech_end_to_first_audible_ms"])
-        val snapshot = recorder.snapshot()
-        assertEquals(1, Regex("Voice latency budget turn=turn-1").findAll(snapshot).count())
-        assertTrue(snapshot.contains("first_pcm→first_audible=—"))
-        assertTrue(snapshot.contains("turn=turn-1 latency_budget"))
     }
 }
