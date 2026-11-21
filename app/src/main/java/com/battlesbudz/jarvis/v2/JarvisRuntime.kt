@@ -1371,12 +1371,24 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             // already sheds in the other direction (it closes the Omni
             // stack); a fresh call start sheds the bridge engine first,
             // under the same idle preconditions the call UI enforces.
+            val engineResidentNow = conversationEngine != null || omniEngine != null
+            val callInProgressNow = voiceSessionController.currentCallId() != null
+            val workActiveNow = ConversationWork.activeJobs.get() != 0
+            val modelOpActiveNow = modelStore.isModelOperationActive()
             val shed = com.battlesbudz.jarvis.v2.runtime.turn.OmniCallStartPolicy.shouldShedResidentEngine(
-                engineResident = conversationEngine != null || omniEngine != null,
-                callInProgress = voiceSessionController.currentCallId() != null,
-                conversationWorkActive = ConversationWork.activeJobs.get() != 0,
-                modelOperationActive = modelStore.isModelOperationActive(),
+                engineResident = engineResidentNow,
+                callInProgress = callInProgressNow,
+                conversationWorkActive = workActiveNow,
+                modelOperationActive = modelOpActiveNow,
             )
+            // Always record the residency decision and its inputs: a shed
+            // that silently does not fire leaves the call stack building
+            // beside a resident engine with zero evidence (build 1947's
+            // post-Gemma-call attempt had no shed breadcrumb and no way to
+            // tell whether nothing was resident or a precondition blocked).
+            diagnosticRecorder.recordOmniPrep(
+                "callStartResidency resident=$engineResidentNow callInProgress=$callInProgressNow " +
+                    "work=$workActiveNow modelOp=$modelOpActiveNow shed=$shed")
             if (!shed) {
                 startCall()
                 return

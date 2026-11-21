@@ -80,13 +80,26 @@ internal object OmniSpeechOutputFactory {
         codecWindow: FloatArray,
         sink: OmniPcmSink,
         frameEmbedSignature: String = "frame_embed",
+        /** Per-graph create breadcrumbs (the call owner wires these to diagnostics; no-op by default). */
+        onStage: (String) -> Unit = {},
     ): OmniSpeechStack {
         require(codecStateNames.isNotEmpty()) {
             "codec decode state names must come from the loaded graph signature"
         }
+        // One breadcrumb on each side of every native create: the depth
+        // create runs on the GPU delegate (the least-proven call in the
+        // stack) and the frame/codec creates write their XNNPACK weight
+        // caches on first run — a silent death in any of them must name
+        // the graph, not just the stage.
+        onStage("speechStage=depthCreateStarted")
         val depth = CompiledDepthFrame2(depthFile, depthOptions, environment)
+        onStage("speechStage=depthCreated")
+        onStage("speechStage=frameCreateStarted")
         val frame = CompiledFrameEmbedder(frameFile, frameOptions, environment, frameEmbedSignature)
+        onStage("speechStage=frameCreated")
+        onStage("speechStage=codecCreateStarted")
         val codec = CompiledCodecDecoder(codecFile, codecOptions, environment, codecStateNames)
+        onStage("speechStage=codecCreated")
         val stream = OmniCodecStream(codec, codecWindow, sink)
         return OmniSpeechStack(OmniSpeechGenerator(OmniSpeechLmAdapter(runner), depth, frame, stream), depth, frame, codec)
     }

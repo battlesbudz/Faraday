@@ -43,7 +43,18 @@ internal class OmniLmRunner(
     private val stateSizes = stateNames.associateWith { elements(decoder.getInputTensorType(it, "decode")) }
     val hiddenSize = dims(decoder.getInputTensorType("embeddings", "decode")).last()
     val cacheLength = dims(decoder.getInputTensorType("mask", "decode")).last()
-    private val sets: Array<Map<String, TensorBuffer>> = arrayOf(stateNames.associateWith { decoder.createOutputBuffer(it, "decode") })
+    private val sets: Array<Map<String, TensorBuffer>> = run {
+        // Build 1947 went silent somewhere in this init tail (state-buffer
+        // creation + reset) after embedderCreated, with no managed failure
+        // on record. Breadcrumb each phase — with the total state
+        // footprint — so a recurrence names the exact step it died in.
+        val totalStateBytes = stateSizes.values.sumOf { it.toLong() } * 4L
+        onStage("stage1=stateTypesReady count=${stateNames.size} totalBytes=$totalStateBytes")
+        onStage("stage1=stateBuffersStarted")
+        val created = arrayOf(stateNames.associateWith { decoder.createOutputBuffer(it, "decode") })
+        onStage("stage1=stateBuffersCreated")
+        created
+    }
     private val zeros = HashMap<Int, FloatArray>()
     private val decEmb = decoder.createInputBuffer("embeddings", "decode")
     private val decPos = decoder.createInputBuffer("input_pos", "decode")
@@ -70,7 +81,10 @@ internal class OmniLmRunner(
     init {
         require(prefillLengths.isNotEmpty() && prefillLengths.last() == 1) { "invalid decoder prefill signatures" }
         require(stateNames.isNotEmpty()) { "decoder has no KV/conv state" }
+        onStage("stage1=ioBuffersReady")
+        onStage("stage1=resetStarted")
         reset()
+        onStage("stage1=resetDone")
         onStage("stage1=runnerReady")
     }
 

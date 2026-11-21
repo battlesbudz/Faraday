@@ -301,6 +301,7 @@ internal class OmniVoiceCallOwnerImpl(
         // here again, the last stage on record localizes it.
         diagnosticRecorder.recordOmniPrep("stackStage=componentsOpen")
         try {
+            diagnosticRecorder.recordOmniPrep("stackStage=audioSectionStarted")
             val audioSection = OmniRuntime.extractSection(context, bundle, "audio")
             diagnosticRecorder.recordOmniPrep("stackStage=audioSectionReady")
             val depthFile = companionFile(spec, DEPTH_FILE)
@@ -315,6 +316,7 @@ internal class OmniVoiceCallOwnerImpl(
             val sink = OmniPcmQueueSink()
             val weightCacheDir = OmniRuntime.weightCacheDir(context)
             val built = withContext(components.dispatcher) {
+                diagnosticRecorder.recordOmniPrep("stackStage=audioEncoderCreateStarted")
                 val encoder = OmniAudioEncoder(
                     audioSection, components.environment,
                     OmniRuntime.cpuOptions(audioSection, "audio", weightCacheDir),
@@ -332,6 +334,7 @@ internal class OmniVoiceCallOwnerImpl(
                     codecStateNames = codecStateNames,
                     codecWindow = codecOverlapAddWindow(),
                     sink = sink,
+                    onStage = { stage -> diagnosticRecorder.recordOmniPrep(stage) },
                 )
                 encoder to speechStack
             }
