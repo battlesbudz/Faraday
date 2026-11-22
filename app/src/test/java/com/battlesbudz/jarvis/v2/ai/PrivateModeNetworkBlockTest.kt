@@ -89,8 +89,11 @@ class PrivateModeNetworkBlockTest {
 
     private val browseTools = listOf(
         "browse_open", "browse_read", "browse_click", "browse_back", "browse_forward",
-        "browse_fill", "browse_submit", "browse_handoff", "browse_login"
+        "browse_fill", "browse_submit", "browse_handoff"
     )
+
+    // D-05: passwords always hand back to Battles, so browse_login is governed by
+    // the credential policy rather than the private-mode network block.
 
     @Test fun privateModeBlocksAllBrowseTools() {
         val probe = AndroidToolCapabilityProbe(context, isPrivate = { true })
