@@ -2,6 +2,7 @@ package com.battlesbudz.jarvis.v2.conversation
 
 import com.battlesbudz.jarvis.v2.BuildConfig
 import com.battlesbudz.jarvis.v2.ChatEntry
+import com.battlesbudz.jarvis.v2.actions.ActionControlPolicy
 import com.battlesbudz.jarvis.v2.actions.ActionTurnPlan
 import com.battlesbudz.jarvis.v2.actions.ActionTurnRunner
 import com.battlesbudz.jarvis.v2.actions.PhoneActionStatus
@@ -79,6 +80,17 @@ internal class ConversationRouting(
             return null
         }
         val guardedFrozenVoicePlan = requestedActionPlan as? ActionTurnPlan.Ready
+        val policyBlockedStep = guardedFrozenVoicePlan?.steps?.firstOrNull {
+            ActionControlPolicy.admissionBlockReason(it.request) != null
+        }
+        if (policyBlockedStep != null) {
+            reply.outcome = PipelineBenchmarkOutcome.REJECTED
+            reply.failure = "action_policy_rejected"
+            request.incrementalVoice?.close()
+            modelSession.reset()
+            postFinish(ActionControlPolicy.admissionBlockReason(policyBlockedStep.request).orEmpty())
+            return null
+        }
         if (request.frozenVoiceFinal && guardedFrozenVoicePlan != null &&
             !guardedFrozenVoicePlan.steps.all { step ->
                 FinalVoiceToolGuard.allows(

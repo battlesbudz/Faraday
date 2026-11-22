@@ -28,6 +28,7 @@ class AndroidToolCapabilityProbe(
     private val isPrivate: () -> Boolean = { false }
 ) : ToolCapabilityProbe {
     override fun missingReason(request: ActionRequest): String? {
+        ActionControlPolicy.admissionBlockReason(request)?.let { return it }
         if (isPrivate() && (request.name.startsWith("browse_") || request.name in MobileToolCatalog.WEB_READ_TOOL_NAMES))
             return "Web access is disabled in private chats to keep this conversation fully offline."
         return when (request.name) {

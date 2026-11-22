@@ -111,9 +111,11 @@ internal fun ActionRequest.isRoutineEligible() = when (name) {
  * admission for the reviewed page — the ledger claim alone never submits.
  */
 internal fun ActionRequest.isDispatchEligible(authority: ToolAuthority): Boolean =
-    isRoutineEligible() || (authority == ToolAuthority.EXACT_APPROVAL &&
-        (name in SCREEN_MUTATION_TOOLS || name in BROWSE_APPROVAL_TOOLS ||
-            name in SANDBOX_APPROVAL_TOOLS))
+    ActionControlPolicy.admissionBlockReason(this) == null &&
+        (if (ActionControlPolicy.requiresExactApproval(this)) authority == ToolAuthority.EXACT_APPROVAL
+        else isRoutineEligible() || (authority == ToolAuthority.EXACT_APPROVAL &&
+            (name in SCREEN_MUTATION_TOOLS || name in BROWSE_APPROVAL_TOOLS ||
+                name in SANDBOX_APPROVAL_TOOLS)))
 
 /** Human-readable label for the screen Stop overlay and approval prompts (M1d). */
 internal fun ActionRequest.describeForOverlay(): String = when (name) {

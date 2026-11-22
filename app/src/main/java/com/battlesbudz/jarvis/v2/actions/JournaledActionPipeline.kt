@@ -33,6 +33,9 @@ class JournaledActionPipeline(
 
     fun execute(request: ActionRequest): ExecutionResult {
         val frozenRequest = request.copy(arguments = request.arguments.toMap())
+        if (ActionControlPolicy.requiresExactApproval(frozenRequest)) return ExecutionResult(
+            ExecutionResult.Outcome.REJECTED_VALIDATION,
+            "This action needs its own exact approval. I didn't start it.")
         val validation = MobileActionValidator().validate(frozenRequest)
         if (validation is ActionValidation.Rejected) return ExecutionResult(ExecutionResult.Outcome.REJECTED_VALIDATION, validation.reason)
         val running = try {
@@ -81,6 +84,11 @@ class JournaledActionPipeline(
      * Returns null when dispatch may proceed.
      */
     private fun gateCheck(request: ActionRequest): ExecutionResult? {
+        ActionControlPolicy.admissionBlockReason(request)?.let { reason ->
+            val outcome = if (ActionControlPolicy.disposition(request) == ActionControlPolicy.Disposition.HAND_BACK)
+                ExecutionResult.Outcome.DENIED_PERMISSION else ExecutionResult.Outcome.REJECTED_VALIDATION
+            return ExecutionResult(outcome, reason)
+        }
         sourceAccess?.denial(request)?.let { return it }
         capabilityProbe?.missingReason(request)?.let { reason ->
             return ExecutionResult(ExecutionResult.Outcome.DENIED_PERMISSION, reason)

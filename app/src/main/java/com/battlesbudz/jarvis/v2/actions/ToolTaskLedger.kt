@@ -199,6 +199,9 @@ class ToolTaskLedger(
         var dispatch: AuthorizedDispatch? = null
         store.updateJournal { j ->
             val a = j.attempts.find { it.id == id } ?: error("Unknown task attempt.")
+            require(ActionControlPolicy.admissionBlockReason(a.request) == null) {
+                ActionControlPolicy.admissionBlockReason(a.request) ?: "This action cannot be performed by an agent."
+            }
             require(a.generation == expectedGeneration && a.state in setOf(ToolTaskState.QUEUED, ToolTaskState.READY, ToolTaskState.WAITING_APPROVAL, ToolTaskState.PAUSED))
             require(provider == a.provider && schemaVersion == a.schemaVersion)
             val taskId = a.groupId ?: a.id

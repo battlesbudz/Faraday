@@ -40,8 +40,9 @@ class ActionTurnRunner(
         // (Sandbox Phase 2) proposed by the model never auto-dispatch: they
         // are parked for the user's explicit approval while the other calls
         // validate exactly as before.
-        val rawProposed = requests.filter { it.name in SCREEN_MUTATION_TOOLS || it.name == "browse_submit" ||
-            it.name in SANDBOX_APPROVAL_TOOLS }
+        // Policy-kernel classification owns the explicit approval boundary.
+        // Screen text cannot add a user request or grant authority here.
+        val rawProposed = requests.filter(ActionControlPolicy::requiresExactApproval)
         // Sandbox command fidelity: when this turn's intent marker was armed
         // by a request that dictates the command literally ("run <command>
         // in the sandbox"), the parked proposal carries the user's span
@@ -63,8 +64,7 @@ class ActionTurnRunner(
                 }
             }
         }
-        val rest = requests.filter { it.name !in SCREEN_MUTATION_TOOLS && it.name != "browse_submit" &&
-            it.name !in SANDBOX_APPROVAL_TOOLS }
+        val rest = requests.filterNot(ActionControlPolicy::requiresExactApproval)
         val accepted: Batch.Accepted? = if (rest.isEmpty()) {
             if (proposed.isEmpty()) return Batch.Rejected()
             null
@@ -142,6 +142,12 @@ suspend fun ActionTurnRunner.runValidated(
     checkBattery: suspend () -> ExecutionResult
 ): ActionTurnRunner.Outcome {
     currentCoroutineContext().ensureActive()
+    if (plan.steps.any { ActionControlPolicy.requiresExactApproval(it.request) })
+        return ActionTurnRunner.Outcome(emptyList(), false, true,
+            "This action needs its own exact approval. Nothing was started.")
+    plan.steps.firstNotNullOfOrNull { ActionControlPolicy.admissionBlockReason(it.request) }?.let { reason ->
+        return ActionTurnRunner.Outcome(emptyList(), false, true, "$reason Nothing was started.")
+    }
     if (!plan.steps.all { it.request.isRoutineEligible() }) return ActionTurnRunner.Outcome(emptyList(), false, true,
         "I couldn't validate all the requested phone actions. Nothing was started.")
     val conditionResult = plan.batteryCondition?.let { checkBattery() }

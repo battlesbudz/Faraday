@@ -46,6 +46,9 @@ class ActionApprovalStore(
         store = shared
     }
     fun request(taskId: String, stepId: String, provider: String, action: ActionRequest, schemaVersion: Int): ActionApprovalRequest {
+        require(ActionControlPolicy.admissionBlockReason(action) == null) {
+            ActionControlPolicy.admissionBlockReason(action) ?: "This action cannot be performed by an agent."
+        }
         var created: ActionApprovalRequest? = null
         store.updateJournal { j ->
             created = newApproval(j, taskId, stepId, provider, action, schemaVersion, now())

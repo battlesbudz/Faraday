@@ -6,6 +6,10 @@ internal object ActionRequestText {
     private val lead = Regex("""(?i)^(?:(?:hey\s+)?jarvis\s*[,,:]?\s+)?(?:(?:um|uh|okay|ok|well|so|alright|please)\s*[,,:]?\s+)*(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|i\s+(?:want|need)\s+you\s+to\s+)?(?:please\s+)?""")
     private val trailing = Regex("""(?i)(?:\s+(?:for me|please|right now|now|sir))+$""")
 
+    /** Screen content is never an input to user-request recognition or an authority source. */
+    fun actionClausesFromScreenContent(text: String): List<String> =
+        if (ActionControlPolicy.screenContentCanAuthorizeTask()) actionClauses(text) else emptyList()
+
     fun normalizedRequest(text: String): String = lead.replaceFirst(quoted.replace(text, " ").trim(), "").trim()
 
     fun clauses(text: String): List<String> = quoted.replace(text, " ")
