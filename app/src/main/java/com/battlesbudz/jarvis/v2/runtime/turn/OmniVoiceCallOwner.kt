@@ -346,6 +346,9 @@ internal class OmniVoiceCallOwnerImpl(
                 "CompiledModel depth=${depthAcceleratorLabel()} lm=CPU audio-encoder=CPU codec=CPU"
             )
             diagnosticRecorder.recordOmniPrep("stackReady model=${spec.id}")
+            // The full stack built: the weight caches this load wrote are
+            // trusted for the next load (see OmniRuntime.noteStackLoadStarted).
+            OmniRuntime.noteStackLoadReady(OmniRuntime.weightCacheDir(context))
             OmniCallStack(components, engine, encoder, speechStack).also { stack = it }
         } catch (failure: Throwable) {
             runCatching { components.close() }

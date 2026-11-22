@@ -299,7 +299,15 @@ class DiagnosticRecorder(
             omniVoiceEvidence.add("atMs=${System.currentTimeMillis()}\n${entry.take(1200)}")
             while (omniVoiceEvidence.size > MAX_OMNI_VOICE_EVIDENCE) omniVoiceEvidence.removeAt(0)
             val saved = JSONArray().also { array -> omniVoiceEvidence.forEach(array::put) }
-            preferences.edit().putString("diagnostics_omni_voice_evidence", saved.toString()).apply()
+            // commit(), not apply(): this list is the crash trail for a
+            // process that can die natively mid-load with no managed failure
+            // (the stage-1 deaths of builds 1944-1964). apply()'s async disk
+            // write can be lost with the process, truncating the trail
+            // before the step that actually died; a synchronous commit per
+            // entry makes the last entry on record the last step reached.
+            // Every caller is on a background thread (the Omni worker, the
+            // call owner, the runtime scope), never the main thread.
+            preferences.edit().putString("diagnostics_omni_voice_evidence", saved.toString()).commit()
         }
     }
 

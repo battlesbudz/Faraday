@@ -41,8 +41,9 @@ internal object OmniRuntime {
     /**
      * CPU options for one Omni graph, mirroring Google's photo_voice_chat
      * sample (Accel.options / Accel.cached): [CPU_THREADS] threads and a
-     * per-graph XNNPACK weight-cache file keyed by the model file's size
-     * and modification time. The cache is load-bearing, not an
+     * per-graph XNNPACK weight-cache file keyed by the cache trust epoch
+     * (see [noteStackLoadStarted]) plus the model file's size and
+     * modification time. The cache is load-bearing, not an
      * optimization: without it XNNPACK packs the weights once per
      * signature — the decoder has seven — in anonymous memory, and on
      * device the first decoder create grew the process until it died
@@ -55,10 +56,62 @@ internal object OmniRuntime {
             cpuOptions = CompiledModel.CpuOptions(
                 numThreads = CPU_THREADS,
                 xnnPackWeightCachePath = File(
-                    cacheDir, "$tag-${model.length()}-${model.lastModified()}.xnnpack_cache",
+                    cacheDir,
+                    "$tag-e${cacheEpoch(cacheDir)}-${model.length()}-${model.lastModified()}.xnnpack_cache",
                 ).absolutePath,
             )
         }
+
+    private const val CACHE_EPOCH_FILE = "cache_epoch"
+    private const val STACK_LOAD_FLAG_FILE = "stack_load_in_progress"
+
+    /** Current XNNPACK cache trust epoch for [cacheDir] (0 until a died load bumps it). */
+    fun cacheEpoch(cacheDir: File): Int =
+        runCatching { File(cacheDir, CACHE_EPOCH_FILE).readText().trim().toInt() }.getOrDefault(0)
+
+    /**
+     * Marks an Omni stack load as starting in [cacheDir].
+     *
+     * The XNNPACK weight-cache files are the only bytes in the whole load
+     * that nothing verifies: the bundle and its extracted sections are
+     * SHA-256-checked, but a cache file holds whatever XNNPACK last wrote
+     * into it, and every Omni voice load on device (builds 1944-1964) has
+     * died natively inside stage 1 — after those caches first existed,
+     * written by processes that were themselves dying mid-load. So a cache
+     * written by a load that never finished is not trusted: if the
+     * previous load's in-progress flag is still set (it is cleared only by
+     * [noteStackLoadReady], when a full stack build completes), every
+     * cache file is deleted and the trust epoch advances, so each graph
+     * repacks into a fresh cache file from the verified model file. A
+     * load that completes keeps its caches; the next load reuses them.
+     */
+    fun noteStackLoadStarted(cacheDir: File) {
+        val flag = File(cacheDir, STACK_LOAD_FLAG_FILE)
+        if (flag.isFile) {
+            cacheDir.listFiles { f -> f.name.endsWith(".xnnpack_cache") }
+                ?.forEach { runCatching { it.delete() } }
+            writeDurable(File(cacheDir, CACHE_EPOCH_FILE), (cacheEpoch(cacheDir) + 1).toString())
+        }
+        writeDurable(flag, "1")
+    }
+
+    /** Clears the in-progress flag [noteStackLoadStarted] set: the stack built fully, so its caches are trusted. */
+    fun noteStackLoadReady(cacheDir: File) {
+        runCatching { File(cacheDir, STACK_LOAD_FLAG_FILE).delete() }
+    }
+
+    /** Writes [text] to [file] via a temp file + rename, so a process death never leaves a torn file behind. */
+    private fun writeDurable(file: File, text: String) {
+        val tmp = File(file.parentFile, file.name + ".tmp")
+        tmp.outputStream().use { out ->
+            out.write(text.toByteArray())
+            out.fd.sync()
+        }
+        if (!tmp.renameTo(file)) {
+            tmp.copyTo(file, overwrite = true)
+            tmp.delete()
+        }
+    }
 
     fun createEnvironment(): Environment = Environment.create()
 
@@ -204,6 +257,11 @@ internal object OmniRuntime {
         val knownPrefill = signatures.getJSONArray("prefill").let { a -> IntArray(a.length()) { a.getInt(it) } }
         val knownState = signatures.getJSONArray("state").let { a -> List(a.length()) { a.getString(it) } }
         val weightCacheDir = weightCacheDir(context)
+        // Before any graph create consumes a weight cache: if the previous
+        // load died mid-build, its caches are wiped and the epoch advances
+        // (see noteStackLoadStarted). The flag this sets is cleared by the
+        // call owner only when the full stack reaches ready.
+        noteStackLoadStarted(weightCacheDir)
         val worker = Executors.newSingleThreadExecutor { task -> Thread(task, "Jarvis-Omni").apply { isDaemon = true } }
         return try {
             worker.submit<OmniBundleComponents> {
