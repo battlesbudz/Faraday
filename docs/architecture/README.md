@@ -29,6 +29,7 @@ for the decision to keep package/collaborator boundaries before adding build mod
 | `ui/JarvisApp` | UI state/callback wiring and selecting conversation/setup/history/diagnostic surfaces inside persistent Wisp chrome |
 | `ui/WispPresence` / `WispPresenter` / `WispCharacter` | App-level observation, deterministic pose policy and native drawing; never owns or starts calls/actions |
 | `presentation/AgentActivityMonitor` | Ephemeral turn/read leases and sequence-fenced public progress; safe tool metadata and terminal errors, never answer/reasoning tokens or operation authority |
+| `privilege/` | A1 wireless-debugging pairing state, closed shell-helper AIDL contract, helper recovery policy and precise boot-time blocked status; privileged operations fail closed unless helper availability is established |
 | `JarvisAppComposition` | Compatibility composition adapter supplying only benchmark-store and call-evidence dependencies to UI |
 | `JarvisRuntime.get(applicationContext)` | Process composition/lifecycle facade wiring typed owners/ports, shared history and compatibility entry adapters |
 | `runtime/turn/VoiceTurnRunner` | Admits and orders typed voice stages, with fenced terminal errors/rearm policy; resource release belongs to finalizer |

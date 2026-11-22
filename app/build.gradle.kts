@@ -182,7 +182,7 @@ android {
         "**/libLiteRtTopKOpenClSampler.so",
         "**/libLiteRtTopKWebGpuSampler.so",
     ))
-    buildFeatures { compose = true; buildConfig = true }
+    buildFeatures { compose = true; buildConfig = true; aidl = true }
 }
 dependencies {
     whisperQnnProvider("com.qualcomm.qti:onnxruntime-android-qnn:2.6.0@aar")
