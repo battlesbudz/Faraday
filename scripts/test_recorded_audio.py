@@ -8,6 +8,7 @@ import unittest
 from unittest import mock
 
 import check_recorded_audio as gate
+import recorded_audio_timing as timing
 
 
 class RecordedAudioContractTests(unittest.TestCase):
@@ -166,6 +167,61 @@ class RecordedAudioContractTests(unittest.TestCase):
             with mock.patch("urllib.request.urlopen", return_value=io.BytesIO(b"good")):
                 gate.download("https://invalid.test/model", target, 4, gate.sha256(b"good"))
             self.assertEqual(b"good", target.read_bytes())
+
+
+class RecordedAudioTimingTrendTests(unittest.TestCase):
+    BASELINE = {"warn_slower_ratio": 0.2, "source": "test baseline",
+                "checks": {"a": {"elapsed_ms": 1000.0}, "b": {"elapsed_ms": 1000.0}}}
+
+    def rows(self, **elapsed):
+        report = {"status": "passed", "checks": [{"name": name, "elapsed_ms": value} for name, value in elapsed.items()]}
+        return {row["name"]: row for row in timing.compare(report, self.BASELINE)}
+
+    def test_faster_within_and_slower_than_baseline(self):
+        rows = self.rows(a=900.0, b=1300.0)
+        self.assertEqual(("faster", -100.0, -10.0), (rows["a"]["verdict"], rows["a"]["delta_ms"], rows["a"]["delta_pct"]))
+        self.assertEqual(("slower", 300.0, 30.0), (rows["b"]["verdict"], rows["b"]["delta_ms"], rows["b"]["delta_pct"]))
+        self.assertEqual("within", self.rows(a=1200.0)["a"]["verdict"])
+
+    def test_missing_baseline_or_timing_stays_not_recorded_never_zero(self):
+        rows = self.rows(new_check=500.0, a=float("nan"), b=0)
+        self.assertEqual("no baseline", rows["new_check"]["verdict"])
+        self.assertIsNone(rows["new_check"]["baseline_ms"])
+        self.assertIsNone(rows["new_check"]["delta_ms"])
+        for name in ("a", "b"):
+            self.assertEqual("no timing", rows[name]["verdict"])
+            self.assertIsNone(rows[name]["elapsed_ms"])
+        text = timing.render(list(rows.values()), self.BASELINE, "passed")
+        self.assertIn("| new_check | 500 | not recorded | not recorded | not recorded | no baseline |", text)
+        self.assertNotIn("| 0 |", text)
+
+    def test_stored_baseline_covers_every_required_check(self):
+        baseline = json.loads(timing.BASELINE.read_text())
+        self.assertEqual({item["name"] for item in gate.contract()["checks"]}, set(baseline["checks"]))
+        self.assertEqual(0.2, baseline["warn_slower_ratio"])
+
+    def test_summary_is_written_and_slow_or_failed_runs_never_fail_the_job(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "baseline.json").write_text(json.dumps(self.BASELINE))
+            (root / "report.json").write_text(json.dumps({"status": "failed", "checks": [{"name": "a", "elapsed_ms": 2000}]}))
+            summary = root / "summary.md"
+            with mock.patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": str(summary)}), \
+                    mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+                code = timing.main(["--report", str(root / "report.json"), "--baseline", str(root / "baseline.json"),
+                                    "--json-out", str(root / "trend.json")])
+            self.assertEqual(0, code)
+            self.assertIn("Gate status: failed", summary.read_text())
+            self.assertIn("| a | 2000 | 1000 | 1000 | 100% | slower |", summary.read_text())
+            self.assertIn("::warning title=Recorded speech timing::a", out.getvalue())
+            self.assertEqual("slower", json.loads((root / "trend.json").read_text())["rows"][0]["verdict"])
+
+    def test_missing_report_is_summarized_without_failing(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch("sys.stdout", new_callable=io.StringIO) as out, \
+                mock.patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": ""}):
+            self.assertEqual(0, timing.main(["--report", str(Path(directory) / "absent.json")]))
+        self.assertIn("report unreadable", out.getvalue())
+        self.assertIn("No recorded-speech checks were reported.", out.getvalue())
 
 
 if __name__ == "__main__":

@@ -2112,7 +2112,8 @@ class ReleaseJourneyTest {
                 history.updateReply(history.current.value.id, "streaming-voice", "Transcript is updating while I speak", false)
             }
             VoiceSessionUi.liveTranscript.value = liveCaption
-            assertEquals("Live speech appears without minimizing", find(By.res("voice_call_live_transcript")).text)
+            // Match the caption in the selector: reading .text from an earlier node races recomposition.
+            assertNotNull("Live speech appears without minimizing", find(By.res("voice_call_live_transcript").text(liveCaption)))
             assertNotNull(find(By.res("voice_call_status")))
             assertFalse("The call pill must not duplicate the persistent character", device.hasObject(By.res("voice_call_orb")))
             assertNotNull(find(By.res("voice_call_end")))

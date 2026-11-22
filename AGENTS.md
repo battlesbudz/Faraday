@@ -4,6 +4,7 @@
 - Commits may be pushed to an existing open PR without asking again when they are part of the requested work.
 - Continue the current audio work on `audio-pr2`, under existing PR #6. Do not create a separate PR for additions to that work.
 - Do not merge a pull request without explicit permission.
+- Autopilot: Justin approved one long-lived branch `feature/autopilot` with a single PR into `main` that only Justin merges. Scheduled autopilot runs may push commits to that branch (and to `feature/lfm3-omni-u8` when a backlog item says so) following `docs/autopilot/RUNBOOK.md`. They must not open other PRs, push to `main`, force-push, or merge.
 - PR #7 is closed without merging and reserved for a future feature. Preserve its head branch `feature/gemma-model-switch`; do not delete it or create a replacement PR. Repurpose/reopen #7 only when Justin requests the next feature's PR.
 
 ## Development verification
