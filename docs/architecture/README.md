@@ -37,6 +37,7 @@ for the decision to keep package/collaborator boundaries before adding build mod
 | `voice/VoiceSessionController` | Call identity, transcript, delivered reply/action state and persisted call record |
 | `work/ProcessConversationAdmission` | One shared atomic admission owner for conversation and model-file operations; `ConversationWork` is its compatibility view |
 | `conversation/ConversationCoordinator` | Typed invocation admission, ordered stages and exact returned child-job cleanup; native resource release waits for this job |
+| `conversation/PromptSurfaceGovernance` | Prompt template placeholder and system/tool separation checks, plus pinned source-byte inventory validation; prompt assembly stays in the existing conversation seams |
 | `voice/JarvisModelSetupWorker` | Foreground WorkManager download/setup surviving activity recreation and backgrounding |
 | `memory/AndroidMemoryOs` | Process access to private SQLite memory/source storage and archive-expiry maintenance |
 | `memory/AndroidMemoryEmbeddings` | Process access to the rebuildable embedding projection (sibling vector store, embedding-model acquisition, ledger reconciliation), the hybrid-retrieval binding, coalesced idle-gated projection sync triggers, and the Memory settings embedding-model install controller |
