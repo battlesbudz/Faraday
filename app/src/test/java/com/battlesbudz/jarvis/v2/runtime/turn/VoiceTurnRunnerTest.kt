@@ -66,8 +66,10 @@ class VoiceTurnRunnerTest {
         val completions = mutableListOf<String>()
         val order = mutableListOf<String>()
         var serviceStops = 0
+        var endCalls = 0
         var restarts = 0
         var failures = 0
+        var failFinished = false
         var submissions = 0
         var releases = 0
         var microphoneStops = 0
@@ -77,8 +79,12 @@ class VoiceTurnRunnerTest {
             post = { posted.add(it); firstPost.complete(Unit) },
             report = {}, serviceStatus = VoiceSessionUi::report,
             transcript = { _, _, _ -> error("Startup failure must not deliver a transcript") },
-            finished = { completions += it; order += "finished" }, startDiagnostics = {},
+            finished = {
+                if (failFinished) throw IllegalStateException("finished callback failed")
+                completions += it; order += "finished"
+            }, startDiagnostics = {},
             endCall = {
+                endCalls++
                 state.armed = false
                 VoiceSessionUi.sessionAlive.value = false
                 controller.currentCallId()?.let { controller.end() }
@@ -224,6 +230,43 @@ class VoiceTurnRunnerTest {
             assertEquals(1, f.serviceStops)
             assertEquals(0, f.restarts)
             assertEquals(0, f.submissions)
+        }
+    }
+
+    @Test fun nativeCaptionReleaseFailureDuringTeardownStillEndsTheCallSession() = runBlocking {
+        Fixture().use { f ->
+            f.start { lifetime ->
+                f.acquireStartupResources(lifetime)
+                lifetime.captionNativeReleaseFailed = true
+                throw PostAnswerCaptionContinuation.NativeReleaseFailure(
+                    IllegalStateException("Audio input mode change requires confirmed-history reset before prompt assembly"))
+            }
+            f.awaitCleanup()
+            f.publishPosted()
+            assertTrue(requireNotNull(VoiceSessionUi.failure.value).message.contains("Caption native release/reset failed"))
+            assertNull(f.controller.currentCallId())
+            assertNotNull(f.store.list().single().endedAtMs)
+            assertFalse(f.state.armed)
+            assertFalse(VoiceSessionUi.sessionAlive.value)
+            assertEquals(1, f.serviceStops)
+            assertEquals(1, f.endCalls)
+            assertEquals(0, f.restarts)
+            assertEquals(0, f.releases)
+        }
+    }
+
+    @Test fun throwingFinishedCallbackCannotSkipSessionEnd() = runBlocking {
+        Fixture().use { f ->
+            f.failFinished = true
+            f.startMissingAsset()
+            f.awaitCleanup()
+            f.publishPosted()
+            assertNotNull(VoiceSessionUi.failure.value)
+            assertFalse(f.state.armed)
+            assertFalse(VoiceSessionUi.sessionAlive.value)
+            assertEquals(1, f.serviceStops)
+            assertEquals(1, f.endCalls)
+            assertNull(f.controller.currentCallId())
         }
     }
 

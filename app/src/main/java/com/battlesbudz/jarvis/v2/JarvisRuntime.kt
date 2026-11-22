@@ -1279,7 +1279,9 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
 
     private fun finishVoiceCall(stopSession: Boolean, report: (String) -> Unit) {
         com.battlesbudz.jarvis.v2.voice.comparison.LiveComparison.cancelPending()
-        if (!voiceSessionArmed && voiceTurnJob?.isActive != true) return
+        // A failure-path disarm must still close a lingering call record; return only when there is genuinely nothing to end.
+        if (!voiceSessionArmed && voiceTurnJob?.isActive != true &&
+            voiceSessionController.currentCallId() == null) return
         // Ending a call must also release an armed microphone turn. Otherwise
         // the capture coroutine can survive the UI transition and the next
         // Voice Call cannot acquire the microphone.
