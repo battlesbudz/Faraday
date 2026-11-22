@@ -33,6 +33,8 @@ internal class OmniLmRunner(
     environment: Environment,
     knownPrefill: IntArray,
     knownState: List<String>,
+    /** State geometry from the verified sections map; never queried from the graph (see [OmniStatePlan]). */
+    statePlan: OmniStatePlan,
     /** Stage-1 breadcrumbs (the call owner wires these to diagnostics; no-op on the text path). */
     onStage: (String) -> Unit = {},
 ) : AutoCloseable {
@@ -40,9 +42,15 @@ internal class OmniLmRunner(
     private val embedder = createOmniGraph(embedderFile, embedderOptions, environment, "embedder", onStage)
     val prefillLengths = knownPrefill.sortedArrayDescending()
     private val stateNames = knownState
-    private val stateSizes = stateNames.associateWith { elements(decoder.getInputTensorType(it, "decode")) }
-    val hiddenSize = dims(decoder.getInputTensorType("embeddings", "decode")).last()
-    val cacheLength = dims(decoder.getInputTensorType("mask", "decode")).last()
+    // No getInputTensorType calls anywhere in this init: builds 1944–1965
+    // died natively in the 37 metadata queries that used to derive these
+    // three values here — the only native calls between the embedder
+    // create and the first state buffer. The plan carries the same
+    // values, extracted from the pinned graph's flatbuffer and validated
+    // against stateNames when OmniRuntime built it.
+    private val stateSizes: Map<String, Int> = statePlan.stateElements
+    val hiddenSize = statePlan.hiddenSize
+    val cacheLength = statePlan.cacheLength
     private val sets: Array<Map<String, TensorBuffer>> = run {
         // Build 1947 went silent somewhere in this init tail (state-buffer
         // creation + reset) after embedderCreated, with no managed failure
@@ -185,7 +193,5 @@ internal class OmniLmRunner(
             }
             return plan
         }
-        private fun dims(t: com.google.ai.edge.litert.TensorType): List<Int> = t.layout?.dimensions ?: error("tensor without layout")
-        private fun elements(t: com.google.ai.edge.litert.TensorType): Int = dims(t).fold(1) { a, b -> a * b }
     }
 }

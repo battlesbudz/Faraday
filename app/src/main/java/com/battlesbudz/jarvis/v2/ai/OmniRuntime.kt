@@ -256,6 +256,24 @@ internal object OmniRuntime {
         val signatures = map.getJSONObject("decoder_signatures")
         val knownPrefill = signatures.getJSONArray("prefill").let { a -> IntArray(a.length()) { a.getInt(it) } }
         val knownState = signatures.getJSONArray("state").let { a -> List(a.length()) { a.getString(it) } }
+        // State geometry from the same verified map (see OmniStatePlan):
+        // parsed with every key present so the plan's exact-coverage check
+        // sees extras as well as gaps, and built here so a bad map fails
+        // this open in managed code instead of reaching the runner.
+        val statePlan = OmniStatePlan.build(
+            stateNames = knownState,
+            stateElements = signatures.getJSONObject("state_elements").let { o ->
+                val keys = o.keys()
+                val elements = LinkedHashMap<String, Int>()
+                while (keys.hasNext()) {
+                    val name = keys.next()
+                    elements[name] = o.getInt(name)
+                }
+                elements
+            },
+            hiddenSize = signatures.getInt("hidden_size"),
+            cacheLength = signatures.getInt("cache_length"),
+        )
         val weightCacheDir = weightCacheDir(context)
         // Before any graph create consumes a weight cache: if the previous
         // load died mid-build, its caches are wiped and the epoch advances
@@ -271,7 +289,7 @@ internal object OmniRuntime {
                     decoder, embedder,
                     cpuOptions(decoder, "decoder", weightCacheDir),
                     cpuOptions(embedder, "embedder", weightCacheDir),
-                    env, knownPrefill, knownState, onStage,
+                    env, knownPrefill, knownState, statePlan, onStage,
                 )
                 OmniBundleComponents(tokenizer, runner, env, worker)
             }.get(CREATE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
