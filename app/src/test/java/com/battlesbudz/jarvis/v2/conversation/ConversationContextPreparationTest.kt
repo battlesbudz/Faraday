@@ -111,6 +111,25 @@ class ConversationContextPreparationTest {
         assertEquals(listOf("Memory context is unavailable right now; please try again after storage recovers."), f.terminal)
     }
 
+    @Test fun notActionTextRoutePassesPriorUserMessageAndColdFailOpenVerdict() = runBlocking {
+        val f = Fixture()
+        val seen = mutableListOf<Pair<String, String?>>()
+        val cold = FrontDoorVerdict(
+            FrontDoorDecision("cold", 0.0, 0.0, 0.0, true, false, false, false, false),
+            cold = true, source = "cold_fail_open")
+        val router = ConversationRouting({ f.currentHistory }, TurnOrchestrator(ReferenceGroundingClient()),
+            f.models, { null }, {}, ConversationDiagnostics({}, {}, {}, {}),
+            frontDoor = { current, previous -> seen.add(current to previous); cold })
+        val request = ConversationTurnRequest("Send a message to Andrea saying testing", emptyList(),
+            "conversation", false, false, false, false, false, null, null, false)
+        val actions = ConversationActions({ error("No Android executor") }, { _, _ -> error("No action admission") },
+            { _, _, _, _ -> error("No action dispatch") }, {}, "conversation", { _, _, _ -> })
+        val routed = requireNotNull(router.route(request, f.reply, actions) {})
+        assertTrue(routed.actionPlan is ActionTurnPlan.NotAction)
+        assertSame(cold, routed.frontDoor)
+        assertEquals(listOf(request.prompt to "new topic"), seen)
+    }
+
     @Test fun adoptedMemoryReloadsPostCutoffHistoryBeforeBuildingPrompt() = runBlocking {
         val f = Fixture()
         f.memory.changed = true

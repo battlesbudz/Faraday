@@ -1,0 +1,278 @@
+{"current": "Send a message to Andrea saying I'll be late", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Text Mom that I left the house", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Send a text to Derek saying the build passed", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Message John and tell him the meeting moved to three", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Can you send a message to Kevin?", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Please text Sara the address", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Shoot Andrea a text that says testing", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Let Andrea know I'm on my way", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Tell Andrea I'll call her tonight", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Send my wife a message saying I'll be home at six", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Text the group chat that dinner is at seven", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Send a WhatsApp to Kevin saying thanks for the help", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "I need you to message Derek about the truck", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Write a text to Mom and send it", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Call Andrea", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Open YouTube", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Launch Spotify", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Open the camera", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Start Maps", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Open my messages", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Can you open Gmail for me?", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Pull up the calendar", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Open settings", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Go to Bluetooth settings", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Turn on Bluetooth", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Open Wi-Fi settings", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Turn the volume up", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Set the volume to 50", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Pause the music", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Play some music", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Skip this song", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Turn it down a bit", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Mute the phone", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Resume playback", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Remind me at 7 to call Mom", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Set a reminder for tomorrow morning to take out the trash", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Remind me to take my pills at 9", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Create a reminder for the dentist on Friday", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Post a notification saying the build is done", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Notify me that dinner is ready", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Navigate to the airport", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Get directions to Watertown", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Take me to the nearest gas station", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Run ls in the sandbox", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Use the sandbox to add 17 and 25", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Run this command in the sandbox: echo hello", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Execute the backup script in the sandbox", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Tap the send button", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Type testing into the message box", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Scroll down on this page", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Open example.com", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Go to github.com", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Open this link in the browser", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Like that video", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Search YouTube for the trailer and play it", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Write a comment on that video saying nice work", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Send a message to Mom", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "I'll be late", "previous": "Send a message to Mom", "label": "ACT", "split": "train", "kind": "window"}
+{"current": "actually say Friday instead", "previous": "Text Derek about the truck", "label": "ACT", "split": "train", "kind": "window"}
+{"current": "at 9 in the morning", "previous": "Remind me to call the bank", "label": "ACT", "split": "train", "kind": "window"}
+{"current": "make it 60 instead", "previous": "Set the volume to 40", "label": "ACT", "split": "train", "kind": "window"}
+{"current": "yes, send it", "previous": "I drafted a message to Sara, ready when you are", "label": "ACT", "split": "train", "kind": "window"}
+{"current": "the second one", "previous": "Open one of my messaging apps", "label": "ACT", "split": "train", "kind": "window"}
+{"current": "What's my battery at?", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "Check the battery", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "How much battery do I have left?", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "Is my phone charging?", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "What's on my schedule?", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "Show me my reminders", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "Do I have anything scheduled today?", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "What reminders do I have?", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "What's on my screen?", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "Read my screen", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "Describe what's on the screen", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "Look at my screen and tell me what you see", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "Search the web for the weather in Watertown", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "Look up the capital of Norway", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "Read this article for me: example.com/news", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "Fetch the text of https://example.com", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "What's the weather today?", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "What's in the sandbox?", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "Show me what's in note.txt in the sandbox", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "List the files in the sandbox", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "What song is playing?", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "Is Bluetooth on right now?", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "Read the description of that video", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "Read the comments on that video", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "What does that page say?", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "and tomorrow?", "previous": "What's on my schedule?", "label": "READ", "split": "train", "kind": "window"}
+{"current": "how about the comments?", "previous": "Read the description of that video", "label": "READ", "split": "train", "kind": "window"}
+{"current": "What's the capital of France?", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "Who wrote Hamlet?", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "How many moons does Jupiter have?", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "Explain photosynthesis simply", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "What's 17 times 25?", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "Translate good morning to Spanish", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "Write a haiku about rain", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "Tell me a joke", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "Tell me a story about a badger", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "What's the weather like in Buffalo in January?", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "How are you doing today?", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "What's up?", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "My name is Justin and I've traveled to 27 countries", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "I like ice cream", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "That story was funny", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "Thanks, that's all", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "Never mind", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "Forget it", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "What's my favorite food?", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "What did I tell you about my truck?", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "Do you remember my anniversary?", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "What time is it?", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "What day is it today?", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "Could you send that someday?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Could you help me publish these someday?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "What did you send yesterday?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Did you send the message?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "What would you send Andrea if you could?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Should I text Andrea about this?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "How do I send a message on this phone?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "How would I open YouTube?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "What's the best way to remind myself about something?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "If I asked you to open an app, how would that work?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "You can send messages, right?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Can you actually send texts at all?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "If you sent a message to Andrea, what would it say?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Imagine you opened YouTube — what would you tap first?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Suppose I wanted a reminder set, how would it go?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Don't send that message", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Never open that app again", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Do not set a reminder for this", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Don't text Andrea", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "He said open the pod bay doors", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "The instructions say to tap send", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "My brother told me to text him later", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "What is the sandbox?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Is the sandbox installed?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "How do reminders work?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "What can you do on my phone?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Do you have access to my messages?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Would you be able to post a notification for me sometime?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Tell me about the time you opened an app for someone", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "and what about Spain?", "previous": "What's the capital of France?", "label": "CHAT", "split": "train", "kind": "window"}
+{"current": "never mind, don't", "previous": "Open YouTube", "label": "CHAT", "split": "train", "kind": "window"}
+{"current": "make it about a fox this time", "previous": "Tell me a story", "label": "CHAT", "split": "train", "kind": "window"}
+{"current": "wait, not yet", "previous": "Send a text to Sara", "label": "CHAT", "split": "train", "kind": "window"}
+{"current": "thanks", "previous": "Check my battery", "label": "CHAT", "split": "train", "kind": "window"}
+{"current": "why would that need my approval?", "previous": "Send a message to Andrea", "label": "CHAT", "split": "train", "kind": "window"}
+{"current": "Send a message to Priya saying the package arrived", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Text Marcus that practice is cancelled", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Can you text Elena the gate code?", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Message Tom and ask if he's coming", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Tell Priya the truck is fixed", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Open WhatsApp", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Open the Photos app", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Bring up Telegram", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Volume up", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Lower the volume to 20", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Next track", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Stop the music", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Remind me in an hour to check the oven", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Set a reminder for 6 pm to feed the dogs", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Post a notification that says backup complete", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Navigate to Syracuse", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Directions to the cabin", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Run the tests in the sandbox", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "In the sandbox, print the working directory", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Tap the like button on this video", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Type hello into the search bar and search", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Open the Clock app", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "Turn off Wi-Fi", "previous": null, "label": "ACT", "split": "holdout", "kind": "single"}
+{"current": "running late, be there at 8", "previous": "Text Elena I'll be there at 7", "label": "ACT", "split": "holdout", "kind": "window"}
+{"current": "actually make it Saturday", "previous": "Remind me on Friday to call the bank", "label": "ACT", "split": "holdout", "kind": "window"}
+{"current": "Can you send a message to Andrea?", "previous": null, "label": "ACT", "split": "holdout", "kind": "mustpass"}
+{"current": "testing", "previous": "Can you send a message to Andrea?", "label": "ACT", "split": "holdout", "kind": "mustpass"}
+{"current": "no that's what I want you to send", "previous": "testing", "label": "ACT", "split": "holdout", "kind": "mustpass"}
+{"current": "Send a message to Andrea saying testing", "previous": "no that's what I want you to send", "label": "ACT", "split": "holdout", "kind": "mustpass"}
+{"current": "Battery level?", "previous": null, "label": "READ", "split": "holdout", "kind": "single"}
+{"current": "How's my battery doing?", "previous": null, "label": "READ", "split": "holdout", "kind": "single"}
+{"current": "Anything on my calendar tomorrow?", "previous": null, "label": "READ", "split": "holdout", "kind": "single"}
+{"current": "Show my reminders for this week", "previous": null, "label": "READ", "split": "holdout", "kind": "single"}
+{"current": "Tell me what's on my screen right now", "previous": null, "label": "READ", "split": "holdout", "kind": "single"}
+{"current": "Search the web for fold 6 cases", "previous": null, "label": "READ", "split": "holdout", "kind": "single"}
+{"current": "Look up tomorrow's weather for Syracuse", "previous": null, "label": "READ", "split": "holdout", "kind": "single"}
+{"current": "Read me the comments under that video", "previous": null, "label": "READ", "split": "holdout", "kind": "single"}
+{"current": "What's inside the sandbox workspace?", "previous": null, "label": "READ", "split": "holdout", "kind": "single"}
+{"current": "Is my phone on mute?", "previous": null, "label": "READ", "split": "holdout", "kind": "single"}
+{"current": "and for the weekend?", "previous": "Anything on my calendar tomorrow?", "label": "READ", "split": "holdout", "kind": "window"}
+{"current": "What's the tallest building in the world?", "previous": null, "label": "CHAT", "split": "holdout", "kind": "single"}
+{"current": "Tell me a story about a lighthouse keeper", "previous": null, "label": "CHAT", "split": "holdout", "kind": "single"}
+{"current": "Why is the sky blue?", "previous": null, "label": "CHAT", "split": "holdout", "kind": "single"}
+{"current": "Give me a recipe for banana bread", "previous": null, "label": "CHAT", "split": "holdout", "kind": "single"}
+{"current": "I went wakeboarding last summer", "previous": null, "label": "CHAT", "split": "holdout", "kind": "single"}
+{"current": "Summarize what we talked about earlier", "previous": null, "label": "CHAT", "split": "holdout", "kind": "single"}
+{"current": "What's a good gift for a six year old?", "previous": null, "label": "CHAT", "split": "holdout", "kind": "single"}
+{"current": "How do I change a tire?", "previous": null, "label": "CHAT", "split": "holdout", "kind": "single"}
+{"current": "Would you ever text someone without asking me?", "previous": null, "label": "CHAT", "split": "holdout", "kind": "discussion"}
+{"current": "Did you ever send that message to Marcus?", "previous": null, "label": "CHAT", "split": "holdout", "kind": "discussion"}
+{"current": "How does the reminder feature decide when to ring?", "previous": null, "label": "CHAT", "split": "holdout", "kind": "discussion"}
+{"current": "If I told you to delete everything, what would happen?", "previous": null, "label": "CHAT", "split": "holdout", "kind": "discussion"}
+{"current": "Don't navigate anywhere, I'm just thinking out loud", "previous": null, "label": "CHAT", "split": "holdout", "kind": "discussion"}
+{"current": "Could an assistant like you book a flight someday?", "previous": null, "label": "CHAT", "split": "holdout", "kind": "discussion"}
+{"current": "What did the article say about opening settings?", "previous": null, "label": "CHAT", "split": "holdout", "kind": "discussion"}
+{"current": "My dad keeps telling me to call him more", "previous": null, "label": "CHAT", "split": "holdout", "kind": "discussion"}
+{"current": "Hold on, don't send anything yet", "previous": "Send a message to Priya", "label": "CHAT", "split": "holdout", "kind": "window"}
+{"current": "actually forget the whole thing", "previous": "Text Marcus that practice is cancelled", "label": "CHAT", "split": "holdout", "kind": "window"}
+{"current": "and then what happened?", "previous": "Tell me a story about a lighthouse keeper", "label": "CHAT", "split": "holdout", "kind": "window"}
+{"current": "Give me a recipe for pancakes", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "Give me a list of the planets", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "Write me a short poem about the sea", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "Show me how to tie a tie", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "Tell me how to change a tire", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "Give me directions for making a sourdough starter", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "Make me a workout plan for the week", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "Give me a summary of the French Revolution", "previous": null, "label": "CHAT", "split": "train", "kind": "single"}
+{"current": "Give me directions to Watertown", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Give me my battery percentage", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "Show me how many reminders I have", "previous": null, "label": "READ", "split": "train", "kind": "single"}
+{"current": "no that's the text I want you to send", "previous": "sounds good", "label": "ACT", "split": "train", "kind": "window"}
+{"current": "no that's what I want you to text her", "previous": "blue", "label": "ACT", "split": "train", "kind": "window"}
+{"current": "no, send that one", "previous": "ok", "label": "ACT", "split": "train", "kind": "window"}
+{"current": "yes that's the one, send it", "previous": "the draft is ready", "label": "ACT", "split": "train", "kind": "window"}
+{"current": "say I'll bring the tools", "previous": "Send a message to Tom", "label": "ACT", "split": "train", "kind": "window"}
+{"current": "the code is 4419", "previous": "Text Elena", "label": "ACT", "split": "train", "kind": "window"}
+{"current": "to water the plants", "previous": "Remind me tomorrow", "label": "ACT", "split": "train", "kind": "window"}
+{"current": "actually don't", "previous": "Open Spotify", "label": "CHAT", "split": "train", "kind": "window"}
+{"current": "cancel that, forget it", "previous": "Set a reminder for 5", "label": "CHAT", "split": "train", "kind": "window"}
+{"current": "wait, stop, not yet", "previous": "Navigate home", "label": "CHAT", "split": "train", "kind": "window"}
+{"current": "Would you send that if I asked?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Did you text her yesterday?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "What happens if you open an app?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "How come you ask before sending?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Is it true you can post notifications?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Yesterday I told you to send a message and you asked me first", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Don't ever call him again", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current":"Never remind me about that again","kind":"discussion","label":"CHAT","previous":null,"split":"train"}
+{"current": "The manual says to tap the green button", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "It says here to press send when you're done", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "The video told me to open settings and toggle it", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "She wrote text me when you land in the note", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "The sign says call for help", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "How do I text someone on this thing?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "How would I set a reminder myself?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "What's the way to open an app here?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "How do you post a notification?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Where do I go to change the volume?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "What did you open earlier?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Did you ever call him back?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "When did I ask you to send that?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Why did you ask me before posting it?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Could you maybe remind me sometime?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Would you open apps for me if I asked nicely?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Are you able to send emails?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Do you ever set reminders on your own?", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "My sister keeps telling me to message her back", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "He told me to remind him on Friday", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "The group chat said to post it in the channel", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Stop, don't do anything", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Forget the reminder idea", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Never mind about the message", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Follow the instructions on screen and tap send", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Press send for me", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Tap the green button", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Toggle Bluetooth on for me", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "no that's the message I want you to send", "previous": "the long version", "label": "ACT", "split": "train", "kind": "window"}
+{"current": "no, that's what I want you to text him", "previous": "chapter 4", "label": "ACT", "split": "train", "kind": "window"}
+{"current": "no that's what I want you to send", "previous": "the short one", "label": "ACT", "split": "train", "kind": "window"}
+{"current": "that's the one I want you to send", "previous": "green", "label": "ACT", "split": "train", "kind": "window"}
+{"current": "The podcast said to restart the router", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Her note said to call when I land", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "The article says to open the app and sign in", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "The label says shake well before opening", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "The recipe says to preheat the oven", "previous": null, "label": "CHAT", "split": "train", "kind": "discussion"}
+{"current": "Turn off Bluetooth", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Turn on Wi-Fi", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Switch off mobile data", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Turn the flashlight on", "previous": null, "label": "ACT", "split": "train", "kind": "single"}
+{"current": "Turn off the flashlight", "previous": null, "label": "ACT", "split": "train", "kind": "single"}

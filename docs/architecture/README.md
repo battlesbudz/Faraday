@@ -37,6 +37,7 @@ for the decision to keep package/collaborator boundaries before adding build mod
 | `voice/VoiceSessionController` | Call identity, transcript, delivered reply/action state and persisted call record |
 | `work/ProcessConversationAdmission` | One shared atomic admission owner for conversation and model-file operations; `ConversationWork` is its compatibility view |
 | `conversation/ConversationCoordinator` | Typed invocation admission, ordered stages and exact returned child-job cleanup; native resource release waits for this job |
+| `conversation/FrontDoorClassifier` | EmbeddingGemma classification head, nonblocking warmup and fail-open tool-routing verdict; exact-approval veto and completion-claim guard remain in generation |
 | `conversation/PromptSurfaceGovernance` | Prompt template placeholder and system/tool separation checks, plus pinned source-byte inventory validation; prompt assembly stays in the existing conversation seams |
 | `voice/JarvisModelSetupWorker` | Foreground WorkManager download/setup surviving activity recreation and backgrounding |
 | `memory/AndroidMemoryOs` | Process access to private SQLite memory/source storage and archive-expiry maintenance |
@@ -250,10 +251,10 @@ inputs and narrow collaborators, not the process runtime.
 
 | Stage | Owner and boundary |
 | --- | --- |
-| Route | `ConversationRouting`: complete literal actions, status and integrity before memory/lookup; returns `RoutedConversation` or a terminal reply |
+| Route | `ConversationRouting`: complete literal actions, status and integrity before memory/lookup; classifier verdict supplements NotAction routing; returns `RoutedConversation` or a terminal reply |
 | Context | `ConversationContextPreparation`: approved memory snapshot, cutoff/capture/recall and reference context; returns `PreparedConversation` |
 | Session/prompt | `ConversationModelSession`: resident engine/context budget and bounded summary; `ConversationPrompt`: assembled prompt/compaction policy |
-| Generate | `ConversationGeneration`: selected multimodal input, safe stream/draft and strict native-tool receipt compatibility; returns `ConversationDraft` |
+| Generate | `ConversationGeneration`: selected multimodal input, safe stream/draft, front-door tool proposals and completion honesty guard, strict native-tool receipt compatibility; returns `ConversationDraft` |
 | Recover | `ConversationRecovery`: bounded read-only factuality/reference/repetition work; cannot admit phone effects |
 | Finalize/publish | `ConversationFinalizer`: receipt-first visible text policy; `ConversationReply`: memory-valid token/completion, latency and benchmark finalization |
 | Public activity | `ConversationActivity`: admitted-turn, bounded public progress sentences; no model inference, private reasoning or operation authority |

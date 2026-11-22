@@ -34,7 +34,8 @@ internal data class RoutedConversation(
     val history: List<ChatEntry>,
     val plan: TurnPlan,
     val actionPlan: ActionTurnPlan,
-    val textInput: IncrementalVoiceInput?
+    val textInput: IncrementalVoiceInput?,
+    val frontDoor: FrontDoorVerdict? = null
 )
 
 /** Authoritative literal-action routing before approved memory, reference lookup or inference. */
@@ -44,7 +45,8 @@ internal class ConversationRouting(
     private val modelSession: ConversationModelSession,
     private val readPhoneStatus: () -> PhoneActionStatus?,
     private val savePhoneStatus: (PhoneActionStatus) -> Unit,
-    private val diagnostics: ConversationDiagnostics
+    private val diagnostics: ConversationDiagnostics,
+    private val frontDoor: suspend (current: String, previousUser: String?) -> FrontDoorVerdict? = { _, _ -> null }
 ) {
     /** Null means this stage already published a terminal shortcut/rejection. */
     suspend fun route(request: ConversationTurnRequest, reply: ConversationReply,
@@ -179,6 +181,17 @@ internal class ConversationRouting(
                 com.battlesbudz.jarvis.v2.actions.ActionRequest(
                     "run_in_sandbox", mapOf("command" to "")), prompt)))
         } else requestedActionPlan
-        return RoutedConversation(safeHistory, turnPlan, actionPlan, preparedTextInput)
+        val frontDoorVerdict = if (actionPlan is ActionTurnPlan.NotAction &&
+            !request.directVoiceAudio && !request.comparisonActive &&
+            !request.imageAttached && !request.audioAttached) {
+            val previousUser = safeHistory.lastOrNull { it.role == "You" }?.text
+            frontDoor(request.prompt, previousUser)?.also { verdict ->
+                diagnostics.summary(String.format(java.util.Locale.US,
+                    "Front door verdict label=%s toolsOffered=%s actIntended=%s discussion=%s source=%s pAct=%.2f pRead=%.2f pChat=%.2f",
+                    verdict.label, verdict.toolsOffered, verdict.actIntended, verdict.discussionConfident,
+                    verdict.source, verdict.pAct, verdict.pRead, verdict.pChat))
+            }
+        } else null
+        return RoutedConversation(safeHistory, turnPlan, actionPlan, preparedTextInput, frontDoorVerdict)
     }
 }

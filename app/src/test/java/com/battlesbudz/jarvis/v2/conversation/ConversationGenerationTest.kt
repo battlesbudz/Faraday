@@ -137,10 +137,12 @@ class ConversationGenerationTest {
                                               summaryLog: MutableList<String>? = null,
                                               directAudio: Boolean = true,
                                               onNeedsApproval: (suspend (ActionRequest) -> com.battlesbudz.jarvis.v2.actions.ExecutionResult)? = null,
-                                              sessionProbe: (ConversationModelSession) -> Unit = {}): ConversationDraft {
+                                              sessionProbe: (ConversationModelSession) -> Unit = {},
+                                              frontDoor: FrontDoorVerdict? = null,
+                                              promptText: String = "Hello"): ConversationDraft {
         val diagnostics = ConversationDiagnostics({}, {}, { line -> summaryLog?.add(line) }, {})
         val memory = MemoryDeliveryFence()
-        val input = ConversationInvocation("Hello", emptyList(), voiceAudio = audio,
+        val input = ConversationInvocation(promptText, emptyList(), voiceAudio = audio,
             directVoiceAudio = audio != null && directAudio)
         val callbacks = ConversationCallbacks({}, {})
         val reply = ConversationReply("generation", PipelineBenchmarkCapture("generation", "text", 0,
@@ -167,7 +169,7 @@ class ConversationGenerationTest {
             callVisualContext = callVisualContext,
             onNeedsApproval = onNeedsApproval)
         return generation.generate(input, 10_000,
-            RoutedConversation(emptyList(), TurnPlan(TurnKind.NORMAL_CHAT), plan, null),
+            RoutedConversation(emptyList(), TurnPlan(TurnKind.NORMAL_CHAT), plan, null, frontDoor),
             PreparedConversation(emptyList(), null, null, null, false, false, null), emptyList(),
             ConversationPrompt(builder, audio != null, { null }, { null }), backend, reply, actions,
             ConversationInferenceTelemetry(input, callbacks, reply, diagnostics))
@@ -251,9 +253,109 @@ class ConversationGenerationTest {
             error("Unrequested tools must not execute")
     }
 
+    private class ProposedCallsBackend(private val calls: List<ToolCall>) : ConversationBackend {
+        val tools = mutableListOf<Boolean>()
+        override val modelId = "fake"
+        override var onPromptSubmitted: (String, Int) -> Unit = { _, _ -> }
+        override var onInferenceProgress: (InferenceProgress) -> Unit = {}
+        override var onBenchmarkSubmission: (PipelineBenchmarkSubmission) -> Unit = {}
+        override var benchmarkPurpose = PipelineBenchmarkPurpose.UNKNOWN
+        override fun inputContextDescription() = "fake"
+        override var toolsEnabled = false
+        override suspend fun setToolsEnabled(enabled: Boolean): Boolean {
+            tools += enabled
+            val changed = toolsEnabled != enabled
+            toolsEnabled = enabled
+            return changed
+        }
+        override suspend fun generate(prompt: String, onToken: (String) -> Unit) =
+            GenerationResult("", 1, null, toolCalls = calls)
+        override suspend fun generateAudio(prompt: String, audioBytes: ByteArray, onToken: (String) -> Unit): GenerationResult = error("Text path only")
+        override suspend fun generate(prompt: String, imageBytes: ByteArray, onToken: (String) -> Unit): GenerationResult = error("Unexpected image input")
+        override suspend fun sendToolResults(results: List<Pair<ToolCall, String>>, onToken: (String) -> Unit): GenerationResult =
+            error("Approval fixture completes in one native pass")
+    }
+
     /** The exact SDK rejection from Battles's build-1563 diagnostics dump. */
     private fun dumpParseError() = RuntimeException(
         "Failed to parse tool calls from code block: call:open_app{app:<|\"|>Facebook<|\"|>Facebook<|\"|>}")
+
+    private fun frontDoorVerdict(
+        toolsOffered: Boolean = true,
+        actIntended: Boolean = true,
+        vetoConfident: Boolean = false,
+        cold: Boolean = false,
+    ) = FrontDoorVerdict(
+        FrontDoorDecision(if (cold) "cold" else "ACT", if (cold) 0.0 else .7,
+            if (cold) 0.0 else .1, if (cold) 0.0 else .2, toolsOffered, actIntended,
+            false, vetoConfident, false), cold, if (cold) "cold_fail_open" else "classifier")
+
+    private fun fakeActions(dispatched: MutableList<ActionRequest>) = ConversationActions(
+        executor = { com.battlesbudz.jarvis.v2.actions.MobileActionExecutor { error("No Android executor") } },
+        admit = { _, _ -> "test-group" },
+        execute = { request, _, _, _ ->
+            dispatched += request
+            com.battlesbudz.jarvis.v2.actions.ExecutionResult(true, "Executed ${request.name}.")
+        },
+        cancelUnfinished = {}, conversationId = "conversation", onActionResult = { _, _, _ -> },
+        mainDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+        executionDispatcher = kotlinx.coroutines.Dispatchers.Unconfined)
+
+    @Test fun frontDoorOffersTextToolCallsToExistingApprovalGate() = runBlocking {
+        val calls = listOf(ToolCall("post_notification", "{\"title\":\"Update\",\"text\":\"Testing\"}"))
+        val backend = ProposedCallsBackend(calls)
+        val parked = mutableListOf<ActionRequest>()
+        val dispatched = mutableListOf<ActionRequest>()
+        val draft = generateWithBackend(backend, null, phoneActions = fakeActions(dispatched), directAudio = false,
+            frontDoor = frontDoorVerdict(), promptText = "Send an update", onNeedsApproval = { request ->
+            parked += request
+            com.battlesbudz.jarvis.v2.actions.ExecutionResult(true, "Parked for approval.")
+        })
+        assertEquals(listOf(true), backend.tools)
+        assertEquals(listOf(ActionRequest("post_notification", mapOf("title" to "Update", "text" to "Testing"))), parked)
+        assertEquals("Parked for approval.", draft.actionResultMessage)
+    }
+
+    @Test fun discussionVetoDropsGatedProposalButKeepsNonGatedCall() = runBlocking {
+        val calls = listOf(
+            ToolCall("open_app", "{\"app\":\"Calendar\"}"),
+            ToolCall("post_notification", "{\"title\":\"Update\",\"text\":\"Testing\"}"))
+        val backend = ProposedCallsBackend(calls)
+        val parked = mutableListOf<ActionRequest>()
+        val dispatched = mutableListOf<ActionRequest>()
+        val draft = generateWithBackend(backend, null, phoneActions = fakeActions(dispatched), directAudio = false,
+            frontDoor = frontDoorVerdict(vetoConfident = true), onNeedsApproval = { parked += it
+            com.battlesbudz.jarvis.v2.actions.ExecutionResult(true, "Parked.")
+        })
+        assertTrue(parked.isEmpty())
+        assertEquals(listOf(ActionRequest("open_app", mapOf("app" to "Calendar"))), dispatched)
+        assertTrue(draft.actionResultMessage.orEmpty().contains("Executed open_app"))
+    }
+
+    @Test fun completionClaimRegeneratesOnFrontDoorActionTurnWithoutReceipt() = runBlocking {
+        val backend = TextScriptBackend(
+            "Sending a message to Andrea saying \"testing\" now.",
+            "I need the message text before I can help.")
+        val draft = generateWithBackend(backend, null, directAudio = false,
+            frontDoor = frontDoorVerdict(), promptText = "Send a message to Andrea saying testing")
+        assertEquals("I need the message text before I can help.", draft.generated.text)
+        assertEquals(2, backend.requests.size)
+        assertTrue(backend.requests.last().contains(ActionCompletionClaim.CORRECTION))
+    }
+
+    @Test fun coldFrontDoorStillOffersToolsWithoutParserPlan() = runBlocking {
+        val backend = ProposedCallsBackend(listOf(
+            ToolCall("post_notification", "{\"title\":\"Update\",\"text\":\"Testing\"}")))
+        val parked = mutableListOf<ActionRequest>()
+        generateWithBackend(backend, null, phoneActions = fakeActions(mutableListOf()), directAudio = false,
+            frontDoor = frontDoorVerdict(actIntended = false, cold = true), promptText = "Notify me",
+            onNeedsApproval = { request ->
+            parked += request
+            com.battlesbudz.jarvis.v2.actions.ExecutionResult(true, "Parked for approval.")
+        })
+        assertEquals(listOf(true), backend.tools)
+        assertEquals(1, parked.size)
+    }
 
     @Test fun dumpParseFailureSalvagesTheValidatedCallAndCompletesTheTurn() = runBlocking {
         val backend = ParseFailingBackend(dumpParseError())

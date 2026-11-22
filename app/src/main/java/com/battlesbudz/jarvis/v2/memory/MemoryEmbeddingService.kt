@@ -5,6 +5,7 @@ package com.battlesbudz.jarvis.v2.memory
  * across runtime bindings: role formatting, output-width validation, Matryoshka
  * truncation and normalization. Role templates follow the model's published
  * instruction formats ("task: search result | query: …" for queries,
+ * "task: classification | query: …" for the front-door head, and
  * "title: none | text: …" for documents without a title); they live in exactly this
  * one place so a binding change can never silently change the embedding space.
  */
@@ -28,6 +29,9 @@ class MemoryEmbeddingService(
     /** Stored-width, unit-normalized embedding of a user query (query side). */
     fun embedQuery(text: String): FloatArray = embed(text, EmbeddingRole.QUERY)
 
+    /** Classification instruction format used to train the front-door head after the 1972 routing miss. */
+    fun embedClassification(text: String): FloatArray = embed(text, EmbeddingRole.CLASSIFICATION)
+
     private fun embed(text: String, role: EmbeddingRole): FloatArray {
         if (!engine.available) throw EmbeddingEngineUnavailable("Embedding engine is unavailable.")
         val raw = engine.embed(format(text, role), role)
@@ -38,5 +42,6 @@ class MemoryEmbeddingService(
     internal fun format(text: String, role: EmbeddingRole): String = when (role) {
         EmbeddingRole.DOCUMENT -> "title: none | text: $text"
         EmbeddingRole.QUERY -> "task: search result | query: $text"
+        EmbeddingRole.CLASSIFICATION -> "task: classification | query: $text"
     }
 }

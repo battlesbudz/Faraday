@@ -1,5 +1,34 @@
 # Feature and acceptance map
 
+## EmbeddingGemma front-door classifier — 22 November 2026
+
+`conversation/FrontDoorClassifier` scores the current message and, when present,
+the previous-user-plus-current window with the shipped 256-dimensional head.
+Only parser `NotAction` text turns consult it. A cold or unavailable embedding
+runtime offers tools without asserting action intent, leaving the existing
+declared approval gates authoritative. A confident discussion veto drops only
+exact-approval model proposals; an action-intended turn that has no executor
+receipt cannot finish with a first-person phone-action completion claim.
+
+Acceptance checks:
+
+- JVM logic: `FrontDoorClassifierTest` pins window upgrades, discussion
+  blocking, uncertain-band tool offers, chat withholding, veto boundaries,
+  cold fail-open and input construction. `FrontDoorHoldoutEvalTest` loads the
+  shipped asset and held-out fixture; the floors are ACT tool recall 0.97,
+  4/4 mustpass, CHAT not-offered 0.80, discussion veto 0.80 and zero ACT veto.
+  `ActionCompletionClaimTest` pins the completion detector. Generation tests
+  cover approval reachability, selective veto, cold tool offers and claim retry.
+- Failure cases: unavailable embeddings fail open, discussions do not park
+  exact-approval proposals, and a repeated false completion claim is replaced
+  by the detector's honest fallback.
+- Existing behavior that must remain intact: deterministic `Ready` plans keep
+  their existing path; parser behavior, approval policy, catalog and voice
+  runners do not change.
+- Real model/device (not locally verified): JVM fixtures use precomputed
+  embeddings and fake backends. Real EmbeddingGemma inference, Android lifecycle
+  and device performance remain release/device coverage.
+
 
 # Memory Unit 4 entity/temporal prototype — 14 November 2026
 

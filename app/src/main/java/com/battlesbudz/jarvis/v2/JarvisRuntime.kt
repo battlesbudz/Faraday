@@ -277,6 +277,9 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         get() = memoryCoordinator.stateToken
         set(value) { memoryCoordinator.stateToken = value }
     internal val actionIntentRouter = com.battlesbudz.jarvis.v2.actions.ActionIntentRouter()
+    internal val frontDoorClassifier = com.battlesbudz.jarvis.v2.conversation.FrontDoorClassifier(
+        serviceProvider = { runCatching { com.battlesbudz.jarvis.v2.memory.AndroidMemoryEmbeddings.embeddingService(applicationContext) }.getOrNull() },
+        assetOpener = { applicationContext.assets.open("frontdoor/head_v1.json") })
     /**
      * M1d explicit silent work (D21/T05). [com.battlesbudz.jarvis.v2.voice.ContinuousActionSession]
      * classifies final captures through this controller: ordinary speech is ignored while silent,
@@ -703,6 +706,7 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
             com.battlesbudz.jarvis.v2.memory.AndroidMemoryEmbeddings.requestSync(applicationContext)
         }
         com.battlesbudz.jarvis.v2.memory.AndroidMemoryEmbeddings.requestSync(applicationContext)
+        frontDoorClassifier.warmUpAsync()
         // Construction is the publication barrier: no cold alarm sees this runtime until
         // both durable recovery passes finish, and neither pass starts new task work.
         if (durableTaskRecovery.recover(phoneTaskCoordinator::recoverAfterRestart, workflowCoordinator::recoverAfterRestart)) {
@@ -1054,7 +1058,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         val history = { conversationHistory.contextAfterMemoryCutoff() }
         ConversationCoordinator(runtimeScope, { mainHandler.post(it) }, { conversationHistory.current.value.id }, models,
             ConversationRouting(history, turnOrchestrator, models, { lastPhoneActionStatus },
-                { lastPhoneActionStatus = it }, diagnostics),
+                { lastPhoneActionStatus = it }, diagnostics,
+                frontDoor = { current, previous -> frontDoorClassifier.classify(current, previous) }),
             ConversationContextPreparation(history, memory, turnOrchestrator, models, references, diagnostics),
             ConversationGeneration(models, references, promptBuilder, { uri ->
                 openConversationAttachment(

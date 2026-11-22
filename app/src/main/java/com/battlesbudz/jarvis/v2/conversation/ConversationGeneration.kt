@@ -3,6 +3,7 @@ package com.battlesbudz.jarvis.v2.conversation
 import android.net.Uri
 import com.battlesbudz.jarvis.v2.ChatEntry
 import com.battlesbudz.jarvis.v2.actions.ActionRequest
+import com.battlesbudz.jarvis.v2.actions.ActionControlPolicy
 import com.battlesbudz.jarvis.v2.actions.ActionTurnPlan
 import com.battlesbudz.jarvis.v2.actions.ActionTurnRunner
 import com.battlesbudz.jarvis.v2.actions.ExecutionResult
@@ -84,7 +85,7 @@ internal class ConversationGeneration(
         turnOwnership?.checkCurrent()
         telemetry.attach(engine, prepared.history, prepared.captureReceipt)
         val allowTools = invocation.comparison == null && modelSession.selectedModel().supportsTools &&
-            (routed.actionPlan is ActionTurnPlan.Ready || invocation.directVoiceAudio)
+            (routed.actionPlan is ActionTurnPlan.Ready || invocation.directVoiceAudio || routed.frontDoor?.toolsOffered == true)
         // Split the tool-policy transition. The accounting half applies now:
         // when the policy will flip, the native conversation is about to reset,
         // so this turn's prompt must re-seed history (matching the speculation
@@ -353,6 +354,7 @@ internal class ConversationGeneration(
         guardVisionPerceptionClaim(draft, input, hasVisualInput, retryPromptBase)
         guardMemoryDisregard(draft, input, turnPrompt)
         guardMemoryCompleteness(draft, input, turnPrompt)
+        guardActionCompletionClaim(draft, input, retryPromptBase, executedActions)
         captureReplayTurn(invocation, routed, prepared, promptHistory, turnPrompt, submission,
             seedContextRequested, promptContext, visionSnapshot, visionSource, directAudio, executedActions)
         return draft
@@ -517,6 +519,26 @@ internal class ConversationGeneration(
     }
 
     /**
+     * Admits model proposals only when the front door offered tools; a confident discussion
+     * signal removes exact-approval proposals before they can produce an approval card.
+     */
+    private fun frontDoorPlanFromCalls(draft: ConversationDraft): ActionTurnPlan.Ready? {
+        val verdict = draft.answer.routed.frontDoor
+        if (verdict == null || !verdict.toolsOffered || draft.generated.toolCalls.isEmpty()) return null
+        val steps = draft.generated.toolCalls.mapNotNull { call ->
+            val request = NativeActionDecoder.decodeStrict(call) ?: return@mapNotNull null
+            if (verdict.vetoConfident && ActionControlPolicy.requiresExactApproval(request)) {
+                diagnostics.summary("Front-door veto step=${request.name} reason=discussion_signal")
+                return@mapNotNull null
+            }
+            ActionTurnPlan.Step(request, draft.answer.invocation.prompt)
+        }.take(3)
+        if (steps.isEmpty()) return null
+        diagnostics.summary("Front-door tool plan steps=${steps.map { it.request.name }}")
+        return ActionTurnPlan.Ready(steps)
+    }
+
+    /**
      * The intent half of the direct-audio native gate — the tool-intent hard
      * block. [AudioToolGuard] compares a model's call only against an
      * allowlist and its own arguments, never against what the turn actually
@@ -595,8 +617,11 @@ internal class ConversationGeneration(
         // drains first. Harmless after a successful promote (already drained).
         invocation.nativeSpeculation?.beforeNativeMutation()
         recoverLegacyMarkupCall(draft)
-        val plan = answer.routed.actionPlan as? ActionTurnPlan.Ready
-            ?: audioPlanFromCalls(draft) ?: legacyMarkupPlan(draft) ?: return ExecutedActions(emptyList(), emptyList())
+        val routedPlan = answer.routed.actionPlan as? ActionTurnPlan.Ready
+        val audioPlan = if (routedPlan == null) audioPlanFromCalls(draft) else null
+        val frontDoorPlan = if (routedPlan == null && audioPlan == null) frontDoorPlanFromCalls(draft) else null
+        val plan = routedPlan ?: audioPlan ?: frontDoorPlan ?: legacyMarkupPlan(draft)
+            ?: return ExecutedActions(emptyList(), emptyList())
         if (draft.generated.toolCalls.isEmpty()) {
             draft.actionResultMessage = "I couldn't verify the requested phone actions."
             return ExecutedActions(plan.steps, emptyList())
@@ -619,7 +644,11 @@ internal class ConversationGeneration(
             draft.actionResultMessage = "I couldn't verify the requested phone actions."
             return ExecutedActions(plan.steps, emptyList())
         }
-        val outcome = phoneActions.runNative(plan, draft.generated.toolCalls, nextCalls = { batch ->
+        val vetoFrontDoorCalls = frontDoorPlan != null && answer.routed.frontDoor?.vetoConfident == true
+        fun callsAfterFrontDoorVeto(calls: List<ToolCall>) = if (!vetoFrontDoorCalls) calls else calls.filterNot { call ->
+            NativeActionDecoder.decodeStrict(call)?.let(ActionControlPolicy::requiresExactApproval) == true
+        }
+        val outcome = phoneActions.runNative(plan, callsAfterFrontDoorVeto(draft.generated.toolCalls), nextCalls = { batch ->
             val results = batch.map { receipt ->
                 ToolCall(receipt.request.name, JSONObject(receipt.request.arguments).toString()) to
                     promptBuilder.buildToolResultContext(invocation.prompt, receipt.request.name, receipt.result.message,
@@ -627,7 +656,7 @@ internal class ConversationGeneration(
             }
             draft.generated = answer.engine.sendToolResults(results, answer.streamFilter::accept)
             answer.telemetry.record("tool response", draft.generated, answer.submittedPrompt.length)
-            draft.generated.toolCalls
+            callsAfterFrontDoorVeto(draft.generated.toolCalls)
         }, onNeedsApproval = onNeedsApproval)
         draft.actionName = plan.steps.joinToString(",") { it.request.name }
         draft.actionResultMessage = outcome.message
@@ -782,6 +811,39 @@ internal class ConversationGeneration(
             GenerationResult(AudioAccessRefusal.FALLBACK, -1L, null)
         } else {
             diagnostics.summary("Audio access refusal guard outcome=regenerated stage=generation")
+            regenerated
+        }
+    }
+
+    /**
+     * A proposal is not an action receipt: the build 1972 model claimed it sent Andrea a message
+     * even though the NotAction route never offered tools. Regenerate such claims when this turn
+     * carried action intent and no executor receipt proves a phone action ran.
+     */
+    private suspend fun guardActionCompletionClaim(
+        draft: ConversationDraft,
+        input: ConversationInput,
+        fullPrompt: String,
+        executedActions: ExecutedActions,
+    ) {
+        draft.answer.turnOwnership?.checkCurrent()
+        if (draft.actionResultMessage != null || executedActions.receipts.isNotEmpty()) return
+        val routed = draft.answer.routed
+        val actionIntended = routed.frontDoor?.actIntended == true ||
+            routed.actionPlan is ActionTurnPlan.Ready || draft.answer.invocation.directVoiceAudio
+        if (!actionIntended || !ActionCompletionClaim.isClaim(AssistantText.forDisplay(draft.generated.text))) return
+        val answer = draft.answer
+        modelSession.reset()
+        answer.engine.setToolsEnabled(false)
+        answer.engine.benchmarkPurpose = PipelineBenchmarkPurpose.RETRY
+        val prompt = fullPrompt + ActionCompletionClaim.CORRECTION
+        val regenerated = input.retry(answer.engine, prompt, answer.streamFilter::accept)
+        answer.telemetry.record("action completion claim retry", regenerated, fullPrompt.length)
+        draft.generated = if (ActionCompletionClaim.isClaim(AssistantText.forDisplay(regenerated.text))) {
+            diagnostics.summary("Action completion claim guard outcome=fallback stage=generation")
+            GenerationResult(ActionCompletionClaim.FALLBACK, -1L, null)
+        } else {
+            diagnostics.summary("Action completion claim guard outcome=regenerated stage=generation")
             regenerated
         }
     }
