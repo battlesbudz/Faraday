@@ -137,9 +137,9 @@ class ConversationGenerationTest {
                                               summaryLog: MutableList<String>? = null,
                                               directAudio: Boolean = true,
                                               onNeedsApproval: (suspend (ActionRequest) -> com.battlesbudz.jarvis.v2.actions.ExecutionResult)? = null,
-                                              sessionProbe: (ConversationModelSession) -> Unit = {},
                                               frontDoor: FrontDoorVerdict? = null,
-                                              promptText: String = "Hello"): ConversationDraft {
+                                              promptText: String = "Hello",
+                                              sessionProbe: (ConversationModelSession) -> Unit = {}): ConversationDraft {
         val diagnostics = ConversationDiagnostics({}, {}, { line -> summaryLog?.add(line) }, {})
         val memory = MemoryDeliveryFence()
         val input = ConversationInvocation(promptText, emptyList(), voiceAudio = audio,
