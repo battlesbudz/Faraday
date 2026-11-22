@@ -112,7 +112,8 @@ internal fun ActionRequest.isRoutineEligible() = when (name) {
  */
 internal fun ActionRequest.isDispatchEligible(authority: ToolAuthority): Boolean =
     ActionControlPolicy.admissionBlockReason(this) == null &&
-        (if (ActionControlPolicy.requiresExactApproval(this)) authority == ToolAuthority.EXACT_APPROVAL
+        (if (ActionControlPolicy.requiresExactApproval(this)) authority == ToolAuthority.EXACT_APPROVAL ||
+            (name == "post_notification" && authority == ToolAuthority.ROUTINE && isRoutineEligible())
         else isRoutineEligible() || (authority == ToolAuthority.EXACT_APPROVAL &&
             (name in SCREEN_MUTATION_TOOLS || name in BROWSE_APPROVAL_TOOLS ||
                 name in SANDBOX_APPROVAL_TOOLS)))

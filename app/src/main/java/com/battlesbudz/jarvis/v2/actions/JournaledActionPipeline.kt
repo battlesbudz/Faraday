@@ -33,9 +33,16 @@ class JournaledActionPipeline(
 
     fun execute(request: ActionRequest): ExecutionResult {
         val frozenRequest = request.copy(arguments = request.arguments.toMap())
-        if (ActionControlPolicy.requiresExactApproval(frozenRequest)) return ExecutionResult(
-            ExecutionResult.Outcome.REJECTED_VALIDATION,
-            "This action needs its own exact approval. I didn't start it.")
+        if (ActionControlPolicy.requiresExactApproval(frozenRequest)) {
+            // Preserve the locked-device handoff for sensitive actions before
+            // rejecting this unapproved direct-dispatch path.
+            val gate = lockGate
+            if (gate != null && gate.check(frozenRequest) == LockVerdict.NEEDS_UNLOCK) return ExecutionResult(
+                ExecutionResult.Outcome.NEEDS_UNLOCK, gate.unlockMessage(frozenRequest))
+            return ExecutionResult(
+                ExecutionResult.Outcome.REJECTED_VALIDATION,
+                "This action needs its own exact approval. I didn't start it.")
+        }
         val validation = MobileActionValidator().validate(frozenRequest)
         if (validation is ActionValidation.Rejected) return ExecutionResult(ExecutionResult.Outcome.REJECTED_VALIDATION, validation.reason)
         val running = try {
