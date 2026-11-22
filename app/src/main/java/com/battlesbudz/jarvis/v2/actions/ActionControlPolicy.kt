@@ -37,11 +37,13 @@ object ActionControlPolicy {
         return Disposition.AGENT_ACTION
     }
 
-    fun approvalClass(request: ActionRequest): ApprovalClass = when {
-        admissionBlockReason(request) != null -> ApprovalClass.NO_AGENT_AUTHORITY
-        request.name == "browse_submit" -> ApprovalClass.BOUND_ACTION
-        requiresExactApproval(request) -> ApprovalClass.EXACT_ACTION
-        else -> ApprovalClass.TASK_READ
+    fun approvalClass(request: ActionRequest): ApprovalClass {
+        if (admissionBlockReason(request) != null) return ApprovalClass.NO_AGENT_AUTHORITY
+        return MobileToolCatalog.find(request.name)?.declaration?.approvalClass ?: when {
+            request.name == "browse_submit" -> ApprovalClass.BOUND_ACTION
+            disposition(request) == Disposition.NEEDS_EXACT_APPROVAL -> ApprovalClass.EXACT_ACTION
+            else -> ApprovalClass.TASK_READ
+        }
     }
 
     fun actionClass(request: ActionRequest): ActionClass {
@@ -55,12 +57,12 @@ object ActionControlPolicy {
                 ActionClass.EXTERNAL_EFFECT
             name in SCREEN_MUTATION_TOOLS || name in setOf("change_setting", "purchase", "checkout") ->
                 ActionClass.APP_MUTATION
-            else -> ActionClass.READ_ONLY
+            else -> MobileToolCatalog.find(request.name)?.declaration?.risk ?: ActionClass.READ_ONLY
         }
     }
 
     fun requiresExactApproval(request: ActionRequest): Boolean =
-        disposition(request) == Disposition.NEEDS_EXACT_APPROVAL
+        approvalClass(request) in setOf(ApprovalClass.EXACT_ACTION, ApprovalClass.BOUND_ACTION)
 
     /** Text observed in an operated app is evidence only and cannot grant task authority. */
     fun screenContentCanAuthorizeTask(): Boolean = false

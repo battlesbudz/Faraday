@@ -57,6 +57,10 @@ object MobileToolCatalog {
         val description: String,
         val parameters: List<Parameter> = emptyList()
     ) {
+        /** Per-tool policy metadata is part of this catalog entry, not a second registry. */
+        val declaration: OperatedActionDeclaration?
+            get() = OperatedActionDeclaration.forCatalogTool(this)
+
         fun schemaJson(): String = buildString {
             append("{\"name\":").append(JSONObject.quote(name))
             append(",\"description\":").append(JSONObject.quote(description))
@@ -404,13 +408,19 @@ object MobileToolCatalog {
      * Model-visible tools. Runtime-backed tool families stay withheld until
      * their production dispatch path is installed.
      */
-    fun all(): List<Tool> = entries.filter { tool ->
+    fun all(): List<Tool> = entries.onEach(::register).filter { tool ->
         (BrowserRuntimeGate.wired || tool.name !in BROWSE_TOOL_NAMES) &&
             (WebReadRuntimeGate.wired || tool.name !in WEB_READ_TOOL_NAMES)
     }
 
     /** Storage/decode lookup: still resolves every catalog tool, including gated browse tools. */
-    fun find(name: String): Tool? = entries.firstOrNull { it.name == name }
+    fun find(name: String): Tool? = entries.firstOrNull { it.name == name }?.also(::register)
+
+    /** Registration fails closed when any operated-action contract field is absent or invalid. */
+    internal fun register(tool: Tool): Tool {
+        OperatedActionDeclaration.requireComplete(tool, tool.declaration)
+        return tool
+    }
 
     /** Strict decoder contract: exact keys and JSON types only, with no coercion. */
     fun decodeStrict(name: String, arguments: JSONObject): ActionRequest? {
