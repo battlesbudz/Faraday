@@ -60,7 +60,10 @@ internal class OmniSpeechStack(
  * supplies a default list and none is invented here. The caller (the U5
  * call owner, which loads the codec graph file) reads them from the graph
  * signature and passes them in; [CompiledCodecDecoder] binds each state's
- * `${name}_out` output the same way. Depth runs on [depthOptions] (GPU fp16
+ * `${name}_out` output the same way. The state element counts
+ * ([codecStateSizes]) come from the verified sections map via
+ * [OmniCodecStatePlan], validated against those names — the load path
+ * never queries the graph's tensor types (see [OmniStatePlan]). Depth runs on [depthOptions] (GPU fp16
  * on Qualcomm per DESIGN section 2); frame embedding and the codec decoder
  * run on CPU per the same section, each with its own [OmniRuntime.cpuOptions]
  * (a per-graph XNNPACK weight-cache file — the options are not shareable
@@ -77,6 +80,7 @@ internal object OmniSpeechOutputFactory {
         codecOptions: CompiledModel.Options,
         environment: Environment,
         codecStateNames: List<String>,
+        codecStateSizes: Map<String, Int>,
         codecWindow: FloatArray,
         sink: OmniPcmSink,
         frameEmbedSignature: String = "frame_embed",
@@ -98,7 +102,7 @@ internal object OmniSpeechOutputFactory {
         val frame = CompiledFrameEmbedder(frameFile, frameOptions, environment, frameEmbedSignature)
         onStage("speechStage=frameCreated")
         onStage("speechStage=codecCreateStarted")
-        val codec = CompiledCodecDecoder(codecFile, codecOptions, environment, codecStateNames)
+        val codec = CompiledCodecDecoder(codecFile, codecOptions, environment, codecStateNames, codecStateSizes)
         onStage("speechStage=codecCreated")
         val stream = OmniCodecStream(codec, codecWindow, sink)
         return OmniSpeechStack(OmniSpeechGenerator(OmniSpeechLmAdapter(runner), depth, frame, stream), depth, frame, codec)

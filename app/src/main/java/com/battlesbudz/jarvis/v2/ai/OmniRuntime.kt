@@ -163,6 +163,39 @@ internal object OmniRuntime {
         return target
     }
 
+    /** The pinned audio-encoder geometry from the verified sections map (see [OmniAudioPlan]). */
+    fun audioPlan(context: Context): OmniAudioPlan {
+        val encode = readMap(context).getJSONObject("audio_signatures").getJSONObject("encode")
+        return OmniAudioPlan.build(
+            windowSamples = encode.getInt("audio_elements"),
+            hiddenSize = encode.getInt("features_hidden"),
+        )
+    }
+
+    /**
+     * The pinned codec state element counts from the verified sections map
+     * (see [OmniCodecStatePlan]). Keys are returned in map order; the plan
+     * build validates them against the graph's own signature names.
+     */
+    fun codecStateElements(context: Context): Map<String, Int> {
+        val elements = readMap(context).getJSONObject("codec_signatures")
+            .getJSONObject("decode").getJSONObject("state_elements")
+        val keys = elements.keys()
+        val out = LinkedHashMap<String, Int>()
+        while (keys.hasNext()) {
+            val name = keys.next()
+            out[name] = elements.getInt(name)
+        }
+        return out
+    }
+
+    /** The sections map, gated on the same compiled-in bundle pin every other map consumer checks. */
+    private fun readMap(context: Context): JSONObject {
+        val map = JSONObject(context.assets.open(MAP_ASSET).bufferedReader().use { it.readText() })
+        require(map.getString("bundle_sha256") == BUNDLE_SHA) { "Unexpected LFM3 bundle map revision" }
+        return map
+    }
+
     /** Verifies the pinned bundle, extracts decoder/embedder and inflates its tokenizer exactly once per file revision. */
     fun open(context: Context, bundle: File, cacheRoot: File = File(context.filesDir, "lfm3_sections")): OmniEngine {
         val components = openBundleComponents(context, bundle, cacheRoot)

@@ -8,11 +8,17 @@ import java.io.File
  * Drives the `audio/encode` graph in the Omni bundle. Keep this on OmniRuntime's
  * serial worker: CompiledModel instances and their reusable buffers are not
  * thread-safe. Input is normalized PCM16k mono represented as float samples.
+ *
+ * The graph's tensor geometry comes from [OmniAudioPlan] (verified sections
+ * map), never from CompiledModel tensor-type queries — the load-path rule
+ * the decoder init established (see [OmniStatePlan]). The buffer creations
+ * below are the init's first native calls after the model create.
  */
 internal class OmniAudioEncoder(
     sectionFile: File,
     environment: Environment,
     options: CompiledModel.Options,
+    plan: OmniAudioPlan,
 ) : AutoCloseable {
     private val model = CompiledModel.create(
         sectionFile.absolutePath,
@@ -23,9 +29,8 @@ internal class OmniAudioEncoder(
     private val audioInput = model.createInputBuffer("audio", signature)
     private val featuresOutput = model.createOutputBuffer("features", signature)
     private val maskOutput = model.createOutputBuffer("mask", signature)
-    private val audioWindowSamples = tensorElements(model.getInputTensorType("audio", signature))
-    private val hiddenSize = model.getOutputTensorType("features", signature).layout
-        ?.dimensions?.lastOrNull() ?: error("Omni audio features tensor has no hidden dimension")
+    private val audioWindowSamples = plan.windowSamples
+    private val hiddenSize = plan.hiddenSize
 
     init {
         require(audioWindowSamples > 0) { "Omni audio encoder has an empty audio input" }
@@ -61,10 +66,6 @@ internal class OmniAudioEncoder(
         model.close()
     }
 
-    private fun tensorElements(type: com.google.ai.edge.litert.TensorType): Int =
-        type.layout?.dimensions?.fold(1) { size, dimension -> size * dimension }
-            ?: error("Omni audio tensor has no layout")
-
     internal companion object {
         const val SAMPLE_RATE_HZ = 16_000
         const val MAX_INPUT_MS = 30_000
@@ -78,6 +79,37 @@ internal class OmniAudioEncoder(
                 val high = pcm16[index * 2 + 1].toInt()
                 ((high shl 8) or low).toShort().toInt() / 32768f
             }
+        }
+    }
+}
+
+/**
+ * The audio encoder's tensor geometry: the `encode` signature's fixed input
+ * window and its feature width. Constants of the pinned bundle's audio
+ * graph, read out of its flatbuffer once, offline, and carried in the
+ * verified sections map (lfm3_omni_sections.json `audio_signatures` —
+ * bound to the bundle's SHA-256, which [OmniRuntime] checks before
+ * anything in the map is used): input `audio` is [1, 3000, 160] FLOAT32
+ * (480,000 elements — one 30-second window of 16 kHz samples, framed),
+ * output `features` is [1, 375, 2048] FLOAT32 (hidden size 2048).
+ *
+ * The encoder's init deliberately never queries the graph for them: the
+ * decoder init's tensor-type queries were the prime suspect in the
+ * 1944–1965 native deaths, and build 1966 removed every one of them from
+ * the load path (see [OmniStatePlan]). The encoder was the next stage the
+ * call reaches, so its two queries go the same way.
+ */
+internal class OmniAudioPlan private constructor(
+    /** Element count of one full `encode` input window. */
+    val windowSamples: Int,
+    /** Last dimension of the `features` output: one encoded row's width. */
+    val hiddenSize: Int,
+) {
+    companion object {
+        fun build(windowSamples: Int, hiddenSize: Int): OmniAudioPlan {
+            require(windowSamples > 0) { "audio window must be positive" }
+            require(hiddenSize > 0) { "audio hidden size must be positive" }
+            return OmniAudioPlan(windowSamples, hiddenSize)
         }
     }
 }

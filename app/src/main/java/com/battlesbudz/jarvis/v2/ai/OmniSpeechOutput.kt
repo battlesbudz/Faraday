@@ -237,22 +237,51 @@ internal interface OmniCodecDecoder {
     fun reset()
 }
 
+/**
+ * The codec decoder's state geometry: the element count of every state
+ * tensor in the `decode` signature. Constants of the pinned codec graph,
+ * read out of its flatbuffer once, offline, and carried in the verified
+ * sections map (lfm3_omni_sections.json `codec_signatures`): the five
+ * short-convolution states c0–c4 are [1, 6, 512] FLOAT32 (3,072 elements)
+ * and the six attention caches k0–k2 / v0–v2 are [1, 2, 29, 64] FLOAT32
+ * (3,712 elements).
+ *
+ * [CompiledCodecDecoder.reset] zeroes its state buffers from these
+ * counts; the load path never queries the graph for them, for the same
+ * reason the decoder and audio-encoder geometry is pinned (see
+ * [OmniStatePlan]): tensor-type queries are out of the stack build.
+ */
+internal object OmniCodecStatePlan {
+    /**
+     * Validates the map's element counts against the state names read
+     * from the codec graph's own signature: coverage must be exact — a
+     * missing name would zero a state buffer to the wrong length, and an
+     * extra name means the map and the pinned graph have drifted apart.
+     * Both fail the stack build here, in managed code.
+     */
+    fun build(stateNames: List<String>, stateElements: Map<String, Int>): Map<String, Int> {
+        require(stateNames.isNotEmpty()) { "codec decoder has no state tensors" }
+        require(stateElements.keys == stateNames.toSet()) {
+            "codec state element map does not cover the signature state list exactly"
+        }
+        require(stateElements.values.all { it > 0 }) { "codec state element counts must be positive" }
+        return LinkedHashMap(stateElements)
+    }
+}
+
 /** Stateful f12 codec graph driver. The state tensor names are passed from the section signature catalog. */
 internal class CompiledCodecDecoder(
     file: File,
     options: CompiledModel.Options,
     env: Environment,
     private val stateNames: List<String>,
+    private val stateSizes: Map<String, Int>,
 ) : OmniCodecDecoder, AutoCloseable {
     private val model = CompiledModel.create(file.absolutePath, options, env)
     private val signature = "decode"
     private val codes = model.createInputBuffer("codes", signature)
     private val start = model.createInputBuffer("start", signature)
     private val frames = model.createOutputBuffer("frames", signature)
-    private val stateSizes = stateNames.associateWith { name ->
-        val dims = model.getInputTensorType(name, signature).layout?.dimensions ?: error("$name has no tensor layout")
-        dims.fold(1) { a, b -> a * b }
-    }
     private val state = Array(2) { stateNames.associateWith { model.createInputBuffer(it, signature) } }
     private var current = 0
     private var frameOffset = 0

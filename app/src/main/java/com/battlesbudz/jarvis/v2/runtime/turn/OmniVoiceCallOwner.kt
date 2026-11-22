@@ -11,6 +11,7 @@ import com.battlesbudz.jarvis.v2.ai.ModelStore
 import com.battlesbudz.jarvis.v2.ai.OmniAudioEncoder
 import com.battlesbudz.jarvis.v2.ai.OmniBundleComponents
 import com.battlesbudz.jarvis.v2.ai.OmniChatPrompt
+import com.battlesbudz.jarvis.v2.ai.OmniCodecStatePlan
 import com.battlesbudz.jarvis.v2.ai.OmniRuntime
 import com.battlesbudz.jarvis.v2.ai.OmniSpeechGenerator
 import com.battlesbudz.jarvis.v2.ai.OmniSpeechOutputFactory
@@ -28,8 +29,6 @@ import com.google.ai.edge.litert.Accelerator
 import com.google.ai.edge.litert.CompiledModel
 import java.io.File
 import java.io.RandomAccessFile
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -313,6 +312,17 @@ internal class OmniVoiceCallOwnerImpl(
             val codecStateNames = TfliteSignatureInputs.inputsFor(codecFile, "decode")
                 .filter { it != "codes" && it != "start" }
             require(codecStateNames.isNotEmpty()) { "Codec decoder has no state inputs in its 'decode' signature." }
+            // The speech graphs' tensor geometry comes from the verified
+            // sections map, never from CompiledModel tensor-type queries
+            // (the load-path rule the decoder init established in build
+            // 1966): the audio plan sizes the encoder's windowing, and the
+            // codec plan must cover the signature-derived state names
+            // exactly — a drifted map fails here, in managed code.
+            val codecStateSizes = OmniCodecStatePlan.build(
+                codecStateNames,
+                OmniRuntime.codecStateElements(context),
+            )
+            val audioPlan = OmniRuntime.audioPlan(context)
             val sink = OmniPcmQueueSink()
             val weightCacheDir = OmniRuntime.weightCacheDir(context)
             val built = withContext(components.dispatcher) {
@@ -320,6 +330,7 @@ internal class OmniVoiceCallOwnerImpl(
                 val encoder = OmniAudioEncoder(
                     audioSection, components.environment,
                     OmniRuntime.cpuOptions(audioSection, "audio", weightCacheDir),
+                    audioPlan,
                 )
                 diagnosticRecorder.recordOmniPrep("stackStage=audioEncoderReady")
                 val speechStack = OmniSpeechOutputFactory.createStack(
@@ -332,6 +343,7 @@ internal class OmniVoiceCallOwnerImpl(
                     codecOptions = OmniRuntime.cpuOptions(codecFile, "codec", weightCacheDir),
                     environment = components.environment,
                     codecStateNames = codecStateNames,
+                    codecStateSizes = codecStateSizes,
                     codecWindow = codecOverlapAddWindow(),
                     sink = sink,
                     onStage = { stage -> diagnosticRecorder.recordOmniPrep(stage) },
@@ -960,85 +972,106 @@ internal class OmniAudioTrackOutput(
  * must bind come from the file's `SignatureDef` table, exactly as the Wren
  * reference reads them from the loaded graph signature (`sig.inputs`).
  * Minimal flatbuffer reader: root table → `Model.signature_defs` (field 7)
- * → `SignatureDef.inputs` (field 2) → `TensorMap.name` (field 0).
+ * → `SignatureDef.signature_key` (field 2, matched) → `SignatureDef.inputs`
+ * (field 0) → `TensorMap.name` (field 0). Field ids are schema_v3b's, and
+ * every string/vector field is followed through its uoffset, as the format
+ * requires.
+ *
+ * Reads are seek-based against the real file, never a head window: the
+ * converter that produced the pinned speech graphs places at least one
+ * TensorMap vtable at the very end of the file (the codec graph's `codes`
+ * TensorMap vtable sits at byte 152,364,902 of 152,370,912), so any
+ * fixed-size prefix buffer reads past structures it must follow. Build
+ * 1966's reader also read the root offset from byte 4 — the "TFL3" file
+ * identifier, 860,636,756 as an integer — which is the exact
+ * "tflite offset 860636756 out of range" the device reported.
  */
 internal object TfliteSignatureInputs {
-    private const val HEAD_BYTES = 256 * 1024
-
     fun inputsFor(file: File, signatureKey: String): List<String> {
         require(file.isFile) { "Model file is missing: ${file.path}" }
-        val head = ByteArray(HEAD_BYTES)
         RandomAccessFile(file, "r").use { input ->
-            val read = input.read(head)
-            require(read == HEAD_BYTES) { "Model file too small to carry signatures: ${file.name}" }
+            val reader = Reader(input, file.length())
+            val rootPos = reader.u32(0).toInt()
+            val (defsPos, defsLen) = reader.vectorAt(rootPos, 7)
+            require(defsLen in 0 until 10_000) { "Model file ${file.name} has an implausible signature count" }
+            for (i in 0 until defsLen) {
+                val defPos = reader.tableAt(defsPos, i)
+                if (reader.stringAt(defPos, 2) != signatureKey) continue
+                val (inputsPos, inputsLen) = reader.vectorAt(defPos, 0)
+                require(inputsLen in 0 until 10_000) { "Model file ${file.name} has an implausible input count" }
+                return (0 until inputsLen).map { reader.stringAt(reader.tableAt(inputsPos, it), 0) }
+            }
+            error("Model file ${file.name} has no '$signatureKey' signature")
         }
-        val buffer = ByteBuffer.wrap(head).order(ByteOrder.LITTLE_ENDIAN)
-        val rootPos = u32(buffer, 4).toInt()
-        val (defsPos, defsLen) = vectorAt(buffer, rootPos, 7)
-        require(defsLen in 0 until 10_000) { "Model file ${file.name} has an implausible signature count" }
-        for (i in 0 until defsLen) {
-            val defPos = tableAt(buffer, defsPos, i)
-            if (stringAt(buffer, defPos, 0) != signatureKey) continue
-            val (inputsPos, inputsLen) = vectorAt(buffer, defPos, 2)
-            require(inputsLen in 0 until 10_000) { "Model file ${file.name} has an implausible input count" }
-            return (0 until inputsLen).map { stringAt(buffer, tableAt(buffer, inputsPos, it), 0) }
+    }
+
+    /** Little-endian primitive reads at absolute file positions, bounds-checked against the file length. */
+    private class Reader(private val input: RandomAccessFile, private val fileLength: Long) {
+        fun u32(pos: Int): Long {
+            requireRange(pos, 4)
+            input.seek(pos.toLong())
+            val bytes = ByteArray(4)
+            input.readFully(bytes)
+            return (bytes[0].toLong() and 0xff) or
+                ((bytes[1].toLong() and 0xff) shl 8) or
+                ((bytes[2].toLong() and 0xff) shl 16) or
+                ((bytes[3].toLong() and 0xff) shl 24)
         }
-        error("Model file ${file.name} has no '$signatureKey' signature")
-    }
 
-    private fun u32(buffer: ByteBuffer, pos: Int): Long {
-        requireRange(buffer, pos, 4)
-        return buffer.getInt(pos).toLong() and 0xffffffffL
-    }
+        fun u16(pos: Int): Int {
+            requireRange(pos, 2)
+            input.seek(pos.toLong())
+            return input.read() or (input.read() shl 8)
+        }
 
-    private fun u16(buffer: ByteBuffer, pos: Int): Int {
-        requireRange(buffer, pos, 2)
-        return buffer.getShort(pos).toInt() and 0xffff
-    }
+        fun i32(pos: Int): Int = u32(pos).toInt()
 
-    private fun i32(buffer: ByteBuffer, pos: Int): Int {
-        requireRange(buffer, pos, 4)
-        return buffer.getInt(pos)
-    }
+        private fun requireRange(pos: Int, len: Int) {
+            require(pos >= 0 && pos.toLong() + len <= fileLength) { "tflite offset $pos out of range" }
+        }
 
-    private fun requireRange(buffer: ByteBuffer, pos: Int, len: Int) {
-        require(pos >= 0 && pos + len <= buffer.limit()) { "tflite offset $pos out of range" }
-    }
+        /** Absolute position of a table field's value slot, or 0 when the field is absent. */
+        private fun tableField(tablePos: Int, fieldId: Int): Int {
+            val vtable = tablePos - i32(tablePos)
+            require(vtable >= 0) { "tflite vtable before table at $tablePos" }
+            val vtableLen = u16(vtable)
+            val fieldPos = vtable + 4 + fieldId * 2
+            if (fieldPos + 2 > vtable + vtableLen) return 0
+            return u16(fieldPos)
+        }
 
-    /** Absolute position of a table field's value, or 0 when the field is absent. */
-    private fun tableField(buffer: ByteBuffer, tablePos: Int, fieldId: Int): Int {
-        val vtable = tablePos - i32(buffer, tablePos)
-        require(vtable >= 0) { "tflite vtable before table at $tablePos" }
-        val vtableLen = u16(buffer, vtable)
-        val fieldPos = vtable + 4 + fieldId * 2
-        if (fieldPos + 2 > vtable + vtableLen) return 0
-        return u16(buffer, fieldPos)
-    }
+        /** Follows a field's uoffset to the position of the data it points at. */
+        private fun deref(tablePos: Int, fieldId: Int): Int {
+            val off = tableField(tablePos, fieldId)
+            require(off != 0) { "tflite table at $tablePos has no field $fieldId" }
+            val slotPos = tablePos + off
+            return slotPos + u32(slotPos).toInt()
+        }
 
-    private fun stringAt(buffer: ByteBuffer, tablePos: Int, fieldId: Int): String {
-        val off = tableField(buffer, tablePos, fieldId)
-        require(off != 0) { "tflite table at $tablePos has no field $fieldId" }
-        val strPos = tablePos + off
-        val len = u32(buffer, strPos).toInt()
-        requireRange(buffer, strPos + 4, len)
-        val bytes = ByteArray(len)
-        for (i in bytes.indices) bytes[i] = buffer.get(strPos + 4 + i)
-        return String(bytes, Charsets.UTF_8)
-    }
+        fun stringAt(tablePos: Int, fieldId: Int): String {
+            val strPos = deref(tablePos, fieldId)
+            val len = u32(strPos).toInt()
+            requireRange(strPos + 4, len)
+            val bytes = ByteArray(len)
+            input.seek(strPos.toLong() + 4)
+            input.readFully(bytes)
+            return String(bytes, Charsets.UTF_8)
+        }
 
-    /** (element position, length) of a vector field. */
-    private fun vectorAt(buffer: ByteBuffer, tablePos: Int, fieldId: Int): Pair<Int, Int> {
-        val off = tableField(buffer, tablePos, fieldId)
-        require(off != 0) { "tflite table at $tablePos has no field $fieldId" }
-        val vecPos = tablePos + off
-        val len = u32(buffer, vecPos).toInt()
-        requireRange(buffer, vecPos + 4, len * 4)
-        return vecPos + 4 to len
-    }
+        /** (element position, length) of a vector field. */
+        fun vectorAt(tablePos: Int, fieldId: Int): Pair<Int, Int> {
+            val vecPos = deref(tablePos, fieldId)
+            val len = u32(vecPos).toInt()
+            require(len >= 0 && vecPos.toLong() + 4 + len.toLong() * 4 <= fileLength) {
+                "tflite offset $vecPos out of range"
+            }
+            return vecPos + 4 to len
+        }
 
-    private fun tableAt(buffer: ByteBuffer, vecPos: Int, index: Int): Int {
-        val elemPos = vecPos + index * 4
-        return elemPos + u32(buffer, elemPos).toInt()
+        fun tableAt(vecPos: Int, index: Int): Int {
+            val elemPos = vecPos + index * 4
+            return elemPos + u32(elemPos).toInt()
+        }
     }
 }
 
