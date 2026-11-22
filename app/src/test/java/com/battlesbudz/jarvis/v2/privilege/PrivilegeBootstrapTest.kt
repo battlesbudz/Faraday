@@ -60,7 +60,7 @@ class PrivilegeBootstrapTest {
             helperResponsive = { responsive },
             pairingValid = { true },
             recoveryConsentGranted = { consented },
-            requestConsentedRecovery = { recoveryCalls++; responsive }
+            requestConsentedRecovery = { recoveryCalls++; responsive = true; true }
         )
         assertEquals("present", watchdog.refresh().report())
         assertEquals(0, recoveryCalls)
