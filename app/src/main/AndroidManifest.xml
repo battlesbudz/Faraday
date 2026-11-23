@@ -92,6 +92,12 @@
             <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
             <meta-data android:name="android.accessibilityservice" android:resource="@xml/screen_control_service" />
         </service>
+        <service android:name=".perception.OperatedTreeAccessibilityService" android:exported="true"
+            android:label="Faraday operated app observation"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/operated_tree_accessibility_service" />
+        </service>
         <service android:name=".voice.VoiceCallService" android:exported="false"
             android:foregroundServiceType="microphone|mediaPlayback" />
         <!-- M7: external-agent endpoint. Other on-device apps bind here to call
