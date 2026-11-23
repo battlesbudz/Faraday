@@ -6,7 +6,10 @@ import com.battlesbudz.jarvis.v2.perception.ObservedNode
 import com.battlesbudz.jarvis.v2.perception.OperatedObservation
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 class OperatedTapTest {
     private val display = OperatedDisplayIdentity(12, "task-1", "YouTube")
     private fun observation(hash: String = "screen-a", nodes: List<ObservedNode> = facts) =
