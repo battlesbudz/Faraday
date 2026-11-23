@@ -9,6 +9,11 @@ The package was changed for Faraday and attribution comments were added. A copy 
 2.0 is included at `app/src/main/assets/licenses/smart-turn/Apache-2.0.txt`;
 the upstream LICENSE is at https://github.com/wangzan101/Mika/blob/2ca391c4c868/LICENSE.
 
+`AndroidAdbExecTransport.kt` adapts Mika's ADB connection and packet framing
+from `AdbConnection.kt`, `AdbMessage.kt`, and `AdbTls.kt` at the same revision.
+The transport protocol is adapted to Faraday's durable identity and helper
+launch contract; Mika's Apache-2.0 license applies to the adapted portions.
+
 ## Mika shell-helper handoff reference
 
 `PrivilegeHelperMain.kt` adapts the app_process handoff pattern and shell-context

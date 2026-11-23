@@ -1,6 +1,7 @@
 package com.battlesbudz.jarvis.v2.privilege
 
 import android.os.Binder
+import android.content.Intent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -45,5 +46,13 @@ class HelperHandoffTest {
         assertEquals(false, ShellPrivilegePolicy.ownsDisplay(9, setOf(8)))
         assertEquals(false, ShellPrivilegePolicy.mayUseClipboard(false))
         assertEquals(true, ShellPrivilegePolicy.mayUseClipboard(true))
+    }
+
+    @Test fun bootAndPackageReplacementKeepPreciseRestoreReasons() {
+        assertEquals("helper session is not active after reboot; wireless-debugging recovery is required",
+            privilegeRestoreReason(Intent.ACTION_BOOT_COMPLETED))
+        assertEquals("helper session must be reattached after app replacement",
+            privilegeRestoreReason(Intent.ACTION_MY_PACKAGE_REPLACED))
+        assertEquals(null, privilegeRestoreReason("unrelated"))
     }
 }

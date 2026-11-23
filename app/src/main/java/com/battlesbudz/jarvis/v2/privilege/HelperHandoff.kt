@@ -61,7 +61,12 @@ internal object HelperHandoff {
 
 /** Internal provider, reached by shell via ActivityManager.getContentProviderExternal. */
 class PrivilegeHandoffProvider : ContentProvider() {
-    override fun onCreate() = true
+    override fun onCreate(): Boolean {
+        val saved = context?.getSharedPreferences("app_control_privilege", android.content.Context.MODE_PRIVATE)
+            ?.getString("helper_next_nonce", null)
+        if (!saved.isNullOrBlank()) PrivilegeHandoffState.pending.compareAndSet(null, saved)
+        return true
+    }
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle {
         if (method != HelperHandoff.ATTACH || extras == null) return reject("bad-nonce")
         val nonce = extras.getString(HelperHandoff.NONCE)
@@ -93,10 +98,15 @@ class PrivilegeHandoffProvider : ContentProvider() {
         val token = PrivilegeHandoffState.appToken
         val death = object : IBinder.DeathRecipient { override fun binderDied() { PrivilegeHandoffState.helperDied() } }
         try { binder!!.linkToDeath(death, 0) } catch (_: Throwable) { return reject("binder-elsewhere") }
+        val persisted = context?.getSharedPreferences("app_control_privilege", android.content.Context.MODE_PRIVATE)
+            ?.edit()?.putString("helper_next_nonce", next)?.commit() == true
+        if (!persisted) {
+            runCatching { binder.unlinkToDeath(death, 0) }
+            return reject("bad-nonce")
+        }
         PrivilegeHandoffState.helper.set(binder)
         PrivilegeHandoffState.pending.set(next)
-        context?.getSharedPreferences("app_control_privilege", android.content.Context.MODE_PRIVATE)
-            ?.edit()?.putString("helper_next_nonce", next)?.apply()
+        PrivilegeHandoffState.onHelperAttached?.invoke()
         return Bundle().apply {
             putBoolean(HelperHandoff.ACCEPTED, true)
             putBinder(HelperHandoff.TOKEN, token)
@@ -117,6 +127,7 @@ internal object PrivilegeHandoffState {
     val pending = AtomicReference<String?>(null)
     val helper = AtomicReference<IBinder?>(null)
     val appToken: IBinder = Binder()
+    @Volatile var onHelperAttached: (() -> Unit)? = null
     @Volatile var onHelperDeath: (() -> Unit)? = null
     fun helperDied() { helper.set(null); onHelperDeath?.invoke() }
 }

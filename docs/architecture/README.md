@@ -30,6 +30,7 @@ for the decision to keep package/collaborator boundaries before adding build mod
 | `ui/WispPresence` / `WispPresenter` / `WispCharacter` | App-level observation, deterministic pose policy and native drawing; never owns or starts calls/actions |
 | `presentation/AgentActivityMonitor` | Ephemeral turn/read leases and sequence-fenced public progress; safe tool metadata and terminal errors, never answer/reasoning tokens or operation authority |
 | `privilege/PrivilegeSupervisor` / `PrivilegeHandoffProvider` / `PrivilegeHelperMain` | A1 helper liveness/recovery scheduling, one-shot shell-UID ContentProvider handoff and shell-side closed AIDL enforcement; runtime operations remain blocked unless the live helper binder is established |
+| `privilege/AndroidAdbExecTransport` / `privilege/AdbIdentityRecord` | A1 paired-TLS ADB `exec:` channel (Mika-adapted connection/framing) and versioned, atomically-stored ADB identity shared by pairing and exec reconnects |
 | `JarvisAppComposition` | Compatibility composition adapter supplying only benchmark-store and call-evidence dependencies to UI |
 | `JarvisRuntime.get(applicationContext)` | Process composition/lifecycle facade wiring typed owners/ports, shared history and compatibility entry adapters |
 | `runtime/turn/VoiceTurnRunner` | Admits and orders typed voice stages, with fenced terminal errors/rearm policy; resource release belongs to finalizer |

@@ -128,7 +128,7 @@ The full A1 record also includes the attempt-2 files listed above: `app/build.gr
 - Reboot: helper returns or reports a precise blocked state — **AWAITING DEVICE PROOF**.
 - Revoke the helper: operation stops instead of falling back — **AWAITING DEVICE PROOF**.
 
-## v6 source pass — PARTIAL; no execution checks run
+## v6 source pass — integrated source; execution checks intentionally not run
 
 Source changes in this pass add the exported `.helper` handoff provider and
 single-use nonce validation, shell `app_process` entry/backend, persisted RSA
@@ -144,18 +144,58 @@ reason plus accepted validation, command-line nonce exclusion, and the shell
 permission/display/clipboard policy. Existing pairing/watchdog tests remain
 untouched. No build, test, git, or publish command was run.
 
-**The v6 runtime path is not yet operational end to end.** `PrivilegeSupervisor`
-re-discovers the wireless-debugging endpoint on each consented recovery attempt,
-but the repo's pairing transport has no authenticated ADB `exec:` channel, so
-it currently records `paired ADB exec channel is unavailable` and does not
-launch `HelperHandoff.command`. Therefore the helper cannot be established by
-this source pass; no device-proof claim is made. The next code gap is the
-paired TLS ADB connect/auth/shell stream and wiring it to the detached launch
-command. After that, the Fold 6 cases above remain required. The AIDL clipboard
-event shape and the precise event payload schema for `injectInput(Bundle)` are
-not specified by the charter; this pass supports only the explicit `tap` and
-`key` bundle forms and keeps clipboard access closed until S10 supplies its
-single-task lock.
+## v7 source pass — paired ADB exec and helper recovery wired; no execution checks run
+
+Files added or changed for this pass:
+
+- `app/src/main/java/com/battlesbudz/jarvis/v2/privilege/AndroidAdbExecTransport.kt` — paired TLS ADB connect/auth handshake and detached `exec:` stream.
+- `app/src/main/java/com/battlesbudz/jarvis/v2/privilege/AdbIdentityRecord.kt` — versioned, atomic app-private identity record.
+- `app/src/main/java/com/battlesbudz/jarvis/v2/privilege/PrivilegeSupervisor.kt` — consented helper launch, endpoint rediscovery and live attach/death state.
+- `app/src/main/java/com/battlesbudz/jarvis/v2/privilege/HelperHandoff.kt` — startup nonce restore and durable successor-nonce handoff.
+- `app/src/main/java/com/battlesbudz/jarvis/v2/privilege/PrivilegeBootReceiver.kt` — shared boot/package-replacement reason mapping.
+- `app/src/main/java/com/battlesbudz/jarvis/v2/privilege/PrivilegeHelperMain.kt` — shell backend operation completion and display-owned input/task enforcement.
+- `app/src/main/java/com/battlesbudz/jarvis/v2/privilege/AndroidAdbPairingTransport.kt` — durable record lifecycle and paired-consent persistence.
+- `app/src/test/java/com/battlesbudz/jarvis/v2/privilege/AdbIdentityRecordTest.kt` — identity round trip, missing/corrupt record and version mismatch cases.
+- `app/src/test/java/com/battlesbudz/jarvis/v2/privilege/HelperHandoffTest.kt` — boot and package replacement restore-reason cases.
+- `THIRD_PARTY_NOTICES.md` — Mika ADB connection/framing attribution.
+- `GATE-A1.md` — this source-pass record.
+
+`AndroidAdbExecTransport.kt` now performs the ADB `CNXN`/`STLS` handshake,
+TLS 1.3 mutual-certificate connect using the persisted pairing identity, post-TLS
+`CNXN`, and an `exec:` multiplexed stream. It sends the one-time handoff nonce
+only over stream stdin, runs the existing detached `setsid app_process` command,
+and keeps the exec channel open until the provider accepts the binder or a
+bounded attach deadline expires. Mika's `AdbConnection`, `AdbMessage`, and
+`AdbTls` Apache-2.0 protocol portions and provenance are recorded in
+`THIRD_PARTY_NOTICES.md`.
+
+`PrivilegeSupervisor` now re-discovers the endpoint on every recovery attempt,
+requires a persisted pairing identity and user consent, pins the installed APK
+signing certificate into the command, launches through `exec:`, and records
+attempt/outcome diagnostics. Provider startup restores the next one-shot nonce;
+accepted handoff persists that successor before responding, updates live state,
+and helper death triggers a fresh consent-gated check. Runtime initialization,
+foreground checks, and operated-task refusal already use this supervisor; the
+accessibility service enablement call remains delegated through the helper.
+ADB identity records are versioned and atomically replaced in app-private
+no-backup storage; missing/corrupt/version-mismatched records block reconnect
+instead of silently generating a replacement. Added deterministic identity
+record coverage for round trip, missing, corrupt, and version mismatch. A
+successful explicit pairing persists both pairing completion and the recovery
+consent used by the supervisor; the existing revoke path clears that consent.
+
+The shell backend independently implements the declared AIDL methods and
+amended operations, restricts input and task movement to helper-owned displays,
+and leaves symbolic permission grants unmapped (A7 still lists only `display`
+and `accessibility`). Clipboard reads/writes remain fail-closed until S10
+provides its single-task lock. The charter does not define the `injectInput`
+Bundle event schema beyond the required `tap`/`key` support in v6; those forms
+remain the only accepted payloads. No other charter ambiguity was encountered.
+
+The remaining proof is device evidence on Fold 6: pair with no computer,
+confirm helper attach, reboot/restore, and revoke helper to confirm an operated
+task stops with the A7 refusal. This source pass did not run any build, test,
+git, or publish command, so the source coverage is not execution evidence.
 
 No root path or USB-from-computer fallback is in scope (D-01). No voice
 capture, model session, or turn-fencing code is in scope.

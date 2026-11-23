@@ -176,9 +176,8 @@ internal class ShellPrivilegeBackend(private val context: Context, private val a
         val enabledResult = shellOutput("settings", "get", "secure", "enabled_accessibility_services")
         val enabled = enabledResult.trim().takeUnless { it == "null" }.orEmpty()
         val merged = (enabled.split(':').filter { it.isNotBlank() } + "$appPackage/.actions.ScreenControlService").distinct().joinToString(":")
-        val saved = runCommand("settings", "put", "secure", "enabled_accessibility_services", merged)
-        if (saved.isEmpty()) return false
-        return runCommand("settings", "put", "secure", "accessibility_enabled", "1").isNotEmpty()
+        if (!runCommandSucceeded("settings", "put", "secure", "enabled_accessibility_services", merged)) return false
+        return runCommandSucceeded("settings", "put", "secure", "accessibility_enabled", "1")
     }
     fun grantPermission(name: String): Boolean {
         require(ShellPrivilegePolicy.acceptsPermission(name))
@@ -189,36 +188,58 @@ internal class ShellPrivilegeBackend(private val context: Context, private val a
         if (displays.isNotEmpty()) "present" else "present; helper active, no owned virtual displays"
     fun injectInput(displayId: Int, data: Bundle): Boolean {
         if (!ShellPrivilegePolicy.ownsDisplay(displayId, displays.keys)) return false
-        val event = when (data.getString("type")) {
-            "key" -> KeyEvent(data.getLong("downTime", android.os.SystemClock.uptimeMillis()), android.os.SystemClock.uptimeMillis(),
-                KeyEvent.ACTION_DOWN, data.getInt("keyCode", -1), 0)
-            "tap" -> MotionEvent.obtain(android.os.SystemClock.uptimeMillis(), android.os.SystemClock.uptimeMillis(),
-                MotionEvent.ACTION_DOWN, data.getFloat("x"), data.getFloat("y"), 0)
+        val now = android.os.SystemClock.uptimeMillis()
+        val type = data.getString("type")
+        val event = when (type) {
+            "key" -> {
+                val keyCode = data.getInt("keyCode", -1)
+                if (keyCode < 0) return false
+                KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0)
+            }
+            "tap" -> {
+                if (!data.containsKey("x") || !data.containsKey("y")) return false
+                MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, data.getFloat("x"), data.getFloat("y"), 0)
+            }
             else -> return false
         }
         try {
             event.javaClass.getMethod("setDisplayId", Int::class.javaPrimitiveType).invoke(event, displayId)
             val manager = inputManager()
             val method = manager.javaClass.getMethod("injectInputEvent", InputEvent::class.java, Int::class.javaPrimitiveType)
-            return method.invoke(manager, event, 0) as Boolean
+            val downSent = method.invoke(manager, event, if (type == "key") 1 else 0) as Boolean
+            if (!downSent) return inputFallback(type!!, displayId, data)
+            val up = when (event) {
+                is KeyEvent -> KeyEvent(now, android.os.SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, event.keyCode, 0)
+                is MotionEvent -> MotionEvent.obtain(now, android.os.SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, data.getFloat("x"), data.getFloat("y"), 0)
+                else -> return false
+            }
+            try {
+                up.javaClass.getMethod("setDisplayId", Int::class.javaPrimitiveType).invoke(up, displayId)
+                return method.invoke(manager, up, if (type == "key") 1 else 0) as Boolean
+            } finally { if (up is MotionEvent) up.recycle() }
         } catch (_: Throwable) {
-            val command = if (event is KeyEvent) arrayOf("input", "-d", "$displayId", "keyevent", "${event.keyCode}")
-            else arrayOf("input", "-d", "$displayId", "tap", "${data.getFloat("x")}", "${data.getFloat("y")}")
-            return runCommandSucceeded(*command)
+            return inputFallback(type!!, displayId, data)
         } finally {
             if (event is MotionEvent) event.recycle()
         }
     }
     fun moveTaskToDisplay(taskId: Int, displayId: Int): Boolean {
-        if (!displays.containsKey(displayId)) return false
+        if (taskId < 0 || !ShellPrivilegePolicy.ownsDisplay(displayId, displays.keys)) return false
         return runCatching {
             val service = Class.forName("android.app.ActivityTaskManager").getMethod("getService").invoke(null)
-            service.javaClass.methods.first { it.name == "moveRootTaskToDisplay" && it.parameterTypes.size >= 2 }.invoke(service, taskId, displayId)
+            service.javaClass.methods.first { it.name == "moveRootTaskToDisplay" && it.parameterTypes.size == 2 }.invoke(service, taskId, displayId)
             true
         }.getOrDefault(false)
     }
-    fun getClipboardText(): String? = if (ShellPrivilegePolicy.mayUseClipboard(false)) null else null // S10 lock is not present; fail closed.
-    fun setClipboardText(text: String): Boolean { require(text.length <= 100_000); return ShellPrivilegePolicy.mayUseClipboard(false) }
+    // S10 has not supplied its single-task lock yet. Keep both operations fail-closed until
+    // the caller can prove that lock is held; no ambient shell clipboard access is allowed.
+    fun getClipboardText(): String? = null
+    fun setClipboardText(text: String): Boolean { require(text.length <= 100_000); return false }
+    private fun inputFallback(type: String, displayId: Int, data: Bundle): Boolean = when (type) {
+        "key" -> runCommandSucceeded("input", "-d", "$displayId", "keyevent", "${data.getInt("keyCode")}")
+        "tap" -> runCommandSucceeded("input", "-d", "$displayId", "tap", "${data.getFloat("x")}", "${data.getFloat("y")}")
+        else -> false
+    }
     private fun inputManager(): Any = runCatching { Class.forName("android.hardware.input.InputManagerGlobal").getMethod("getInstance").invoke(null) }
         .getOrElse { Class.forName("android.hardware.input.InputManager").getMethod("getInstance").invoke(null)!! }
     private fun runCommand(vararg args: String): String = try {
@@ -238,7 +259,13 @@ internal class ShellPrivilegeBackend(private val context: Context, private val a
     } catch (_: Throwable) { "" }
     companion object {
         @Volatile private var active: ShellPrivilegeBackend? = null
-        fun releaseAll() { active?.displays?.values?.forEach { runCatching { it.release() } }; active?.displays?.clear() }
+        fun releaseAll() {
+            val backend = active ?: return
+            backend.displays.values.toList().forEach { runCatching { it.release() } }
+            backend.displays.clear()
+            backend.displayReaders.values.toList().forEach { runCatching { it.close() } }
+            backend.displayReaders.clear()
+        }
     }
     init { active = this }
 }
