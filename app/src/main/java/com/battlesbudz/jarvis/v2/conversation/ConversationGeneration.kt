@@ -718,8 +718,11 @@ internal class ConversationGeneration(
     private suspend fun retryInvalidToolDraft(draft: ConversationDraft, input: ConversationInput,
                                               fullPrompt: String) {
         draft.answer.turnOwnership?.checkCurrent()
-        val rejectedVoiceCallWithoutAnswer = draft.answer.invocation.voiceAudio != null &&
-            draft.generated.toolCalls.isNotEmpty() && AssistantText.forDisplay(draft.generated.text).isBlank()
+        val invocation = draft.answer.invocation
+        val rejectedVoiceCallWithoutAnswer = invocation.voiceAudio != null &&
+            invocation.nativeSpeculation != null && invocation.asrTranscript?.isNotBlank() == true &&
+            draft.actionName == null && draft.generated.toolCalls.isNotEmpty() &&
+            AssistantText.forDisplay(draft.generated.text).isBlank()
         if (draft.generated.toolCalls.isEmpty() ||
             (draft.actionResultMessage != null && !rejectedVoiceCallWithoutAnswer) ||
             AssistantText.forDisplay(draft.generated.text).isNotBlank()) return
