@@ -10,7 +10,7 @@ internal object ActionCompletionClaim {
         Regex("\\bi(?:'m| am) (sending|texting|messaging|posting|opening)\\b", RegexOption.IGNORE_CASE),
         Regex("\\bi will (send|text|message|post|open|call)\\b[^.!?]*\\bnow\\b", RegexOption.IGNORE_CASE),
         Regex("\\bi(?:'ll) (send|text|message|post|open)\\b[^.!?]*\\bnow\\b", RegexOption.IGNORE_CASE),
-        Regex("\\bi (?:have |'ve )?(sent|texted|messaged|posted|opened)\\b", RegexOption.IGNORE_CASE),
+        Regex("\\bi(?:'ve| have)?\\s+(sent|texted|messaged|posted|opened)\\b", RegexOption.IGNORE_CASE),
         Regex("\\b(message|text) (?:has been |was )?sent\\b", RegexOption.IGNORE_CASE),
         Regex("\\breminder (?:is|has been) set\\b", RegexOption.IGNORE_CASE),
     )
