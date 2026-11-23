@@ -584,3 +584,11 @@
 
 # Native on-device vision (phoneinference module): keep the ONNX Runtime Java API.
 -keep class ai.onnxruntime.** { *; }
+
+# A2 watch surface and task controls are reached by composed journeys and service intents.
+-keep class com.battlesbudz.jarvis.v2.display.OperatedTaskService { *; }
+-keep class com.battlesbudz.jarvis.v2.display.OperatedTaskControls { *; }
+-keep class com.battlesbudz.jarvis.v2.display.OperatedDisplayIdentity { *; }
+-keep class com.battlesbudz.jarvis.v2.display.OperatedDisplayEvent { *; }
+-keep class com.battlesbudz.jarvis.v2.display.PendingWatchApproval { *; }
+-keep class com.battlesbudz.jarvis.v2.display.DisplayFrameMailbox { *; }
