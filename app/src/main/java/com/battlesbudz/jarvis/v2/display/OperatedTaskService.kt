@@ -9,7 +9,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
-import com.battlesbudz.jarvis.v2.MainActivity
 
 /** Runner registers the live controls; service actions call that runner directly. */
 object OperatedTaskControls {
@@ -60,15 +59,18 @@ class OperatedTaskService : Service() {
         if (manager.getNotificationChannel(CHANNEL) == null)
             manager.createNotificationChannel(NotificationChannel(CHANNEL, "Operated task", NotificationManager.IMPORTANCE_LOW))
         val id = checkNotNull(taskId)
-        return NotificationCompat.Builder(this, CHANNEL)
+        val builder = NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_menu_view)
             .setContentTitle("$appName · $taskName")
             .setContentText("Running · ${((System.currentTimeMillis() - startedAt) / 1000)} sec")
             .setOngoing(true)
-            .setContentIntent(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), pendingFlags()))
             .addAction(0, "Pause", controlIntent(this, id, ACTION_PAUSE, 1))
             .addAction(0, "Stop", controlIntent(this, id, ACTION_STOP, 2))
-            .build()
+        packageManager.getLaunchIntentForPackage(packageName)?.let { intent ->
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            builder.setContentIntent(PendingIntent.getActivity(this, 0, intent, pendingFlags()))
+        }
+        return builder.build()
     }
 
     companion object {

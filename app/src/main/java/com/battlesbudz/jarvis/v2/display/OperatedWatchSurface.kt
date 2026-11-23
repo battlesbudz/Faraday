@@ -13,7 +13,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationCompat
-import com.battlesbudz.jarvis.v2.MainActivity
 import com.battlesbudz.jarvis.v2.actions.ActionApprovalRequest
 import com.battlesbudz.jarvis.v2.actions.ActionApprovalStore
 
@@ -77,15 +76,17 @@ object OperatedApprovalNotifier {
         val manager = context.getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(CHANNEL) == null)
             manager.createNotificationChannel(NotificationChannel(CHANNEL, "Operated task approvals", NotificationManager.IMPORTANCE_HIGH))
-        val notification = NotificationCompat.Builder(context, CHANNEL)
+        val builder = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle("Faraday needs your approval: $taskName — $actionName")
             .setContentText("Open Faraday to review this action.")
             .setAutoCancel(true)
-            .setContentIntent(android.app.PendingIntent.getActivity(context, ID, Intent(context, MainActivity::class.java),
+        context.packageManager.getLaunchIntentForPackage(context.packageName)?.let { intent ->
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            builder.setContentIntent(android.app.PendingIntent.getActivity(context, ID, intent,
                 android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE))
-            .build()
-        manager.notify(ID, notification)
+        }
+        manager.notify(ID, builder.build())
     }
     fun withdraw(context: Context) { context.getSystemService(NotificationManager::class.java).cancel(ID) }
 }
