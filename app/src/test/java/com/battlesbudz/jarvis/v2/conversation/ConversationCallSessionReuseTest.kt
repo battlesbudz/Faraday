@@ -152,12 +152,8 @@ class ConversationCallSessionReuseTest {
             GenerationResult("A plain answer.", 1, null)))
         val h = Harness(backend, resident = true, toolsOn = true)
         val draft = h.generate(GemmaAudioInputPolicy.REQUEST, byteArrayOf(1, 2, 3))
-        assertEquals(2, backend.requests.size)
-        assertEquals(GemmaAudioInputPolicy.REQUEST, backend.requests[0])
-        assertTrue(backend.requests[1].contains(VoiceResponsePolicy.instructions))
-        assertTrue(backend.requests[1].contains("The previous output contained an invalid tool call."))
-        assertEquals(1, h.resets)
-        assertEquals("A plain answer.", draft.generated.text)
+        assertEquals(1, backend.requests.size)
+        assertEquals("I couldn't verify the requested phone actions.", draft.actionResultMessage)
     }
 
     @Test fun textTurnWithResidentContextNeverUsesTheCallDelta() = runBlocking {

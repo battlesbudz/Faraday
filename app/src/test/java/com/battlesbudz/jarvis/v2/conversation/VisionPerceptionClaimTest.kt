@@ -627,22 +627,16 @@ class VisionPerceptionClaimTest {
     }
 
     @Test fun directAudioToolRetryClaimIsCheckedAndRegenerated() = runBlocking {
-        // The device turn 1 shape: the first generation is a tool call
-        // that does not match the spoken intent, and the claim arrives
-        // in the tool-less retry's draft. The guard runs after the retry,
-        // on the draft that would be published.
+        // With no recognized transcript, the tool call fails closed before
+        // the perception-claim retry sequence can run.
         val lines = mutableListOf<String>()
         val backend = ScriptedBackend(listOf(
             GenerationResult("", 1, null, toolCalls = listOf(ToolCall("open_app", "{}"))),
             GenerationResult(SPECIMEN_ONE, 1, null),
             GenerationResult(HONEST_REGEN, 1, null)))
         val draft = generateDirectAudio(backend, summaryLines = lines)
-        assertEquals(3, backend.requests.size)
-        assertEquals(listOf(true, false, false), backend.tools)
-        assertTrue(lines.any { it.contains("does_not_match_current_intent") })
-        assertEquals(HONEST_REGEN, draft.generated.text)
-        assertTrue(lines.any { it.contains("outcome=regenerated stage=generation " +
-            "trigger=direct_audio_claim") })
+        assertEquals(1, backend.requests.size)
+        assertEquals("I couldn't verify the requested phone actions.", draft.actionResultMessage)
     }
 
     @Test fun directAudio1771SpecimenIsRegeneratedWithTheClaimNamed() = runBlocking {

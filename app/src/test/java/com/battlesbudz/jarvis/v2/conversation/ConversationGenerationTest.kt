@@ -96,11 +96,12 @@ class ConversationGenerationTest {
     private suspend fun generate(audio: ByteArray? = null,
                              nativeSpeculation: NativeVoiceSpeculation? = null,
                              backend: Backend = Backend(),
-                             supportsTools: Boolean = true): Pair<ConversationDraft, Backend> {
+                             supportsTools: Boolean = true,
+                             recognizedText: String? = null): Pair<ConversationDraft, Backend> {
         val diagnostics = ConversationDiagnostics({}, {}, {}, {})
         val memory = MemoryDeliveryFence()
         val input = ConversationInvocation("Hello", emptyList(), voiceAudio = audio, directVoiceAudio = audio != null,
-            nativeSpeculation = nativeSpeculation)
+            nativeSpeculation = nativeSpeculation, asrTranscript = recognizedText)
         val callbacks = ConversationCallbacks({}, {})
         val reply = ConversationReply("generation", PipelineBenchmarkCapture("generation", "text", 0,
             PipelineBenchmarkProvenance("test", 1)), true, memory, { it() }, {}, {}, {}, {}, { _, _, _ -> })
@@ -529,7 +530,7 @@ class ConversationGenerationTest {
         val proposal = NativePauseProposal("turn", 1, 1, 2, 300, pcm)
         assertTrue(candidate.onProposal(proposal))
         assertTrue(candidate.confirmCapture(NativePauseCertificate(proposal, full.size / 2, pcmHash(full), 1, 3, 650), wav))
-        val (draft, backend) = generate(wav, candidate)
+        val (draft, backend) = generate(wav, candidate, recognizedText = "Hello")
         assertEquals(1, resets)
         assertEquals("A fresh answer.", draft.generated.text)
         assertEquals("promoted prose must never stand in for the authoritative tools-enabled pass",
@@ -594,7 +595,7 @@ class ConversationGenerationTest {
             val proposal = NativePauseProposal("turn", 1, 1, 2, 300, pcm)
             assertTrue(candidate.onProposal(proposal))
             assertTrue(candidate.confirmCapture(NativePauseCertificate(proposal, full.size / 2, pcmHash(full), 1, 3, 650), wav))
-            val generation = async { generate(wav, candidate, backend) }
+            val generation = async { generate(wav, candidate, backend, recognizedText = "Hello") }
             try {
                 entered.await()
                 // Let the ordinary turn start: with the old ordering it calls

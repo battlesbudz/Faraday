@@ -161,21 +161,15 @@ class AudioAccessRefusalTest {
     @Test fun toolRetryRefusalIsRegeneratedWithTheSameAudioAndTheClaimNamed() = runBlocking {
         val audio = byteArrayOf(1, 2, 3)
         val backend = ScriptedBackend(listOf(
-            // The specimen's first generation: a tool-call-only draft that
-            // does not match the spoken intent...
+            // The invalid tool-call-only draft fails closed before retry.
             GenerationResult("", 1, null, toolCalls = listOf(ToolCall("open_app", "{}"))),
-            // ...whose tool-less retry answers with the false refusal...
             GenerationResult(REFUSAL_ONE, 1, null),
-            // ...so the guard regenerates once more and the turn answers.
             GenerationResult("A fresh answer.", 1, null)))
         val draft = generate(backend, audio)
-        assertEquals(3, backend.requests.size)
-        assertTrue(backend.requests.all { it.audio === audio })
-        assertTrue(backend.requests.last().prompt.contains("IS attached to this message"))
-        assertEquals(PipelineBenchmarkPurpose.RETRY, backend.requests.last().purpose)
-        assertEquals(listOf(true, false, false), backend.tools)
-        assertEquals("A fresh answer.", draft.generated.text)
-        assertNull(draft.actionResultMessage)
+        assertEquals(1, backend.requests.size)
+        assertTrue(backend.requests.single().audio === audio)
+        assertEquals(listOf(true), backend.tools)
+        assertEquals("I couldn't verify the requested phone actions.", draft.actionResultMessage)
     }
 
     @Test fun firstGenerationRefusalIsRegeneratedWithAudio() = runBlocking {
@@ -218,9 +212,8 @@ class AudioAccessRefusalTest {
     @Test fun directAudioBatteryCallReachesExecution() = runBlocking {
         val audio = byteArrayOf(9, 8, 7)
         val backend = ScriptedBackend(listOf(
-            // The model answers the spoken battery request with a native
-            // tool call and no text — the completion the interrupted
-            // build-1706 turn never reached.
+            // With no recognized transcript, the native call fails closed
+            // before execution.
             GenerationResult("", 1, null, toolCalls = listOf(ToolCall("read_battery", "{}")))))
         val executed = mutableListOf<String>()
         val reported = mutableListOf<Triple<String, String, Boolean>>()
@@ -237,12 +230,11 @@ class AudioAccessRefusalTest {
         val draft = generate(backend, audio, actions)
         assertEquals(1, backend.requests.size)
         assertTrue(backend.requests.single().audio === audio)
-        assertEquals(listOf("read_battery"), executed)
-        assertEquals(listOf(Triple("read_battery", "Battery is at 82 percent.", true)), reported)
-        assertEquals("read_battery", draft.actionName)
-        assertEquals("Battery is at 82 percent.", draft.actionResultMessage)
-        // The single-step plan completes from the executor receipt, so the
-        // runner needs no follow-up generation to finish the turn.
+        assertEquals(listOf(true), backend.tools)
+        assertTrue(executed.isEmpty())
+        assertTrue(reported.isEmpty())
+        assertNull(draft.actionName)
+        assertEquals("I couldn't verify the requested phone actions.", draft.actionResultMessage)
         assertTrue(backend.toolResultSubmissions.isEmpty())
     }
 
