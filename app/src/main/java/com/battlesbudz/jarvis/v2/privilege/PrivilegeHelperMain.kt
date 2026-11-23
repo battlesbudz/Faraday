@@ -126,12 +126,6 @@ private class ShellContext(base: Context) : ContextWrapper(base) {
                 at.getDeclaredField("sCurrentActivityThread").apply { isAccessible = true }.set(null, obj)
                 at.getDeclaredField("mSystemThread").apply { isAccessible = true }.setBoolean(obj, true); obj
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) runCatching {
-                val controller = Class.forName("android.app.ConfigurationController")
-                    .getDeclaredConstructor(Class.forName("android.app.ActivityThreadInternal"))
-                    .apply { isAccessible = true }.newInstance(thread)
-                at.getDeclaredField("mConfigurationController").apply { isAccessible = true }.set(thread, controller)
-            }
             runCatching {
                 val bindData = Class.forName("android.app.ActivityThread\$AppBindData")
                     .getDeclaredConstructor().apply { isAccessible = true }.newInstance()
