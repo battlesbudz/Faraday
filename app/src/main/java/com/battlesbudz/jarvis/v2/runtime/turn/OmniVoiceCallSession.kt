@@ -83,6 +83,8 @@ internal interface OmniTurnCapture : AutoCloseable {
 internal interface OmniCallSpeechOutput : AutoCloseable {
     /** Actual first-audible timestamp in monotonic milliseconds for the active turn. */
     val firstSoundAtMonotonicMs: Long?
+    /** Shorts written to the track since [beginTurn]; 0 when the output does not track writes. */
+    val writtenShortsThisTurn: Long get() = 0L
     fun beginTurn()
     suspend fun playChunk(pcm24kMono: FloatArray)
     fun stopAndFlush()
@@ -123,6 +125,21 @@ internal data class OmniCallAnswer(
     val text: String,
     /** Per-graph durations from U2/U4, in milliseconds. */
     val graphTimingsMs: Map<String, Long> = emptyMap(),
+    /** Encoded audio rows the answer was conditioned on (0 when unknown). */
+    val audioRows: Int = 0,
+    /** Runner positions occupied right after this turn's prefill. */
+    val positionsAfterPrefill: Int = 0,
+    /** Non-control text tokens generated across the turn's rounds. */
+    val textTokens: Int = 0,
+    /** Speech frames generated across the turn's rounds. */
+    val speechFrames: Int = 0,
+    /** How the final generation round ended. */
+    val finished: Boolean = false,
+    val stopped: Boolean = false,
+    /** PCM the generator offered the playback sink this turn. */
+    val pcmChunks: Int = 0,
+    val pcmSamples: Int = 0,
+    val pcmPeak: Float = 0f,
 )
 
 /** U6 duplex coordination, supplied by the call-scoped capture adapter. Null on non-duplex paths. */
@@ -154,7 +171,15 @@ internal class OmniVoiceCallSession(
     private val clockMs: () -> Long = SystemClock::elapsedRealtime,
 ) {
     sealed interface Event {
-        data class Turn(val endpointAtMs: Long, val firstSoundAtMs: Long?, val graphTimingsMs: Map<String, Long>) : Event
+        data class Turn(
+            val endpointAtMs: Long,
+            val firstSoundAtMs: Long?,
+            val graphTimingsMs: Map<String, Long>,
+            val answer: OmniCallAnswer? = null,
+            val writtenShorts: Long = 0,
+        ) : Event
+        /** The sealed user audio for this turn: its duration and peak amplitude. */
+        data class CapturedSpeech(val seconds: Float, val peak: Float) : Event
         /** U8: a rollover has begun; prefill has not run yet, so prefillMs is unknown here. */
         data class ContextRolloverStarted(val position: Int, val transcriptTokens: Int) : Event
         data class ContextRollover(val oldPositions: Int, val prefilledPositions: Int, val droppedPairs: Int, val prefillMs: Long) : Event
@@ -183,6 +208,8 @@ internal class OmniVoiceCallSession(
         rolloverIfNeeded()
         val captured = capture.awaitTurn()
         if (!isCallActive()) throw CancellationException("omni_voice_call_ended")
+        val capturePeak = captured.pcm16kMono.fold(0f) { peak, sample -> maxOf(peak, kotlin.math.abs(sample)) }
+        diagnostics(Event.CapturedSpeech(captured.pcm16kMono.size / 16_000f, capturePeak))
 
         output.beginTurn()
         duplexHooks?.setAssistantActive(true)
@@ -208,7 +235,7 @@ internal class OmniVoiceCallSession(
             transcript += OmniCallMessage(OmniCallRole.USER, "[spoken audio; transcript unavailable]")
         } else transcript += OmniCallMessage(OmniCallRole.USER, userText)
         transcript += OmniCallMessage(OmniCallRole.ASSISTANT, answer.text)
-        diagnostics(Event.Turn(captured.endpointAtMs, output.firstSoundAtMonotonicMs, answer.graphTimingsMs))
+        diagnostics(Event.Turn(captured.endpointAtMs, output.firstSoundAtMonotonicMs, answer.graphTimingsMs, answer, output.writtenShortsThisTurn))
         return answer
     }
 

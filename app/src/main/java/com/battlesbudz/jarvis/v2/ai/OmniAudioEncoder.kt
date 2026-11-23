@@ -121,7 +121,12 @@ internal fun selectValidOmniAudioRows(features: FloatArray, mask: BooleanArray, 
     require(mask.size == features.size / hiddenSize) {
         "Omni audio feature and mask row counts differ"
     }
-    return mask.indices.filter { mask[it] }.map { row ->
+    // The sample takes a prefix: rows up to the last mask-valid row
+    // ("LiteRT-LM's rule: up to the last 1"). Filtering instead would
+    // silently drop interior rows and compress the audio timeline.
+    val lastValid = mask.indexOfLast { it }
+    if (lastValid < 0) return emptyList()
+    return (0..lastValid).map { row ->
         val start = row * hiddenSize
         features.copyOfRange(start, start + hiddenSize)
     }

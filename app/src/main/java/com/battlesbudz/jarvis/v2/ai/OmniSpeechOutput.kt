@@ -213,11 +213,11 @@ internal class OmniCodecStream(private val decoder: OmniCodecDecoder, window: Fl
     fun push(codes: IntArray): Boolean {
         pending += codes.copyOf()
         if (pending.size < 12) return true
-        return emit(decoder.decode(pending.toList()), 12, false).also { pending.clear() }
+        return emit(decoder.decode(pending.toList()), false).also { pending.clear() }
     }
     fun finish(): Boolean {
         var ok = true
-        if (pending.isNotEmpty()) { val n = pending.size; ok = emit(decoder.decode(pending.toList()), n, true); pending.clear() }
+        if (pending.isNotEmpty()) { ok = emit(decoder.decode(pending.toList()), true); pending.clear() }
         else {
             val tail = stream.finish()
             ok = tail.isEmpty() || sink.offer(tail)
@@ -225,8 +225,15 @@ internal class OmniCodecStream(private val decoder: OmniCodecDecoder, window: Fl
         reset()
         return ok
     }
-    private fun emit(frames: FloatArray, count: Int, final: Boolean): Boolean {
-        val pcm = stream.push(frames, count, final)
+    private fun emit(frames: FloatArray, final: Boolean): Boolean {
+        // The codec graph returns 6 time frames of 1,280 samples per codec
+        // frame (the sample's FRAME_STACK = 6), and the overlap-add consumes
+        // time frames: the count is derived from the decoded output's size,
+        // never from the codec-frame count.
+        require(frames.size % 1280 == 0) {
+            "codec decoder output is not a whole number of 1280-sample frames: ${frames.size}"
+        }
+        val pcm = stream.push(frames, frames.size / 1280, final)
         return pcm.isEmpty() || sink.offer(pcm)
     }
 }
@@ -331,7 +338,10 @@ internal class OmniOverlapAdd(private val window: FloatArray, private val hop: I
         val audio = FloatArray(size); val envelope = FloatArray(size)
         for (i in 0 until count) for (s in window.indices) {
             val at = i * hop + s
-            audio[at] += frames[at]
+            // Each frame's samples live at its own window-size stride in the
+            // decoder output (the sample's CodecStream reads src = i * nFft),
+            // not at the hop-sized output stride.
+            audio[at] += frames[i * window.size + s]
             envelope[at] += window[s] * window[s]
         }
         tailAudio?.let { for (i in it.indices) audio[i] += it[i] }

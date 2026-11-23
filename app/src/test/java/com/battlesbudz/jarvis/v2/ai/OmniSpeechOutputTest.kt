@@ -108,7 +108,8 @@ class OmniSpeechOutputTest {
     private class FakeFrame : OmniFrameEmbedder { override fun embed(codes: IntArray) = floatArrayOf(1f) }
     private class FakeCodec : OmniCodecDecoder {
         var calls = 0; var resets = 0
-        override fun decode(frames: List<IntArray>): FloatArray { calls++; return FloatArray(frames.size * 320 + 960) { 1f } }
+        // The real graph returns 6 time frames of 1,280 samples per codec frame.
+        override fun decode(frames: List<IntArray>): FloatArray { calls++; return FloatArray(frames.size * 6 * 1280) { 1f } }
         override fun reset() { resets++ }
     }
 }

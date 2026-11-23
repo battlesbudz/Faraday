@@ -37,15 +37,26 @@ class OmniAudioEncoderTest {
     }
 
     @Test
-    fun onlyMaskValidFeatureRowsAreReturnedAsIndependentRows() {
+    fun maskSelectionKeepsThePrefixThroughTheLastValidRow() {
         val features = floatArrayOf(1f, 2f, 3f, 4f, 5f, 6f)
 
+        // An interior zero does not drop its row: the prefix runs through
+        // the last valid row, interior rows included.
         val rows = selectValidOmniAudioRows(features, booleanArrayOf(true, false, true), 2)
 
-        assertEquals(2, rows.size)
+        assertEquals(3, rows.size)
         assertArrayEquals(floatArrayOf(1f, 2f), rows[0], 0f)
-        assertArrayEquals(floatArrayOf(5f, 6f), rows[1], 0f)
+        assertArrayEquals(floatArrayOf(3f, 4f), rows[1], 0f)
+        assertArrayEquals(floatArrayOf(5f, 6f), rows[2], 0f)
         features.fill(0f)
         assertArrayEquals(floatArrayOf(1f, 2f), rows[0], 0f)
+    }
+
+    @Test
+    fun maskSelectionStopsAtTheLastValidRow() {
+        val features = floatArrayOf(1f, 2f, 3f, 4f, 5f, 6f)
+
+        assertEquals(2, selectValidOmniAudioRows(features, booleanArrayOf(true, true, false), 2).size)
+        assertEquals(0, selectValidOmniAudioRows(features, booleanArrayOf(false, false, false), 2).size)
     }
 }

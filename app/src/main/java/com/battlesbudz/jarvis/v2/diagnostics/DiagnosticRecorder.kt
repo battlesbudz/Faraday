@@ -285,6 +285,9 @@ class DiagnosticRecorder(
     /** Record one Omni call-preparation breadcrumb or failure (stack build start/ready, start/prep failure). */
     fun recordOmniPrep(event: String) = recordOmniVoiceEvidence("prep=$event")
 
+    /** Per-turn generation/playback evidence for the Omni call (build-1973 fix breadcrumbs). */
+    fun recordOmniTurn(line: String) = recordOmniVoiceEvidence(line)
+
     /** Record one between-turn context rollover, including any transcript history dropped to fit. */
     fun recordOmniRollover(position: Int, transcriptTokens: Int, droppedTurnPairs: Int, prefillMs: Long?) {
         val prefill = prefillMs?.coerceAtLeast(0)?.toString() ?: "in_progress"

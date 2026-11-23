@@ -151,6 +151,8 @@ internal class OmniLmRunner(
         outputs["hidden"] = p.hidden; outputs.putAll(sets[0])
         decoder.run(inputs, outputs, "prefill_$size")
         pos += size
+        // the prefilled positions are open for every later row
+        java.util.Arrays.fill(decMaskRow, 0, pos, 0f)
     }
 
     fun step(embedding: FloatArray): FloatArray {

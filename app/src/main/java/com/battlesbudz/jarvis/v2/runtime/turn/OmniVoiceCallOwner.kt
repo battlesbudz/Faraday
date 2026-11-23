@@ -251,7 +251,20 @@ internal class OmniVoiceCallOwnerImpl(
                     "Omni call turn: endpoint→first-sound ${latency?.let { "$it ms" } ?: "unknown"}; " +
                         "graphs=${event.graphTimingsMs.entries.joinToString { "${it.key}=${it.value}ms" }}"
                 )
+                event.answer?.let { answer ->
+                    val answerText = answer.text.take(120).replace('\n', ' ').replace('"', '\'')
+                    diagnosticRecorder.recordOmniTurn(
+                        "turnGen text=\"$answerText\" textTokens=${answer.textTokens} " +
+                            "frames=${answer.speechFrames} finished=${answer.finished} stopped=${answer.stopped} " +
+                            "pcmChunks=${answer.pcmChunks} pcmSamples=${answer.pcmSamples} pcmPeak=${answer.pcmPeak} " +
+                            "writtenShorts=${event.writtenShorts} audioRows=${answer.audioRows} positions=${answer.positionsAfterPrefill}"
+                    )
+                }
             }
+            is OmniVoiceCallSession.Event.CapturedSpeech ->
+                diagnosticRecorder.recordOmniTurn(
+                    "turnCapture seconds=${event.seconds} peak=${event.peak}"
+                )
             is OmniVoiceCallSession.Event.ContextRolloverStarted ->
                 // U8: rollover begins; prefill has not run, so it reports in_progress.
                 diagnosticRecorder.recordOmniRollover(
@@ -425,6 +438,21 @@ internal class OmniCallStack(
 /** The speech stack's sink: enqueues generated PCM for the active turn's drain. Never blocks. */
 internal class OmniPcmQueueSink : com.battlesbudz.jarvis.v2.ai.OmniPcmSink {
     @Volatile var activeQueue: Channel<FloatArray>? = null
+    /** PCM offered this turn (chunks, samples, peak amplitude); tallied at
+     * offer entry so suppressed offers count too — the codec stream offered
+     * them, which is the generation evidence the turn record needs. */
+    @Volatile var offeredChunks: Int = 0
+        private set
+    @Volatile var offeredSamples: Int = 0
+        private set
+    @Volatile var offeredPeak: Float = 0f
+        private set
+
+    fun resetOffered() {
+        offeredChunks = 0
+        offeredSamples = 0
+        offeredPeak = 0f
+    }
     /**
      * U7: while the current generation round's decoded text holds a
      * tool-call block, chunks offered here are dropped at the source and
@@ -437,6 +465,12 @@ internal class OmniPcmQueueSink : com.battlesbudz.jarvis.v2.ai.OmniPcmSink {
      */
     @Volatile var suppressOffers: Boolean = false
     override fun offer(pcm24k: FloatArray): Boolean {
+        offeredChunks++
+        offeredSamples += pcm24k.size
+        for (sample in pcm24k) {
+            val magnitude = kotlin.math.abs(sample)
+            if (magnitude > offeredPeak) offeredPeak = magnitude
+        }
         if (suppressOffers) return true
         return activeQueue?.trySend(pcm24k)?.isSuccess ?: false
     }
@@ -542,6 +576,7 @@ internal class OmniCallEngineImpl(
             observedPositions = components.runner.pos
             state
         }
+        val positionsAfterPrefill = observedPositions
         val prefillMs = SystemClock.elapsedRealtime() - prefillStart
 
         // U7 tool-call watch. The host loop decodes the round's text at the
@@ -586,6 +621,10 @@ internal class OmniCallEngineImpl(
         var genMsTotal = 0L
         val queue = Channel<FloatArray>(capacity = 4)
         sink.activeQueue = queue
+        sink.resetOffered()
+        var speechFrames = 0
+        var generationFinished = false
+        var generationStopped = false
         try {
             coroutineScope {
                 val drain = launch {
@@ -605,7 +644,7 @@ internal class OmniCallEngineImpl(
                     withContext(components.dispatcher) {
                         val maxSteps = (components.runner.cacheLength - components.runner.pos - 8)
                             .coerceIn(1, MAX_GENERATE_STEPS)
-                        speechStack.generator.generate(
+                        val result = speechStack.generator.generate(
                             initialHidden = hiddenState,
                             initialMode = OmniSpeechGenerator.Mode.INTERLEAVED,
                             maxSteps = maxSteps,
@@ -633,6 +672,9 @@ internal class OmniCallEngineImpl(
                             },
                         )
                         observedPositions = components.runner.pos
+                        speechFrames += result.frames.size
+                        generationFinished = result.finished
+                        generationStopped = result.stopped
                     }
                     genMsTotal += SystemClock.elapsedRealtime() - roundStart
                     // Barge-in, hang-up or the context cap ends the turn
@@ -692,6 +734,15 @@ internal class OmniCallEngineImpl(
                 "text_prefill_ms" to prefillMs,
                 "speech_generate_ms" to genMs,
             ),
+            audioRows = audioRows.size,
+            positionsAfterPrefill = positionsAfterPrefill,
+            textTokens = textIds.size,
+            speechFrames = speechFrames,
+            finished = generationFinished,
+            stopped = generationStopped,
+            pcmChunks = sink.offeredChunks,
+            pcmSamples = sink.offeredSamples,
+            pcmPeak = sink.offeredPeak,
         )
     }
 
@@ -790,15 +841,19 @@ internal class OmniAudioTrackOutput(
     private val pendingPcm = ArrayDeque<PendingPcm>()
     private var writtenFrames = 0L
     private var releasedFrames = 0L
+    private var turnStartWrittenFrames = 0L
 
     private data class PendingPcm(val startFrame: Long, val pcm: ByteArray) {
         val frames: Long get() = pcm.size / 2L
     }
 
     override val firstSoundAtMonotonicMs: Long? get() = firstSound
+    override val writtenShortsThisTurn: Long
+        get() = synchronized(lock) { writtenFrames - turnStartWrittenFrames }
 
     override fun beginTurn() {
         synchronized(lock) {
+            turnStartWrittenFrames = writtenFrames
             stopped = false
             firstSound = null
             firstChunkPending = true
