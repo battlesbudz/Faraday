@@ -4,5 +4,5 @@
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagRetrieveInteractiveWindows"
     android:canRetrieveWindowContent="true"
-    android:description="Reads the accessibility tree only from Faraday's operated app display."
+    android:description="@string/operated_tree_service_description"
     android:notificationTimeout="100" />
