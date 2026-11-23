@@ -163,11 +163,6 @@ class ScreenControlService : AccessibilityService() {
     }
 
     override fun onInterrupt() { /* No reservation is tied to this service's lifetime. */ }
-
-    override fun onDestroy() {
-        instance = null
-        super.onDestroy()
-    }
 }
 
 /**

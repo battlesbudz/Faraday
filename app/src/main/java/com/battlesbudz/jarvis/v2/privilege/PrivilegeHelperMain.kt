@@ -7,7 +7,9 @@ import android.content.AttributionSource
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ApplicationInfo
+import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
+import android.media.ImageReader
 import android.os.Binder
 import android.os.Build
 import android.os.Bundle
@@ -18,7 +20,6 @@ import android.util.Log
 import android.view.InputEvent
 import android.view.KeyEvent
 import android.view.MotionEvent
-import android.view.Surface
 import android.view.Display
 import java.io.File
 import java.lang.reflect.Method
@@ -99,7 +100,8 @@ object PrivilegeHelperMain {
     private fun signedAsPinned(packageName: String, uid: Int, pin: String): Boolean = runCatching {
         val pm = ShellContext.create().packageManager
         val info = pm.getPackageInfo(packageName, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES)
-        val certs = info.signingInfo.apkContentsSigners.map { cert ->
+        val signers = info.signingInfo?.apkContentsSigners ?: return@runCatching false
+        val certs = signers.map { cert ->
             java.security.MessageDigest.getInstance("SHA-256").digest(cert.toByteArray()).joinToString("") { "%02x".format(it) }
         }.sorted().joinToString(",")
         info.applicationInfo?.uid == uid && certs == pin
@@ -151,15 +153,24 @@ private class ShellContext(base: Context) : ContextWrapper(base) {
 /** Shell-side enforcement duplicates the charter's closed AIDL and A7 symbolic permission set. */
 internal class ShellPrivilegeBackend(private val context: Context, private val appPackage: String, private val appUid: Int) {
     private val displays = ConcurrentHashMap<Int, android.hardware.display.VirtualDisplay>()
+    private val displayReaders = ConcurrentHashMap<Int, ImageReader>()
     fun createVirtualDisplay(name: String, width: Int, height: Int, densityDpi: Int): Int {
         require(name.isNotBlank() && width in 1..8192 && height in 1..8192 && densityDpi in 1..1000)
-        val display = context.getSystemService(DisplayManager::class.java).createVirtualDisplay(name, width, height, densityDpi, Surface(),
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC or DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY or DisplayManager.VIRTUAL_DISPLAY_FLAG_SUPPORTS_TOUCH)
-            ?: return -1
+        // The display surface comes from an ImageReader retained for the display's
+        // lifetime (Mika's AgentDisplay route). VIRTUAL_DISPLAY_FLAG_SUPPORTS_TOUCH
+        // is a hidden constant (1 shl 6); Mika defines it locally the same way.
+        val reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+        val display = context.getSystemService(DisplayManager::class.java).createVirtualDisplay(name, width, height, densityDpi, reader.surface,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC or DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY or (1 shl 6))
+        if (display == null) { reader.close(); return -1 }
         displays[display.display.displayId] = display
+        displayReaders[display.display.displayId] = reader
         return display.display.displayId
     }
-    fun releaseVirtualDisplay(displayId: Int) { displays.remove(displayId)?.release() }
+    fun releaseVirtualDisplay(displayId: Int) {
+        displays.remove(displayId)?.release()
+        displayReaders.remove(displayId)?.close()
+    }
     fun enableAccessibilityService(component: String): Boolean {
         require(component == ShellPrivilegePolicy.accessibilityComponent)
         val enabledResult = shellOutput("settings", "get", "secure", "enabled_accessibility_services")
@@ -195,11 +206,11 @@ internal class ShellPrivilegeBackend(private val context: Context, private val a
             else arrayOf("input", "-d", "$displayId", "tap", "${data.getFloat("x")}", "${data.getFloat("y")}")
             return runCommandSucceeded(*command)
         } finally {
-            when (event) { is MotionEvent -> event.recycle(); is KeyEvent -> event.recycle() }
+            if (event is MotionEvent) event.recycle()
         }
     }
     fun moveTaskToDisplay(taskId: Int, displayId: Int): Boolean {
-        if (displayId !in displays) return false
+        if (!displays.containsKey(displayId)) return false
         return runCatching {
             val service = Class.forName("android.app.ActivityTaskManager").getMethod("getService").invoke(null)
             service.javaClass.methods.first { it.name == "moveRootTaskToDisplay" && it.parameterTypes.size >= 2 }.invoke(service, taskId, displayId)
