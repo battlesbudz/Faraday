@@ -3680,7 +3680,7 @@ class ReleaseJourneyTest {
             render()
             find(By.text("Use Gemma audio understanding")).click()
             assertEquals(VoiceInputMode.GEMMA_AUDIO, VoiceInputMode.selected(context))
-            assertNotNull(find(By.textContains("Captions are display-only")))
+            assertNotNull(find(By.textContains("Requests longer than 28 seconds")))
             assertNotNull(find(By.text("Off")))
             // Exercise the actual dropdown and rebuild the UI for each persisted choice.
             // Expected UI labels are fixture data, not getters across the independently

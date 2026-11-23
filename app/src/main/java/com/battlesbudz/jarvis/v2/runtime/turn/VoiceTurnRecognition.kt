@@ -128,15 +128,7 @@ internal class VoiceTurnRecognition(
             recognitionIssue = com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy.retainedAudioIssue(
                 recognitionIssue, prepared.engine.audioEnabled, audioIsComplete, audioBytes.size)
         }
-        val finalizedCaptionPreview = com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.liveTranscript.value
         if (call.state.capture === prepared.activeCapture) call.state.capture = null
-        if (prepared.directAudioTurn) call.events.post {
-            // Retire this capture's provisional preview at its endpoint. A later
-            // interruption may already own a new preview; never clear that text.
-            if (call.controller.currentCallId() == prepared.expectedCallId) {
-                com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.liveTranscript.compareAndSet(finalizedCaptionPreview, "")
-            }
-        }
         call.status("Processing your Voice Call turn locally…")
         if (prepared.correction == null && !prepared.activeCapture.hasSpeech) {
             observation.outcome = com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkOutcome.NO_SPEECH
@@ -155,7 +147,7 @@ internal class VoiceTurnRecognition(
             return VoiceStageResult.Finished(lifetime.finalMessage)
         }
         // Final ASR text belongs on screen immediately, before pending input processing is joined.
-        if (!prepared.directAudioTurn && asrTranscript.isNotBlank()) call.events.post {
+        if (asrTranscript.isNotBlank()) call.events.post {
             if (call.controller.currentCallId() == prepared.expectedCallId) call.events.transcript("You", asrTranscript, true)
         }
         diagnosticRecorder.recordSummary("Voice recognition turn=${request.asrTurnId} path=${if (prepared.correction == null) "normal" else "after_keyword"} " +
@@ -177,8 +169,7 @@ internal class VoiceTurnRecognition(
             recordDiagnostic = diagnosticRecorder::recordImportant, reportStatus = call::status
         ).resolve(asrTranscript, audioBytes, prepared.directAudioTurn, recognitionIssue, request.asrEngine.label,
             requireWordConfirmation = prepared.correction == null &&
-                prepared.activeCapture.followupAdmittedWithoutLiveWords,
-            residentCallContext = prepared.callSessionReusable)
+                prepared.activeCapture.followupAdmittedWithoutLiveWords)
         val resolvedTranscript = resolvedInput.text
         recognitionIssue = resolvedInput.recognitionIssue
         observation.failure = recognitionIssue
@@ -204,7 +195,7 @@ internal class VoiceTurnRecognition(
         if (asrTranscript.isBlank()) {
             diagnosticRecorder.recordImportant("Voice audio fallback finished: chars=${transcript.length} source=gemma")
         }
-        if (!prepared.directAudioTurn && recognitionIssue == null && transcript.isNotBlank()) {
+        if (recognitionIssue == null && transcript.isNotBlank()) {
             memory.capture(prepared.correction?.utteranceId ?: request.asrTurnId, conversationHistory.current.value.id,
                 prepared.expectedCallId, if (prepared.correction?.origin == com.battlesbudz.jarvis.v2.voice.TranscriptOrigin.TYPED)
                     ConversationMemorySource.TEXT else ConversationMemorySource.VOICE,
@@ -216,7 +207,7 @@ internal class VoiceTurnRecognition(
             prepared.incremental.close()
             call.controller.appendTranscript("You", transcript)
             call.events.returnToWake(prepared.expectedCallId)
-            if (!prepared.directAudioTurn && transcript != asrTranscript) call.events.post { call.events.transcript("You", transcript, true) }
+            if (transcript != asrTranscript) call.events.post { call.events.transcript("You", transcript, true) }
             diagnosticRecorder.record("Voice call ended reason=spoken_goodbye")
             lifetime.finalMessage = com.battlesbudz.jarvis.v2.voice.VoiceCallPolicy.ENDED_PREFIX + " goodbye."
             return VoiceStageResult.Finished(lifetime.finalMessage)
@@ -234,14 +225,14 @@ internal class VoiceTurnRecognition(
         asrComparisonStore.update(request.asrTurnId, "prepared", false)
         diagnosticRecorder.record("Voice ASR final\ntext=$transcript\naudioBytes=${audioBytes.size}\n" +
             "prepared=false inputMode=${if (prepared.directAudioTurn) "gemma_audio" else "incremental_text"} audioForAnswer=${prepared.directAudioTurn}")
-        if (!prepared.directAudioTurn && transcript != asrTranscript) call.events.post {
+        if (transcript != asrTranscript) call.events.post {
             if (call.controller.currentCallId() == prepared.expectedCallId) call.events.transcript("You", transcript, true)
         }
         diagnosticRecorder.recordSummary("Voice pipeline turn=${request.asrTurnId} stage=reply_dispatch " +
             "sinceEndpointMs=${(System.nanoTime() - endpointAt) / 1_000_000}")
         // Action mode is entered only after final ASR and the shared strict plan. It keeps
         // native work on acceptedVoiceActions while this turn owns an ASR-only follow-up pump.
-        val initialActionPlan = if (!prepared.directAudioTurn && recognitionIssue == null)
+        val initialActionPlan = if (recognitionIssue == null)
             turnOrchestrator.plan(transcript, prepared.voiceHistory.map { it.role to it.text }).actionPlan
             else ActionTurnPlan.NotAction
         // Route B: a rejected direct-audio turn may still run the Gemma

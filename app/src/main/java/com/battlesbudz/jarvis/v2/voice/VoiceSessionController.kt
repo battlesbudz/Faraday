@@ -38,51 +38,6 @@ class VoiceSessionController(
         return true
     }
 
-    /** Authority for one still-pending paired input; never a general history edit token. */
-    internal class CaptionTicket internal constructor(val callId: String, val replyId: String,
-        internal val inputVersion: Long, internal val expectedText: String)
-
-    @Synchronized internal fun captionTicket(callId: String, replyId: String, expectedText: String): CaptionTicket? {
-        val call = activeCall?.takeIf { it.id == callId && farewellCommittedCall != callId } ?: return null
-        if (call.transcript.lastOrNull()?.replyId != replyId || call.transcript.lastOrNull()?.role != "Jarvis") return null
-        val user = call.transcript.getOrNull(call.transcript.lastIndex - 1) ?: return null
-        if (user.role != "You" || user.text != expectedText) return null
-        return CaptionTicket(callId, replyId, captionInputVersion, expectedText)
-    }
-
-    internal class CaptionCommit internal constructor(val callId: String, val replyId: String,
-        val text: String, val inputVersion: Long, val farewell: Boolean)
-
-    /** Bounded state mutation only. The final authorization CAS and mutation share this call lock. */
-    @Synchronized internal fun commitCaption(ticket: CaptionTicket, text: String,
-        isCurrent: () -> Boolean, farewell: Boolean = false, authorize: () -> Boolean = { true }): CaptionCommit? {
-        if (text.isBlank() || !isCurrent() || captionInputVersion != ticket.inputVersion ||
-            captionTicket(ticket.callId, ticket.replyId, ticket.expectedText) == null) return null
-        val call = requireActiveCall()
-        val entries = call.transcript.toMutableList()
-        val userIndex = entries.lastIndex - 1
-        if (!authorize()) return null
-        entries[userIndex] = entries[userIndex].copy(text = text, complete = true, generationComplete = true)
-        captionInputVersion++
-        activeCall = call.copy(transcript = entries)
-        if (farewell) farewellCommittedCall = ticket.callId
-        return CaptionCommit(ticket.callId, ticket.replyId, text, captionInputVersion, farewell)
-    }
-
-    /** Persist the latest record, never an old captured snapshot over a newer input/call. */
-    @Synchronized internal fun checkpointCaption(commit: CaptionCommit) {
-        if (activeCall?.id == commit.callId && captionInputVersion >= commit.inputVersion) checkpoint()
-        // End already persisted this committed entry if the call finished meanwhile.
-    }
-
-    internal fun publishCaption(ticket: CaptionTicket, text: String,
-        isCurrent: () -> Boolean, farewell: Boolean = false, onPublished: () -> Unit): Boolean {
-        val committed = commitCaption(ticket, text, isCurrent, farewell) ?: return false
-        checkpointCaption(committed)
-        onPublished()
-        return true
-    }
-
     /**
      * Fired after a new call segment begins, outside the session lock. The
      * runtime uses it to start call-scoped video capture; unit tests leave

@@ -25,16 +25,10 @@ import org.junit.Assert.*
 import org.junit.Test
 
 /**
- * The tool-intent hard block (Battles, 2026-11-09). On build 1771, call
- * 83164c01, the model planned media_control {action=play} on a direct-audio
- * turn whose recognized request was "What is the capital of Idaho?" and the
- * plan EXECUTED — "Sent play command to the active media session" — after
- * which the playback stole the call's audio focus and degraded the rest of
- * the call. The direct-audio native path validated model calls only with
- * AudioToolGuard (allowlist + argument sanity), which a media play passes
- * trivially; the spoken-request intent check (FinalVoiceToolGuard) never
- * ran there. These tests pin the block at plan formation and execution,
- * and the precision bounds around it.
+ * The tool-intent regression from Battles's 2026-11-09 build 1771 call:
+ * media_control play executed for a direct-audio request asking for Idaho's
+ * capital. Both voice input modes now verify model calls against the resolved
+ * request through FinalVoiceToolGuard; parity and fail-closed cases are pinned.
  */
 class ToolIntentHardBlockTest {
     private class ToolCallBackend(private val firstCall: ToolCall) : ConversationBackend {
@@ -66,7 +60,7 @@ class ToolIntentHardBlockTest {
     private class Harness(val draft: ConversationDraft, val backend: ToolCallBackend,
                           val executed: List<ActionRequest>, val summaries: List<String>)
 
-    private fun run(firstCall: ToolCall, asrTranscript: String?): Harness {
+    private fun run(firstCall: ToolCall, asrTranscript: String?, directAudio: Boolean = true): Harness {
         val summaries = mutableListOf<String>()
         val diagnostics = ConversationDiagnostics({}, {}, { summaries += it }, {})
         val executed = mutableListOf<ActionRequest>()
@@ -77,8 +71,9 @@ class ToolIntentHardBlockTest {
             // A direct-audio turn: the invocation prompt is the audio
             // boilerplate, exactly as production builds it; the recognized
             // request exists only as the turn's final ASR transcript.
-            val input = ConversationInvocation(GemmaAudioInputPolicy.REQUEST, emptyList(),
-                voiceAudio = audio, directVoiceAudio = true, asrTranscript = asrTranscript)
+            val input = ConversationInvocation(
+                if (directAudio) GemmaAudioInputPolicy.REQUEST else asrTranscript.orEmpty(), emptyList(),
+                voiceAudio = audio, directVoiceAudio = directAudio, asrTranscript = asrTranscript)
             val callbacks = ConversationCallbacks({}, {})
             val reply = ConversationReply("generation", PipelineBenchmarkCapture("generation", "text", 0,
                 PipelineBenchmarkProvenance("test", 1)), true, memory, { it() }, {}, {}, {}, {}, { _, _, _ -> })
@@ -124,19 +119,11 @@ class ToolIntentHardBlockTest {
     @Test fun idahoCapitalQuestionRejectsMediaPlayBeforeExecution() {
         val harness = run(ToolCall("media_control", "{\"action\":\"play\"}"),
             asrTranscript = "What is the capital of Idaho?")
-        // Nothing executed: the plan never formed, so the turn fell through
-        // to the existing invalid-tool retry and answered as text.
+        // Nothing executed: the unsupported model call fails closed.
         assertTrue(harness.executed.isEmpty())
         assertNull(harness.draft.actionName)
-        assertNull(harness.draft.actionResultMessage)
-        assertEquals("A fresh answer.", harness.draft.generated.text)
-        assertEquals(2, harness.backend.requests.size)
-        // The rejection is visible in diagnostics in the existing style, at
-        // plan formation and again at the retry seam.
-        assertTrue(harness.summaries.any {
-            it == "Audio-native tool plan rejected step=media_control reason=does_not_match_current_intent" })
-        assertTrue(harness.summaries.any {
-            it == "Rejected tool response reason=does_not_match_current_intent retryToolsEnabled=false" })
+        assertEquals("I couldn't verify the requested phone actions.", harness.draft.actionResultMessage)
+        assertEquals(1, harness.backend.requests.size)
     }
 
     @Test fun spokenMediaRequestExecutesMediaPlay() {
@@ -159,29 +146,32 @@ class ToolIntentHardBlockTest {
     }
 
     @Test fun sandboxProposalIsNeitherExecutedNorIntentDropped() {
-        // A model-proposed sandbox call never dispatches from the plan: it
-        // parks for Battles's exact approval of the command text, which is
-        // its verification. The intent gate must not drop it (the transcript
-        // check would kill the voice sandbox flow — FinalVoiceToolGuard
-        // admits only the empty-command routing marker), and nothing may
-        // execute it here either.
+        // Without a routed explicit sandbox request, a native command is not
+        // verified by the recognized user text and fails closed.
         val harness = run(ToolCall("run_in_sandbox", "{\"command\":\"echo hello\"}"),
             asrTranscript = "What is the capital of Idaho?")
         assertTrue(harness.executed.isEmpty())
-        assertTrue(harness.summaries.any {
-            it == "Audio-native tool plan steps=[run_in_sandbox]" })
-        assertTrue(harness.summaries.none {
-            it.contains("rejected step=run_in_sandbox") })
-        assertEquals("Did not attempt: run_in_sandbox.", harness.draft.actionResultMessage)
+        assertEquals("I couldn't verify the requested phone actions.", harness.draft.actionResultMessage)
     }
 
-    @Test fun noTranscriptTurnKeepsAllowlistOnlyBehavior() {
-        // The deliberate bound: with no ASR transcript there is no
-        // recognized text to match a plan against, so the allowlist +
-        // argument-sanity policy stands alone, exactly as before the block.
-        val harness = run(ToolCall("media_control", "{\"action\":\"play\"}"),
-            asrTranscript = null)
-        assertEquals(listOf("media_control"), harness.executed.map { it.name })
-        assertEquals("media_control", harness.draft.actionName)
+    @Test fun voiceCallWithoutRecognizedTextFailsClosedInBothModes() {
+        for (directAudio in listOf(false, true)) {
+            val harness = run(ToolCall("media_control", "{\"action\":\"play\"}"), null, directAudio)
+            assertTrue(harness.executed.isEmpty())
+            assertEquals("I couldn't verify the requested phone actions.", harness.draft.actionResultMessage)
+        }
     }
+
+    @Test fun modelCallsUseTheSameFinalVoiceGuardForBothModes() {
+        val allowed = ToolCall("media_control", "{\"action\":\"play\"}")
+        val rejected = ToolCall("media_control", "{\"action\":\"play\"}")
+        for (directAudio in listOf(false, true)) {
+            val accepted = run(allowed, "Play some music", directAudio)
+            assertEquals(listOf("media_control"), accepted.executed.map { it.name })
+            val denied = run(rejected, "What is the capital of Idaho?", directAudio)
+            assertTrue(denied.executed.isEmpty())
+            assertEquals("I couldn't verify the requested phone actions.", denied.draft.actionResultMessage)
+        }
+    }
+
 }

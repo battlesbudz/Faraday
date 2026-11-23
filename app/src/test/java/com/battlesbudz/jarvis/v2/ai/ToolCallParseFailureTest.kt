@@ -1,7 +1,7 @@
 package com.battlesbudz.jarvis.v2.ai
 
 import com.battlesbudz.jarvis.v2.actions.NativeActionDecoder
-import com.battlesbudz.jarvis.v2.voice.AudioToolGuard
+import com.battlesbudz.jarvis.v2.voice.FinalVoiceToolGuard
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -42,11 +42,10 @@ class ToolCallParseFailureTest {
         assertNotNull(salvaged)
         assertEquals("open_app", salvaged!!.name)
         assertEquals("Facebook", JSONObject(salvaged.arguments).getString("app"))
-        // The salvaged call must still pass the strict schema decode and the
-        // direct-audio tool guard before it may run.
+        // The salvaged call must pass strict schema decoding and spoken intent verification.
         val request = NativeActionDecoder.decodeStrict(salvaged)
         assertNotNull(request)
-        assertTrue(AudioToolGuard.allows(request!!))
+        assertTrue(FinalVoiceToolGuard.allows("open Facebook", request!!.name, request.arguments))
     }
 
     @Test fun wellFormedCallParsesWithoutSalvageChanges() {

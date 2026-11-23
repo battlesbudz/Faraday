@@ -238,8 +238,8 @@ class VoiceTurnRunnerTest {
             f.start { lifetime ->
                 f.acquireStartupResources(lifetime)
                 lifetime.captionNativeReleaseFailed = true
-                throw PostAnswerCaptionContinuation.NativeReleaseFailure(
-                    IllegalStateException("Audio input mode change requires confirmed-history reset before prompt assembly"))
+                throw IllegalStateException("Caption native release/reset failed: " +
+                    "Audio input mode change requires confirmed-history reset before prompt assembly")
             }
             f.awaitCleanup()
             f.publishPosted()

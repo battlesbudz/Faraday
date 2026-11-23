@@ -12,10 +12,9 @@ import com.battlesbudz.jarvis.v2.ai.TurnOrchestrator
 import com.battlesbudz.jarvis.v2.ai.TurnPlan
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkOutcome
 import com.battlesbudz.jarvis.v2.voice.FinalVoiceToolGuard
-import com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy
 import com.battlesbudz.jarvis.v2.voice.IncrementalVoiceInput
 
-/** Routing inputs are explicit; captions/direct audio never acquire tool or lookup authority. */
+/** Resolved user text drives routing; the generation prompt stays independently supplied. */
 internal data class ConversationTurnRequest(
     val prompt: String,
     val history: List<ChatEntry>,
@@ -27,7 +26,8 @@ internal data class ConversationTurnRequest(
     val comparisonActive: Boolean,
     val incrementalVoice: IncrementalVoiceInput?,
     val frozenActionPlan: ActionTurnPlan.Ready?,
-    val frozenVoiceFinal: Boolean
+    val frozenVoiceFinal: Boolean,
+    val recognizedText: String?
 )
 
 internal data class RoutedConversation(
@@ -53,22 +53,21 @@ internal class ConversationRouting(
                       phoneActions: ConversationActions,
                       onPhonePlanFinished: (ActionTurnRunner.Outcome) -> Unit): RoutedConversation? {
         val prompt = request.prompt
+        val planningText = if (request.directVoiceAudio) request.recognizedText.orEmpty() else prompt
         val history = request.history
         val benchmark = reply.benchmark
         val postFinish = reply::postFinish
         // All routing, recall, and summaries must observe the persistent post-memory
         // boundary. Visible transcript stays intact; only prompt context is filtered.
-        var safeHistory = historyAfterCutoff().filterNot {
-            request.directVoiceAudio && GemmaAudioInputPolicy.isPendingTranscript(it.role, it.text)
-        }
-        val turnPlan = if (request.directVoiceAudio || request.comparisonActive || request.imageAttached || request.audioAttached) TurnPlan(TurnKind.NORMAL_CHAT)
-            else turnOrchestrator.plan(prompt, safeHistory.map { it.role to it.text })
+        val safeHistory = historyAfterCutoff()
+        val turnPlan = if (request.comparisonActive || request.imageAttached || request.audioAttached) TurnPlan(TurnKind.NORMAL_CHAT)
+            else turnOrchestrator.plan(planningText, safeHistory.map { it.role to it.text })
         // Parse the completed request before any direct shortcut, lookup, or model side effect.
         val requestedActionPlan = request.frozenActionPlan ?: turnPlan.actionPlan
         diagnostics.record("Action route plan=${requestedActionPlan.javaClass.simpleName} " +
             "steps=${(requestedActionPlan as? ActionTurnPlan.Ready)?.steps?.map { it.request.name } ?: emptyList<String>()} " +
             "lookup=${turnPlan.lookupQuery != null} " +
-            "build=${BuildConfig.VERSION_CODE} user=${prompt.take(1000)} " +
+            "build=${BuildConfig.VERSION_CODE} user=${planningText.take(1000)} " +
             "condition=${(requestedActionPlan as? ActionTurnPlan.Ready)?.batteryCondition} " +
             "reason=${(requestedActionPlan as? ActionTurnPlan.Rejected)?.reason}")
         if (requestedActionPlan is ActionTurnPlan.Rejected) {
@@ -77,7 +76,7 @@ internal class ConversationRouting(
             request.incrementalVoice?.close()
             modelSession.reset()
             val rejection = requestedActionPlan.reason
-            turnOrchestrator.recordResponse(prompt, rejection, turnPlan)
+            turnOrchestrator.recordResponse(planningText, rejection, turnPlan)
             postFinish(rejection)
             return null
         }
@@ -127,19 +126,19 @@ internal class ConversationRouting(
                 reply.failure = "tool_execution_incomplete"
             }
             savePhoneStatus(PhoneActionStatus(
-                request.conversationId, prompt, outcome.message))
+                request.conversationId, planningText, outcome.message))
             onPhonePlanFinished(outcome)
-            diagnostics.important("Action turn\nbuild=${BuildConfig.VERSION_CODE} user=${prompt.take(1000)}\n" +
+            diagnostics.important("Action turn\nbuild=${BuildConfig.VERSION_CODE} user=${planningText.take(1000)}\n" +
                 "steps=${plan.steps.map { it.request }} condition=${plan.batteryCondition} matched=${outcome.conditionMatched}\n" +
                 "conditionResult=${outcome.conditionResult?.message}\n" +
                 "receipts=${outcome.receipts.map { it.request to (it.result.outcome to it.result.message) }}\n" +
                 "completed=${outcome.completed} result=${outcome.message}")
-            turnOrchestrator.recordResponse(prompt, outcome.message, turnPlan)
+            turnOrchestrator.recordResponse(planningText, outcome.message, turnPlan)
             postFinish(outcome.message)
             return null
         }
-        val phoneStatusReply = if (!request.directVoiceAudio && !request.imageAttached && !request.audioAttached && !request.comparisonActive)
-            PhoneActionStatusReply.resolve(prompt, request.conversationId,
+        val phoneStatusReply = if (!request.imageAttached && !request.audioAttached && !request.comparisonActive)
+            PhoneActionStatusReply.resolve(planningText, request.conversationId,
                 history.map { it.role to it.text }, readPhoneStatus()) else null
         if (phoneStatusReply != null) {
             request.incrementalVoice?.close()
@@ -167,25 +166,25 @@ internal class ConversationRouting(
         // substitutes the user's verbatim span for the model's recomposition
         // before parking (ActionRequestText.sandboxLiteralCommand).
         val actionPlan = if (requestedActionPlan is ActionTurnPlan.NotAction &&
-            !request.directVoiceAudio && !request.comparisonActive &&
+            !request.comparisonActive &&
             !request.imageAttached && !request.audioAttached &&
-            com.battlesbudz.jarvis.v2.actions.ActionRequestText.sandboxRunRequest(prompt)) {
+            com.battlesbudz.jarvis.v2.actions.ActionRequestText.sandboxRunRequest(planningText)) {
             diagnostics.record("Sandbox tool channel armed by explicit sandbox request: " +
                 "the model may propose run_in_sandbox; proposals park for exact approval.")
-            com.battlesbudz.jarvis.v2.actions.ActionRequestText.sandboxLiteralCommand(prompt)
+            com.battlesbudz.jarvis.v2.actions.ActionRequestText.sandboxLiteralCommand(planningText)
                 ?.let { literal ->
                     diagnostics.record("Sandbox dictated command extracted verbatim: " +
                         "the parked proposal will carry exactly: $literal")
                 }
             ActionTurnPlan.Ready(listOf(ActionTurnPlan.Step(
                 com.battlesbudz.jarvis.v2.actions.ActionRequest(
-                    "run_in_sandbox", mapOf("command" to "")), prompt)))
+                    "run_in_sandbox", mapOf("command" to "")), planningText)))
         } else requestedActionPlan
         val frontDoorVerdict = if (actionPlan is ActionTurnPlan.NotAction &&
-            !request.directVoiceAudio && !request.comparisonActive &&
+            planningText.isNotBlank() && !request.comparisonActive &&
             !request.imageAttached && !request.audioAttached) {
             val previousUser = safeHistory.lastOrNull { it.role == "You" }?.text
-            frontDoor(request.prompt, previousUser)?.also { verdict ->
+            frontDoor(planningText, previousUser)?.also { verdict ->
                 diagnostics.summary(String.format(java.util.Locale.US,
                     "Front door verdict label=%s toolsOffered=%s actIntended=%s discussion=%s source=%s pAct=%.2f pRead=%.2f pChat=%.2f",
                     verdict.label, verdict.toolsOffered, verdict.actIntended, verdict.discussionConfident,

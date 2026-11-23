@@ -357,19 +357,19 @@ full-WAV fallback, spent-encoder fence and conservative unresolved-frame fallbac
 
 ## Capture-first reply handoff (review candidate)
 
-`CaptureFirstAudioInput` owns a single retained raw borrower and bounded,
-sequence-preserving transfer between reply and ordinary logical readers.
-`CaptureFirstReplyHandoff` orders explicit successful playback, raw transfer,
-old-listener join, new ordinary capture and sealed-input release. The optional
-`PostAnswerCaptionContinuation` retains the exact Gemma child and checked reset.
-`CaptionInputAdmission` and `CaptionPublicationFence` separate accepted-input
-revocation from pending playback-tail verdicts; `CallInputQueue` and
-`VoiceSessionController` hold exact publication authority. `VoiceCaptureHandoff`
-seals one immutable next-input identity/PCM digest. `FinalWhisperFarewellSnapshot`
+Final voice recognition resolves the transcript before answer dispatch, and both input modes
+record that resolved text through the same `VoiceTurnCoordinator` path. Direct-audio
+generation still submits the fixed `GemmaAudioInputPolicy.REQUEST` with retained audio;
+recognized text travels separately for routing and tool verification. `CaptureFirstAudioInput`
+owns a single retained raw borrower and bounded transfer between reply and logical readers.
+`CaptureFirstReplyHandoff` orders successful playback, raw transfer, listener join, new
+capture and sealed-input release. `CaptionInputAdmission` and `CaptionPublicationFence`
+continue to fence accepted input and capture-first handoff; they do not rewrite the completed
+turn record. `VoiceCaptureHandoff` seals one immutable next-input identity/PCM digest.
+`FinalWhisperFarewellSnapshot`
 is a value-only, once-observed control check with no recognition work authority.
 Raw ingress holds are sequence/coverage-aware and independent of retained-candidate
-verdicts. Publication claims remain revocable until a short exact call-state commit;
-checkpoint and immutable-source memory effects run outside ingress locks. A pure
+verdicts. A pure
 optional final-candidate verdict hook reuses capture's existing reset path so echo
 rejection cannot strand an unclassified raw tail after stopping the reader.
 See the [repair ownership and review gates](../verification/capture-first-rearm-repair-2026-10-09.md).

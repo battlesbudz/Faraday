@@ -19,7 +19,6 @@ import com.battlesbudz.jarvis.v2.actions.NativeActionDecoder
 import com.battlesbudz.jarvis.v2.actions.ToolAuthority
 import com.battlesbudz.jarvis.v2.actions.ToolTaskLedger
 import com.battlesbudz.jarvis.v2.ai.ToolCall
-import com.battlesbudz.jarvis.v2.voice.AudioToolGuard
 import com.battlesbudz.jarvis.v2.voice.FinalVoiceToolGuard
 import java.io.File
 import kotlinx.coroutines.runBlocking
@@ -186,17 +185,6 @@ class SandboxPhase2ToolTest {
     }
 
     // -- Voice guards ---------------------------------------------------------
-
-    @Test fun audioGuardAdmitsOnlySaneCommands() {
-        assertTrue(AudioToolGuard.allows(
-            ActionRequest("run_in_sandbox", mapOf("command" to command))))
-        assertFalse(AudioToolGuard.allows(
-            ActionRequest("run_in_sandbox", mapOf("command" to ""))))
-        assertFalse(AudioToolGuard.allows(ActionRequest(
-            "run_in_sandbox", mapOf("command" to "x".repeat(8_001)))))
-        // A non-sandbox tool stays rejected by the guard's allowlist rules.
-        assertFalse(AudioToolGuard.allows(ActionRequest("definitely_not_a_tool")))
-    }
 
     @Test fun finalVoiceGuardAdmitsOnlyTheEmptyCommandMarker() {
         val text = "run echo phase2-ok in the sandbox"

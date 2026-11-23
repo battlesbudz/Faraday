@@ -4,7 +4,6 @@ import com.battlesbudz.jarvis.v2.ai.GenerationResult
 import com.battlesbudz.jarvis.v2.ai.LiteRtLmEngine
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkCapture
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkPurpose
-import com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy
 import com.battlesbudz.jarvis.v2.voice.TranscriptContent
 import com.battlesbudz.jarvis.v2.voice.VoiceTranscriptResolver
 import com.battlesbudz.jarvis.v2.voice.VoiceTurnTrace
@@ -21,7 +20,6 @@ internal data class ResolvedVoiceInput(val text: String, val recognitionIssue: S
 internal interface FinalVoiceTranscriptionEngine {
     val modelId: String
     val audioEnabled: Boolean
-    val hasFixedVoicePreface: Boolean
     var benchmarkPurpose: PipelineBenchmarkPurpose
     suspend fun setToolsEnabled(enabled: Boolean)
     suspend fun generateAudio(prompt: String, audioPcm: ByteArray,
@@ -34,7 +32,6 @@ internal class LiteRtFinalVoiceTranscriptionEngine(
 ) : FinalVoiceTranscriptionEngine {
     override val modelId: String get() = delegate.modelId
     override val audioEnabled: Boolean get() = delegate.audioEnabled
-    override val hasFixedVoicePreface: Boolean get() = delegate.hasFixedVoicePreface
     override var benchmarkPurpose: PipelineBenchmarkPurpose
         get() = delegate.benchmarkPurpose
         set(value) { delegate.benchmarkPurpose = value }
@@ -48,10 +45,8 @@ internal class LiteRtFinalVoiceTranscriptionEngine(
 
 /**
  * Resolves final recognition evidence before any action or answer can be authorized.
- * Empty text may use a bounded audio transcription fallback. On the isolated path model
- * tools remain disabled during that fallback, and the exact native operation is reset
- * before returning; on the resident call path the confirmation instead transcribes on
- * the live call conversation and keeps only a clean, tool-free completion.
+ * Empty text may use a bounded audio transcription fallback with tools disabled and the
+ * exact native operation reset before returning.
  * A direct-audio turn flagged requireWordConfirmation (a follow-up admitted with
  * no word evidence) is authorized only once a transcription confirms real words.
  */
@@ -67,19 +62,13 @@ internal class FinalVoiceInputResolver(
 ) {
     suspend fun resolve(asrTranscript: String, audioBytes: ByteArray,
                         directAudioTurn: Boolean, initialIssue: String?, asrLabel: String,
-                        requireWordConfirmation: Boolean = false,
-                        residentCallContext: Boolean = false): ResolvedVoiceInput {
+                        requireWordConfirmation: Boolean = false): ResolvedVoiceInput {
         var recognitionIssue = initialIssue
         if (asrTranscript.isBlank() && !engine.audioEnabled && recognitionIssue == null) {
             recognitionIssue = "selected_model_has_no_audio_fallback"
             recordDiagnostic("Voice recognition empty: model=${engine.modelId} action=clarify no_audio_submission=true")
         }
-        // The one Gemma transcription pass over retained audio, shared by the
-        // ordinary fallback below and the follow-up word confirmation. On the
-        // isolated path model tools remain disabled during it and the exact
-        // native operation is reset before returning; on the resident call
-        // path (see below) the transcription runs on the live conversation
-        // instead, and only a clean, tool-free completion is kept.
+        // One isolated Gemma transcription pass over retained audio.
         suspend fun hearAudio(audio: ByteArray): String {
             turnTrace.mark(VoiceTurnTrace.Stage.AUDIO_FALLBACK_STARTED)
             benchmark.mark("audio_fallback_started")
@@ -87,31 +76,12 @@ internal class FinalVoiceInputResolver(
             engine.benchmarkPurpose = PipelineBenchmarkPurpose.TRANSCRIPTION_FALLBACK
             reportStatus("Listening to your recorded speech with Gemma…")
             recordDiagnostic("Voice audio fallback: ${asrLabel} empty; Gemma receiving ${audio.size} bytes")
-            // Resident confirmation: on a persistent call turn (the caller only
-            // passes residentCallContext for a direct-audio turn whose session
-            // is reusable), the confirmation transcribes ON the resident
-            // conversation — no tool-policy flip (flipping resets the
-            // conversation) and no reset around the attempts — so the exchange
-            // joins the call history exactly like the post-answer resident
-            // caption does, and the answer that follows keeps its small delta
-            // prompt. On build 1785 the resets here were what forced the next
-            // answer back to a full-size prompt. The exchange is kept only
-            // when the confirmation completes normally with no tool-call
-            // output; any failure, timeout, cancellation, or tool call falls
-            // back to the reset below, so a partial or tool exchange can never
-            // survive into the call context. A fixed-voice-preface conversation
-            // excludes itself, as in the generation layer's reuse policy: its
-            // audio path rewrites the prompt, so it is never the resident one.
-            val resident = residentCallContext && !engine.hasFixedVoicePreface
-            var completedCleanly = false
-            var sawToolCalls = false
             return try {
                 val heardText = kotlinx.coroutines.withTimeout(transcriptionTimeoutMs) {
-                    if (!resident) engine.setToolsEnabled(false)
+                    engine.setToolsEnabled(false)
                     VoiceTranscriptResolver.retryEmptyAudio { attempt ->
-                        if (!resident) resetConversation()
-                        recordDiagnostic("Voice audio fallback: stage=submit attempt=$attempt deadlineMs=$transcriptionTimeoutMs " +
-                            if (resident) "policy=resident_confirmation_no_reset" else "toolsEnabled=false")
+                        resetConversation()
+                        recordDiagnostic("Voice audio fallback: stage=submit attempt=$attempt deadlineMs=$transcriptionTimeoutMs toolsEnabled=false")
                         comparison?.put("asr_attempts", attempt)
                         comparison?.mark("asr_submit")
                         val heard = engine.generateAudio(
@@ -125,12 +95,9 @@ internal class FinalVoiceInputResolver(
                         recordDiagnostic("Voice audio fallback: attempt=$attempt chars=${heard.text.length} " +
                             "streamEvents=${heard.streamEvents} toolCalls=${heard.toolCalls.size} durationMs=${heard.totalGenerationTimeMs} " +
                             "text=${heard.text.take(1000)}")
-                        if (heard.toolCalls.isNotEmpty()) sawToolCalls = true
-                        // Recognition never dispatches tools or speaks model output.
                         if (heard.toolCalls.isEmpty()) heard.text else ""
                     }
                 }
-                completedCleanly = true
                 heardText
             } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
                 kotlin.coroutines.coroutineContext.ensureActive()
@@ -139,11 +106,7 @@ internal class FinalVoiceInputResolver(
                 recordDiagnostic("Voice audio fallback: result=timeout action=clarify")
                 ""
             } finally {
-                // Native cancellation joins its owner before resetting the conversation.
-                // Its cleanup can extend the deadline; never close a model concurrently.
-                // A clean resident confirmation is the one case with nothing to
-                // clean: its exchange stays as call history.
-                if (!resident || !completedCleanly || sawToolCalls) resetConversation()
+                resetConversation()
                 turnTrace.mark(VoiceTurnTrace.Stage.AUDIO_FALLBACK_FINISHED)
                 benchmark.mark("audio_fallback_finished")
                 engine.benchmarkPurpose = PipelineBenchmarkPurpose.ANSWER
@@ -167,7 +130,7 @@ internal class FinalVoiceInputResolver(
                     recognitionIssue != null -> asrTranscript
                     VoiceTranscriptResolver.hasTranscript(heard) -> {
                         recordDiagnostic("Voice follow-up confirmation: result=words_confirmed chars=${heard.length} action=answer_from_audio")
-                        GemmaAudioInputPolicy.REQUEST
+                        heard
                     }
                     else -> {
                         recognitionIssue = "audio_fallback_empty"
@@ -176,7 +139,6 @@ internal class FinalVoiceInputResolver(
                     }
                 }
             }
-            directAudioTurn && recognitionIssue == null -> GemmaAudioInputPolicy.REQUEST
             recognitionIssue != null -> asrTranscript
             else -> VoiceTranscriptResolver.resolve(asrTranscript, audioBytes) { hearAudio(it) }
         }

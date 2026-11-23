@@ -24,7 +24,6 @@ import com.battlesbudz.jarvis.v2.vision.NativeVisionSnapshot
 import com.battlesbudz.jarvis.v2.vision.PhoneVisionClient
 import com.battlesbudz.jarvis.v2.vision.VisionContextFormatter
 import com.battlesbudz.jarvis.v2.vision.VisionServerSettings
-import com.battlesbudz.jarvis.v2.voice.AudioToolGuard
 import com.battlesbudz.jarvis.v2.voice.CallVisualContext
 import com.battlesbudz.jarvis.v2.voice.FinalVoiceToolGuard
 import com.battlesbudz.jarvis.v2.voice.VoiceRepetitionGuard
@@ -85,7 +84,7 @@ internal class ConversationGeneration(
         turnOwnership?.checkCurrent()
         telemetry.attach(engine, prepared.history, prepared.captureReceipt)
         val allowTools = invocation.comparison == null && modelSession.selectedModel().supportsTools &&
-            (routed.actionPlan is ActionTurnPlan.Ready || invocation.directVoiceAudio || routed.frontDoor?.toolsOffered == true)
+            (routed.actionPlan is ActionTurnPlan.Ready || invocation.voiceAudio != null || routed.frontDoor?.toolsOffered == true)
         // Split the tool-policy transition. The accounting half applies now:
         // when the policy will flip, the native conversation is about to reset,
         // so this turn's prompt must re-seed history (matching the speculation
@@ -297,6 +296,8 @@ internal class ConversationGeneration(
                 // are owned, instead of surfacing a generation failure.
                 if (!com.battlesbudz.jarvis.v2.ai.ToolCallParseFailure.isFailure(error)) throw error
                 recoverFromToolCallParseFailure(engine, input, fullPromptText ?: submission.text, onToken, error,
+                    recognizedText = if (invocation.voiceAudio != null) invocation.asrTranscript.orEmpty()
+                        else invocation.prompt,
                     routedPlanSteps = (routed.actionPlan as? ActionTurnPlan.Ready)?.steps?.size ?: 0,
                     turnOwnership = turnOwnership)
             }
@@ -490,31 +491,17 @@ internal class ConversationGeneration(
             "latestReplyChars=${latestReply?.length ?: 0} scope=assembled_prompt nativeContext=${modelSession.hasContext}")
     }
 
-    /**
-     * Builds an action plan from the model's native tool calls in direct-audio
-     * mode, where no transcript exists for the deterministic router. Each call
-     * is strictly decoded and audio-guard validated; invalid calls are dropped.
-     * A call the turn carries a final ASR transcript for must additionally
-     * pass the intent check in [nativeToolIntentAllows]: an allowlisted call
-     * whose action the recognized request never asked for is dropped here,
-     * before any plan exists, so nothing downstream can execute it. Returns
-     * null when no valid calls remain.
-     */
-    private fun audioPlanFromCalls(draft: ConversationDraft): ActionTurnPlan.Ready? {
+    /** Builds strictly verified model-emitted calls for any voice turn. */
+    private fun voicePlanFromCalls(draft: ConversationDraft): ActionTurnPlan.Ready? {
         val invocation = draft.answer.invocation
-        if (!invocation.directVoiceAudio || draft.generated.toolCalls.isEmpty()) return null
-        val steps = draft.generated.toolCalls.mapNotNull { call ->
-            val request = NativeActionDecoder.decodeStrict(call) ?: return@mapNotNull null
-            if (!AudioToolGuard.allows(request)) return@mapNotNull null
-            if (!nativeToolIntentAllows(invocation, request)) {
-                diagnostics.summary("Audio-native tool plan rejected step=${request.name} " +
-                    "reason=does_not_match_current_intent")
-                return@mapNotNull null
-            }
-            ActionTurnPlan.Step(request, "[audio input]")
-        }.take(3)
-        if (steps.isEmpty()) return null
-        diagnostics.summary("Audio-native tool plan steps=${steps.map { it.request.name }}")
+        if (invocation.voiceAudio == null || draft.generated.toolCalls.isEmpty()) return null
+        val recognizedText = invocation.asrTranscript.orEmpty()
+        val steps = draft.generated.toolCalls.map { call ->
+            val request = NativeActionDecoder.decodeStrict(call) ?: return null
+            if (!FinalVoiceToolGuard.allows(recognizedText, request.name, request.arguments)) return null
+            ActionTurnPlan.Step(request, recognizedText)
+        }
+        diagnostics.summary("Voice-native tool plan steps=${steps.map { it.request.name }}")
         return ActionTurnPlan.Ready(steps)
     }
 
@@ -531,7 +518,7 @@ internal class ConversationGeneration(
                 diagnostics.summary("Front-door veto step=${request.name} reason=discussion_signal")
                 return@mapNotNull null
             }
-            ActionTurnPlan.Step(request, draft.answer.invocation.prompt)
+            ActionTurnPlan.Step(request, if (draft.answer.invocation.voiceAudio != null) draft.answer.invocation.asrTranscript.orEmpty() else draft.answer.invocation.prompt)
         }.take(3)
         if (steps.isEmpty()) return null
         diagnostics.summary("Front-door tool plan steps=${steps.map { it.request.name }}")
@@ -539,9 +526,9 @@ internal class ConversationGeneration(
     }
 
     /**
-     * The intent half of the direct-audio native gate — the tool-intent hard
-     * block. [AudioToolGuard] compares a model's call only against an
-     * allowlist and its own arguments, never against what the turn actually
+     * The intent half of the voice native gate — the tool-intent hard
+     * block. An allowlist-only check compares a model's call only against
+     * its own arguments, never against what the turn actually
      * asked for: on build 1771 (call 83164c01) a media_control play plan
      * passed it and executed on a turn whose recognized request was "What
      * is the capital of Idaho?", and the playback then stole the call's
@@ -549,15 +536,15 @@ internal class ConversationGeneration(
      * [FinalVoiceToolGuard] — the same spoken-request check routed and
      * frozen voice plans already pass — must also admit the step before it
      * may execute. Two bounds are deliberate. run_in_sandbox is exempt: a
-     * model-proposed sandbox call never dispatches from the plan (see
-     * [AudioToolGuard]); it parks for Battles's exact approval of the
+     * model-proposed sandbox call never dispatches from the plan;
+     * it parks for Battles's exact approval of the
      * command text, which is its verification. And with no transcript
-     * there is no recognized text to match against, so the allowlist
-     * policy stands alone, exactly as before.
+     * there is no recognized text to match against, so a voice
+     * turn fails closed.
      */
     private fun nativeToolIntentAllows(invocation: ConversationInvocation, request: ActionRequest): Boolean {
         if (request.name == "run_in_sandbox") return true
-        val recognized = invocation.asrTranscript?.takeIf { it.isNotBlank() } ?: return true
+        val recognized = invocation.asrTranscript?.takeIf { it.isNotBlank() } ?: return invocation.voiceAudio == null
         return FinalVoiceToolGuard.allows(recognized, request.name, request.arguments)
     }
 
@@ -569,20 +556,24 @@ internal class ConversationGeneration(
      * typed sandbox read-back with tools disabled ended as exactly this
      * emission. Conversion is deliberately narrow: the block must
      * strict-parse (the salvage parser's exact `call:` shape), decode
-     * against the strict tool schema, and name run_in_sandbox with a
-     * command [AudioToolGuard] admits as sane. run_in_sandbox is the only
-     * tool admitted, for the [nativeToolIntentAllows] reason: a proposed
+     * against the strict tool schema, and name run_in_sandbox. The recognized
+     * request must exist; other calls must pass [FinalVoiceToolGuard]. A proposed
      * sandbox call never dispatches from a plan — it parks for Battles's
      * exact approval of the command text, which is its verification. Any
      * other markup stays text and is [guardLegacyMarkupDraft]'s problem.
      */
     private fun recoverLegacyMarkupCall(draft: ConversationDraft) {
         val invocation = draft.answer.invocation
-        if (invocation.directVoiceAudio || draft.generated.toolCalls.isNotEmpty()) return
+        if (draft.generated.toolCalls.isNotEmpty()) return
         val block = ToolCallMarkup.callBlock(draft.generated.text) ?: return
         val call = com.battlesbudz.jarvis.v2.ai.MalformedToolCallSalvage.parse(block) ?: return
         val request = NativeActionDecoder.decodeStrict(call) ?: return
-        if (request.name != "run_in_sandbox" || !AudioToolGuard.allows(request)) return
+        val recognized = if (invocation.voiceAudio != null) invocation.asrTranscript.orEmpty() else invocation.prompt
+        if (recognized.isBlank()) return
+        if (request.name != "run_in_sandbox") {
+            if (!FinalVoiceToolGuard.allows(recognized, request.name, request.arguments)) return
+            return
+        }
         draft.generated = GenerationResult("", -1L, null, toolCalls = listOf(call))
         diagnostics.summary("Legacy tool markup recovered call=run_in_sandbox " +
             "policy=converted_to_native_call_for_validation_and_approval")
@@ -601,12 +592,13 @@ internal class ConversationGeneration(
      */
     private fun legacyMarkupPlan(draft: ConversationDraft): ActionTurnPlan.Ready? {
         val invocation = draft.answer.invocation
-        if (invocation.directVoiceAudio) return null
         val call = draft.generated.toolCalls.singleOrNull() ?: return null
         val request = NativeActionDecoder.decodeStrict(call) ?: return null
         if (request.name != "run_in_sandbox") return null
+        val recognized = if (invocation.voiceAudio != null) invocation.asrTranscript.orEmpty() else invocation.prompt
+        if (recognized.isBlank()) return null
         return ActionTurnPlan.Ready(listOf(ActionTurnPlan.Step(
-            ActionRequest("run_in_sandbox", mapOf("command" to "")), invocation.prompt)))
+            ActionRequest("run_in_sandbox", mapOf("command" to "")), recognized)))
     }
 
     private suspend fun executeNativeActions(draft: ConversationDraft, phoneActions: ConversationActions): ExecutedActions {
@@ -618,25 +610,22 @@ internal class ConversationGeneration(
         invocation.nativeSpeculation?.beforeNativeMutation()
         recoverLegacyMarkupCall(draft)
         val routedPlan = answer.routed.actionPlan as? ActionTurnPlan.Ready
-        val audioPlan = if (routedPlan == null) audioPlanFromCalls(draft) else null
-        val frontDoorPlan = if (routedPlan == null && audioPlan == null) frontDoorPlanFromCalls(draft) else null
-        val plan = routedPlan ?: audioPlan ?: frontDoorPlan ?: legacyMarkupPlan(draft)
+        val voicePlan = if (routedPlan == null && invocation.voiceAudio != null) voicePlanFromCalls(draft) else null
+        val frontDoorPlan = if (routedPlan == null && voicePlan == null) frontDoorPlanFromCalls(draft) else null
+        if (routedPlan == null && frontDoorPlan == null && invocation.voiceAudio != null && draft.generated.toolCalls.isNotEmpty() && voicePlan == null) {
+            draft.actionResultMessage = "I couldn't verify the requested phone actions."
+            return ExecutedActions(emptyList(), emptyList())
+        }
+        val plan = routedPlan ?: voicePlan ?: frontDoorPlan ?: legacyMarkupPlan(draft)
             ?: return ExecutedActions(emptyList(), emptyList())
         if (draft.generated.toolCalls.isEmpty()) {
             draft.actionResultMessage = "I couldn't verify the requested phone actions."
             return ExecutedActions(plan.steps, emptyList())
         }
-        val allowed = if (invocation.directVoiceAudio) {
-            // Audio-native path: AudioToolGuard applies the allowlist +
-            // argument sanity policy, and nativeToolIntentAllows applies the
-            // spoken-request intent check whenever the turn carries a final
-            // ASR transcript. Plans formed in audioPlanFromCalls already
-            // passed both; this re-verifies any plan that reached execution
-            // by another route, so no native step executes on a direct-audio
-            // turn without the intent check having run on it.
-            plan.steps.all { AudioToolGuard.allows(it.request) && nativeToolIntentAllows(invocation, it.request) }
+        val allowed = if (invocation.voiceAudio != null) {
+            plan.steps.all { nativeToolIntentAllows(invocation, it.request) }
         } else {
-            (invocation.voiceAudio == null && !invocation.frozenVoiceFinal) || plan.steps.all { step ->
+            (invocation.frozenVoiceFinal.not()) || plan.steps.all { step ->
                 FinalVoiceToolGuard.allows(step.sourceClause, step.request.name, step.request.arguments)
             }
         }
@@ -660,7 +649,7 @@ internal class ConversationGeneration(
         }, onNeedsApproval = onNeedsApproval)
         draft.actionName = plan.steps.joinToString(",") { it.request.name }
         draft.actionResultMessage = outcome.message
-        diagnostics.important("Action turn\nuser=${invocation.prompt.take(500)}\nsteps=${plan.steps.map { it.request }}\n" +
+        diagnostics.important("Action turn\nuser=${(invocation.asrTranscript ?: invocation.prompt).take(500)}\nsteps=${plan.steps.map { it.request }}\n" +
             "receipts=${outcome.receipts}\ncompleted=${outcome.completed} result=${outcome.message}")
         return ExecutedActions(plan.steps, outcome.receipts)
     }
@@ -689,14 +678,15 @@ internal class ConversationGeneration(
      */
     private suspend fun recoverFromToolCallParseFailure(engine: ConversationBackend, input: ConversationInput,
                                                         prompt: String, onToken: (String) -> Unit,
-                                                        error: Throwable, routedPlanSteps: Int,
+                                                        error: Throwable, recognizedText: String, routedPlanSteps: Int,
                                                         turnOwnership: TurnOwnership? = null): GenerationResult {
         // M7: recovery resets the shared native conversation; a superseded
         // turn must never run it against its replacement's session.
         turnOwnership?.checkCurrent()
         val salvaged = com.battlesbudz.jarvis.v2.ai.MalformedToolCallSalvage.salvage(error)
         val request = salvaged?.let { NativeActionDecoder.decodeStrict(it) }
-        if (salvaged != null && request != null && AudioToolGuard.allows(request)) {
+        if (salvaged != null && request != null && recognizedText.isNotBlank() &&
+            (request.name == "run_in_sandbox" || FinalVoiceToolGuard.allows(recognizedText, request.name, request.arguments))) {
             if (routedPlanSteps >= 2) {
                 diagnostics.summary("Tool call parse failure salvaged call=${salvaged.name} " +
                     "policy=regenerate_without_tools reason=multi_step_plan_tool_results_need_call_context")
@@ -711,7 +701,7 @@ internal class ConversationGeneration(
                 // turn context replayed into it.
                 modelSession.reset()
                 diagnostics.summary("Tool call parse failure salvaged call=${salvaged.name} " +
-                    "policy=strict_schema_and_audio_guard_validated nativeConversation=rebuilt")
+                    "policy=strict_schema_and_voice_guard_validated nativeConversation=rebuilt")
                 return GenerationResult("", -1L, null, toolCalls = listOf(salvaged))
             }
         }
@@ -751,14 +741,13 @@ internal class ConversationGeneration(
      * once with tools disabled, mirroring [retryInvalidToolDraft]; if the
      * regeneration emits markup again, substitute an empty result so the
      * finalizer's blank-answer fallback — never the markup — ends the
-     * turn. Direct-audio turns never reach here: their calls are native
-     * and their text is a caption/answer the audio guards own.
+     * turn. Voice turns of both input modes use this same guard.
      */
     private suspend fun guardLegacyMarkupDraft(draft: ConversationDraft, input: ConversationInput,
                                                fullPrompt: String) {
         draft.answer.turnOwnership?.checkCurrent()
         val answer = draft.answer
-        if (answer.invocation.directVoiceAudio || draft.actionResultMessage != null ||
+        if (draft.actionResultMessage != null ||
             draft.generated.toolCalls.isNotEmpty()) return
         if (!ToolCallMarkup.contains(draft.generated.text)) return
         modelSession.reset()

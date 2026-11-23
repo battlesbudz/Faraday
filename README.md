@@ -102,7 +102,7 @@ You’ll need a phone running Android 11 or later and an internet connection for
 
 > **Note:** “Hey Jarvis” is the default wake phrase for legacy reasons. Making it customizable — or updating it to “Hey Faraday” — is planned for an upcoming release.
 
-For phone actions and natural speech interruption, select **Speech recognition** in voice settings.
+Phone actions work the same in both voice input modes.
 
 ## What you can do
 

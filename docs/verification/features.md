@@ -28,6 +28,33 @@ Acceptance checks:
 - Real model/device (not locally verified): JVM fixtures use precomputed
   embeddings and fake backends. Real EmbeddingGemma inference, Android lifecycle
   and device performance remain release/device coverage.
+## Voice input path unification — 23 November 2026
+
+Both `TRANSCRIBED_TEXT` and `GEMMA_AUDIO` resolve one transcript before routing and
+answer dispatch. The recognizer's final text is authoritative when present; Gemma's
+transcription of retained audio is used only when recognizer text is blank. Direct audio
+still submits the fixed `GemmaAudioInputPolicy.REQUEST` with audio, while the resolved
+transcript is passed separately to routing, tool verification, and the recorded user turn.
+Both modes use the same action plan, declared tool gates and approval-card path, memory
+capture, and memory packet budget. Post-answer caption reconciliation and pending-record
+sentinels are removed.
+- The front-door classifier consults the same planning text for both modes (the
+  recognized transcript on direct-audio turns), so its verdicts, tool offers, and
+  discussion veto apply identically in either mode.
+
+Acceptance checks:
+- JVM logic: resolver tests pin recognizer precedence, transcription fallback, and
+  word-confirmation text; routing parity tests compare plans for identical recognized
+  text; tool parity tests compare allowed and rejected model calls through
+  `FinalVoiceToolGuard`; record parity tests pin the resolved text in the saved user row.
+- Existing behavior that remains intact: the 28-second audio capture limit, retained-audio
+  rejection, caption-recognizer preference, required-word confirmation, direct-audio
+  generation prompt, native audio speculation/priming, comparison mode, and declared
+  approval gates.
+- Verification status: this snapshot was edited without running Gradle or tests as
+  requested. CI compilation and JVM checks remain pending. Real-model, physical-audio,
+  and device-performance coverage is not established by this source update.
+
 
 
 # Memory Unit 4 entity/temporal prototype — 14 November 2026

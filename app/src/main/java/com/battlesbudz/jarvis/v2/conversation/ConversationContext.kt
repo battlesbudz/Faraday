@@ -102,27 +102,18 @@ internal class ConversationContextPreparation(
     private val references: ConversationReferences,
     private val diagnostics: ConversationDiagnostics
 ) {
-    companion object {
-        /**
-         * Total packet budget cap for direct-audio voice turns (the general
-         * cap is 1,200 chars): the packet is supporting evidence, not the
-         * request, and on a persistent call conversation it is submitted
-         * once at call start rather than re-prefilled per turn at full size.
-         * Retrieval ranking is untouched, so the top records still ride.
-         */
-        const val VOICE_MEMORY_BUDGET_MAX_CHARS = 800
-        /** Per-record quoted-content cap for direct-audio voice turns. */
-        const val VOICE_MEMORY_ENTRY_MAX_CHARS = 240
-    }
+    private fun approvedSnapshot(query: String, contextLimit: Int): MemoryTurnContext? =
+        memory.approvedSnapshot(query, (contextLimit / 5).coerceIn(240, 1_200))
+
     /** Pure preview for direct audio only: no routing effects, token adoption,
      * receipt consumption, history cutoff, memory capture, lookup or native reset. */
     fun previewDirectAudio(builder: com.battlesbudz.jarvis.v2.ai.ConversationPromptBuilder):
         com.battlesbudz.jarvis.v2.voice.NativeVoicePromptPreview? {
         val limit = ConversationPrompt.contextLimit(modelSession.selectedModel().contextTokens, false)
         val prompt = GemmaAudioInputPolicy.REQUEST
-        val context = memory.approvedSnapshot(prompt, (limit / 5).coerceIn(240, 1_200)) ?: return null
+        val context = approvedSnapshot(prompt, limit) ?: return null
         if (!context.isCurrent()) return null
-        val history = historyAfterCutoff().filterNot { GemmaAudioInputPolicy.isPendingTranscript(it.role, it.text) }
+        val history = historyAfterCutoff()
         val preview = ConversationPrompt(builder, true, { modelSession.selectedModel().contextTokens }, { context })
         preview.continuityContext = TurnContinuity.section(prompt, history.map { it.role to it.text },
             maxChars = (limit / 6).coerceIn(300, 1600))
@@ -152,14 +143,9 @@ internal class ConversationContextPreparation(
         // and before lookup or any prompt-size/retry calculation. Pending proposals never
         // invalidate it; an approved mutation fences later tokens and forces a fresh context.
         if (requestedActionPlan !is ActionTurnPlan.Ready) {
-            val memoryBudget = if (request.directVoiceAudio)
-                (contextLimit / 5).coerceIn(240, VOICE_MEMORY_BUDGET_MAX_CHARS)
-            else (contextLimit / 5).coerceIn(240, 1_200)
             val memoryStarted = System.nanoTime()
             benchmark.mark("memory_retrieval_started")
-            memoryTurnContext = if (request.directVoiceAudio)
-                memory.approvedSnapshotCapped(prompt, memoryBudget, VOICE_MEMORY_ENTRY_MAX_CHARS)
-            else memory.approvedSnapshot(prompt, memoryBudget)
+            memoryTurnContext = approvedSnapshot(prompt, contextLimit)
             benchmark.mark("memory_retrieval_finished")
             benchmark.metric("memory_retrieval_ms", (System.nanoTime() - memoryStarted) / 1_000_000)
             if (memoryTurnContext == null) {
@@ -185,9 +171,7 @@ internal class ConversationContextPreparation(
                 if (!persistentCallTurn) modelSession.reset()
                 // Expiry-token adoption can publish a fresh persistent cutoff. Reload
                 // before any recall/retry prompt observes retained dialogue.
-                safeHistory = historyAfterCutoff().filterNot {
-                    request.directVoiceAudio && GemmaAudioInputPolicy.isPendingTranscript(it.role, it.text)
-                }
+                safeHistory = historyAfterCutoff()
             }
             val memoryDeliveryTicket = memory.deliveryFence.ticket(memoryTurnContext!!.expiresAtMs)
             reply.bindMemory(memoryTurnContext!!, memoryDeliveryTicket)

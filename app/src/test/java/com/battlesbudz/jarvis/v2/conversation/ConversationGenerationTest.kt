@@ -139,11 +139,12 @@ class ConversationGenerationTest {
                                               onNeedsApproval: (suspend (ActionRequest) -> com.battlesbudz.jarvis.v2.actions.ExecutionResult)? = null,
                                               frontDoor: FrontDoorVerdict? = null,
                                               promptText: String = "Hello",
+                                              recognizedText: String? = null,
                                               sessionProbe: (ConversationModelSession) -> Unit = {}): ConversationDraft {
         val diagnostics = ConversationDiagnostics({}, {}, { line -> summaryLog?.add(line) }, {})
         val memory = MemoryDeliveryFence()
         val input = ConversationInvocation(promptText, emptyList(), voiceAudio = audio,
-            directVoiceAudio = audio != null && directAudio)
+            directVoiceAudio = audio != null && directAudio, asrTranscript = recognizedText)
         val callbacks = ConversationCallbacks({}, {})
         val reply = ConversationReply("generation", PipelineBenchmarkCapture("generation", "text", 0,
             PipelineBenchmarkProvenance("test", 1)), true, memory, { it() }, {}, {}, {}, {}, { _, _, _ -> })
@@ -366,7 +367,7 @@ class ConversationGenerationTest {
             cancelUnfinished = {}, conversationId = "conversation", onActionResult = { _, _, _ -> },
             mainDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
             executionDispatcher = kotlinx.coroutines.Dispatchers.Unconfined)
-        val draft = generateWithBackend(backend, byteArrayOf(1, 2, 3), actions)
+        val draft = generateWithBackend(backend, byteArrayOf(1, 2, 3), actions, recognizedText = "Open Facebook")
         // No regeneration was needed and no second generation ran: the
         // salvaged call went through the normal action path exactly once.
         assertEquals(1, backend.requests.size)
@@ -392,9 +393,9 @@ class ConversationGenerationTest {
             cancelUnfinished = {}, conversationId = "conversation", onActionResult = { _, _, _ -> },
             mainDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
             executionDispatcher = kotlinx.coroutines.Dispatchers.Unconfined)
-        val draft = generateWithBackend(backend, null, actions, plan) { session ->
+        val draft = generateWithBackend(backend, null, actions, plan, sessionProbe = { session ->
             session.beforeNativeMutation = { events.add("reset") }
-        }
+        }, promptText = "Open Facebook")
         // The salvaged first call validates, but standing it up would execute
         // open_app and then submit its result into the rebuilt conversation,
         // which holds neither the user turn nor the assistant tool-call
@@ -425,7 +426,7 @@ class ConversationGenerationTest {
             cancelUnfinished = {}, conversationId = "conversation", onActionResult = { _, _, _ -> },
             mainDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
             executionDispatcher = kotlinx.coroutines.Dispatchers.Unconfined)
-        val draft = generateWithBackend(backend, null, actions, plan)
+        val draft = generateWithBackend(backend, null, actions, plan, promptText = "Open Facebook")
         // The salvaged call is the whole plan: executing it completes the
         // turn, no tool-results submission follows it, and no regeneration
         // runs — the multi-step decline does not apply.
@@ -466,17 +467,13 @@ class ConversationGenerationTest {
         assertNull(draft.actionResultMessage)
     }
 
-    @Test fun invalidDirectAudioDraftRetriesTheSameAuthoritativeAudioWithoutActionDispatch() = runBlocking {
+    @Test fun invalidDirectAudioToolCallWithoutRecognizedIntentFailsClosed() = runBlocking {
         val audio = byteArrayOf(1, 2, 3)
-        val (_, backend) = generate(audio)
-        assertEquals(2, backend.requests.size)
+        val (draft, backend) = generate(audio)
+        assertEquals(1, backend.requests.size)
         assertSame(audio, backend.requests.first().audio)
-        assertSame(audio, backend.requests.last().audio)
-        // Direct-audio intentionally enables tools so the model may emit tool
-        // calls (audio-native tools); the invalid-draft retry disables them
-        // again. The no-dispatch guarantee is the assertions around this one.
-        assertEquals(listOf(true, false), backend.tools)
-        assertEquals(PipelineBenchmarkPurpose.RETRY, backend.requests.last().purpose)
+        assertEquals(listOf(true), backend.tools)
+        assertEquals("I couldn't verify the requested phone actions.", draft.actionResultMessage)
     }
 
     private fun speculationDriver(resets: () -> Unit) = object : NativeSpeculationDriver {

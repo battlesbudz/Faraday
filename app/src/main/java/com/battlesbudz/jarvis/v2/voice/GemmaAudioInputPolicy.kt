@@ -9,8 +9,6 @@ internal object GemmaAudioInputPolicy {
      * caption and never feeds the conversation. It stays on for both routes and is
      * off only in an ASR-free native-audio comparison trial. */
     fun replyProbeEnabled(nativeAudioComparison: Boolean = false): Boolean = !nativeAudioComparison
-    const val PENDING_TRANSCRIPT = "[Audio request; final transcription pending]"
-    fun isPendingTranscript(role: String, text: String): Boolean = role == "You" && text == PENDING_TRANSCRIPT
     const val MAX_CAPTURE_MS = 28_000
     const val REQUEST = "Respond to the user's spoken request in the attached audio. The current request is the audio, not a caption. You CAN use phone tools via native function calling: when the user asks you to do something on the phone (open an app, check battery, set volume, control media, post a notification, show schedule, set a reminder), emit the appropriate tool call with accurate arguments, and only when you are confident about what the user asked. Never claim an action succeeded unless a tool result confirms it."
     fun retainedAudioIssue(captionIssue: String?, audioEnabled: Boolean, complete: Boolean, bytes: Int): String? =

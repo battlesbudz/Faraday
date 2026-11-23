@@ -39,7 +39,7 @@ internal fun VoiceInputSettings(enabled: Boolean, onBusy: (Boolean) -> Unit) {
             }) { Text("Use ${mode.label}") }
         }
         if (inputMode == VoiceInputMode.GEMMA_AUDIO) {
-            Text("Experimental: Gemma answers from your recording. Use speech recognition mode for phone actions. Captions are display-only. Requests longer than 28 seconds are rejected with a request to speak in shorter parts.", style = MaterialTheme.typography.bodySmall)
+            Text("Experimental: Gemma answers from your recording. Requests longer than 28 seconds are rejected with a request to speak in shorter parts.", style = MaterialTheme.typography.bodySmall)
             ExposedDropdownMenuBox(expanded = captionMenuOpen, onExpandedChange = { captionMenuOpen = enabled && !busy && it }) {
                 OutlinedTextField(
                     value = captionEngine?.label ?: "Off",

@@ -1053,8 +1053,6 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         val memory = object : ConversationMemoryAccess {
             override val deliveryFence get() = memoryDeliveryFence
             override fun approvedSnapshot(query: String, maxChars: Int) = freshMemoryTurnContext(query, maxChars)
-            override fun approvedSnapshotCapped(query: String, maxChars: Int, maxEntryChars: Int) =
-                freshMemoryTurnContext(query, maxChars, maxEntryChars)
             override fun adopt(context: MemoryTurnContext) = adoptMemoryState(context)
             override fun clearNativeToken() { nativeMemoryStateToken = null }
             override fun isCurrent(context: MemoryTurnContext) = isMemoryTurnCurrent(context)

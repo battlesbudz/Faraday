@@ -1,33 +1,21 @@
 package com.battlesbudz.jarvis.v2.runtime
 
 import com.battlesbudz.jarvis.v2.ai.GenerationResult
-import com.battlesbudz.jarvis.v2.ai.ToolCall
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkCapture
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkProvenance
 import com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkPurpose
-import com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy
 import com.battlesbudz.jarvis.v2.voice.VoiceTurnTrace
+import com.battlesbudz.jarvis.v2.voice.VoiceCallRecord
+import com.battlesbudz.jarvis.v2.voice.VoiceCallStore
+import com.battlesbudz.jarvis.v2.voice.VoiceSessionController
+import com.battlesbudz.jarvis.v2.voice.VoiceTurnCoordinator
 import java.util.concurrent.atomic.AtomicInteger
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertThrows
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Pins the conversation-reset policy of the follow-up word confirmation.
- * On the persistent call conversation the confirmation must transcribe
- * without flipping the tool policy or resetting the conversation, so the
- * answer that follows keeps its delta prompt; any failure, timeout, or
- * tool-call output falls back to the reset. Off the resident conversation
- * the legacy isolate-and-reset behavior is pinned byte-for-byte.
- */
 class FinalVoiceInputResolverTest {
-    private class FakeEngine(
-        override val hasFixedVoicePreface: Boolean = false,
-        private val behaviour: suspend (call: Int) -> GenerationResult
-    ) : FinalVoiceTranscriptionEngine {
+    private class FakeEngine(private val result: String) : FinalVoiceTranscriptionEngine {
         override val modelId = "fake-model"
         override val audioEnabled = true
         override var benchmarkPurpose = PipelineBenchmarkPurpose.ANSWER
@@ -37,105 +25,61 @@ class FinalVoiceInputResolverTest {
         override suspend fun generateAudio(prompt: String, audioPcm: ByteArray,
             onStreamToken: (String) -> Unit): GenerationResult {
             generateCalls++
-            return behaviour(generateCalls)
+            return GenerationResult(result, 1, null)
         }
     }
 
-    private fun resolver(engine: FakeEngine, resets: AtomicInteger, timeoutMs: Long = 12_000L) =
-        FinalVoiceInputResolver(
-            engine = engine,
+    private fun resolve(asr: String, gemma: String, direct: Boolean = true, confirm: Boolean = false) = runBlocking {
+        val engine = FakeEngine(gemma)
+        val resets = AtomicInteger()
+        val resolver = FinalVoiceInputResolver(engine,
             resetConversation = { resets.incrementAndGet() },
             benchmark = PipelineBenchmarkCapture("turn", "test", 0, PipelineBenchmarkProvenance("test", 1)),
-            turnTrace = VoiceTurnTrace("turn"),
-            comparison = null,
-            recordDiagnostic = {},
-            reportStatus = {},
-            transcriptionTimeoutMs = timeoutMs)
-
-    private fun confirm(resolver: FinalVoiceInputResolver, resident: Boolean) = runBlocking {
-        resolver.resolve(asrTranscript = "", audioBytes = byteArrayOf(1, 2, 3),
-            directAudioTurn = true, initialIssue = null, asrLabel = "test",
-            requireWordConfirmation = true, residentCallContext = resident)
+            turnTrace = VoiceTurnTrace("turn"), comparison = null,
+            recordDiagnostic = {}, reportStatus = {})
+        Triple(resolver.resolve(asr, byteArrayOf(1, 2, 3), direct, null, "test", confirm), engine, resets)
     }
 
-    private fun words(text: String) =
-        GenerationResult(text = text, timeToFirstTokenMs = 1, decodeTokensPerSecond = null)
-
-    @Test fun residentConfirmationKeepsConversationWhenWordsAreConfirmed() {
-        val resets = AtomicInteger()
-        val engine = FakeEngine { words("what time is it") }
-        val result = confirm(resolver(engine, resets), resident = true)
-        assertEquals(GemmaAudioInputPolicy.REQUEST, result.text)
-        assertEquals(null, result.recognitionIssue)
-        assertEquals(1, engine.generateCalls)
-        assertTrue(engine.toolPolicyCalls.isEmpty())
-        assertEquals(0, resets.get())
-    }
-
-    @Test fun residentConfirmationWithToolCallsResetsOnceAndClarifies() {
-        val resets = AtomicInteger()
-        val engine = FakeEngine {
-            GenerationResult(text = "", timeToFirstTokenMs = 1, decodeTokensPerSecond = null,
-                toolCalls = listOf(ToolCall("noop", "{}")))
+    @Test fun bothModesPreferRecognizerTextOverGemmaCaption() {
+        for (direct in listOf(false, true)) {
+            val (result, engine) = resolve("recognized words", "different Gemma caption", direct).let { it.first to it.second }
+            assertEquals("recognized words", result.text)
+            assertEquals(0, engine.toolPolicyCalls.size)
+            assertEquals(0, engine.generateCalls)
         }
-        val result = confirm(resolver(engine, resets), resident = true)
-        assertEquals("", result.text)
-        assertEquals("audio_fallback_empty", result.recognitionIssue)
-        assertEquals(2, engine.generateCalls)
-        assertTrue(engine.toolPolicyCalls.isEmpty())
-        // No per-attempt resets on the resident path; the single finally
-        // reset discards the conversation that holds the tool exchanges.
-        assertEquals(1, resets.get())
     }
 
-    @Test fun residentConfirmationFailureResetsAndPropagates() {
-        val resets = AtomicInteger()
-        val engine = FakeEngine { throw IllegalStateException("native boom") }
-        assertThrows(IllegalStateException::class.java) {
-            confirm(resolver(engine, resets), resident = true)
+    @Test fun bothModesUseGemmaTranscriptionOnlyWhenRecognizerIsBlank() {
+        for (direct in listOf(false, true)) {
+            val (result, engine) = resolve("", "Gemma transcription", direct).let { it.first to it.second }
+            assertEquals("Gemma transcription", result.text)
+            assertEquals(1, engine.generateCalls)
         }
-        assertEquals(1, resets.get())
-        assertTrue(engine.toolPolicyCalls.isEmpty())
     }
 
-    @Test fun residentConfirmationTimeoutResetsAndReportsTimeout() {
-        val resets = AtomicInteger()
-        val engine = FakeEngine { delay(5_000); words("too late") }
-        val result = confirm(resolver(engine, resets, timeoutMs = 100), resident = true)
-        assertEquals("audio_fallback_timeout", result.recognitionIssue)
-        assertEquals(1, resets.get())
-        assertTrue(engine.toolPolicyCalls.isEmpty())
+    @Test fun bothModesRecordRecognizerTextAndUseGemmaOnlyAsFallback() = runBlocking {
+        for ((asr, gemma, expected) in listOf(
+            Triple("recognizer text", "Gemma caption", "recognizer text"),
+            Triple("", "Gemma transcription", "Gemma transcription"))) {
+            for (direct in listOf(false, true)) {
+                val resolved = resolve(asr, gemma, direct).first.text
+                assertEquals(expected, resolved)
+                val calls = mutableListOf<VoiceCallRecord>()
+                val session = VoiceSessionController(object : VoiceCallStore {
+                    override fun list() = calls.toList()
+                    override fun save(call: VoiceCallRecord) { calls.removeAll { it.id == call.id }; calls += call }
+                    override fun delete(callId: String) { calls.removeAll { it.id == callId } }
+                })
+                session.beginCall()
+                VoiceTurnCoordinator(session).processTurn(resolved) { emit -> emit("answer"); "answer" }
+                assertEquals(expected, session.currentTranscript().first().text)
+            }
+        }
     }
 
-    @Test fun residentNoSpeechKeepsConversationAndClarifies() {
-        val resets = AtomicInteger()
-        val engine = FakeEngine { words("[NO_SPEECH]") }
-        val result = confirm(resolver(engine, resets), resident = true)
-        assertEquals("", result.text)
-        assertEquals("audio_fallback_empty", result.recognitionIssue)
-        assertEquals(1, engine.generateCalls)
-        // A clean no-speech verdict leaves no partial state behind, so the
-        // resident conversation survives for the next turn.
-        assertEquals(0, resets.get())
-    }
-
-    @Test fun isolatedConfirmationKeepsLegacyResetBehavior() {
-        val resets = AtomicInteger()
-        val engine = FakeEngine { words("what time is it") }
-        val result = confirm(resolver(engine, resets), resident = false)
-        assertEquals(GemmaAudioInputPolicy.REQUEST, result.text)
-        assertEquals(null, result.recognitionIssue)
+    @Test fun confirmedAudioFollowupReturnsHeardText() {
+        val (result, engine) = resolve("", "confirmed spoken words", confirm = true).let { it.first to it.second }
+        assertEquals("confirmed spoken words", result.text)
         assertEquals(listOf(false), engine.toolPolicyCalls)
-        // One reset before the attempt and one in the finally cleanup.
-        assertEquals(2, resets.get())
-    }
-
-    @Test fun residentFlagIgnoredForFixedVoicePrefaceConversation() {
-        val resets = AtomicInteger()
-        val engine = FakeEngine(hasFixedVoicePreface = true) { words("what time is it") }
-        val result = confirm(resolver(engine, resets), resident = true)
-        assertEquals(GemmaAudioInputPolicy.REQUEST, result.text)
-        assertEquals(listOf(false), engine.toolPolicyCalls)
-        assertEquals(2, resets.get())
     }
 }

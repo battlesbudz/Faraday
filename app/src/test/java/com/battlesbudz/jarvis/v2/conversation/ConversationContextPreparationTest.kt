@@ -30,13 +30,11 @@ class ConversationContextPreparationTest {
         var captureReads = 0
         var cutoffReads = 0
         var packet = "approved packet"
-        val cappedCalls = mutableListOf<Triple<String, Int, Int>>()
-        override fun approvedSnapshot(query: String, maxChars: Int): MemoryTurnContext? =
-            if (available) MemoryTurnContext(packet, "token", query, null, 1,
+        val snapshotBudgets = mutableListOf<Int>()
+        override fun approvedSnapshot(query: String, maxChars: Int): MemoryTurnContext? {
+            snapshotBudgets.add(maxChars)
+            return if (available) MemoryTurnContext(packet, "token", query, null, 1,
                 hasApprovedMemories = true, currentEpoch = { 1 }) else null
-        override fun approvedSnapshotCapped(query: String, maxChars: Int, maxEntryChars: Int): MemoryTurnContext? {
-            cappedCalls.add(Triple(query, maxChars, maxEntryChars))
-            return approvedSnapshot(query, maxChars)
         }
         override fun adopt(context: MemoryTurnContext) = changed.also { adoptions++ }
         override fun clearNativeToken() { tokenCleared = true }
@@ -76,7 +74,7 @@ class ConversationContextPreparationTest {
             val finalPrompt = ConversationPrompt(builder, true, { model.contextTokens }, { reply.memoryContext })
             val request = ConversationTurnRequest(requestText,
                 listOf(ChatEntry("You", "nominal voice seed that is not post-cutoff authority")),
-                "conversation", false, false, true, true, false, null, null, false)
+                "conversation", false, false, true, true, false, null, null, false, requestText)
             val router = ConversationRouting({ currentHistory }, TurnOrchestrator(ReferenceGroundingClient()),
                 models, { null }, {}, ConversationDiagnostics({}, {}, {}, {}))
             val actions = ConversationActions({ error("No action executor in direct audio") },
@@ -92,7 +90,7 @@ class ConversationContextPreparationTest {
         }
         suspend fun prepare(text: String, plan: TurnPlan = TurnPlan(TurnKind.NORMAL_CHAT)) = stage.prepare(
             ConversationTurnRequest(text, emptyList(), "conversation", false, false, false,
-                false, false, null, null, false),
+                false, false, null, null, false, text),
             RoutedConversation(listOf(ChatEntry("You", "old retained context")), plan, ActionTurnPlan.NotAction, null),
             reply, prompt, 10_000, { ticket, _ -> bound.add(ticket) })
     }
@@ -121,7 +119,7 @@ class ConversationContextPreparationTest {
             f.models, { null }, {}, ConversationDiagnostics({}, {}, {}, {}),
             frontDoor = { current, previous -> seen.add(current to previous); cold })
         val request = ConversationTurnRequest("Send a message to Andrea saying testing", emptyList(),
-            "conversation", false, false, false, false, false, null, null, false)
+            "conversation", false, false, false, false, false, null, null, false, null)
         val actions = ConversationActions({ error("No Android executor") }, { _, _ -> error("No action admission") },
             { _, _, _, _ -> error("No action dispatch") }, {}, "conversation", { _, _, _ -> })
         val routed = requireNotNull(router.route(request, f.reply, actions) {})
@@ -238,27 +236,18 @@ class ConversationContextPreparationTest {
         assertEquals(listOf("explicit query"), f.queries)
         assertEquals("reference evidence", prepared.referenceContext)
     }
-    @Test fun nativePreviewMatchesActualFirstAndSecondTurnRouteContextAndAssembler() = runBlocking {
-        for (secondTurn in listOf(false, true)) {
-            val f = Fixture()
-            f.state.hasContext = false // Voice preparation always resets native history.
-            f.state.characters = 0
-            f.currentHistory = if (secondTurn) listOf(
-                ChatEntry("You", "Tell me about a quiet lake."),
-                ChatEntry("Jarvis", "The lake was still at sunrise.")) else emptyList()
-            val preview = requireNotNull(f.stage.previewDirectAudio(ConversationPromptBuilder(f.context)))
-            assertEquals(0, f.memory.adoptions)
-            assertEquals(0, f.memory.captureReads)
-            assertEquals(0, f.memory.cutoffReads)
-            assertTrue(f.bound.isEmpty()); assertTrue(f.terminal.isEmpty()); assertTrue(f.queries.isEmpty())
-            // processTurn inserts a pending direct-audio row at final acceptance.
-            f.currentHistory = f.currentHistory + ChatEntry("You", com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy.PENDING_TRANSCRIPT)
-            val actual = f.actualDirectVoicePrompt()
-            assertEquals(preview.exactPrompt, actual)
-            assertFalse(actual.contains("nominal voice seed"))
-            assertFalse(actual.contains(com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy.PENDING_TRANSCRIPT))
-            if (secondTurn) assertTrue(actual.contains("The lake was still at sunrise."))
-        }
+    @Test fun recognizedTextProducesTheSameRoutePlanForBothVoiceModes() = runBlocking {
+        val f = Fixture()
+        val utterance = "What is the capital of Idaho?"
+        val router = ConversationRouting({ f.currentHistory }, TurnOrchestrator(ReferenceGroundingClient()),
+            f.models, { null }, {}, ConversationDiagnostics({}, {}, {}, {}))
+        val actions = ConversationActions({ error("No action executor expected") },
+            { _, _ -> error("No action admission expected") }, { _, _, _, _ -> error("No action execution expected") },
+            {}, "conversation", { _, _, _ -> })
+        suspend fun plan(prompt: String, direct: Boolean): TurnPlan = requireNotNull(router.route(
+            ConversationTurnRequest(prompt, emptyList(), "conversation", false, false, true,
+                direct, false, null, null, false, utterance), f.reply, actions) {}).plan
+        assertEquals(plan(utterance, false), plan(com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy.REQUEST, true))
     }
 
     @Test fun nativePreviewDoesNotAdoptMemoryAndFinalAdoptionDrainsBeforeNativeReset() = runBlocking {
@@ -275,24 +264,20 @@ class ConversationContextPreparationTest {
 
     private fun directAudioRequest() = ConversationTurnRequest(
         com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy.REQUEST,
-        emptyList(), "conversation", false, false, true, true, false, null, null, false)
+        emptyList(), "conversation", false, false, true, true, false, null, null, false,
+        com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy.REQUEST)
 
     private fun directAudioRouted() = RoutedConversation(emptyList(), TurnPlan(TurnKind.NORMAL_CHAT),
         ActionTurnPlan.NotAction, null)
 
-    @Test fun directAudioTurnUsesTheCappedVoiceMemoryBudget() = runBlocking {
-        val f = Fixture()
-        val prompt = ConversationPrompt(ConversationPromptBuilder(f.context), true, { null }, { f.reply.memoryContext })
-        val prepared = f.stage.prepare(directAudioRequest(), directAudioRouted(), f.reply, prompt, 10_000) { _, _ -> }
-        assertNotNull(prepared)
-        // Voice turns cap the packet total and each record; other turns keep
-        // the general snapshot (asserted by every pre-existing test here,
-        // whose fixtures record no capped call).
-        assertEquals(listOf(Triple(com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy.REQUEST,
-            ConversationContextPreparation.VOICE_MEMORY_BUDGET_MAX_CHARS,
-            ConversationContextPreparation.VOICE_MEMORY_ENTRY_MAX_CHARS)), f.memory.cappedCalls)
-        assertEquals(800, ConversationContextPreparation.VOICE_MEMORY_BUDGET_MAX_CHARS)
-        assertEquals(240, ConversationContextPreparation.VOICE_MEMORY_ENTRY_MAX_CHARS)
+    @Test fun directAudioPreviewAndPrepareShareTheGeneralMemoryPacketBudget() = runBlocking {
+        val f = Fixture(); f.state.hasContext = false; f.state.characters = 0
+        val limit = ConversationPrompt.contextLimit(f.model.contextTokens, false)
+        f.stage.previewDirectAudio(ConversationPromptBuilder(f.context))
+        val turnPrompt = ConversationPrompt(ConversationPromptBuilder(f.context), true, { null }, { f.reply.memoryContext })
+        assertNotNull(f.stage.prepare(directAudioRequest(), directAudioRouted(), f.reply, turnPrompt, limit) { _, _ -> })
+        assertEquals(listOf((limit / 5).coerceIn(240, 1_200), (limit / 5).coerceIn(240, 1_200)),
+            f.memory.snapshotBudgets)
     }
 
     @Test fun persistentCallTurnKeepsResidentContextWhenItsOwnCaptureChangesTheToken() = runBlocking {
