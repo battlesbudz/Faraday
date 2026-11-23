@@ -37,7 +37,20 @@ class ScreenControlService : AccessibilityService() {
 
         fun bridge(context: android.content.Context): ScreenBridge = ServiceScreenBridge(context)
 
-        internal fun connectedInstance(): ScreenControlService? = instance
+        internal fun connectedInstance(): ScreenControlService? = instance?.takeIf { helperPresent(it) }
+
+        /** Accessibility remains a default-display bridge, so it is unreachable without the A1 helper. */
+        private fun helperPresent(service: ScreenControlService): Boolean =
+            com.battlesbudz.jarvis.v2.privilege.PrivilegeHandoffState.helper.get()?.let { it.isBinderAlive && it.pingBinder() } == true
+
+        /** The enablement request itself is performed by shell UID, never by editing secure settings here. */
+        fun enableThroughPrivilegeHelper(): Boolean {
+            val binder = com.battlesbudz.jarvis.v2.privilege.PrivilegeHandoffState.helper.get() ?: return false
+            return runCatching {
+                com.battlesbudz.jarvis.v2.privilege.IPrivilegeHelper.Stub.asInterface(binder)
+                    .enableAccessibilityService("com.battlesbudz.jarvis.v2/.actions.ScreenControlService")
+            }.getOrDefault(false)
+        }
 
         /**
          * One screenshot of the current screen via the connected
@@ -66,6 +79,11 @@ class ScreenControlService : AccessibilityService() {
 
     override fun onServiceConnected() {
         instance = this
+    }
+
+    override fun onDestroy() {
+        if (instance === this) instance = null
+        super.onDestroy()
     }
 
     /**

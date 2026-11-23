@@ -314,6 +314,12 @@
 # tests fail with NoClassDefFoundError/NoSuchMethodError.
 -keep class com.battlesbudz.jarvis.v2.actions.ScreenControlService { *; }
 -keep class com.battlesbudz.jarvis.v2.actions.ScreenControlService$Companion { *; }
+-keep class com.battlesbudz.jarvis.v2.privilege.PrivilegeHelperMain {
+    public static void main(java.lang.String[]);
+}
+-keep class com.battlesbudz.jarvis.v2.privilege.PrivilegeHealthWorker {
+    public <init>(android.content.Context, androidx.work.WorkerParameters);
+}
 -keep class com.battlesbudz.jarvis.v2.actions.ScreenControlServiceKt { *; }
 -keep class com.battlesbudz.jarvis.v2.actions.ScreenControlSession { *; }
 -keep class com.battlesbudz.jarvis.v2.actions.ScreenNode { *; }

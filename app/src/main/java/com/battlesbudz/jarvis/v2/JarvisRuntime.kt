@@ -98,6 +98,7 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     com.battlesbudz.jarvis.v2.actions.ReminderScheduling {
     internal val mainHandler = Handler(Looper.getMainLooper())
     internal val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    internal val privilegeSupervisor = com.battlesbudz.jarvis.v2.privilege.PrivilegeSupervisor.get(applicationContext)
     private val voiceCallState = VoiceCallState()
     private val voiceMemoryDelivery = VoiceMemoryDeliveryOwner()
     private val acceptedActionCoordinator by lazy {
@@ -379,8 +380,11 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
     internal fun setExternalAgentEnabled(callerId: String, enabled: Boolean): Boolean =
         externalAgentAccess.setCallerEnabled(callerId, enabled).also { if (it) refreshExternalAgentGrants() }
     internal val phoneTaskError get() = phoneTaskCoordinator.error
-    internal fun admitPhoneTask(plan: ActionTurnPlan.Ready, conversationId: String): String? =
-        phoneTaskCoordinator.admitPhoneTask(plan, conversationId)
+    internal fun admitPhoneTask(plan: ActionTurnPlan.Ready, conversationId: String): String? {
+        val privilege = privilegeSupervisor.refreshForOperation()
+        if (!privilege.present) return com.battlesbudz.jarvis.v2.actions.ActionControlPolicy.privilegeLossMessage()
+        return phoneTaskCoordinator.admitPhoneTask(plan, conversationId)
+    }
     internal fun refreshPhoneTasks() = phoneTaskCoordinator.refreshPhoneTasks()
     internal fun cancelPhoneTask(groupId: String) = phoneTaskCoordinator.cancelPhoneTask(groupId)
     internal fun executePhoneAction(
@@ -388,11 +392,17 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         executor: com.battlesbudz.jarvis.v2.actions.MobileActionExecutor,
         groupId: String? = null,
         stepIndex: Int = 0
-    ): com.battlesbudz.jarvis.v2.actions.ExecutionResult =
-        phoneTaskCoordinator.executePhoneAction(request, executor, groupId, stepIndex)
+    ): com.battlesbudz.jarvis.v2.actions.ExecutionResult {
+        val privilege = privilegeSupervisor.refreshForOperation()
+        if (!privilege.present) return com.battlesbudz.jarvis.v2.actions.ExecutionResult(
+            false, com.battlesbudz.jarvis.v2.actions.ActionControlPolicy.privilegeLossMessage())
+        return phoneTaskCoordinator.executePhoneAction(request, executor, groupId, stepIndex)
+    }
     internal fun resumePhoneTasksAfterUnlock() = phoneTaskCoordinator.resumePhoneTasksAfterUnlock()
     internal fun phoneTaskAction(id: String, generation: Long, command: String) =
         phoneTaskCoordinator.phoneTaskAction(id, generation, command)
+    internal fun enableScreenControlServiceThroughHelper(): Boolean =
+        privilegeSupervisor.enableAccessibilityService()
     /**
      * M1d: a model-proposed screen mutation never auto-dispatches (D23). Park
      * it in the ledger awaiting the user's explicit approval.
@@ -636,6 +646,7 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         }
     }
     init {
+        privilegeSupervisor.start()
         // M4: the browser runtime gate opens exactly when the production
         // runtime path (decorator + session owner + approval UI) is installed
         // — this class installs all three below. The flip lives here, not in

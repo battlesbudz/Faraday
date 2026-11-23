@@ -105,11 +105,57 @@ Files added or changed for this completion pass:
 
 The full A1 record also includes the attempt-2 files listed above: `app/build.gradle.kts`, `app/src/main/aidl/com/battlesbudz/jarvis/v2/privilege/IPrivilegeHelper.aidl`, `app/src/main/java/com/battlesbudz/jarvis/v2/privilege/AndroidAdbEndpointDiscovery.kt`, `app/src/main/java/com/battlesbudz/jarvis/v2/privilege/PrivilegeBootReceiver.kt`, `app/src/main/AndroidManifest.xml`, `app/src/test/java/com/battlesbudz/jarvis/v2/privilege/PrivilegeBootstrapTest.kt`, and `docs/architecture/README.md`.
 
+## CI gate — TRANSPORT GREEN 2026-11-22 19:55 EST (Run 207)
+
+- CI run 45076306215 ("Android APK", head `8f710daf`, branch
+  `feature/app-control`) attempt 4 completed/success
+  (2026-11-23T00:55:14Z). Unit suite VERIFIED GREEN per-object
+  (15/15 — `PrivilegeBootstrapTest` + `AdbPairingTransportTest`,
+  incl. Mika SPAKE2 oracle and fake-channel pairing). All five
+  journey profiles green in latest results; 36-foldable-compact
+  verified per-object from evidence artifact 14781368036
+  (`summary.md` PASS, `report.json` passed=true, errors=[], 82
+  instrumentation tests, 0 failures). Consolidate + publish
+  success; prerelease `faraday-feature/app-control-build.1976`
+  published with `app-compact.apk` and `app-release.apk`.
+- The transport CI gate is complete. What remains is the v6 pass
+  (shell-UID helper, durable identity, runtime integration,
+  heartbeat/recovery, boot restore) and then device proof.
+
 ## Device proof — AWAITING DEVICE PROOF (Fold 6, D-02)
 
 - Complete wireless-debugging pairing with no computer — **AWAITING DEVICE PROOF**.
 - Reboot: helper returns or reports a precise blocked state — **AWAITING DEVICE PROOF**.
 - Revoke the helper: operation stops instead of falling back — **AWAITING DEVICE PROOF**.
+
+## v6 source pass — PARTIAL; no execution checks run
+
+Source changes in this pass add the exported `.helper` handoff provider and
+single-use nonce validation, shell `app_process` entry/backend, persisted RSA
+ADB key and peer GUID, helper death-token cleanup, a WorkManager health worker,
+boot/package-replacement restore scheduling, runtime foreground/task gates,
+and the shell-side permission/display/clipboard checks. The handoff protocol
+and shell context are adapted from Mika HEAD `2ca391c4c868`; provenance and
+Apache-2.0 attribution are in `THIRD_PARTY_NOTICES.md`. The helper entry point
+and WorkManager worker have explicit R8 keeps.
+
+Deterministic source tests added in this pass cover each named handoff reject
+reason plus accepted validation, command-line nonce exclusion, and the shell
+permission/display/clipboard policy. Existing pairing/watchdog tests remain
+untouched. No build, test, git, or publish command was run.
+
+**The v6 runtime path is not yet operational end to end.** `PrivilegeSupervisor`
+re-discovers the wireless-debugging endpoint on each consented recovery attempt,
+but the repo's pairing transport has no authenticated ADB `exec:` channel, so
+it currently records `paired ADB exec channel is unavailable` and does not
+launch `HelperHandoff.command`. Therefore the helper cannot be established by
+this source pass; no device-proof claim is made. The next code gap is the
+paired TLS ADB connect/auth/shell stream and wiring it to the detached launch
+command. After that, the Fold 6 cases above remain required. The AIDL clipboard
+event shape and the precise event payload schema for `injectInput(Bundle)` are
+not specified by the charter; this pass supports only the explicit `tap` and
+`key` bundle forms and keeps clipboard access closed until S10 supplies its
+single-task lock.
 
 No root path or USB-from-computer fallback is in scope (D-01). No voice
 capture, model session, or turn-fencing code is in scope.

@@ -47,6 +47,8 @@
             android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/code_export_paths" />
         </provider>
+        <provider android:name=".privilege.PrivilegeHandoffProvider"
+            android:authorities="${applicationId}.helper" android:exported="true" />
         <uses-native-library android:name="libvndksupport.so" android:required="false" />
         <uses-native-library android:name="libcdsprpc.so" android:required="false" />
         <uses-native-library android:name="libOpenCL.so" android:required="false" />
@@ -124,7 +126,10 @@
             </intent-filter>
         </receiver>
         <receiver android:name=".privilege.PrivilegeBootReceiver" android:exported="false">
-            <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
         </receiver>
         <service android:name=".assistant.JarvisInteractionSessionService" android:exported="true"
             android:permission="android.permission.BIND_VOICE_INTERACTION" />

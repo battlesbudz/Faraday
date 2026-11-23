@@ -318,6 +318,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        runtime.privilegeSupervisor.onForeground()
         runtime.activityVisible = true
         runtime.resumePhoneTasksAfterUnlock()
     }

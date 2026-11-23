@@ -146,8 +146,61 @@ private object PlatformAdbPairingChannelFactory : AdbPairingChannelFactory {
 }
 
 /** Ephemeral process identity: the follow-up helper pass will own durable identity storage and reconnects. */
-private object PairingIdentity {
-    private val pair: KeyPair by lazy { KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair() }
+internal object PairingIdentity {
+    @Volatile private var identityFile: java.io.File? = null
+    @Volatile private var identityPreviouslyInitialized = false
+    @Volatile private var loadedPeerInfo: String? = null
+    @Volatile private var appContext: android.content.Context? = null
+    @Volatile private var loadedPair: KeyPair? = null
+    /** Load the process-stable ADB key before any transport is used. */
+    @Synchronized fun initialize(context: android.content.Context): String? {
+        appContext = context.applicationContext
+        identityFile = java.io.File(context.applicationContext.noBackupFilesDir, "adb-identity-v1.properties")
+        val prefs = context.getSharedPreferences("app_control_privilege", android.content.Context.MODE_PRIVATE)
+        identityPreviouslyInitialized = prefs.getBoolean("adb_identity_initialized", false)
+        return try {
+            pair
+            prefs.edit().putBoolean("adb_identity_initialized", true).apply()
+            null
+        } catch (t: Throwable) {
+            "stored ADB identity is missing or corrupt: ${t.message ?: t.javaClass.simpleName}"
+        }
+    }
+    private val pair: KeyPair by lazy {
+        synchronized(this) {
+            loadedPair ?: run {
+                val file = identityFile
+                val factory = java.security.KeyFactory.getInstance("RSA")
+                val existing = file?.takeIf { it.exists() }?.readLines()
+                check(existing != null || !identityPreviouslyInitialized) { "stored ADB identity file is missing" }
+                val restored = if (existing != null) {
+                    require(existing.size in 3..4 && existing[0] == "version=1") { "unsupported identity format version" }
+                    val pub = Base64.getDecoder().decode(existing[1].removePrefix("public="))
+                    val priv = Base64.getDecoder().decode(existing[2].removePrefix("private="))
+                    existing.getOrNull(3)?.takeIf { it.startsWith("peer=") }?.let {
+                        loadedPeerInfo = String(Base64.getDecoder().decode(it.removePrefix("peer=")), Charsets.UTF_8)
+                    }
+                    KeyPair(factory.generatePublic(java.security.spec.X509EncodedKeySpec(pub)), factory.generatePrivate(java.security.spec.PKCS8EncodedKeySpec(priv)))
+                } else KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair().also { generated ->
+                    file?.parentFile?.mkdirs()
+                    file?.writeText("version=1\npublic=${Base64.getEncoder().encodeToString(generated.public.encoded)}\nprivate=${Base64.getEncoder().encodeToString(generated.private.encoded)}\n")
+                }
+                restored.also { loadedPair = it }
+            }
+        }
+    }
+    @Synchronized fun storePeerInfo(peerInfo: String) {
+        require(peerInfo.isNotBlank())
+        loadedPeerInfo = peerInfo
+        val file = identityFile ?: return
+        val keys = pair
+        file.parentFile?.mkdirs()
+        file.writeText("version=1\npublic=${Base64.getEncoder().encodeToString(keys.public.encoded)}\n" +
+            "private=${Base64.getEncoder().encodeToString(keys.private.encoded)}\npeer=${Base64.getEncoder().encodeToString(peerInfo.toByteArray(Charsets.UTF_8))}\n")
+        appContext?.getSharedPreferences("app_control_privilege", android.content.Context.MODE_PRIVATE)
+            ?.edit()?.putBoolean("adb_pairing_complete", true)?.apply()
+    }
+    fun peerInfo(): String? = loadedPeerInfo
     private val certificate: X509Certificate by lazy { selfSigned(pair) }
     val adbPublicKey: String by lazy {
         val key = pair.public as java.security.interfaces.RSAPublicKey

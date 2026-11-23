@@ -57,7 +57,10 @@ internal class PairingCoordinator(
             val endpoint = discover() ?: return blocked("Wireless debugging endpoint is unavailable.")
             states.move(PairingStateMachine.State.PAIRING)
             val activeTransport = transport ?: return blocked("Secure on-device ADB pairing transport is unavailable.")
-            activeTransport.pair(endpoint, code).also { states.move(PairingStateMachine.State.CONNECTED) }
+            activeTransport.pair(endpoint, code).also {
+                PairingIdentity.storePeerInfo(it)
+                states.move(PairingStateMachine.State.CONNECTED)
+            }
         } catch (failure: PairingTransportException) {
             blocked(failure.blockedReason)
         } catch (failure: Exception) {
@@ -76,6 +79,10 @@ internal interface PrivilegeHelperBackend {
     fun enableAccessibilityService(component: String): Boolean
     fun grantPermission(permissionName: String): Boolean
     fun state(): String
+    fun injectInput(displayId: Int, event: android.os.Bundle): Boolean = false
+    fun moveTaskToDisplay(taskId: Int, displayId: Int): Boolean = false
+    fun getClipboardText(): String? = null
+    fun setClipboardText(text: String): Boolean = false
 }
 
 /** Enforces the charter surface even if a future backend grows additional methods. */
@@ -94,6 +101,16 @@ internal class PrivilegeHelperContract(private val backend: PrivilegeHelperBacke
         return backend.grantPermission(permissionName)
     }
     fun getPrivilegeState(): String = backend.state()
+    fun injectInput(displayId: Int, event: android.os.Bundle): Boolean {
+        require(displayId >= 0)
+        return backend.injectInput(displayId, event)
+    }
+    fun moveTaskToDisplay(taskId: Int, displayId: Int): Boolean {
+        require(taskId >= 0 && displayId >= 0)
+        return backend.moveTaskToDisplay(taskId, displayId)
+    }
+    fun getClipboardText(): String? = backend.getClipboardText()
+    fun setClipboardText(text: String): Boolean = backend.setClipboardText(text)
     companion object { val ALLOWED_PERMISSION_NAMES = setOf("display", "accessibility") }
 }
 
