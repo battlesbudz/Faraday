@@ -261,12 +261,8 @@ internal class OrdinaryVoiceReplyStage(
                         val ticket = call.controller.captionTicket(prepared.expectedCallId, request.asrTurnId,
                             com.battlesbudz.jarvis.v2.voice.GemmaAudioInputPolicy.PENDING_TRANSCRIPT)
                         var finalCaptionPublished = false
-                        // Caption/session reconciliation state: written by the
-                        // generate lambda, read by checkedReset, which always
-                        // runs after a started caption.
-                        var captionReusedConversation = false
-                        var captionCompletedCleanly = false
                         var captionEmittedToolCalls = false
+                        var disagreementBlockedFlag = false
                         try {
                             val result = com.battlesbudz.jarvis.v2.voice.PostAnswerCaptionContinuation.run(
                                 isCurrent = { ticket != null && ownsCaption() },
@@ -275,45 +271,21 @@ internal class OrdinaryVoiceReplyStage(
                                     observation.benchmark.mark("gemma_final_caption_started")
                                     prepared.engine.onInferenceProgress = {}
                                     prepared.engine.benchmarkPurpose = com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkPurpose.TRANSCRIPTION_FALLBACK
-                                    // Persistent call conversation: when the
-                                    // resident conversation cleanly holds this
-                                    // call's turns, the caption transcribes on
-                                    // it directly — no reset, no tool-policy
-                                    // flip — and the transcribe exchange joins
-                                    // the call's native history. Any doubt
-                                    // about the resident state takes the
-                                    // original reset path unchanged.
-                                    captionReusedConversation = !prepared.engine.isNativeClosed &&
-                                        prepared.engine.nativeResourcesSafeToRelease &&
-                                        !prepared.engine.isNativeQuarantined &&
-                                        !prepared.engine.requiresConfirmedHistoryRebuild &&
-                                        prepared.engine.hasNativeConversationHistory
-                                    observation.benchmark.configuration("gemma_final_caption_session",
-                                        if (captionReusedConversation) "resident_call_conversation" else "fresh_conversation")
-                                    if (!captionReusedConversation) {
-                                        conversation.reset()
-                                        prepared.engine.setToolsEnabled(false)
-                                    }
+                                    val session = com.battlesbudz.jarvis.v2.voice.FinalCaptionSessionPolicy.choose(
+                                        residentConversationClean = prepared.engine.hasNativeConversationHistory)
+                                    check(session == com.battlesbudz.jarvis.v2.voice.FinalCaptionSessionPolicy.Session.ISOLATED)
+                                    observation.benchmark.configuration("gemma_final_caption_session", "fresh_conversation")
+                                    conversation.reset()
+                                    prepared.engine.setToolsEnabled(false)
                                     val heard = prepared.engine.generateAudio(com.battlesbudz.jarvis.v2.voice.VoiceTranscriptResolver.instructions, finalized.audioBytes, {})
                                     captionEmittedToolCalls = heard.toolCalls.isNotEmpty()
-                                    captionCompletedCleanly = true
                                     heard
                                 },
                                 checkedReset = {
                                     check(prepared.engine.nativeResourcesSafeToRelease && !prepared.engine.isNativeQuarantined) {
                                         "Caption native drain failed; model ownership retained, reuse disabled"
                                     }
-                                    // Keep the resident conversation only when
-                                    // the caption reused it AND completed
-                                    // cleanly without emitting tool calls: an
-                                    // unanswered tool call, or a cancelled /
-                                    // failed generation (whose conversation
-                                    // the lifecycle already disposed), would
-                                    // leave the next send malformed, so
-                                    // re-establish from confirmed history.
-                                    if (!captionReusedConversation || !captionCompletedCleanly ||
-                                        captionEmittedToolCalls || prepared.engine.requiresConfirmedHistoryRebuild)
-                                        conversation.reset()
+                                    conversation.reset()
                                 },
                                 observe = { event -> observation.benchmark.mark(event) }
                             )
@@ -333,18 +305,20 @@ internal class OrdinaryVoiceReplyStage(
                             // finally below commits UNTRANSCRIBED in place of either
                             // text, so nothing downstream can plan from them.
                             val disagreementBlocked = com.battlesbudz.jarvis.v2.voice.TranscriptDisagreement.hardBlock(finalized.asrTranscript, finalCaption)
+                            disagreementBlockedFlag = disagreementBlocked
                             if (disagreementBlocked) {
                                 observation.benchmark.configuration("gemma_final_caption_result", "disagreement_hard_block")
                                 diagnosticRecorder.recordImportant("Voice transcript disagreement: result=hard_block action=commit_neither evidence=none memory_capture=false " +
                                     "whisperChars=${finalized.asrTranscript.length} gemmaChars=${finalCaption.length}")
                             }
-                            if (heard != null && !disagreementBlocked && heard.toolCalls.isEmpty() && com.battlesbudz.jarvis.v2.voice.VoiceTranscriptResolver.hasTranscript(finalCaption) &&
-                                !com.battlesbudz.jarvis.v2.voice.TranscriptContent.isSoundOnly(finalCaption)) {
-                                val farewell = com.battlesbudz.jarvis.v2.voice.VoiceCallPolicy.isGoodbye(finalCaption)
+                            val recordTranscript = if (heard != null) com.battlesbudz.jarvis.v2.voice.TranscriptOfRecord.resolve(
+                                finalized.asrTranscript, finalCaption, captionEmittedToolCalls, disagreementBlocked) else null
+                            if (heard != null && recordTranscript != null) {
+                                val farewell = com.battlesbudz.jarvis.v2.voice.VoiceCallPolicy.isGoodbye(recordTranscript)
                                 var committed: com.battlesbudz.jarvis.v2.voice.VoiceSessionController.CaptionCommit? = null
                                 val published = ticket != null && captionPublication.publishWhenResolved(::ownsCaption) { claim ->
                                     call.state.inputQueue.publishWithoutNextInput(captionInputBoundary) {
-                                        committed = call.controller.commitCaption(ticket, finalCaption, ::ownsCaption, farewell,
+                                        committed = call.controller.commitCaption(ticket, recordTranscript, ::ownsCaption, farewell,
                                             authorize = { captionPublication.commit(claim, farewell) })
                                         (committed != null).also { if (it && farewell) call.state.inputQueue.end(prepared.expectedCallId) }
                                     }
@@ -357,7 +331,7 @@ internal class OrdinaryVoiceReplyStage(
                                         call.controller.checkpointCaption(publication)
                                         diagnosticRecorder.recordTurnEvidence(request.asrTurnId, "gemma_final_caption", "whisper=${finalized.asrTranscript}\ngemma=$finalCaption")
                                         runCatching { memory.capture(prepared.correction?.utteranceId ?: request.asrTurnId, captionConversationId,
-                                            prepared.expectedCallId, ConversationMemorySource.VOICE, finalCaption,
+                                            prepared.expectedCallId, ConversationMemorySource.VOICE, recordTranscript,
                                             prepared.correction?.capturedAtMs ?: System.currentTimeMillis()) }
                                             .onFailure { diagnosticRecorder.recordImportant("Final caption memory capture failed; not retried reason=${it.javaClass.simpleName}") }
                                         // Automatic memory (D-3): the committed final caption is this
@@ -365,7 +339,7 @@ internal class OrdinaryVoiceReplyStage(
                                         // queues from here with the answer actually given, mirroring
                                         // the receipt capture above.
                                         runCatching { memory.autoCaptureTurn(prepared.correction?.utteranceId ?: request.asrTurnId,
-                                            AutoMemorySource.VOICE, finalCaption, text,
+                                            AutoMemorySource.VOICE, recordTranscript, text,
                                             prepared.correction?.capturedAtMs ?: System.currentTimeMillis()) }
                                             .onFailure { diagnosticRecorder.recordImportant("Final caption auto-memory capture failed; not retried reason=${it.javaClass.simpleName}") }
                                     }
@@ -391,7 +365,10 @@ internal class OrdinaryVoiceReplyStage(
                                 var committed: com.battlesbudz.jarvis.v2.voice.VoiceSessionController.CaptionCommit? = null
                                 captionPublication.publishWhenResolved(::ownsCaption) { claim ->
                                     call.state.inputQueue.publishWithoutNextInput(captionInputBoundary) {
-                                        committed = call.controller.commitCaption(ticket, com.battlesbudz.jarvis.v2.voice.VoiceTranscriptResolver.UNTRANSCRIBED,
+                                        val fallbackTranscript = com.battlesbudz.jarvis.v2.voice.TranscriptOfRecord.resolve(
+                                            finalized.asrTranscript, "", false, disagreementBlockedFlag)
+                                            ?: com.battlesbudz.jarvis.v2.voice.VoiceTranscriptResolver.UNTRANSCRIBED
+                                        committed = call.controller.commitCaption(ticket, fallbackTranscript,
                                             ::ownsCaption, authorize = { captionPublication.commit(claim) })
                                         committed != null
                                     }

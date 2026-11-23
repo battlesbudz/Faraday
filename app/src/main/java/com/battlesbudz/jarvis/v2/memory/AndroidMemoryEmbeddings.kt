@@ -52,6 +52,7 @@ object AndroidMemoryEmbeddings {
     }
 
     fun modelStore(context: Context): EmbeddingModelStore = services(context).modelStore
+    fun embeddingService(context: Context): MemoryEmbeddingService = services(context).service
     fun vectorStore(context: Context): MemoryVectorStore = services(context).vectorStore
     fun indexer(context: Context): MemoryEmbeddingIndexer = services(context).indexer
     fun hybridRetrieval(context: Context): MemoryHybridRetrieval = services(context).hybridRetrieval

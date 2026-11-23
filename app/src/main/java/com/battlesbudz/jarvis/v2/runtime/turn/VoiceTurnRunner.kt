@@ -149,8 +149,12 @@ internal class VoiceTurnRunner(
                 lifetime.finalMessage = "Voice Call turn failed: ${error.message ?: "unknown error"}"
             } finally {
                 val cancelled = kotlin.coroutines.coroutineContext[Job]?.isActive != true
-                finalizer.close(request, lifetime, cancelled)
-                observation.finish(lifetime, cancelled, actions.queue::hasUnfinished)
+                runCatching { finalizer.close(request, lifetime, cancelled) }.onFailure {
+                    runCatching { diagnosticRecorder.recordImportant("Voice turn finalizer close failed: ${it.javaClass.simpleName}") }
+                }
+                runCatching { observation.finish(lifetime, cancelled, actions.queue::hasUnfinished) }.onFailure {
+                    runCatching { diagnosticRecorder.recordImportant("Voice turn observation finish failed: ${it.javaClass.simpleName}") }
+                }
                 if (call.state.armed && (lifetime.hadActiveCall || lifetime.wokeThisTurn) && call.controller.currentCallId() == null)
                     call.state.returnToWakeCuePending.set(true)
                 if (kotlin.coroutines.coroutineContext[Job]?.isActive == true || lifetime.microphoneYielded) {
@@ -166,10 +170,12 @@ internal class VoiceTurnRunner(
                                 // Cleanup must not consume the short-lived activity error indicator.
                                 runCatching { onTerminalFailure(conversationId) }
                             }
-                            call.events.report(lifetime.finalMessage)
-                            call.events.finished(lifetime.finalMessage)
+                            runCatching { call.events.report(lifetime.finalMessage) }
+                            runCatching { call.events.finished(lifetime.finalMessage) }
                             if (call.state.armed && !lifetime.finalMessage.contains("turn failed", true)) call.events.restartTurn()
                             else {
+                                // A terminal outcome uses End Call's full session path; service stop alone defers to onDestroy, whose guard ignores an already-disarmed, jobless session.
+                                runCatching { call.events.endCall() }
                                 call.state.armed = false
                                 // Turn teardown with a service stop is a true session end.
                                 com.battlesbudz.jarvis.v2.voice.VoiceSessionUi.sessionAlive.value = false

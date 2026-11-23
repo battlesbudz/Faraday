@@ -1,7 +1,7 @@
 package com.battlesbudz.jarvis.v2.memory
 
 /** Which side of a retrieval pair a text is embedded as; the model defines distinct role formats. */
-enum class EmbeddingRole { DOCUMENT, QUERY }
+enum class EmbeddingRole { DOCUMENT, QUERY, CLASSIFICATION }
 
 /**
  * A downloadable embedding-model artifact. Deliberately separate from the chat-shaped
