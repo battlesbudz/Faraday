@@ -475,6 +475,7 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
                             ?: com.battlesbudz.jarvis.v2.actions.ApprovalDecision.STALE)
                         kotlinx.coroutines.delay(150)
                     }
+                    throw IllegalStateException("The approval wait ended without a decision.")
                 } catch (failure: Exception) {
                     attempt.groupId?.let(ledger::cancelGroup)
                     throw failure
