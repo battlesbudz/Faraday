@@ -592,3 +592,5 @@
 -keep class com.battlesbudz.jarvis.v2.display.OperatedDisplayEvent { *; }
 -keep class com.battlesbudz.jarvis.v2.display.PendingWatchApproval { *; }
 -keep class com.battlesbudz.jarvis.v2.display.DisplayFrameMailbox { *; }
+-keep class com.battlesbudz.jarvis.v2.display.OperatedFrameFeed { *; }
+-keep class com.battlesbudz.jarvis.v2.display.OperatedFrameCodec { *; }

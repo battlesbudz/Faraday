@@ -19,6 +19,7 @@ interface OperatedDisplayHelper {
     fun create(name: String, width: Int, height: Int, densityDpi: Int): Int
     fun release(displayId: Int)
     fun moveTask(taskId: Int, displayId: Int): Boolean
+    fun readFrame(displayId: Int): DisplayFrameMailbox.Frame?
 }
 
 /** Owns only a helper-created display. It intentionally has no main-display fallback. */
@@ -42,6 +43,14 @@ class HelperOperatedDisplay(
     }
 
     fun current(): OperatedDisplayIdentity? = identity
+
+    /** Reads frames only from the currently owned helper display. */
+    fun readFrame(): DisplayFrameMailbox.Frame? {
+        val active = identity ?: return null
+        if (active.displayId == 0) return null
+        val helper = helperProvider() ?: return null
+        return helper.readFrame(active.displayId)
+    }
 
     /** Move is attempted only onto the owned display; failure stops rather than targeting display 0. */
     fun moveTask(taskId: Int): Boolean {
@@ -77,6 +86,9 @@ class HelperOperatedDisplay(
                 override fun create(name: String, width: Int, height: Int, densityDpi: Int) = remote.createVirtualDisplay(name, width, height, densityDpi)
                 override fun release(displayId: Int) = remote.releaseVirtualDisplay(displayId)
                 override fun moveTask(taskId: Int, displayId: Int) = remote.moveTaskToDisplay(taskId, displayId)
+                override fun readFrame(displayId: Int) = runCatching {
+                    remote.readFrame(displayId)?.toFrameParcel()?.let { OperatedFrameCodec.fromParcel(displayId, it) }
+                }.getOrNull()
             }
         }
     }

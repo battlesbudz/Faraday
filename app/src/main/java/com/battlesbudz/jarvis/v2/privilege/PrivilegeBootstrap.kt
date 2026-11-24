@@ -81,6 +81,7 @@ internal interface PrivilegeHelperBackend {
     fun state(): String
     fun injectInput(displayId: Int, event: android.os.Bundle): Boolean = false
     fun moveTaskToDisplay(taskId: Int, displayId: Int): Boolean = false
+    fun readFrame(displayId: Int): android.os.Bundle? = null
     fun getClipboardText(): String? = null
     fun setClipboardText(text: String): Boolean = false
 }
@@ -108,6 +109,10 @@ internal class PrivilegeHelperContract(private val backend: PrivilegeHelperBacke
     fun moveTaskToDisplay(taskId: Int, displayId: Int): Boolean {
         require(taskId >= 0 && displayId >= 0)
         return backend.moveTaskToDisplay(taskId, displayId)
+    }
+    fun readFrame(displayId: Int): android.os.Bundle? {
+        require(displayId >= 0)
+        return backend.readFrame(displayId)
     }
     fun getClipboardText(): String? = backend.getClipboardText()
     fun setClipboardText(text: String): Boolean = backend.setClipboardText(text)

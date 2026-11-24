@@ -48,6 +48,7 @@ object PrivilegeHelperMain {
             override fun moveTaskToDisplay(taskId: Int, displayId: Int) = backend.moveTaskToDisplay(taskId, displayId)
             override fun getClipboardText() = backend.getClipboardText()
             override fun setClipboardText(text: String) = backend.setClipboardText(text)
+            override fun readFrame(displayId: Int) = backend.readFrame(displayId)
             override fun onTransact(code: Int, data: android.os.Parcel, reply: android.os.Parcel?, flags: Int): Boolean {
                 if (code in IBinder.FIRST_CALL_TRANSACTION..IBinder.LAST_CALL_TRANSACTION && Binder.getCallingUid() != appUid)
                     throw SecurityException("helper accepts calls only from its paired app uid")
@@ -148,6 +149,7 @@ private class ShellContext(base: Context) : ContextWrapper(base) {
 internal class ShellPrivilegeBackend(private val context: Context, private val appPackage: String, private val appUid: Int) {
     private val displays = ConcurrentHashMap<Int, android.hardware.display.VirtualDisplay>()
     private val displayReaders = ConcurrentHashMap<Int, ImageReader>()
+    private val frameCache = HelperFrameCache(System::currentTimeMillis)
     fun createVirtualDisplay(name: String, width: Int, height: Int, densityDpi: Int): Int {
         require(name.isNotBlank() && width in 1..8192 && height in 1..8192 && densityDpi in 1..1000)
         // The display surface comes from an ImageReader retained for the display's
@@ -162,8 +164,31 @@ internal class ShellPrivilegeBackend(private val context: Context, private val a
         return display.display.displayId
     }
     fun releaseVirtualDisplay(displayId: Int) {
+        frameCache.invalidate(displayId)
         displays.remove(displayId)?.release()
         displayReaders.remove(displayId)?.close()
+    }
+    fun readFrame(displayId: Int): Bundle? {
+        if (displayId == 0 || !ShellPrivilegePolicy.ownsDisplay(displayId, displays.keys)) return null
+        val packed = frameCache.frame(displayId) {
+            val reader = displayReaders[displayId] ?: return@frame null
+            val image = runCatching { reader.acquireLatestImage() }.getOrNull() ?: return@frame null
+            try {
+                val plane = image.planes.firstOrNull() ?: return@frame null
+                RgbaFramePacker.pack(plane.buffer, image.width, image.height, plane.rowStride,
+                    plane.pixelStride, System.currentTimeMillis())
+            } catch (_: Throwable) {
+                null
+            } finally {
+                image.close()
+            }
+        } ?: return null
+        return Bundle().apply {
+            putInt("width", packed.width)
+            putInt("height", packed.height)
+            putByteArray("rgba", packed.rgba)
+            putLong("capturedAtMs", packed.capturedAtMs)
+        }
     }
     fun enableAccessibilityService(component: String): Boolean {
         require(component == ShellPrivilegePolicy.accessibilityComponent)
@@ -259,6 +284,7 @@ internal class ShellPrivilegeBackend(private val context: Context, private val a
             backend.displays.clear()
             backend.displayReaders.values.toList().forEach { runCatching { it.close() } }
             backend.displayReaders.clear()
+            backend.frameCache.clear()
         }
     }
     init { active = this }

@@ -4,12 +4,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class OperatedDisplayTest {
-    private class FakeHelper(var createdId: Int = 12) : OperatedDisplayHelper {
+    private class FakeHelper(var createdId: Int = 12, var frame: DisplayFrameMailbox.Frame? = null) : OperatedDisplayHelper {
         val released = mutableListOf<Int>()
         val moved = mutableListOf<Pair<Int, Int>>()
+        val frameReads = mutableListOf<Int>()
         override fun create(name: String, width: Int, height: Int, densityDpi: Int) = createdId
         override fun release(displayId: Int) { released += displayId }
         override fun moveTask(taskId: Int, displayId: Int): Boolean { moved += taskId to displayId; return true }
+        override fun readFrame(displayId: Int): DisplayFrameMailbox.Frame? {
+            frameReads += displayId
+            return frame?.takeIf { it.displayId == displayId }
+        }
     }
 
     @Test fun creationFailureDoesNotPublishIdentityOrTryAnotherDisplay() {
@@ -59,5 +64,46 @@ class OperatedDisplayTest {
         assertThrows(IllegalStateException::class.java) {
             MainDisplayUntouchedAssertion(12, true).requireSatisfied()
         }
+    }
+
+    @Test fun helperDisplayReadsOnlyItsOwnedFrameAndStopsReadingAfterClose() {
+        val frame = DisplayFrameMailbox.Frame(12, 1, 1, byteArrayOf(1, 2, 3, 4), 8)
+        val helper = FakeHelper(frame = frame)
+        val display = HelperOperatedDisplay({ helper })
+        assertNull(display.readFrame())
+        display.create("task-frame", "YouTube", 800, 400, 420)
+        assertEquals(frame, display.readFrame())
+        display.close()
+        assertNull(display.readFrame())
+    }
+
+    @Test fun frameReadNeverTargetsDisplayZero() {
+        val helper = FakeHelper(0, DisplayFrameMailbox.Frame(0, 1, 1, byteArrayOf(1, 2, 3, 4), 1))
+        val display = HelperOperatedDisplay({ helper })
+        display.create("task-main-guard", "YouTube", 800, 400, 420)
+        assertNull(display.readFrame())
+        assertTrue(helper.frameReads.isEmpty())
+    }
+
+    @Test fun operatedFrameFeedPollsIntoMailboxAndHonorsDisplayAndFrameRateGates() {
+        var now = 0L
+        val frame = DisplayFrameMailbox.Frame(12, 1, 1, byteArrayOf(4, 3, 2, 1), 10)
+        val helper = FakeHelper(frame = frame)
+        val display = HelperOperatedDisplay({ helper })
+        val mailbox = DisplayFrameMailbox { now }
+        val feed = OperatedFrameFeed(display, mailbox)
+        assertFalse(feed.pollOnce())
+        display.create("task-frame", "YouTube", 800, 400, 420)
+        assertTrue(feed.pollOnce())
+        val first = mailbox.takeLatest()!!
+        assertEquals(frame.displayId, first.displayId)
+        assertEquals(frame.width, first.width)
+        assertEquals(frame.height, first.height)
+        assertEquals(frame.capturedAtMs, first.capturedAtMs)
+        assertArrayEquals(frame.rgba, first.rgba)
+        assertFalse(feed.pollOnce())
+        now = 100
+        assertTrue(feed.pollOnce())
+        assertArrayEquals(frame.rgba, mailbox.takeLatest()!!.rgba)
     }
 }
