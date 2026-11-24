@@ -35,7 +35,8 @@ import org.robolectric.annotation.Config
 class AppControlPairingSectionTest {
     @get:Rule val compose = createComposeRule()
     private val context: Context get() = ApplicationProvider.getApplicationContext()
-    private val prefs get() = context.getSharedPreferences("app_control_privilege", Context.MODE_PRIVATE)
+    private lateinit var bound: Context
+    private val prefs get() = bound.getSharedPreferences("app_control_privilege", Context.MODE_PRIVATE)
 
     private val activityResultRegistry = object : ActivityResultRegistry() {
         override fun <I, O> onLaunch(
@@ -50,9 +51,17 @@ class AppControlPairingSectionTest {
     }
 
     @Before fun setUp() {
+        // Same singleton-binding discipline as PairingSetupControllerTest:
+        // one captured application context for every store read/write in
+        // this class, matching the single-Application device reality.
+        bound = boundContext ?: context.applicationContext.also { boundContext = it }
         prefs.edit().clear().commit()
-        PairingIdentity.initialize(context)
+        PairingIdentity.initialize(bound)
         PrivilegeHandoffState.helper.set(null)
+    }
+
+    companion object {
+        @Volatile private var boundContext: Context? = null
     }
 
     @After fun tearDown() {
@@ -70,8 +79,8 @@ class AppControlPairingSectionTest {
     @Test fun pairingControlsDrivePairingConsentAndRevocation() {
         val transport = RecordingTransport()
         val controller = PairingSetupController(
-            context = context,
-            supervisor = PrivilegeSupervisor.get(context),
+            context = bound,
+            supervisor = PrivilegeSupervisor.get(bound),
             discovery = { AdbEndpoint("192.168.0.12", 5555) },
             transportFactory = { transport },
             windowTexts = { emptyList() },

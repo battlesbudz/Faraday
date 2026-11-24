@@ -15,14 +15,28 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34])
 class PairingSetupControllerTest {
     private val context: Context get() = ApplicationProvider.getApplicationContext()
-    private val prefs get() = context.getSharedPreferences("app_control_privilege", Context.MODE_PRIVATE)
+    private lateinit var bound: Context
+    private val prefs get() = bound.getSharedPreferences("app_control_privilege", Context.MODE_PRIVATE)
     private lateinit var supervisor: PrivilegeSupervisor
 
     @Before fun setUp() {
+        // Robolectric gives each test method a fresh Application, while
+        // PrivilegeSupervisor and PairingIdentity are process singletons
+        // bound to the first context they saw: the supervisor writes
+        // through its creation context, storePeerInfo through the latest
+        // initialize() context. Bind every read/write in this class to
+        // one captured application context — the device reality of
+        // exactly one Application — or the writes and this class's
+        // prefs reads land in different stores.
+        bound = boundContext ?: context.applicationContext.also { boundContext = it }
         prefs.edit().clear().commit()
-        PairingIdentity.initialize(context)
+        PairingIdentity.initialize(bound)
         PrivilegeHandoffState.helper.set(null)
-        supervisor = PrivilegeSupervisor.get(context)
+        supervisor = PrivilegeSupervisor.get(bound)
+    }
+
+    companion object {
+        @Volatile private var boundContext: Context? = null
     }
 
     @After fun tearDown() {
@@ -98,7 +112,7 @@ class PairingSetupControllerTest {
         notifier: RecordingNotifier,
         windowTexts: () -> List<List<String>>,
     ) = PairingSetupController(
-        context = context,
+        context = bound,
         supervisor = supervisor,
         discovery = { AdbEndpoint("192.168.0.12", 5555) },
         transportFactory = { transport },
