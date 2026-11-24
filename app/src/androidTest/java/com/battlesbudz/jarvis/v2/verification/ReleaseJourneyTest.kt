@@ -6115,6 +6115,25 @@ class ReleaseJourneyTest {
         }
     }
 
+    @Test fun test82_messageRequestHasNoApprovalFreeSubstitute() {
+        // This journey pins the public parser/catalog/policy/UI seams available to androidTest.
+        // It cannot invoke internal ConversationGeneration or FrontDoorClassifier, inject their
+        // controlled model backend, or observe a generated draft; that admission path is pinned
+        // by ConversationGenerationTest on the JVM.
+        val sentence = "send a message to Andrea saying testing"
+        val plan = com.battlesbudz.jarvis.v2.ai.TurnOrchestrator(
+            com.battlesbudz.jarvis.v2.ai.ReferenceGroundingClient()).plan(sentence)
+        assertTrue("the deterministic parser must leave this message request to the front door",
+            plan.actionPlan is ActionTurnPlan.NotAction)
+        val names = MobileToolCatalog.all().map { it.name }.toSet()
+        assertTrue("open_app remains in the catalog and must not stand in for message delivery",
+            "open_app" in names)
+        assertFalse("no send tool may bypass operated messaging and its exact approval path",
+            names.any { it == "send" || it == "send_message" })
+        assertEquals("the journey must remain in Jarvis without launching a messaging app",
+            context.packageName, device.currentPackageName)
+    }
+
     @Test fun test90_modelSelectionPersistsAcrossRecreation() {
         openBrowser()
         enterText(By.res("model_search"), "Gemma-4-E4B-it")

@@ -519,8 +519,9 @@ internal class ConversationGeneration(
     }
 
     /**
-     * Admits model proposals only when the front door offered tools; a confident discussion
-     * signal removes exact-approval proposals before they can produce an approval card.
+     * On a no-plan turn, the model may propose approval-gated actions for the user's decision,
+     * but it may never execute an approval-free tool as a substitute for the user's task; an
+     * approval-required intent is never satisfiable by an approval-free tool.
      */
     private fun frontDoorPlanFromCalls(draft: ConversationDraft): ActionTurnPlan.Ready? {
         val verdict = draft.answer.routed.frontDoor
@@ -529,6 +530,11 @@ internal class ConversationGeneration(
             val request = NativeActionDecoder.decodeStrict(call) ?: return@mapNotNull null
             if (verdict.vetoConfident && ActionControlPolicy.requiresExactApproval(request)) {
                 diagnostics.summary("Front-door veto step=${request.name} reason=discussion_signal")
+                return@mapNotNull null
+            }
+            if (!ActionControlPolicy.requiresExactApproval(request) ||
+                ActionControlPolicy.admissionBlockReason(request) != null) {
+                diagnostics.summary("Front-door guard step=${request.name} reason=no_deterministic_plan")
                 return@mapNotNull null
             }
             ActionTurnPlan.Step(request, draft.answer.invocation.prompt)

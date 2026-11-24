@@ -19,6 +19,13 @@ Acceptance checks:
   4/4 mustpass, CHAT not-offered 0.80, discussion veto 0.80 and zero ACT veto.
   `ActionCompletionClaimTest` pins the completion detector. Generation tests
   cover approval reachability, selective veto, cold tool offers and claim retry.
+- On a no-deterministic-plan front-door turn, generation admits only decoded
+  requests that require exact approval and have no admission block. Approval-free
+  model calls are dropped with a `no_deterministic_plan` diagnostic; an approval-
+  required user intent cannot be completed by substituting an approval-free tool.
+  `ReleaseJourneyTest.test82_messageRequestHasNoApprovalFreeSubstitute` pins the
+  public parser/catalog/foreground seams; internal classifier and generation
+  admission are covered by the JVM test, not observed by androidTest.
 - Failure cases: unavailable embeddings fail open, discussions do not park
   exact-approval proposals, and a repeated false completion claim is replaced
   by the detector's honest fallback.
