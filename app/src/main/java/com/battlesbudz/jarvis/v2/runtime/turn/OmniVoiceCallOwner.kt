@@ -220,9 +220,6 @@ internal class OmniVoiceCallOwnerImpl(
     }
 
     private fun onAnswer(answer: OmniCallAnswer) {
-        if (answer.text.isNotBlank()) {
-            runCatching { voiceSessionController.appendTranscript("Jarvis", answer.text) }
-        }
         runCatching { VoiceCallService.updateStatus(LISTENING_STATUS) }
     }
 
@@ -243,21 +240,49 @@ internal class OmniVoiceCallOwnerImpl(
     private fun onSessionEvent(event: OmniVoiceCallSession.Event) {
         when (event) {
             is OmniVoiceCallSession.Event.Turn -> {
-                val latency = event.firstSoundAtMs?.let { it - event.endpointAtMs }
+                val latencyMs = event.firstSoundAtMs?.let { (it - event.endpointAtMs).coerceAtLeast(0) }
                 // U8: endpoint-to-first-nonempty-playback latency on the
                 // monotonic clock; both instants are elapsedRealtime.
-                if (latency != null) diagnosticRecorder.recordOmniFirstSoundLatency(latency)
+                if (latencyMs != null) diagnosticRecorder.recordOmniFirstSoundLatency(latencyMs)
+                val answer = event.answer
+                val turnLatency = answer?.let {
+                    OmniTurnLatency.build(
+                        endpointAtMs = event.endpointAtMs,
+                        endpointToFirstSoundMs = latencyMs,
+                        graphTimingsMs = event.graphTimingsMs,
+                        totalMs = event.totalMs,
+                        answer = it,
+                    )
+                }
+                if (answer != null && turnLatency != null) {
+                    diagnosticRecorder.recordSummary("Omni ${turnLatency.summary()}")
+                    val turnId = OmniTurnLatency.turnId(event.endpointAtMs)
+                    val timings = event.graphTimingsMs.entries.joinToString { "${it.key}=${it.value}ms" }
+                    diagnosticRecorder.recordTurnEvidence(
+                        turnId,
+                        "omni",
+                        "endpointToFirstSoundMs=${latencyMs ?: "unknown"} totalMs=${event.totalMs} " +
+                            "supplyGaps=${event.supplyGaps} graphTimings={$timings} " +
+                            "speechFrames=${answer.speechFrames} textTokens=${answer.textTokens}",
+                    )
+                    if (answer.text.isNotBlank()) {
+                        runCatching {
+                            voiceSessionController.appendTranscript("Jarvis", answer.text, latency = turnLatency)
+                        }
+                    }
+                }
                 diagnosticRecorder.recordImportant(
-                    "Omni call turn: endpoint→first-sound ${latency?.let { "$it ms" } ?: "unknown"}; " +
+                    "Omni call turn: endpoint→first-sound ${latencyMs?.let { "$it ms" } ?: "unknown"}; " +
                         "graphs=${event.graphTimingsMs.entries.joinToString { "${it.key}=${it.value}ms" }}"
                 )
-                event.answer?.let { answer ->
+                answer?.let { answer ->
                     val answerText = answer.text.take(120).replace('\n', ' ').replace('"', '\'')
                     diagnosticRecorder.recordOmniTurn(
                         "turnGen text=\"$answerText\" textTokens=${answer.textTokens} " +
                             "frames=${answer.speechFrames} finished=${answer.finished} stopped=${answer.stopped} " +
                             "pcmChunks=${answer.pcmChunks} pcmSamples=${answer.pcmSamples} pcmPeak=${answer.pcmPeak} " +
-                            "writtenShorts=${event.writtenShorts} audioRows=${answer.audioRows} positions=${answer.positionsAfterPrefill}"
+                            "writtenShorts=${event.writtenShorts} supplyGaps=${event.supplyGaps} totalMs=${event.totalMs} " +
+                            "audioRows=${answer.audioRows} positions=${answer.positionsAfterPrefill}"
                     )
                 }
             }
@@ -817,9 +842,12 @@ internal class OmniCallEngineImpl(
  * [OmniCallSpeechOutput] on a 24 kHz mono [AudioTrack] built by the
  * existing [SpeechAudioTrackFactory]. `firstSoundAtMonotonicMs` is the
  * [SystemClock.elapsedRealtime] instant the playback head first advances
- * past zero after the first chunk is written — actual audible start, not
+ * past zero after playback starts — actual audible start, not
  * generation or write-start time — in the same clock domain as the
- * capture endpoint. The track lives for the call; [close] releases it.
+ * capture endpoint. Playback starts after [OmniPrerollGate.PREROLL_FRAMES]
+ * have arrived or at [finishTurn], whichever comes first. Barge-in via
+ * [stopAndFlush] remains immediate and never waits for the pre-roll. The
+ * track lives for the call; [close] releases it.
  */
 internal class OmniAudioTrackOutput(
     private val log: (String) -> Unit = {},
@@ -829,7 +857,8 @@ internal class OmniAudioTrackOutput(
     private var track: AudioTrack? = null
     @Volatile private var firstSound: Long? = null
     @Volatile private var stopped: Boolean = false
-    @Volatile private var firstChunkPending: Boolean = true
+    private val prerollGate = OmniPrerollGate()
+    @Volatile private var underrunBaseline: Int = 0
     /** One diagnostics line per turn when playback writes start failing; reset every [beginTurn]. */
     @Volatile private var writeFailureLogged: Boolean = false
     /** PCM written to the track but not yet rendered, in write order. Each entry
@@ -850,21 +879,36 @@ internal class OmniAudioTrackOutput(
     override val firstSoundAtMonotonicMs: Long? get() = firstSound
     override val writtenShortsThisTurn: Long
         get() = synchronized(lock) { writtenFrames - turnStartWrittenFrames }
+    override val supplyGapsThisTurn: Int
+        get() {
+            val audioTrack = synchronized(lock) { track } ?: return 0
+            val current = runCatching { audioTrack.underrunCount }.getOrDefault(0)
+            return (current - underrunBaseline).coerceAtLeast(0)
+        }
 
     override fun beginTurn() {
         synchronized(lock) {
             turnStartWrittenFrames = writtenFrames
             stopped = false
             firstSound = null
-            firstChunkPending = true
             writeFailureLogged = false
-            ensureTrackLocked().play()
+            val audioTrack = ensureTrackLocked()
+            underrunBaseline = runCatching { audioTrack.underrunCount }.getOrDefault(0)
+            prerollGate.reset()
         }
     }
 
     override suspend fun playChunk(pcm24kMono: FloatArray) {
         if (pcm24kMono.isEmpty()) return
         val audioTrack = synchronized(lock) { if (stopped) null else track } ?: return
+        val startNow = prerollGate.onChunkArrived(pcm24kMono.size)
+        val startedThisChunk = startNow && synchronized(lock) {
+            if (stopped || track !== audioTrack) false
+            else {
+                audioTrack.play()
+                true
+            }
+        }
         val shorts = ShortArray(pcm24kMono.size) { i ->
             (pcm24kMono[i].coerceIn(-1f, 1f) * 32767f).toInt().coerceIn(-32768, 32767).toShort()
         }
@@ -889,11 +933,17 @@ internal class OmniAudioTrackOutput(
             }
             offset += written
             recordWritten(shorts, offset - written, written)
-            if (firstChunkPending) {
-                firstChunkPending = false
-                observeFirstSound(audioTrack)
-            }
         }
+        if (startedThisChunk) observeFirstSound(audioTrack)
+    }
+
+    override suspend fun finishTurn() {
+        val shouldStart = synchronized(lock) { !stopped && track != null }
+        if (!shouldStart || !prerollGate.onGenerationFinished()) return
+        val audioTrack = synchronized(lock) {
+            if (stopped) null else track?.also { it.play() }
+        } ?: return
+        observeFirstSound(audioTrack)
     }
 
     /**

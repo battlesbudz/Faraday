@@ -17,9 +17,13 @@ class OmniVoiceCallSessionTest {
         assertEquals("answer-2", session.runTurn().text)
         assertEquals(2, fixture.engine.audioTurns)
         assertEquals(1, fixture.engine.resets)
+        assertEquals(2, fixture.output.finishes)
         assertEquals(listOf("question 1", "answer-1", "question 2", "answer-2"),
             session.transcriptSnapshot().map { it.text })
-        assertEquals(2, fixture.events.filterIsInstance<OmniVoiceCallSession.Event.Turn>().size)
+        val turns = fixture.events.filterIsInstance<OmniVoiceCallSession.Event.Turn>()
+        assertEquals(2, turns.size)
+        assertEquals(4, turns.first().supplyGaps)
+        assertEquals(1_000L, turns.first().totalMs)
         session.closeCall()
         assertEquals(1, fixture.engine.endCalls)
     }
@@ -56,6 +60,7 @@ class OmniVoiceCallSessionTest {
             // expected
         }
         assertTrue(fixture.output.flushes > 0)
+        assertEquals(0, fixture.output.finishes)
         assertTrue(session.transcriptSnapshot().isEmpty())
         session.closeCall()
     }
@@ -83,7 +88,7 @@ class OmniVoiceCallSessionTest {
         private val capture = FakeCapture()
 
         fun session() = OmniVoiceCallSession(engine, capture, output, events::add,
-            isCallActive = { active }, clockMs = { 1_000L })
+            isCallActive = { active }, clockMs = { 2_000L })
     }
 
     private class FakeEngine(private val isActive: () -> Boolean) : OmniCallEngine {
@@ -135,12 +140,15 @@ class OmniVoiceCallSessionTest {
 
     private class FakeOutput : OmniCallSpeechOutput {
         var flushes = 0
+        var finishes = 0
+        override val supplyGapsThisTurn: Int get() = 4
         override var firstSoundAtMonotonicMs: Long? = null
             private set
         override fun beginTurn() { firstSoundAtMonotonicMs = null }
         override suspend fun playChunk(pcm24kMono: FloatArray) {
             firstSoundAtMonotonicMs = System.nanoTime() / 1_000_000
         }
+        override suspend fun finishTurn() { finishes++ }
         override fun stopAndFlush() { flushes++ }
         override fun close() = Unit
     }

@@ -85,10 +85,50 @@ internal interface OmniCallSpeechOutput : AutoCloseable {
     val firstSoundAtMonotonicMs: Long?
     /** Shorts written to the track since [beginTurn]; 0 when the output does not track writes. */
     val writtenShortsThisTurn: Long get() = 0L
+    /** Playback starvations (AudioTrack underruns) observed so far this turn; 0 when the output cannot measure them. */
+    val supplyGapsThisTurn: Int get() = 0
     fun beginTurn()
     suspend fun playChunk(pcm24kMono: FloatArray)
+    /** Generation for this turn has ended: start playback now if the pre-roll is still holding it. */
+    suspend fun finishTurn() {}
     fun stopAndFlush()
     override fun close()
+}
+
+/** Holds Omni playback until enough audio has arrived to reduce starvation, or generation finishes for a short answer. */
+internal class OmniPrerollGate(private val prerollFrames: Int = PREROLL_FRAMES) {
+    var started: Boolean = false
+        private set
+    var arrivedFrames: Int = 0
+        private set
+
+    /** Call for every arriving chunk. Returns true only on the arrival that reaches the pre-roll threshold. */
+    fun onChunkArrived(frames: Int): Boolean {
+        arrivedFrames += frames
+        if (!started && arrivedFrames >= prerollFrames) {
+            started = true
+            return true
+        }
+        return false
+    }
+
+    /** Starts short answers once generation is done, provided at least some audio arrived. */
+    fun onGenerationFinished(): Boolean {
+        if (!started && arrivedFrames > 0) {
+            started = true
+            return true
+        }
+        return false
+    }
+
+    fun reset() {
+        started = false
+        arrivedFrames = 0
+    }
+
+    companion object {
+        const val PREROLL_FRAMES: Int = 3 * 23_040
+    }
 }
 
 /** Narrow U2 runtime adapter used by the voice call. All methods run on OmniRuntime's worker. */
@@ -177,6 +217,8 @@ internal class OmniVoiceCallSession(
             val graphTimingsMs: Map<String, Long>,
             val answer: OmniCallAnswer? = null,
             val writtenShorts: Long = 0,
+            val supplyGaps: Int = 0,
+            val totalMs: Long = 0,
         ) : Event
         /** The sealed user audio for this turn: its duration and peak amplitude. */
         data class CapturedSpeech(val seconds: Float, val peak: Float) : Event
@@ -229,13 +271,22 @@ internal class OmniVoiceCallSession(
             output.stopAndFlush()
             throw CancellationException("omni_voice_call_ended")
         }
+        output.finishTurn()
         val userText = captured.transcriptText?.takeIf { it.isNotBlank() }
         if (userText == null) {
             diagnostics(Event.MissingInputTranscript(captured.endpointAtMs))
             transcript += OmniCallMessage(OmniCallRole.USER, "[spoken audio; transcript unavailable]")
         } else transcript += OmniCallMessage(OmniCallRole.USER, userText)
         transcript += OmniCallMessage(OmniCallRole.ASSISTANT, answer.text)
-        diagnostics(Event.Turn(captured.endpointAtMs, output.firstSoundAtMonotonicMs, answer.graphTimingsMs, answer, output.writtenShortsThisTurn))
+        diagnostics(Event.Turn(
+            captured.endpointAtMs,
+            output.firstSoundAtMonotonicMs,
+            answer.graphTimingsMs,
+            answer,
+            output.writtenShortsThisTurn,
+            output.supplyGapsThisTurn,
+            (clockMs() - captured.endpointAtMs).coerceAtLeast(0),
+        ))
         return answer
     }
 
