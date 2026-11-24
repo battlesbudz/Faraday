@@ -83,6 +83,8 @@
     "test79_workflowExportSanitizesPersonalContent",
     "test80_cameraCaptureEndsWithSpokenFarewell",
     "test81_smartTurnEndpointPersistsAndNativeControlMatchesPinnedModel",
+    "test82_messageRequestHasNoApprovalFreeSubstitute",
+    "test83_frontDoorMessageRunsOnOwnedDisplayAndParksExactApproval",
     "test90_modelSelectionPersistsAcrossRecreation"
   ],
   "restart_model": "Gemma-4-E4B-it",

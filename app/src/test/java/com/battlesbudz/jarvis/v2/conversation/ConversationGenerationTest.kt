@@ -318,20 +318,41 @@ class ConversationGenerationTest {
         assertEquals("Parked for approval.", draft.actionResultMessage)
     }
 
-    @Test fun discussionVetoDropsGatedProposalButKeepsNonGatedCall() = runBlocking {
+    @Test fun discussionVetoAndNoPlanGuardDropAllProposals() = runBlocking {
         val calls = listOf(
             ToolCall("open_app", "{\"app\":\"Calendar\"}"),
             ToolCall("post_notification", "{\"title\":\"Update\",\"text\":\"Testing\"}"))
         val backend = ProposedCallsBackend(calls)
         val parked = mutableListOf<ActionRequest>()
         val dispatched = mutableListOf<ActionRequest>()
-        val draft = generateWithBackend(backend, null, phoneActions = fakeActions(dispatched), directAudio = false,
-            frontDoor = frontDoorVerdict(vetoConfident = true), onNeedsApproval = { parked += it
+        val diagnostics = mutableListOf<String>()
+        generateWithBackend(backend, null, phoneActions = fakeActions(dispatched), directAudio = false,
+            frontDoor = frontDoorVerdict(vetoConfident = true), summaryLog = diagnostics, onNeedsApproval = { parked += it
             com.battlesbudz.jarvis.v2.actions.ExecutionResult(true, "Parked.")
         })
         assertTrue(parked.isEmpty())
-        assertEquals(listOf(ActionRequest("open_app", mapOf("app" to "Calendar"))), dispatched)
-        assertTrue(draft.actionResultMessage.orEmpty().contains("Executed open_app"))
+        assertTrue(dispatched.isEmpty())
+        assertTrue(diagnostics.any { it.contains("Front-door veto step=post_notification") })
+        assertTrue(diagnostics.any { it.contains("Front-door guard step=open_app reason=no_deterministic_plan") })
+    }
+
+    @Test fun frontDoorMessageRequestCannotSubstituteOpenApp() = runBlocking {
+        val sentence = "Send a message to Andrea saying testing"
+        assertTrue(ActionTurnPlan.parse(sentence) is ActionTurnPlan.NotAction)
+        assertNotNull(com.battlesbudz.jarvis.v2.actions.OperatedTaskFormation.form(sentence))
+        val dispatched = mutableListOf<ActionRequest>()
+        val parked = mutableListOf<ActionRequest>()
+        val diagnostics = mutableListOf<String>()
+        generateWithBackend(ProposedCallsBackend(listOf(
+            ToolCall("open_app", "{\"app\":\"messaging\"}"))), null,
+            phoneActions = fakeActions(dispatched), directAudio = false,
+            frontDoor = frontDoorVerdict(), promptText = sentence,
+            summaryLog = diagnostics, onNeedsApproval = { parked += it
+                com.battlesbudz.jarvis.v2.actions.ExecutionResult(true, "Parked.")
+            })
+        assertTrue(dispatched.isEmpty())
+        assertTrue(parked.isEmpty())
+        assertTrue(diagnostics.any { it.contains("Front-door guard step=open_app reason=no_deterministic_plan") })
     }
 
     @Test fun completionClaimRegeneratesOnFrontDoorActionTurnWithoutReceipt() = runBlocking {

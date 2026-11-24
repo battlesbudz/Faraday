@@ -48,6 +48,24 @@ class ToolTaskLedger(
         return created
     }
 
+    /** Admit the app-control send card into the same conversation journal used by chat approvals. */
+    fun createOperatedApproval(request: ActionRequest, conversationId: String): ToolTaskAttempt {
+        require(request.name == "send_message" && request.arguments.keys == setOf("app", "destination", "message"))
+        require(request.arguments.values.all { it.isNotBlank() } && conversationId.length in 1..256)
+        require(ActionControlPolicy.admissionBlockReason(request) == null)
+        val at = now()
+        val groupId = UUID.randomUUID().toString()
+        val attempt = ToolTaskAttempt(UUID.randomUUID().toString(), 0, ToolTaskState.WAITING_APPROVAL,
+            request.frozen(), at, at, groupId = groupId, authority = ToolAuthority.EXACT_APPROVAL)
+        val group = ToolTaskGroup(groupId, conversationId, "send_message", listOf(attempt.id), at,
+            Math.addExact(at, 10 * 60_000L), resumeAfterRestart = false)
+        store.updateJournal { journal ->
+            journal.copy(attempts = journal.attempts + attempt, groups = journal.groups + group,
+                events = journal.events + ToolTaskEvent(attempt.id, 0, ToolTaskEventKind.ADMITTED, at))
+        }
+        return attempt
+    }
+
     fun get(id: String): ToolTaskAttempt? = store.read().firstOrNull { it.id == id }
 
     fun transition(id: String, expectedGeneration: Long, state: ToolTaskState, result: String? = null,

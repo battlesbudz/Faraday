@@ -55,6 +55,7 @@ class HelperOperatedDisplay(
     /** Move is attempted only onto the owned display; failure stops rather than targeting display 0. */
     fun moveTask(taskId: Int): Boolean {
         val active = identity ?: return false
+        if (active.displayId == 0) return false
         return helperProvider()?.moveTask(taskId, active.displayId) == true
     }
 
@@ -69,6 +70,12 @@ class HelperOperatedDisplay(
         if (!closed.compareAndSet(false, true)) return
         val active = identity ?: return
         identity = null
+        // Keep the A2 fake/compatibility contract observable, but never issue a helper release
+        // against Android's main display even if a broken helper reports id zero.
+        if (active.displayId == 0) {
+            listener.onEvent(OperatedDisplayEvent(active, OperatedDisplayEvent.Kind.ORPHANED, System.currentTimeMillis()))
+            return
+        }
         val helper = helperProvider()
         if (helper == null) {
             listener.onEvent(OperatedDisplayEvent(active, OperatedDisplayEvent.Kind.ORPHANED, System.currentTimeMillis()))

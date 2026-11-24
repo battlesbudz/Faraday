@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.ContentValues
 import android.app.ActivityManager
+import android.graphics.Bitmap
 import android.media.AudioManager
 import android.os.BatteryManager
 import android.os.SystemClock
@@ -63,11 +64,15 @@ import com.battlesbudz.jarvis.v2.presentation.AgentActivityKind
 import com.battlesbudz.jarvis.v2.ui.PipelineBenchmarkScreen
 import com.battlesbudz.jarvis.v2.diagnostics.*
 import com.battlesbudz.jarvis.v2.voice.*
+import com.battlesbudz.jarvis.v2.perception.*
 import java.net.ServerSocket
 import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -6113,6 +6118,138 @@ class ReleaseJourneyTest {
             if (hadOldValue) preferences.edit().putBoolean(oldKey, oldValue).commit()
             else preferences.edit().remove(oldKey).commit()
         }
+    }
+
+    @Test fun test82_messageRequestHasNoApprovalFreeSubstitute() {
+        // This journey pins the public parser/catalog/policy/UI seams available to androidTest.
+        // It cannot invoke internal ConversationGeneration or FrontDoorClassifier, inject their
+        // controlled model backend, or observe a generated draft; that admission path is pinned
+        // by ConversationGenerationTest on the JVM.
+        val sentence = "send a message to Andrea saying testing"
+        val plan = com.battlesbudz.jarvis.v2.ai.TurnOrchestrator(
+            com.battlesbudz.jarvis.v2.ai.ReferenceGroundingClient()).plan(sentence)
+        assertTrue("the deterministic parser must leave this message request to the front door",
+            plan.actionPlan is ActionTurnPlan.NotAction)
+        val names = MobileToolCatalog.all().map { it.name }.toSet()
+        assertTrue("open_app remains in the catalog and must not stand in for message delivery",
+            "open_app" in names)
+        assertFalse("no send tool may bypass operated messaging and its exact approval path",
+            names.any { it == "send" || it == "send_message" })
+        assertEquals("the journey must remain in Jarvis without launching a messaging app",
+            context.packageName, device.currentPackageName)
+    }
+
+    @Test fun test83_frontDoorMessageRunsOnOwnedDisplayAndParksExactApproval() = runBlocking {
+        // ConversationRouting/ConversationGeneration are internal and the classifier has no
+        // injectable backend, so the junction is pinned by JVM tests. No real helper can be
+        // paired on an emulator, so the operated chain uses fakes here and Battles's phone
+        // device proof remains the real-helper coverage.
+        val sentence = "send a message to Andrea saying testing"
+        assertTrue(ActionTurnPlan.parse(sentence) is ActionTurnPlan.NotAction)
+        val request = OperatedTaskFormation.form(sentence)!!
+        assertEquals("Andrea", request.recipient)
+        assertEquals("testing", request.body)
+        assertTrue(MobileToolCatalog.all().none { it.name in setOf("send", "send_message", "send_email") })
+
+        val taskStore = InMemoryToolTaskStore()
+        val approvalStore = ActionApprovalStore(taskStore)
+        val identity = com.battlesbudz.jarvis.v2.display.OperatedDisplayIdentity(7, "test83", "Messages")
+        val stage = AtomicInteger(0)
+        val injectedDisplays = mutableListOf<Int>()
+        val injectedTaps = mutableListOf<Float>()
+        val stationTrace = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val pending = CompletableDeferred<ActionApprovalRequest>()
+        fun tree(): OperatedObservation {
+            val nodes = when (stage.get()) {
+                    0 -> listOf(ObservedNode("android.widget.TextView", "messages:id/row", "Andrea", listOf("clickable")))
+                1 -> listOf(
+                    ObservedNode("android.widget.TextView", "messages:id/title", "Andrea", emptyList()),
+                    ObservedNode("android.widget.EditText", "messages:id/compose", "testing", listOf("editable", "focusable")),
+                    ObservedNode("android.widget.Button", "messages:id/send", "Send", listOf("clickable")))
+                else -> listOf(
+                    ObservedNode("android.widget.TextView", "messages:id/title", "Andrea", emptyList()),
+                    ObservedNode("android.widget.EditText", "messages:id/compose", null, listOf("editable", "focusable")),
+                    ObservedNode("android.widget.TextView", "messages:id/message", "testing", emptyList()))
+            }
+            return createObservation(identity, TreeWindowCandidate(7, "com.example.messages", nodes), System.currentTimeMillis())!!
+        }
+        val helper = object : com.battlesbudz.jarvis.v2.display.OperatedDisplayHelper {
+            override fun create(name: String, width: Int, height: Int, densityDpi: Int) = 7
+            override fun release(displayId: Int) { assertEquals(7, displayId) }
+            override fun moveTask(taskId: Int, displayId: Int) = false
+            override fun readFrame(displayId: Int): com.battlesbudz.jarvis.v2.display.DisplayFrameMailbox.Frame? = null
+        }
+        val display = com.battlesbudz.jarvis.v2.display.HelperOperatedDisplay({ helper })
+        val injector = OperatedInputInjector { displayId, event ->
+            injectedDisplays += displayId
+            if (event.getString("type") == "tap") {
+                val x = event.getFloat("x")
+                injectedTaps += x
+                if (x >= 50f) { stationTrace += "send"; stage.set(2) }
+                else if (stage.get() == 0) stage.set(1)
+            } else if (event.getString("type") == "key") stationTrace += "type"
+            true
+        }
+        lateinit var runner: com.battlesbudz.jarvis.v2.display.OperatedTaskRunner
+        runner = com.battlesbudz.jarvis.v2.display.OperatedTaskRunner(
+            context = context,
+            display = display,
+            observations = OperatedObservationReader { tree() },
+            liveNodes = { liveIdentity ->
+                assertEquals(7, liveIdentity.displayId)
+                when (stage.get()) {
+                    0 -> listOf(LiveOperatedNode("android.widget.TextView", "messages:id/row", "Andrea", setOf("clickable"), OperatedNodeBounds(0, 0, 20, 20)))
+                    1 -> listOf(
+                        LiveOperatedNode("android.widget.EditText", "messages:id/compose", "testing", setOf("editable"), OperatedNodeBounds(0, 0, 30, 20)),
+                        LiveOperatedNode("android.widget.Button", "messages:id/send", "Send", setOf("clickable"), OperatedNodeBounds(50, 0, 70, 20)))
+                    else -> emptyList()
+                }
+            },
+            injector = injector,
+            launcher = com.battlesbudz.jarvis.v2.display.OperatedAppLauncher { packageName, launchedOn ->
+                assertEquals("com.example.messages", packageName); assertEquals(7, launchedOn.displayId); true
+            },
+            approvals = com.battlesbudz.jarvis.v2.display.SendApprovalGate { taskId, action ->
+                stationTrace += "approval"
+                val approval = approvalStore.request(taskId, "send", "native", action, MobileToolCatalog.VERSION)
+                approvalStore.presentQuestion(approval.id)
+                pending.complete(approval)
+                while (true) {
+                    val current = approvalStore.get(approval.id)
+                    if (current?.consumed == true) return@SendApprovalGate current.decision ?: ApprovalDecision.STALE
+                    delay(20)
+                }
+                @Suppress("UNREACHABLE_CODE") ApprovalDecision.STALE
+            },
+            diagnostics = {},
+            resolvePackage = { "com.example.messages" },
+            taskLocation = TaskLocationProvider { TaskLocation.NONE },
+            screenSize = { Triple(1080, 1920, 420) },
+            textEntry = OperatedTextEntry(injector, KeyEventMapper { listOf(KeyPress(android.view.KeyEvent.KEYCODE_T, 0)) }))
+
+        val running = async(Dispatchers.Default) { runner.run(request) }
+        val approval = withTimeout(10_000) { pending.await() }
+        assertTrue("approval must be pending before a send tap", approvalStore.pending().any { it.id == approval.id })
+        assertTrue("send control must not be injected before approval", injectedTaps.none { it >= 50f })
+        activity.onActivity { host -> host.setContent {
+            MaterialTheme {
+                com.battlesbudz.jarvis.v2.display.OperatedWatchSurface(
+                    appName = "Messages", taskName = "Send message", frame = null, paused = false,
+                    approval = com.battlesbudz.jarvis.v2.display.PendingWatchApproval(approval, "Andrea", "testing"),
+                    approvalStore = approvalStore, onPause = {}, onStop = {}, onResume = {})
+            }
+        } }
+        assertTrue(device.wait(Until.hasObject(By.text("Andrea")), 5_000))
+        assertTrue(device.hasObject(By.text("testing")))
+        approvalStore.consume(approval.id, approval.fingerprint)
+        val outcome = withTimeout(10_000) { running.await() }
+        assertEquals(com.battlesbudz.jarvis.v2.actions.OperatedTaskOutcome.Completed("Message sent to Andrea: \"testing\""), outcome)
+        assertTrue(injectedDisplays.isNotEmpty())
+        assertTrue(injectedDisplays.all { it == 7 })
+        assertTrue(injectedTaps.any { it >= 50f })
+        assertTrue(stationTrace.indexOf("type") >= 0)
+        assertTrue(stationTrace.indexOf("type") < stationTrace.indexOf("approval"))
+        assertTrue(stationTrace.indexOf("approval") < stationTrace.indexOf("send"))
     }
 
     @Test fun test90_modelSelectionPersistsAcrossRecreation() {

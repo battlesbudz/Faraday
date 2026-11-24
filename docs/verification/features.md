@@ -19,6 +19,13 @@ Acceptance checks:
   4/4 mustpass, CHAT not-offered 0.80, discussion veto 0.80 and zero ACT veto.
   `ActionCompletionClaimTest` pins the completion detector. Generation tests
   cover approval reachability, selective veto, cold tool offers and claim retry.
+- On a no-deterministic-plan front-door turn, generation admits only decoded
+  requests that require exact approval and have no admission block. Approval-free
+  model calls are dropped with a `no_deterministic_plan` diagnostic; an approval-
+  required user intent cannot be completed by substituting an approval-free tool.
+  `ReleaseJourneyTest.test82_messageRequestHasNoApprovalFreeSubstitute` pins the
+  public parser/catalog/foreground seams; internal classifier and generation
+  admission are covered by the JVM test, not observed by androidTest.
 - Failure cases: unavailable embeddings fail open, discussions do not park
   exact-approval proposals, and a repeated false completion claim is replaced
   by the detector's honest fallback.
@@ -7404,3 +7411,33 @@ the build, open a conversation and load the model with a chat,
 then go to the model browser and switch E2B to E4B — the exact
 case that failed on build 1823 — and confirm it switches; then
 run a short voice call and one code-mode round on the new model.
+
+## Front-door message requests use the operated task runner — 24 November 2026
+
+`OperatedTaskFormation` recognizes only the bounded send-message sentence
+forms after request-prefix normalization. When the front-door verdict marks
+the sentence as ACT and the deterministic action parser has no plan,
+`ConversationRouting` starts the operated runner. A null starter result keeps
+the previous generation route. No send tool was added to the mobile catalog.
+
+`OperatedTaskRunner` owns the task from package/location check through display
+creation, display-bound launch, observation-driven recipient resolution,
+compose entry, exact approval and send verification. It registers task controls,
+starts the foreground service and frame feed, enforces step and active-time
+budgets, releases the display and records one `TaskEnded` event. Accessibility
+supplies live bounds only from the focused API 33+ window on the owned display.
+App launch always carries that display id. Text keys preserve `metaState`
+through the existing helper input operation; the AIDL is unchanged.
+
+The send attempt and approval are attached to `phoneActionStore` with a group
+for the originating conversation, so the existing inline approval card owns
+the decision. The runner waits for the journal's consumed card decision; voice
+approval is not used. `test83` exercises the parser/catalog, fake helper and
+display runner, journal approval ordering, injection display id, send result,
+and watch approval content. JVM coverage also pins helper absence, main-display
+blocking, the step budget, missing-recipient result, approval denial and stop
+during the approval wait. The junction itself remains pinned by a JVM pure
+decision seam because `ConversationRouting`/`ConversationGeneration` are
+internal and the classifier has no injectable backend. Emulator coverage uses
+a fake helper because a real paired helper is unavailable there. Real model
+selection, physical helper behavior and device performance remain unverified.

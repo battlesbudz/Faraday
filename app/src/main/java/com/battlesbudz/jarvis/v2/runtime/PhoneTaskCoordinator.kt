@@ -407,6 +407,15 @@ internal class PhoneTaskCoordinator(
                     "approve" -> {
                         if (isDeviceLocked()) return@launch
                         val approval = a.approvalId?.let { approvals.get(it) } ?: return@launch
+                        // Operated message delivery owns the effect after the card decision.
+                        // Consume the exact journal approval here, then let its runner resume;
+                        // this generic tool executor has no send-message operation.
+                        if (a.request.name == "send_message") {
+                            val claimed = ledger.claim(a.id, a.generation, a.provider, a.schemaVersion, approval = approval)
+                            if (claimed != null) synchronized(publishLock) { silentWork.onAnswerReceived(approval.id) }
+                            refreshPhoneTasks()
+                            return@launch
+                        }
                         // M1d scheduling (T02): a follow-up runs independently when it
                         // does not conflict; a conflicting task queues behind the
                         // running work instead of racing it.

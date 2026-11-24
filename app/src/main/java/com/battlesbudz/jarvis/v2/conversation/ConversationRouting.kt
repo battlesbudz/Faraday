@@ -5,6 +5,9 @@ import com.battlesbudz.jarvis.v2.ChatEntry
 import com.battlesbudz.jarvis.v2.actions.ActionControlPolicy
 import com.battlesbudz.jarvis.v2.actions.ActionTurnPlan
 import com.battlesbudz.jarvis.v2.actions.ActionTurnRunner
+import com.battlesbudz.jarvis.v2.actions.OperatedTaskFormation
+import com.battlesbudz.jarvis.v2.actions.OperatedTaskOutcome
+import com.battlesbudz.jarvis.v2.actions.OperatedTaskRequest
 import com.battlesbudz.jarvis.v2.actions.PhoneActionStatus
 import com.battlesbudz.jarvis.v2.actions.PhoneActionStatusReply
 import com.battlesbudz.jarvis.v2.ai.TurnKind
@@ -38,6 +41,23 @@ internal data class RoutedConversation(
     val frontDoor: FrontDoorVerdict? = null
 )
 
+/** Closest pure seam for the front-door-to-operated junction. */
+internal fun operatedTaskCandidate(actionPlan: ActionTurnPlan, verdict: FrontDoorVerdict?, text: String): OperatedTaskRequest? =
+    if (actionPlan is ActionTurnPlan.NotAction && verdict?.actIntended == true)
+        OperatedTaskFormation.form(text) else null
+
+/** Same production junction, exposed as a narrow suspend seam for deterministic routing tests. */
+internal suspend fun startOperatedTaskIfEligible(
+    actionPlan: ActionTurnPlan,
+    verdict: FrontDoorVerdict?,
+    text: String,
+    conversationId: String,
+    starter: suspend (OperatedTaskRequest, String) -> OperatedTaskOutcome?,
+): Pair<OperatedTaskRequest, OperatedTaskOutcome?>? {
+    val task = operatedTaskCandidate(actionPlan, verdict, text) ?: return null
+    return task to starter(task, conversationId)
+}
+
 /** Authoritative literal-action routing before approved memory, reference lookup or inference. */
 internal class ConversationRouting(
     private val historyAfterCutoff: () -> List<ChatEntry>,
@@ -46,7 +66,8 @@ internal class ConversationRouting(
     private val readPhoneStatus: () -> PhoneActionStatus?,
     private val savePhoneStatus: (PhoneActionStatus) -> Unit,
     private val diagnostics: ConversationDiagnostics,
-    private val frontDoor: suspend (current: String, previousUser: String?) -> FrontDoorVerdict? = { _, _ -> null }
+    private val frontDoor: suspend (current: String, previousUser: String?) -> FrontDoorVerdict? = { _, _ -> null },
+    private val operatedTask: suspend (OperatedTaskRequest, conversationId: String) -> OperatedTaskOutcome? = { _, _ -> null }
 ) {
     /** Null means this stage already published a terminal shortcut/rejection. */
     suspend fun route(request: ConversationTurnRequest, reply: ConversationReply,
@@ -191,6 +212,25 @@ internal class ConversationRouting(
                     verdict.source, verdict.pAct, verdict.pRead, verdict.pChat))
             }
         } else null
+        val operatedStart = startOperatedTaskIfEligible(actionPlan, frontDoorVerdict, planningText,
+            request.conversationId, operatedTask)
+        if (operatedStart != null) {
+            val (task, outcome) = operatedStart
+            if (outcome != null) {
+                if (outcome !is OperatedTaskOutcome.Completed) {
+                    reply.outcome = PipelineBenchmarkOutcome.ERROR
+                    reply.failure = "operated_task_${outcome.javaClass.simpleName.lowercase()}"
+                }
+                request.incrementalVoice?.close()
+                modelSession.reset()
+                savePhoneStatus(PhoneActionStatus(request.conversationId, planningText, outcome.message))
+                turnOrchestrator.recordResponse(planningText, outcome.message, turnPlan)
+                diagnostics.important("Operated route kind=${task.kind} app=${task.appName} recipient=${task.recipient} " +
+                    "outcome=${outcome.javaClass.simpleName} message=${outcome.message}")
+                postFinish(outcome.message)
+                return null
+            }
+        }
         return RoutedConversation(safeHistory, turnPlan, actionPlan, preparedTextInput, frontDoorVerdict)
     }
 }

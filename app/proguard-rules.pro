@@ -594,6 +594,29 @@
 -keep class com.battlesbudz.jarvis.v2.display.DisplayFrameMailbox { *; }
 -keep class com.battlesbudz.jarvis.v2.display.OperatedFrameFeed { *; }
 -keep class com.battlesbudz.jarvis.v2.display.OperatedFrameCodec { *; }
+-keep class com.battlesbudz.jarvis.v2.display.OperatedWatchSurfaceKt { *; }
+-keep class com.battlesbudz.jarvis.v2.display.OperatedTaskRunner { *; }
+-keep class com.battlesbudz.jarvis.v2.display.OperatedTaskRunner$* { *; }
+-keep class com.battlesbudz.jarvis.v2.display.HelperOperatedDisplay { *; }
+-keep interface com.battlesbudz.jarvis.v2.display.OperatedDisplayHelper { *; }
+-keep interface com.battlesbudz.jarvis.v2.display.OperatedAppLauncher { *; }
+-keep interface com.battlesbudz.jarvis.v2.display.SendApprovalGate { *; }
+-keep class com.battlesbudz.jarvis.v2.display.OperatedAppLauncher** { *; }
+-keep class com.battlesbudz.jarvis.v2.actions.OperatedTaskFormation** { *; }
+-keep class com.battlesbudz.jarvis.v2.actions.OperatedTaskRequest** { *; }
+-keep class com.battlesbudz.jarvis.v2.actions.OperatedTaskOutcome** { *; }
+-keep class com.battlesbudz.jarvis.v2.actions.OperatedTextEntry** { *; }
+-keep class com.battlesbudz.jarvis.v2.actions.OperatedNodeBounds { *; }
+-keep class com.battlesbudz.jarvis.v2.actions.LiveOperatedNode { *; }
+-keep class com.battlesbudz.jarvis.v2.actions.OperatedTap** { *; }
+-keep class com.battlesbudz.jarvis.v2.actions.OperatedNodeKey** { *; }
+-keep interface com.battlesbudz.jarvis.v2.actions.OperatedLiveNodeReader { *; }
+-keep interface com.battlesbudz.jarvis.v2.actions.OperatedInputInjector { *; }
+-keep interface com.battlesbudz.jarvis.v2.actions.OperatedObservationReader { *; }
+-keep class com.battlesbudz.jarvis.v2.perception.OperatedObservation { *; }
+-keep class com.battlesbudz.jarvis.v2.perception.ObservedNode { *; }
+-keep class com.battlesbudz.jarvis.v2.perception.TreeWindowCandidate { *; }
+-keep class com.battlesbudz.jarvis.v2.perception.OperatedObservationKt { *; }
 
 # A1 pairing front end is reached through composed settings and an explicit notification receiver.
 -keep class com.battlesbudz.jarvis.v2.ui.AppControlPairingSectionKt { *; }

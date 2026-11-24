@@ -285,6 +285,9 @@ suspend fun ActionTurnRunner.runNative(
 private fun summary(receipts: List<ActionTurnRunner.Receipt>, remaining: List<ActionTurnPlan.Step>, reason: String? = null): String =
     buildString {
         if (receipts.isNotEmpty()) append(receipts.joinToString(" ") { it.result.message })
-        if (reason != null) { if (isNotEmpty()) append(' '); append(reason) }
+        if (reason != null && receipts.none { it.result.message == reason }) {
+            if (isNotEmpty()) append(' ')
+            append(reason)
+        }
         if (remaining.isNotEmpty()) { if (isNotEmpty()) append(' '); append("Did not attempt: ").append(remaining.joinToString { it.request.name }).append('.') }
     }.ifBlank { "I couldn't verify the requested phone actions." }

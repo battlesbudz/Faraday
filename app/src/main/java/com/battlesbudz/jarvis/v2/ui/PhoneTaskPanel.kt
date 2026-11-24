@@ -63,6 +63,7 @@ internal fun ActionRequest.description() = when (name) {
     "read_battery" -> "Check battery"
     "set_volume" -> "Set media volume to ${arguments["level"]}%"
     "open_app" -> "Open ${arguments["app"] ?: arguments["package"]}"
+    "send_message" -> "Send message to ${arguments["destination"] ?: ""}: \"${arguments["message"] ?: ""}\""
     "media_control" -> (MediaControlAction.fromVerb(arguments["action"].orEmpty())?.label
         ?.replaceFirstChar { it.uppercase() } ?: "Control") + " media"
     "browse_open" -> "Open ${arguments["url"]?.let { BrowserNavigationPolicy.hostOf(it) ?: it } ?: "the page"} in the browser"

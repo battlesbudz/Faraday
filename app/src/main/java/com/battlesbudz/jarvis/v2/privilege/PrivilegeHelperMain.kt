@@ -212,8 +212,9 @@ internal class ShellPrivilegeBackend(private val context: Context, private val a
         val event = when (type) {
             "key" -> {
                 val keyCode = data.getInt("keyCode", -1)
+                val metaState = data.getInt("metaState", 0)
                 if (keyCode < 0) return false
-                KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0)
+                KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, metaState)
             }
             "tap" -> {
                 if (!data.containsKey("x") || !data.containsKey("y")) return false
@@ -226,9 +227,9 @@ internal class ShellPrivilegeBackend(private val context: Context, private val a
             val manager = inputManager()
             val method = manager.javaClass.getMethod("injectInputEvent", InputEvent::class.java, Int::class.javaPrimitiveType)
             val downSent = method.invoke(manager, event, if (type == "key") 1 else 0) as Boolean
-            if (!downSent) return inputFallback(type!!, displayId, data)
+            if (!downSent) return if (type == "key" && data.getInt("metaState", 0) != 0) false else inputFallback(type!!, displayId, data)
             val up = when (event) {
-                is KeyEvent -> KeyEvent(now, android.os.SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, event.keyCode, 0)
+                is KeyEvent -> KeyEvent(now, android.os.SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, event.keyCode, 0, event.metaState)
                 is MotionEvent -> MotionEvent.obtain(now, android.os.SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, data.getFloat("x"), data.getFloat("y"), 0)
                 else -> return false
             }
@@ -237,7 +238,7 @@ internal class ShellPrivilegeBackend(private val context: Context, private val a
                 return method.invoke(manager, up, if (type == "key") 1 else 0) as Boolean
             } finally { if (up is MotionEvent) up.recycle() }
         } catch (_: Throwable) {
-            return inputFallback(type!!, displayId, data)
+            return if (type == "key" && data.getInt("metaState", 0) != 0) false else inputFallback(type!!, displayId, data)
         } finally {
             if (event is MotionEvent) event.recycle()
         }

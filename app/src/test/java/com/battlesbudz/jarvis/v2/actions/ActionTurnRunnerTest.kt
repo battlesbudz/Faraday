@@ -5,6 +5,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
 
 class ActionTurnRunnerTest {
     private class World(private val failAt: Int? = null) : MobileActionExecutor {
@@ -15,6 +16,15 @@ class ActionTurnRunnerTest {
         }
     }
     private fun call(name: String, json: String) = ToolCall(name, json)
+
+    @Test fun unknownCompletionSentenceAppearsOnceInStoppedOutcome() = runBlocking {
+        val sentence = "The launch request for Messages was sent, but opening could not be confirmed."
+        val plan = ActionTurnPlan.parse("Open Messages") as ActionTurnPlan.Ready
+        val outcome = ActionTurnRunner(World()).runNative(plan, listOf(call("open_app", "{\"app\":\"Messages\"}")),
+            dispatch = { ExecutionResult(ExecutionResult.Outcome.UNKNOWN_COMPLETION, sentence) },
+            nextCalls = { emptyList() })
+        assertEquals(1, Regex(Regex.escape(sentence)).findAll(outcome.message).count())
+    }
 
     @Test fun batchAndSequentialCallsFollowTheAuthorizedOrder() {
         val mediaPlan = ActionTurnPlan.parse("Set my media volume to 30 percent, then tell me my battery level")

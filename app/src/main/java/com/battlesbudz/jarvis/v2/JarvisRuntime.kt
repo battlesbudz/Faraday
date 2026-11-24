@@ -429,6 +429,93 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         conversationId: String): com.battlesbudz.jarvis.v2.actions.ExecutionResult =
         phoneTaskCoordinator.parkSandboxRunForApproval(request, conversationId)
 
+    /** Runs a formed operated task and parks send authority in the shared chat journal. */
+    private suspend fun runOperatedTask(
+        request: com.battlesbudz.jarvis.v2.actions.OperatedTaskRequest,
+        conversationId: String
+    ): com.battlesbudz.jarvis.v2.actions.OperatedTaskOutcome {
+        val display = com.battlesbudz.jarvis.v2.display.HelperOperatedDisplay()
+        val approvalStore = com.battlesbudz.jarvis.v2.actions.ActionApprovalStore(phoneActionStore)
+        var approvalAttempt: com.battlesbudz.jarvis.v2.actions.ToolTaskAttempt? = null
+        lateinit var runner: com.battlesbudz.jarvis.v2.display.OperatedTaskRunner
+        runner = com.battlesbudz.jarvis.v2.display.OperatedTaskRunner(
+            context = applicationContext,
+            display = display,
+            observations = com.battlesbudz.jarvis.v2.actions.OperatedObservationReader(
+                com.battlesbudz.jarvis.v2.perception.OperatedTreeAccessibilityService::observeCurrent),
+            liveNodes = com.battlesbudz.jarvis.v2.perception.OperatedTreeAccessibilityService::observeLiveNodes,
+            injector = com.battlesbudz.jarvis.v2.actions.HelperOperatedInputInjector {
+                val binder = com.battlesbudz.jarvis.v2.privilege.PrivilegeHandoffState.helper.get()
+                    ?.takeIf { it.isBinderAlive } ?: return@HelperOperatedInputInjector null
+                com.battlesbudz.jarvis.v2.privilege.IPrivilegeHelper.Stub.asInterface(binder)
+            },
+            launcher = com.battlesbudz.jarvis.v2.display.AndroidOperatedAppLauncher(applicationContext),
+            approvals = com.battlesbudz.jarvis.v2.display.SendApprovalGate { taskId, action ->
+                val ledger = com.battlesbudz.jarvis.v2.actions.ToolTaskLedger(phoneActionStore)
+                val attempt = ledger.createOperatedApproval(action, conversationId)
+                approvalAttempt = attempt
+                try {
+                    val approval = approvalStore.request(attempt.groupId ?: attempt.id, attempt.stepId, "native", action,
+                        com.battlesbudz.jarvis.v2.actions.MobileToolCatalog.VERSION)
+                    phoneActionStore.updateJournal { journal ->
+                        val waiting = attempt.copy(approvalId = approval.id, actionRevision = approval.revision)
+                        journal.copy(attempts = journal.attempts.map { if (it.id == attempt.id) waiting else it },
+                            events = journal.events + com.battlesbudz.jarvis.v2.actions.ToolTaskEvent(
+                                attempt.id, waiting.generation, com.battlesbudz.jarvis.v2.actions.ToolTaskEventKind.APPROVAL_REQUESTED,
+                                System.currentTimeMillis()))
+                    }
+                    approvalStore.presentQuestion(approval.id)
+                    phoneTaskCoordinator.refreshPhoneTasks()
+                    com.battlesbudz.jarvis.v2.display.OperatedApprovalNotifier.post(
+                        applicationContext, "Send message", "send to ${action.arguments["destination"].orEmpty()}")
+                    while (true) {
+                        runner.awaitControl()
+                        val decision = approvalStore.get(approval.id)
+                        if (decision?.consumed == true) return@SendApprovalGate (decision.decision
+                            ?: com.battlesbudz.jarvis.v2.actions.ApprovalDecision.STALE)
+                        kotlinx.coroutines.delay(150)
+                    }
+                } catch (failure: Exception) {
+                    attempt.groupId?.let(ledger::cancelGroup)
+                    throw failure
+                } finally { com.battlesbudz.jarvis.v2.display.OperatedApprovalNotifier.withdraw(applicationContext) }
+            },
+            diagnostics = diagnosticRecorder::recordImportant,
+            resolvePackage = {
+                android.provider.Telephony.Sms.getDefaultSmsPackage(applicationContext)
+                    ?: (com.battlesbudz.jarvis.v2.actions.InstalledAppResolver(applicationContext).resolve("Messages")
+                        as? com.battlesbudz.jarvis.v2.actions.AppResolution.Found)?.app?.packageName
+            },
+            taskLocation = com.battlesbudz.jarvis.v2.display.AccessibilityTaskLocationProvider(
+                ownDisplayId = { display.current()?.displayId }),
+            screenSize = {
+                val metrics = android.util.DisplayMetrics()
+                applicationContext.getSystemService(android.view.WindowManager::class.java)
+                    .defaultDisplay.getRealMetrics(metrics)
+                Triple(metrics.widthPixels, metrics.heightPixels, metrics.densityDpi)
+            })
+        val outcome = runner.run(request)
+        approvalAttempt?.let { created ->
+            val ledger = com.battlesbudz.jarvis.v2.actions.ToolTaskLedger(phoneActionStore)
+            val current = ledger.get(created.id)
+            if (current != null && current.state !in setOf(
+                    com.battlesbudz.jarvis.v2.actions.ToolTaskState.SUCCEEDED,
+                    com.battlesbudz.jarvis.v2.actions.ToolTaskState.FAILED,
+                    com.battlesbudz.jarvis.v2.actions.ToolTaskState.CANCELLED,
+                    com.battlesbudz.jarvis.v2.actions.ToolTaskState.UNKNOWN_OUTCOME)) {
+                val completed = outcome is com.battlesbudz.jarvis.v2.actions.OperatedTaskOutcome.Completed
+                ledger.transition(current.id, current.generation,
+                    if (completed) com.battlesbudz.jarvis.v2.actions.ToolTaskState.SUCCEEDED
+                    else com.battlesbudz.jarvis.v2.actions.ToolTaskState.FAILED,
+                    outcome.message,
+                    if (completed) com.battlesbudz.jarvis.v2.actions.ExecutionResult.Outcome.SUCCEEDED
+                    else com.battlesbudz.jarvis.v2.actions.ExecutionResult.Outcome.FAILED)
+            }
+            phoneTaskCoordinator.refreshPhoneTasks()
+        }
+        return outcome
+    }
+
     // -- Sandbox Phase 2: the executor bridge behind run_in_sandbox --------
     // A dedicated manager/runner pair on the application context, the same
     // shape the settings section composes for its proof console; all state
@@ -1068,7 +1155,8 @@ internal class JarvisRuntime private constructor(context: android.content.Contex
         ConversationCoordinator(runtimeScope, { mainHandler.post(it) }, { conversationHistory.current.value.id }, models,
             ConversationRouting(history, turnOrchestrator, models, { lastPhoneActionStatus },
                 { lastPhoneActionStatus = it }, diagnostics,
-                frontDoor = { current, previous -> frontDoorClassifier.classify(current, previous) }),
+                frontDoor = { current, previous -> frontDoorClassifier.classify(current, previous) },
+                operatedTask = { request, conversationId -> runOperatedTask(request, conversationId) }),
             ConversationContextPreparation(history, memory, turnOrchestrator, models, references, diagnostics),
             ConversationGeneration(models, references, promptBuilder, { uri ->
                 openConversationAttachment(

@@ -308,6 +308,12 @@ retains phone admission, exact screen approval and task-progress projection.
 content-generation checks invalidate stale approvals. `ToolSourceAccess` enforces
 persisted source denials, revocations and bounded scopes across dispatch adapters.
 
+`conversation/ConversationRouting` connects ACT-classified message requests that
+have no deterministic plan to `display/OperatedTaskRunner`. The runner owns the
+operated task lifetime, display-bound app stations, exact send approval and one
+terminal diagnostic; runtime composition supplies Android launch, bounds, helper
+input and the shared task journal.
+
 The common `FileToolTaskStore` reads schemas 1–3 and writes schema 3, preserving
 workflow definitions, occurrences, resume progress, source permissions and receipts.
 Unknown journal content fails closed rather than being reset or downgraded.
