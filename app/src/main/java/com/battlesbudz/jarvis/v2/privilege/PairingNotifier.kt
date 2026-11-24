@@ -8,7 +8,6 @@ import android.app.RemoteInput
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import com.battlesbudz.jarvis.v2.MainActivity
 
 /** Posts pairing progress and the system RemoteInput fallback under notification id 4417. */
 internal object PairingNotifier : PairingSetupNotifier {
@@ -26,10 +25,16 @@ internal object PairingNotifier : PairingSetupNotifier {
 
     override fun showEnterCode(error: String?) = withManager { context, manager ->
         ensureChannel(manager)
-        val open = PendingIntent.getActivity(
-            context, 4417, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
+        // Launch intent for the package, never an Activity class reference:
+        // the architecture check reserves Activity access to entry points
+        // (same pattern as actions/TaskProgressNotification).
+        val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.let { launch ->
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            PendingIntent.getActivity(
+                context, 4417, launch,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+        }
         val input = RemoteInput.Builder(KEY_CODE).setLabel("Pairing code").setAllowFreeFormInput(true).build()
         val reply = PendingIntent.getBroadcast(
             context, 4417, Intent(context, PairingCodeInputReceiver::class.java),
