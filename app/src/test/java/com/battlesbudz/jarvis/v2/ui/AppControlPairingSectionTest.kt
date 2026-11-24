@@ -6,11 +6,13 @@ import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.activity.compose.LocalActivityResultRegistryOwner
@@ -93,7 +95,18 @@ class AppControlPairingSectionTest {
             autoReadGraceMs = 20,
         )
         compose.setContent {
-            MaterialTheme { AppControlPairingSection(enabled = true, controller = controller) }
+            MaterialTheme {
+                // Scrollable host: the section is taller than the
+                // Robolectric surface, and the Revoke button below the
+                // fold did not receive performClick in run 45368112213
+                // (Start/Manual, above the fold, worked; the supervisor
+                // never registered the revocation).
+                androidx.compose.foundation.layout.Column(
+                    Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                ) {
+                    AppControlPairingSection(enabled = true, controller = controller)
+                }
+            }
         }
         compose.onNodeWithTag("app_control_pairing_start").performClick()
         compose.onNodeWithText("Waiting for the pairing dialog…").assertExists()
@@ -116,7 +129,7 @@ class AppControlPairingSectionTest {
             pairedStatus.reason?.contains("did not establish") == true)
         compose.waitForIdle()
         compose.onNodeWithTag("app_control_pairing_status").assertTextContains("did not establish", substring = true)
-        compose.onNodeWithTag("app_control_pairing_revoke").performClick()
+        compose.onNodeWithTag("app_control_pairing_revoke").performScrollTo().performClick()
         // Poll the supervisor until the revocation registers (reason in
         // the failure message), then poll the status TEXT until the
         // recomposition lands — a single waitForIdle proved too weak a
