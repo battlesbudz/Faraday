@@ -24,9 +24,9 @@ object OperatedTaskFormation {
     private val negation = Regex("(?i)\\b(?:don't|do not|never)\\b")
     private val quotedBody = Regex("(?s)(\"[^\"]*\"|'[^']*')\\s*[.!?]*$")
     private val patterns = listOf(
-        Regex("(?i)^send\\s+(?:a\\s+)?(?:message|sms|text)\\s+to\\s+(.+?)\\s+(?:saying|that\\s+says|with\\s+the\\s+message|:)\\s*(.+)$"),
-        Regex("(?i)^send\\s+(.+?)\\s+(?:a\\s+)?(?:message|sms|text)\\s+(?:saying|that\\s+says|with\\s+the\\s+message|:)\\s*(.+)$"),
-        Regex("(?i)^(?:text|message)\\s+(.+?)\\s+(?:saying|that\\s+says|with\\s+the\\s+message|:)\\s*(.+)$"),
+        Regex("(?i)^send\\s+(?:a\\s+)?(?:message|sms|text)\\s+to\\s+(.+?)\\s*(?:saying|that\\s+says|with\\s+the\\s+message|:)\\s*(.+)$"),
+        Regex("(?i)^send\\s+(.+?)\\s+(?:a\\s+)?(?:message|sms|text)\\s*(?:saying|that\\s+says|with\\s+the\\s+message|:)\\s*(.+)$"),
+        Regex("(?i)^(?:text|message)\\s+(.+?)\\s*(?:saying|that\\s+says|with\\s+the\\s+message|:)\\s*(.+)$"),
     )
 
     fun form(text: String): OperatedTaskRequest? {
