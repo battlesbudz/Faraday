@@ -52,6 +52,12 @@ internal class PrivilegeSupervisor private constructor(private val context: Cont
         if (consented) check("pairing consent") else record("pairing consent revoked", false, "wireless-debugging recovery requires user consent")
     }
 
+    /** Revokes pairing admission without deleting the identity record initialized for this process. */
+    fun revokePairing() {
+        prefs.edit().putBoolean(CONSENT, false).putBoolean("adb_pairing_complete", false).apply()
+        check("pairing revoked")
+    }
+
     @Synchronized fun check(source: String): PrivilegeWatchdogController.Status {
         val result = if (identityProblem != null) {
             PrivilegeWatchdogController.Status(false, identityProblem)

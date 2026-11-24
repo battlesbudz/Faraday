@@ -389,6 +389,8 @@ internal fun VoiceCallScreen(
         androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 16.dp))
         SandboxSettingsSection(enabled = !chatSending && !runtimeArmed && !turnInFlight && !inputTesting)
         androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 16.dp))
+        AppControlPairingSection(enabled = !chatSending && !runtimeArmed && !turnInFlight && !inputTesting)
+        androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 16.dp))
         Text("Code projects", style = MaterialTheme.typography.titleMedium)
         Text(
             "Build small web apps with the loaded model, preview them, and export them " +

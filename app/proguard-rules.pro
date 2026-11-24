@@ -594,3 +594,10 @@
 -keep class com.battlesbudz.jarvis.v2.display.DisplayFrameMailbox { *; }
 -keep class com.battlesbudz.jarvis.v2.display.OperatedFrameFeed { *; }
 -keep class com.battlesbudz.jarvis.v2.display.OperatedFrameCodec { *; }
+
+# A1 pairing front end is reached through composed settings and an explicit notification receiver.
+-keep class com.battlesbudz.jarvis.v2.ui.AppControlPairingSectionKt { *; }
+-keep class com.battlesbudz.jarvis.v2.privilege.PairingCodeInputReceiver { *; }
+-keep class com.battlesbudz.jarvis.v2.privilege.PairingSetupController { *; }
+-keep class com.battlesbudz.jarvis.v2.privilege.PairingNotifier { *; }
+-keep class com.battlesbudz.jarvis.v2.privilege.PairingScreen** { *; }

@@ -1,0 +1,136 @@
+package com.battlesbudz.jarvis.v2.privilege
+
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import java.util.concurrent.CopyOnWriteArrayList
+import org.junit.After
+import org.junit.Assert.*
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class PairingSetupControllerTest {
+    private val context: Context get() = ApplicationProvider.getApplicationContext()
+    private val prefs get() = context.getSharedPreferences("app_control_privilege", Context.MODE_PRIVATE)
+    private lateinit var supervisor: PrivilegeSupervisor
+
+    @Before fun setUp() {
+        prefs.edit().clear().commit()
+        PairingIdentity.initialize(context)
+        PrivilegeHandoffState.helper.set(null)
+        supervisor = PrivilegeSupervisor.get(context)
+    }
+
+    @After fun tearDown() {
+        PrivilegeHandoffState.helper.set(null)
+        prefs.edit().clear().commit()
+    }
+
+    @Test fun readerPairsTheCodeAndPortFromOneSettingsWindowThenDisarms() {
+        val transport = RecordingTransport()
+        val notifier = RecordingNotifier()
+        val controller = controller(transport, notifier) {
+            listOf(listOf("Pair device with pairing code", "123456", "IP address & port", "192.168.0.12:37123", "Other text"))
+        }
+        controller.arm()
+        await { transport.calls.size == 1 && !controller.state.value.armed }
+
+        assertEquals(RecordingTransport.Call("123456", AdbEndpoint("192.168.0.12", 37123)), transport.calls.single())
+        assertTrue(prefs.getBoolean(PrivilegeSupervisor.CONSENT, false))
+        assertTrue(prefs.getBoolean("adb_pairing_complete", false))
+        assertFalse(controller.state.value.armed)
+        assertEquals("Paired. The app-control helper can now start.", controller.state.value.lastMessage)
+    }
+
+    @Test fun missingAccessibilityPostsNotificationAndManualCodePairs() {
+        val noAccessTransport = RecordingTransport()
+        val noAccessNotifier = RecordingNotifier()
+        val noAccessController = controller(noAccessTransport, noAccessNotifier) { emptyList() }
+        noAccessController.arm()
+        await { noAccessNotifier.enterCodes.isNotEmpty() }
+        Thread.sleep(80)
+        assertTrue(noAccessTransport.calls.isEmpty())
+        noAccessController.disarm()
+
+        prefs.edit().putBoolean("adb_pairing_complete", false).putBoolean(PrivilegeSupervisor.CONSENT, false).commit()
+        val manualTransport = RecordingTransport()
+        val manualController = controller(manualTransport, RecordingNotifier()) { emptyList() }
+        assertTrue(manualController.submitManual("123456"))
+        await { manualTransport.calls.isNotEmpty() && manualController.state.value.lastMessage?.startsWith("Paired.") == true }
+        assertEquals("123456", manualTransport.calls.single().code)
+        assertTrue(prefs.getBoolean(PrivilegeSupervisor.CONSENT, false))
+        assertTrue(prefs.getBoolean("adb_pairing_complete", false))
+    }
+
+    @Test fun rejectedReaderCodeIsTriedOnlyOnceAndReasonIsShownAgain() {
+        val transport = RecordingTransport("Wireless-debugging pairing code was rejected.")
+        val notifier = RecordingNotifier()
+        val controller = controller(transport, notifier) { listOf(listOf("123456", "192.168.0.12:37123")) }
+        controller.arm()
+        await { controller.state.value.lastMessage == "Wireless-debugging pairing code was rejected." }
+        Thread.sleep(160)
+        assertEquals(1, transport.calls.size)
+        assertTrue(notifier.enterCodes.contains("Wireless-debugging pairing code was rejected."))
+    }
+
+    @Test fun invalidManualCodeNeverCallsTransportAndRevokeClearsPairingAndConsent() {
+        val transport = RecordingTransport()
+        val controller = controller(transport, RecordingNotifier()) { emptyList() }
+        assertFalse(controller.submitManual("12345"))
+        assertTrue(transport.calls.isEmpty())
+        assertEquals("That is not the 6-digit code from the pairing dialog.", controller.state.value.lastMessage)
+
+        assertTrue(controller.submitManual("123456"))
+        await { controller.state.value.lastMessage?.startsWith("Paired.") == true }
+        controller.revoke()
+        assertFalse(prefs.getBoolean(PrivilegeSupervisor.CONSENT, true))
+        assertFalse(prefs.getBoolean("adb_pairing_complete", true))
+        assertFalse(supervisor.status().present)
+        assertEquals("wireless-debugging pairing is absent or revoked", supervisor.status().reason)
+    }
+
+    private fun controller(
+        transport: RecordingTransport,
+        notifier: RecordingNotifier,
+        windowTexts: () -> List<List<String>>,
+    ) = PairingSetupController(
+        context = context,
+        supervisor = supervisor,
+        discovery = { AdbEndpoint("192.168.0.12", 5555) },
+        transportFactory = { transport },
+        windowTexts = windowTexts,
+        notifier = notifier,
+        pollIntervalMs = 25,
+        armedWindowMs = 2_000,
+        autoReadGraceMs = 50,
+    )
+
+    private fun await(condition: () -> Boolean) {
+        val deadline = System.currentTimeMillis() + 4_000
+        while (!condition() && System.currentTimeMillis() < deadline) Thread.sleep(10)
+        assertTrue("condition was not reached before timeout", condition())
+    }
+
+    private class RecordingTransport(private val failure: String? = null) : WirelessDebuggingPairingTransport {
+        data class Call(val code: String, val endpoint: AdbEndpoint)
+        val calls = CopyOnWriteArrayList<Call>()
+        override fun pair(endpoint: AdbEndpoint, pairingCode: CharArray): String {
+            calls += Call(String(pairingCode), endpoint)
+            failure?.let { throw PairingTransportException(it) }
+            return "guid-1"
+        }
+    }
+
+    private class RecordingNotifier : PairingSetupNotifier {
+        val enterCodes = CopyOnWriteArrayList<String?>()
+        override fun showEnterCode(error: String?) { enterCodes += error }
+        override fun showWorking() = Unit
+        override fun showDone() = Unit
+        override fun showProblem(reason: String) = Unit
+        override fun cancel() = Unit
+    }
+}

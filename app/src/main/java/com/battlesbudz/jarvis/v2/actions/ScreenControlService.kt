@@ -39,6 +39,9 @@ class ScreenControlService : AccessibilityService() {
 
         internal fun connectedInstance(): ScreenControlService? = instance?.takeIf { helperPresent(it) }
 
+        /** Raw instance for the pairing reader; deliberately not helper-gated so first pairing can read Settings. */
+        internal fun pairingReaderInstance(): ScreenControlService? = instance
+
         /** Accessibility remains a default-display bridge, so it is unreachable without the A1 helper. */
         private fun helperPresent(service: ScreenControlService): Boolean =
             com.battlesbudz.jarvis.v2.privilege.PrivilegeHandoffState.helper.get()?.let { it.isBinderAlive && it.pingBinder() } == true
