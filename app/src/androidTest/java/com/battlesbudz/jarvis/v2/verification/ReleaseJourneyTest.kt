@@ -6228,7 +6228,14 @@ class ReleaseJourneyTest {
             textEntry = OperatedTextEntry(injector, KeyEventMapper { listOf(KeyPress(android.view.KeyEvent.KEYCODE_T, 0)) }))
 
         val running = async(Dispatchers.Default) { runner.run(request) }
-        val approval = withTimeout(10_000) { pending.await() }
+        val approval = try {
+            withTimeout(10_000) { pending.await() }
+        } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
+            val outcome = kotlinx.coroutines.withTimeoutOrNull(2_000) { running.await() }
+            throw AssertionError(
+                "approval gate was not reached within 10 s; runner outcome=$outcome; " +
+                    "stations=$stationTrace; stage=${stage.get()}; taps=$injectedTaps", timeout)
+        }
         assertTrue("approval must be pending before a send tap", approvalStore.pending().any { it.id == approval.id })
         assertTrue("send control must not be injected before approval", injectedTaps.none { it >= 50f })
         activity.onActivity { host -> host.setContent {
