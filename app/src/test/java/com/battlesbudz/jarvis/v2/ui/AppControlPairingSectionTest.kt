@@ -117,8 +117,24 @@ class AppControlPairingSectionTest {
         compose.waitForIdle()
         compose.onNodeWithTag("app_control_pairing_status").assertTextContains("did not establish", substring = true)
         compose.onNodeWithTag("app_control_pairing_revoke").performClick()
-        compose.waitForIdle()
-        compose.onNodeWithTag("app_control_pairing_status").assertTextContains("wireless-debugging pairing is absent or revoked", substring = true)
+        // Poll the supervisor until the revocation registers (reason in
+        // the failure message), then poll the status TEXT until the
+        // recomposition lands — a single waitForIdle proved too weak a
+        // sync for the click-thread state change under Robolectric
+        // (run 45361671230: supervisor-side proof passed, text stale).
+        val revokeDeadline = System.currentTimeMillis() + 5_000
+        var revokedStatus = controller.status()
+        while (revokedStatus.reason != "wireless-debugging pairing is absent or revoked" && System.currentTimeMillis() < revokeDeadline) {
+            Thread.sleep(50)
+            revokedStatus = controller.status()
+        }
+        assertEquals("wireless-debugging pairing is absent or revoked", revokedStatus.reason)
+        compose.waitUntil(5_000) {
+            val node = compose.onNodeWithTag("app_control_pairing_status").fetchSemanticsNode()
+            val text = node?.config?.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Text) { emptyList() }
+                ?.joinToString("") { it.text }.orEmpty()
+            text.contains("wireless-debugging pairing is absent or revoked")
+        }
         assertFalse(prefs.getBoolean(PrivilegeSupervisor.CONSENT, true))
         assertFalse(prefs.getBoolean("adb_pairing_complete", true))
     }
