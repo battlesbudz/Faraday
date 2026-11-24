@@ -48,13 +48,19 @@ internal class PrivilegeSupervisor private constructor(private val context: Cont
         }.getOrDefault(false)
     }
     fun recordPairingConsent(consented: Boolean) {
-        prefs.edit().putBoolean(CONSENT, consented).apply()
+        // commit(), not apply(): consent is durable security state — the
+        // write must be on disk before anything acts on it, matching
+        // PairingIdentity.storePeerInfo's commit() in the pairing path.
+        prefs.edit().putBoolean(CONSENT, consented).commit()
         if (consented) check("pairing consent") else record("pairing consent revoked", false, "wireless-debugging recovery requires user consent")
     }
 
     /** Revokes pairing admission without deleting the identity record initialized for this process. */
     fun revokePairing() {
-        prefs.edit().putBoolean(CONSENT, false).putBoolean("adb_pairing_complete", false).apply()
+        // commit(): a revocation must be durable the moment it returns —
+        // an apply() still queued for disk flush could let a stale
+        // on-disk consent survive a process death and resurrect pairing.
+        prefs.edit().putBoolean(CONSENT, false).putBoolean("adb_pairing_complete", false).commit()
         check("pairing revoked")
     }
 
