@@ -1,7 +1,6 @@
 package com.battlesbudz.jarvis.v2.ui
 
 import android.content.Context
-import android.os.Binder
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
@@ -57,6 +56,10 @@ class AppControlPairingSectionTest {
         bound = boundContext ?: context.applicationContext.also { boundContext = it }
         prefs.edit().clear().commit()
         PairingIdentity.initialize(bound)
+        // Pin the supervisor singleton to the bound context when this
+        // class creates it first, so composition-created instances in
+        // the wiring test and this class's reads/writes share one store.
+        PrivilegeSupervisor.get(bound)
         PrivilegeHandoffState.helper.set(null)
     }
 
@@ -97,14 +100,25 @@ class AppControlPairingSectionTest {
         compose.onNodeWithTag("app_control_pairing_code").performTextInput("123456")
         compose.onNodeWithTag("app_control_pairing_manual").performClick()
         compose.waitUntil(5_000) { transport.calls.isNotEmpty() && controller.state.value.lastMessage?.startsWith("Paired.") == true }
-        PrivilegeHandoffState.helper.set(Binder())
-        compose.waitUntil(5_000) { controller.status().present }
-        controller.arm()
-        controller.disarm()
+        // The supervisor must now see the pairing (paired + consented,
+        // helper not yet attached): its blocked reason is the consented-
+        // recovery one. Poll the supervisor directly and keep its reason
+        // in the failure message — a raw Binder()'s ping semantics under
+        // Robolectric are not a reliable stand-in for helper liveness,
+        // so this test does not fake a live helper.
+        val pairedDeadline = System.currentTimeMillis() + 5_000
+        var pairedStatus = controller.status()
+        while (pairedStatus.reason?.contains("did not establish") != true && System.currentTimeMillis() < pairedDeadline) {
+            Thread.sleep(50)
+            pairedStatus = controller.status()
+        }
+        assertTrue("supervisor never registered the pairing: ${pairedStatus.reason}",
+            pairedStatus.reason?.contains("did not establish") == true)
         compose.waitForIdle()
-        compose.onNodeWithTag("app_control_pairing_status").assertTextContains("Helper status: connected", substring = true)
+        compose.onNodeWithTag("app_control_pairing_status").assertTextContains("did not establish", substring = true)
         compose.onNodeWithTag("app_control_pairing_revoke").performClick()
-        compose.onNodeWithTag("app_control_pairing_status").assertTextContains("Helper status: not connected", substring = true)
+        compose.waitForIdle()
+        compose.onNodeWithTag("app_control_pairing_status").assertTextContains("wireless-debugging pairing is absent or revoked", substring = true)
         assertFalse(prefs.getBoolean(PrivilegeSupervisor.CONSENT, true))
         assertFalse(prefs.getBoolean("adb_pairing_complete", true))
     }
