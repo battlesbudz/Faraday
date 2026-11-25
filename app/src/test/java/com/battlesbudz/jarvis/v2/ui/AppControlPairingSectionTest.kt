@@ -87,11 +87,24 @@ class AppControlPairingSectionTest {
         VoiceSessionUi.sessionAlive.value = false
     }
 
-    /** Clears a Kotlin companion-object singleton's `instance` field so the
-     * next get() re-creates it under this class's bound context. */
+    /** Clears a Kotlin companion-object singleton so the next get()
+     * re-creates it under this class's bound context. The compiler places
+     * a private companion property's backing field either on the companion
+     * instance or as a private static on the owner class, under a
+     * compiler-chosen name — so locate every field of the owner's own
+     * type in both holders and clear it. */
     private fun resetCompanionSingleton(owner: Class<*>) {
-        val companion = owner.getDeclaredField("Companion").apply { isAccessible = true }.get(null)
-        companion.javaClass.getDeclaredField("instance").apply { isAccessible = true }.set(companion, null)
+        fun clear(holder: Any?, fields: Array<java.lang.reflect.Field>) {
+            fields.filter { it.type == owner }.forEach { field ->
+                field.isAccessible = true
+                field.set(holder, null)
+            }
+        }
+        clear(null, owner.declaredFields)
+        val companion = owner.declaredFields
+            .firstOrNull { java.lang.reflect.Modifier.isStatic(it.modifiers) && it.type.name.contains("Companion") }
+            ?.apply { isAccessible = true }?.get(null)
+        if (companion != null) clear(companion, companion.javaClass.declaredFields)
     }
 
     @Test fun realVoiceCallSettingsDialogContainsThePairingEntryPoint() {
