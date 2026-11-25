@@ -62,6 +62,16 @@ class AppControlPairingSectionTest {
         // Pin the supervisor singleton to the bound context when this
         // class creates it first, so composition-created instances in
         // the wiring test and this class's reads/writes share one store.
+        // The get() below only pins the singleton when this class creates
+        // it first. If another test class or method created it earlier in
+        // this sandbox, it is pinned to that captured Application's store
+        // and can never observe this class's pairing writes (the status
+        // poll then fails durably, however long it runs). Reset both
+        // pairing singletons so the get() below re-creates the supervisor
+        // bound to this class's store — the one every write in this
+        // class lands in.
+        resetCompanionSingleton(PrivilegeSupervisor::class.java)
+        resetCompanionSingleton(PairingSetupController::class.java)
         PrivilegeSupervisor.get(bound)
         PrivilegeHandoffState.helper.set(null)
     }
@@ -75,6 +85,13 @@ class AppControlPairingSectionTest {
         prefs.edit().clear().commit()
         VoiceSessionUi.armed.value = false
         VoiceSessionUi.sessionAlive.value = false
+    }
+
+    /** Clears a Kotlin companion-object singleton's `instance` field so the
+     * next get() re-creates it under this class's bound context. */
+    private fun resetCompanionSingleton(owner: Class<*>) {
+        val companion = owner.getDeclaredField("Companion").apply { isAccessible = true }.get(null)
+        companion.javaClass.getDeclaredField("instance").apply { isAccessible = true }.set(companion, null)
     }
 
     @Test fun realVoiceCallSettingsDialogContainsThePairingEntryPoint() {
