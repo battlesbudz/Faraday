@@ -6246,7 +6246,7 @@ class ReleaseJourneyTest {
                     approvalStore = approvalStore, onPause = {}, onStop = {}, onResume = {})
             }
         } }
-        assertTrue(device.wait(Until.hasObject(By.text("Andrea")), 5_000))
+        assertTrue(device.wait(Until.hasObject(By.text("Target: Andrea")), 5_000))
         assertTrue(device.hasObject(By.text("testing")))
         approvalStore.consume(approval.id, approval.fingerprint)
         val outcome = withTimeout(10_000) { running.await() }
