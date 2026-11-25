@@ -617,6 +617,10 @@
 -keep class com.battlesbudz.jarvis.v2.perception.ObservedNode { *; }
 -keep class com.battlesbudz.jarvis.v2.perception.TreeWindowCandidate { *; }
 -keep class com.battlesbudz.jarvis.v2.perception.OperatedObservationKt { *; }
+-keep interface com.battlesbudz.jarvis.v2.actions.TaskLocationProvider { *; }
+-keep class com.battlesbudz.jarvis.v2.actions.TaskLocation** { *; }
+-keep interface com.battlesbudz.jarvis.v2.actions.KeyEventMapper { *; }
+-keep class com.battlesbudz.jarvis.v2.actions.KeyPress** { *; }
 
 # A1 pairing front end is reached through composed settings and an explicit notification receiver.
 -keep class com.battlesbudz.jarvis.v2.ui.AppControlPairingSectionKt { *; }
