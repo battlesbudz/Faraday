@@ -7,7 +7,7 @@ import org.junit.Test
 
 class SpeakerGateTest {
     @Test fun decoderAcceptsCanonicalWavAndRawPcm16LeAndRejectsMalformedInput() {
-        val pcm = byteArrayOf(0, 64, 0, 192)
+        val pcm = byteArrayOf(0, 64, 0, -64)
         val wav = WavEncoder.pcm16Mono(pcm)
         val fromWav = requireNotNull(WavPcm.decode(wav))
         val fromRaw = requireNotNull(WavPcm.decode(pcm))

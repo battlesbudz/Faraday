@@ -53,9 +53,9 @@ internal suspend fun startOperatedTaskIfEligible(
     verdict: FrontDoorVerdict?,
     text: String,
     conversationId: String,
-    starter: suspend (OperatedTaskRequest, String) -> OperatedTaskOutcome?,
     speakerActionEligible: Boolean = true,
     onBlocked: () -> Unit = {},
+    starter: suspend (OperatedTaskRequest, String) -> OperatedTaskOutcome?,
 ): Pair<OperatedTaskRequest, OperatedTaskOutcome?>? {
     val task = operatedTaskCandidate(actionPlan, verdict, text) ?: return null
     if (!speakerActionEligible) { onBlocked(); return null }
@@ -217,9 +217,9 @@ internal class ConversationRouting(
             }
         } else null
         val operatedStart = startOperatedTaskIfEligible(actionPlan, frontDoorVerdict, planningText,
-            request.conversationId, operatedTask, request.speakerActionEligible) {
-            diagnostics.record("speaker_gate operated_blocked")
-        }
+            request.conversationId, speakerActionEligible = request.speakerActionEligible,
+            onBlocked = { diagnostics.record("speaker_gate operated_blocked") },
+            starter = operatedTask)
         if (operatedStart != null) {
             val (task, outcome) = operatedStart
             if (outcome != null) {
