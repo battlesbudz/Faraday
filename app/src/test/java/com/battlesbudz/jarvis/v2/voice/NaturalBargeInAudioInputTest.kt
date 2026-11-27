@@ -18,7 +18,8 @@ class NaturalBargeInAudioInputTest {
                      dispatcher: CoroutineDispatcher = Dispatchers.Unconfined, beforeFrame: (Int) -> Unit = {},
                      acceptAction: () -> Unit = {}, loadAction: () -> Unit = {}, speechNow: () -> Boolean = { speech },
                      budgetNow: () -> Boolean = { budget }, backlogNow: () -> Long = { 0L }, onConfirmation: (Boolean) -> Unit = {},
-                     onEvidence: (String) -> Unit = {}, minimumProbeMs: Int = 1000, probability: Float = .99f): NaturalBargeInAudioInput {
+                     onEvidence: (String) -> Unit = {}, minimumProbeMs: Int = 1000, probability: Float = .99f,
+                     speaker: ((ByteArray) -> com.battlesbudz.jarvis.v2.voice.speaker.SpeakerDecision?)? = null): NaturalBargeInAudioInput {
         val input = object : AudioInput {
             override val sampleRateHz = 16000
             override val channelCount = 1
@@ -57,7 +58,7 @@ class NaturalBargeInAudioInputTest {
                 onConfirmation(natural)
                 confirmed++
             }, log = logs::add, nowMs = { clock }, dispatcher = dispatcher,
-            minimumProbeAudioMs = minimumProbeMs)
+            minimumProbeAudioMs = minimumProbeMs).also { it.speakerDecision = speaker }
     }
     @Test fun weakSingleProbeThanksCannotStopByAgingWhenFurtherWorkIsUnavailable() = runBlocking {
         gate(text = "Thank you", probability = .6f, minimumProbeMs = 250,
@@ -90,6 +91,24 @@ class NaturalBargeInAudioInputTest {
             gate(text = text, minimumProbeMs = 250).chunks().toList()
             assertEquals(text, 1, confirmed)
         }
+    }
+    @Test fun speakerGateBlocksNaturalNoMatchAndUnverifiableButAllowsMatch() = runBlocking {
+        fun decision(state: com.battlesbudz.jarvis.v2.voice.speaker.SpeakerState, score: Float?) =
+            com.battlesbudz.jarvis.v2.voice.speaker.SpeakerDecision(state, score,
+                admitted = state == com.battlesbudz.jarvis.v2.voice.speaker.SpeakerState.MATCH,
+                actionEligible = false)
+        val blocked = gate(text = "No", minimumProbeMs = 250, speaker = { decision(
+            com.battlesbudz.jarvis.v2.voice.speaker.SpeakerState.NO_MATCH, .321f) })
+        blocked.chunks().toList()
+        assertEquals(0, confirmed)
+        val unverifiable = gate(text = "No", minimumProbeMs = 250, speaker = { decision(
+            com.battlesbudz.jarvis.v2.voice.speaker.SpeakerState.UNVERIFIABLE, null) })
+        unverifiable.chunks().toList()
+        assertEquals(0, confirmed)
+        gate(text = "No", minimumProbeMs = 250, speaker = { decision(
+            com.battlesbudz.jarvis.v2.voice.speaker.SpeakerState.MATCH, .7f) }).chunks().toList()
+        assertEquals(1, confirmed)
+        assertTrue(logs.any { it == "speaker_gate_barge state=NO_MATCH score=0.321" })
     }
     @Test fun noiseCaptionsAndPlaybackEchoDoNotInterrupt() = runBlocking {
         for (text in listOf("", "[cough]", "(buzzing)", "[wind]", "...", "The sky is blue")) {

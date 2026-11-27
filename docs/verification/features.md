@@ -7441,3 +7441,47 @@ decision seam because `ConversationRouting`/`ConversationGeneration` are
 internal and the classifier has no injectable backend. Emulator coverage uses
 a fake helper because a real paired helper is unavailable there. Real model
 selection, physical helper behavior and device performance remain unverified.
+# Speaker gate completion additions (2026-11-26)
+
+The prepared voice turn's atomic action eligibility now reaches
+`ConversationRouting`; an ACT operated-task candidate is not started when the
+speaker decision disallows actions, and the seam records
+`speaker_gate operated_blocked`. Typed invocations retain the default
+eligibility. `VoiceSpeakerAdmissionGate` is the sole decision between finalized
+recognition and the accepted/ordinary reply stages: a spoken NO_MATCH returns
+before either stage, while typed input bypasses evaluation. These contracts
+have focused JVM tests.
+
+Natural barge confirmation checks the exact retained probe PCM that produced
+the confirming ASR result. Keyword-only fallback checks its retained two-second
+PCM window before invoking its confirmation callback. Both paths encode those
+bytes as canonical WAV for `SpeakerGate`; NO_MATCH preserves playback and logs
+`speaker_gate_barge state=NO_MATCH score=<3dp>`. UNVERIFIABLE blocks natural
+speech confirmation and allows keyword confirmation; MATCH allows both. An
+unenrolled profile skips evaluation. JVM fakes cover these outcomes.
+
+The chat microphone is a separate funnel: `ChatVoiceInput` calls
+`LocalChatDictation.record`, then after transcription evaluates the captured
+16 kHz mono PCM encoded as WAV before either `onAudio` or `onTranscript` can
+send/use it. NO_MATCH returns silently and records `speaker_gate` evidence
+through the runtime diagnostics callback. Chat is not routed through
+`VoiceTurnRunner`.
+
+Both Voice Call recognition modes use `AudioTurnCapture.stop()` and receive the
+same canonical 44-byte-header, 16 kHz mono PCM16 WAV: Whisper mode transcribes
+that finalized capture and Gemma direct-audio mode submits/seals that same WAV.
+`WavPcm` now tries the strict canonical WAV decoder first, then accepts
+nonempty, even-length raw PCM16LE at 16 kHz; odd or empty payloads fail. Host
+tests cover both encodings.
+
+`SpeakerGateSectionTest` renders NotEnrolled and Enrolled states with a fake
+controller, checks the status and control tags, and verifies the Record action
+requests `RECORD_AUDIO`. The section now requests that permission before
+calling the enrollment recorder and shows a denial message.
+
+No test or release gate was executable in this workspace snapshot: it has no
+Gradle wrapper, installed Gradle or Java runtime, and its `.git` mount is an
+empty placeholder. The added JVM/Robolectric tests therefore remain unrun
+here. Hosted release checks, emulator integration, real acoustic/model
+accuracy, physical-device behavior and performance are still unverified; no
+such claims follow from the source changes or tests alone.

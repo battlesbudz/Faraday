@@ -53,6 +53,7 @@ internal fun ConversationScreen(
     phoneTaskError: StateFlow<String?>? = null,
     onPhoneTaskAction: (String, Long, String) -> Unit = { _, _, _ -> },
     pipelineBenchmarkStore: com.battlesbudz.jarvis.v2.diagnostics.AndroidPipelineBenchmarkStore? = null,
+    onDiagnostic: (String) -> Unit = {},
     // Header state holders shared with the app frame's header band, where
     // the header buttons now render beside the wisp. Null (standalone
     // composition, as in the verification fixtures) keeps the previous
@@ -360,7 +361,7 @@ internal fun ConversationScreen(
                         onTranscript = { text ->
                             draft = if (draft.isBlank()) text else draft.trimEnd() + " " + text
                             error = null
-                        }, onError = { error = it }) { voiceButton ->
+                        }, onError = { error = it }, onSpeakerGateEvidence = onDiagnostic) { voiceButton ->
                         // No imePadding on this row: the root column's
                         // safeDrawingPadding already applies the IME
                         // inset once (safeDrawing includes ime) and

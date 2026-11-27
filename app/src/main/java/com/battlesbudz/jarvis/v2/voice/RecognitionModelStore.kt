@@ -44,6 +44,28 @@ class RecognitionModelStore(context: Context) {
             dir
         }
     }
+    suspend fun speakerEmbedding(status: (String) -> Unit): File = withContext(Dispatchers.IO) {
+        lock.withLock {
+            val dir = File(root, "speaker-campplus-en")
+            val spec = SPEAKER
+            val installed = File(dir, spec.name)
+            if (valid(installed, spec)) return@withLock dir
+            root.mkdirs()
+            val part = File(root, "speaker-campplus.part")
+            val staging = File(root, "speaker-campplus.staging")
+            staging.deleteRecursively(); staging.mkdirs()
+            try {
+                download("https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx", part,
+                    spec.bytes, spec.hash, status)
+                val staged = File(staging, spec.name)
+                check(part.renameTo(staged)) { "Cannot stage speaker model" }
+                check(valid(staged, spec))
+                dir.deleteRecursively()
+                check(staging.renameTo(dir)) { "Cannot install speaker model" }
+            } finally { part.delete(); staging.deleteRecursively() }
+            dir
+        }
+    }
     private suspend fun download(url: String, target: File, bytes: Long, hash: String, status: (String) -> Unit) {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply { connectTimeout = 30_000; readTimeout = 30_000 }
         try {
@@ -85,5 +107,6 @@ class RecognitionModelStore(context: Context) {
             Spec("base.en-encoder.int8.onnx", 29120534, "ef6b936f4c9b1d90a3b68634b60c4ed8576b26172b33c2535ec0e933c9edb823"),
             Spec("base.en-decoder.int8.onnx", 130669978, "f7162ad6db2dbef16cfaeaa7f945b9d7dd9c1b8d472f6aca82f2273d185e4d41"),
             Spec("base.en-tokens.txt", 835554, "306cd27f03c1a714eca7108e03d66b7dc042abe8c258b44c199a7ed9838dd930"))
+        private val SPEAKER = Spec("model.onnx", 29596979, "98daf9bcf1c8abf3db374fec4c27a5eda7c58705bb3f180d057b085a72a88bb5")
     }
 }

@@ -2,6 +2,8 @@ package com.battlesbudz.jarvis.v2.voice
 
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.flow
+import com.battlesbudz.jarvis.v2.voice.speaker.SpeakerDecision
+import com.battlesbudz.jarvis.v2.voice.speaker.SpeakerState
 
 /** VAD-qualified bounded probes, alongside the keyword fallback, on one capture stream. */
 class NaturalBargeInAudioInput(
@@ -23,6 +25,8 @@ class NaturalBargeInAudioInput(
     private val onCandidateRetained: (Long?, Int) -> Unit = { _, _ -> },
     private val onCandidateCleared: () -> Unit = {}
 ) : AudioInput {
+    /** Null result means no enrolled profile; assigned by the production capture factory. */
+    internal var speakerDecision: ((ByteArray) -> SpeakerDecision?)? = null
     init { require(input.sampleRateHz == 16_000 && input.channelCount == 1) }
     override val sampleRateHz get() = input.sampleRateHz
     override val channelCount get() = input.channelCount
@@ -74,6 +78,7 @@ class NaturalBargeInAudioInput(
             var candidateAt = 0L
             var cooldownUntil = 0L
             var hypothesis: BoundedInterruptionRecognizer.Result? = null
+            var latestProbeAudio: ByteArray? = null
             var gate = BargeInGate()
             var keywordReady = false
             var lastKeywordReport = 0L
@@ -96,7 +101,7 @@ class NaturalBargeInAudioInput(
             var lastAcousticLogAt = Long.MIN_VALUE / 2
             fun reset(keepEpisode: Boolean = false) {
                 onCandidateCleared()
-                active = false; submitted = false; submittedBytes = 0; candidateProbes = 0; hypothesis = null
+                active = false; submitted = false; submittedBytes = 0; candidateProbes = 0; hypothesis = null; latestProbeAudio = null
                 candidate.clear(); gate = BargeInGate(); retryAt = 0; lastGateDecision = ""; revision++
                 acousticEvidence.reset(); confirmation.reset(); hypothesisSupported = false; evaluatedAudioAt = null
                 windowRetentionLogged = false
@@ -150,7 +155,8 @@ class NaturalBargeInAudioInput(
                             val accepted = fresh && RecognizedInterruptionWords.confirmsKeyword(stop.keyword, polled.text, stop.reference + " " + reference())
                             pendingStop = null
                             onCandidateCleared()
-                            if (accepted) {
+                            val speaker = if (accepted) speakerDecision?.invoke(stop.pcm) else null
+                            if (accepted && speaker?.state != SpeakerState.NO_MATCH) {
                                 finalReason = "keyword_${stop.keyword}"
                                 delivered = true
                                 // This is a final-only decode, not a provisional hypothesis.
@@ -161,7 +167,13 @@ class NaturalBargeInAudioInput(
                                 } else stop.keyword)
                                 worker.close()
                                 log("barge_keyword_confirmed keyword=${stop.keyword} verification=asr_non_echo workMs=${polled.workMs}")
-                            } else log("barge_stop_rejected reason=${if (fresh) "unconfirmed_or_echo" else "stale"} chars=${polled.text.length} playback_uninterrupted=true")
+                            } else {
+                                if (speaker?.state == SpeakerState.NO_MATCH) {
+                                    val score = requireNotNull(speaker).score?.let { "%.3f".format(java.util.Locale.ROOT, it) } ?: "null"
+                                    log("speaker_gate_barge state=NO_MATCH score=$score")
+                                }
+                                log("barge_stop_rejected reason=${if (fresh) "unconfirmed_or_echo" else "stale"} chars=${polled.text.length} playback_uninterrupted=true")
+                            }
                             return@collect
                         }
                         if (now - stop.at > InterruptionTiming.RESULT_AGE_MS || worker.unavailable ||
@@ -309,7 +321,14 @@ class NaturalBargeInAudioInput(
                                 "audioMs=${candidate.sizeBytes() / 32} resultAgeMs=${now - heard.audioAtMs} probes=$candidateProbes")
                         }
                     }
-                    if (action == BargeInGate.Action.CONFIRM) {
+                    val speaker = if (action == BargeInGate.Action.CONFIRM)
+                        latestProbeAudio?.let { speakerDecision?.invoke(it) } else null
+                    if (action == BargeInGate.Action.CONFIRM && speaker?.state == SpeakerState.NO_MATCH) {
+                        val score = requireNotNull(speaker).score?.let { "%.3f".format(java.util.Locale.ROOT, it) } ?: "null"
+                        log("speaker_gate_barge state=NO_MATCH score=$score")
+                        reset()
+                        cooldownUntil = now + 500
+                    } else if (action == BargeInGate.Action.CONFIRM && speaker?.state != SpeakerState.UNVERIFIABLE) {
                         delivered = true
                         finalReason = "natural_confirmed"
                         val echo = reference()
@@ -384,6 +403,7 @@ class NaturalBargeInAudioInput(
                         else candidateAudio
                         val probeStream = LiveCallAudioEvidence.newStream("probe")
                         if (worker.submit(revision, probeAudio, at)) {
+                            latestProbeAudio = probeAudio.copyOf()
                             LiveCallAudioEvidence.record(probeStream, probeAudio, sampleRateHz, at)
                             LiveCallAudioEvidence.event("probe=$probeStream revision=$revision reference=${reference().take(1600)} playing=${playing()}", at)
                             workBudget.record(now)

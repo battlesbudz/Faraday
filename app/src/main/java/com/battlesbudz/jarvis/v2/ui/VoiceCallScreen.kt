@@ -385,6 +385,8 @@ internal fun VoiceCallScreen(
         Text("Voice: Piper Northern English", style = MaterialTheme.typography.bodyMedium)
         val assistantContext = androidx.compose.ui.platform.LocalContext.current
         VoiceInputSettings(enabled = !chatSending && !runtimeArmed && !turnInFlight && !inputTesting, onBusy = { inputTesting = it })
+        androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        SpeakerGateSection(enabled = !chatSending && !runtimeArmed && !turnInFlight && !inputTesting)
         VisionServerSettingsSection(enabled = !chatSending && !runtimeArmed && !turnInFlight && !inputTesting)
         androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 16.dp))
         SandboxSettingsSection(enabled = !chatSending && !runtimeArmed && !turnInFlight && !inputTesting)

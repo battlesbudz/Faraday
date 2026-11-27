@@ -2,6 +2,8 @@ package com.battlesbudz.jarvis.v2.voice
 
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.collect
+import com.battlesbudz.jarvis.v2.voice.speaker.SpeakerDecision
+import com.battlesbudz.jarvis.v2.voice.speaker.SpeakerState
 
 interface InterruptionKeywordDetector : AutoCloseable {
     val ready: Boolean
@@ -19,6 +21,8 @@ class KeywordBargeInAudioInput(
     private val nowMs: () -> Long = { System.nanoTime() / 1_000_000 },
     private val allowKeyword: (String) -> Boolean = { true }
 ) : AudioInput {
+    /** Null result means no enrolled profile; assigned by the production capture factory. */
+    internal var speakerDecision: ((ByteArray) -> SpeakerDecision?)? = null
     override val sampleRateHz get() = input.sampleRateHz
     override val channelCount get() = input.channelCount
     override val lastChunkCaptureTimeMs get() = input.lastChunkCaptureTimeMs
@@ -36,10 +40,12 @@ class KeywordBargeInAudioInput(
         var inputBytes = 0L
         var maxWorkMs = 0L
         var maxBacklogMs = 0L
+        val retainedProbe = RollingAudioBuffer(maxDurationMs = 2000)
         log("barge_keyword_loading_finished loadMs=$loadMs ready=${detector.ready} naturalSpeechReady=false")
         try {
             input.chunks().collect { pcm ->
                 if (delivered) { emit(pcm); return@collect }
+                retainedProbe.append(pcm)
                 val workAt = nowMs()
                 val keyword = detector.accept(pcm)
                 inputBytes += pcm.size
@@ -54,10 +60,17 @@ class KeywordBargeInAudioInput(
                 if (keyword != null && !allowKeyword(keyword)) {
                     log("barge_stop_rejected reason=verification_unavailable playback_uninterrupted=true fallback=Hey_Jarvis")
                 } else if (keyword != null) {
-                    delivered = true
-                    // Stop playback before lazily loading ASR, preserving subsequent chunks.
-                    onConfirmed(keyword)
-                    log("barge_keyword_confirmed keyword=$keyword")
+                    val decision = speakerDecision?.invoke(retainedProbe.snapshot())
+                    if (decision?.state == SpeakerState.NO_MATCH) {
+                        val score = requireNotNull(decision).score?.let { "%.3f".format(java.util.Locale.ROOT, it) } ?: "null"
+                        log("speaker_gate_barge state=NO_MATCH score=$score")
+                        log("barge_stop_rejected reason=speaker_no_match playback_uninterrupted=true")
+                    } else {
+                        delivered = true
+                        // Stop playback before lazily loading ASR, preserving subsequent chunks.
+                        onConfirmed(keyword)
+                        log("barge_keyword_confirmed keyword=$keyword")
+                    }
                     // Consume the trigger itself: it must not become a new "stop listening"
                     // command or carry the reply's echo into the correction transcript.
                     // The user can speak the new request after playback stops.

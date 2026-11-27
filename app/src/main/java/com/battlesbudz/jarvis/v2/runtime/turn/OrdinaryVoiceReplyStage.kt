@@ -128,7 +128,8 @@ internal class OrdinaryVoiceReplyStage(
                             sealedVoiceAudio = finalized.sealedVoiceAudio,
                             nativeSpeculation = finalized.nativeSpeculation,
                             primedVoiceAudio = finalized.primedAudio,
-                            asrTranscript = finalized.transcript
+                            asrTranscript = finalized.transcript,
+                            speakerActionEligible = prepared.speakerActionEligible.get()
                         ), ConversationCallbacks(
                             onLiveInference = { submittedAt, firstTokenAt, tokensPerSecond, durable ->
                                 call.controller.updateReplyMetrics(prepared.expectedCallId, request.asrTurnId, durable = durable) { current ->

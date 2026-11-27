@@ -30,7 +30,8 @@ internal data class ConversationTurnRequest(
     val incrementalVoice: IncrementalVoiceInput?,
     val frozenActionPlan: ActionTurnPlan.Ready?,
     val frozenVoiceFinal: Boolean,
-    val recognizedText: String?
+    val recognizedText: String?,
+    val speakerActionEligible: Boolean = true
 )
 
 internal data class RoutedConversation(
@@ -53,8 +54,11 @@ internal suspend fun startOperatedTaskIfEligible(
     text: String,
     conversationId: String,
     starter: suspend (OperatedTaskRequest, String) -> OperatedTaskOutcome?,
+    speakerActionEligible: Boolean = true,
+    onBlocked: () -> Unit = {},
 ): Pair<OperatedTaskRequest, OperatedTaskOutcome?>? {
     val task = operatedTaskCandidate(actionPlan, verdict, text) ?: return null
+    if (!speakerActionEligible) { onBlocked(); return null }
     return task to starter(task, conversationId)
 }
 
@@ -213,7 +217,9 @@ internal class ConversationRouting(
             }
         } else null
         val operatedStart = startOperatedTaskIfEligible(actionPlan, frontDoorVerdict, planningText,
-            request.conversationId, operatedTask)
+            request.conversationId, operatedTask, request.speakerActionEligible) {
+            diagnostics.record("speaker_gate operated_blocked")
+        }
         if (operatedStart != null) {
             val (task, outcome) = operatedStart
             if (outcome != null) {

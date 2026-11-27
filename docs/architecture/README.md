@@ -153,6 +153,7 @@ playback evidence; unplayed generated text must not become heard conversation co
 | `ai/storage/` | Download transport, hash/integrity and Android Downloads lookup | `ModelDownloader`, `ModelFileHash`, `DownloadedModelLookup` |
 | `chat/` | Persistent threads, shared context and display/speech text formatting | `ConversationHistory`, `ShortTermConversationContext`, `AssistantText` |
 | `voice/` | Capture/ASR, turn timing, wake/interruption, call resource leases, synthesis/playback and saved call evidence | `AudioTurnCapture`, `VoiceCallResources`, `VoiceSession`, `PiperVoiceOutput` |
+| `voice/speaker/` | Enrolled speaker profile storage, WAV/PCM decoding, embedding comparison and enrollment controller; call turns, chat dictation and barge confirmations consume the shared decision policy | `SpeakerGate`, `SpeakerGatePolicy`, `SpeakerProfileStore`, `SpeakerEnrollmentController` |
 | `voice/smartturn/` / `CaptureShadowObserver` / `SmartTurnBenchmarkTelemetry` | Default-on installed-model native endpoint control; one retained worker, bounded immutable PCM and current-pause verdicts; serialized ready events can shorten COMPLETE or hold CONTINUE within a bound; capture-first follow-ups still require exact old-reply drain; ASR-text mode unchanged | `SmartTurnCallOwner`, `SmartTurnCaptureObserver`, `SmartTurnEndpointPolicy`, `NativeSmartTurnBackend` |
 | `ai/audio/` and native audio capture | Pinned local graph reconstruction, immutable artifact leases and bounded PCM-to-native worker; sealed inputs enter ordinary Conversation | `GemmaStreamingArtifactStore`, `WeightlessEncoderRecipe`, `RetainedPcmEncoderWorker`, `GemmaStreamingAudioCapture` |
 | `voice/comparison/` | Explicit live comparison trial data; does not replace normal turn ownership | `LiveComparison` |
@@ -256,7 +257,7 @@ inputs and narrow collaborators, not the process runtime.
 
 | Stage | Owner and boundary |
 | --- | --- |
-| Route | `ConversationRouting`: complete literal actions, status and integrity before memory/lookup; classifier verdict supplements NotAction routing; returns `RoutedConversation` or a terminal reply |
+| Route | `ConversationRouting`: complete literal actions, status and integrity before memory/lookup; classifier verdict supplements NotAction routing; consults prepared voice speaker action eligibility before the operated-task starter; returns `RoutedConversation` or a terminal reply |
 | Context | `ConversationContextPreparation`: approved memory snapshot, cutoff/capture/recall and reference context; returns `PreparedConversation` |
 | Session/prompt | `ConversationModelSession`: resident engine/context budget and bounded summary; `ConversationPrompt`: assembled prompt/compaction policy |
 | Generate | `ConversationGeneration`: selected multimodal input, safe stream/draft, front-door tool proposals and completion honesty guard, strict native-tool receipt compatibility; returns `ConversationDraft` |

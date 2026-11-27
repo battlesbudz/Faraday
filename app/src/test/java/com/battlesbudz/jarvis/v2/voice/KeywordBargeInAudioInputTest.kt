@@ -7,6 +7,38 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class KeywordBargeInAudioInputTest {
+    private fun decision(state: com.battlesbudz.jarvis.v2.voice.speaker.SpeakerState, score: Float?) =
+        com.battlesbudz.jarvis.v2.voice.speaker.SpeakerDecision(state, score,
+            admitted = state == com.battlesbudz.jarvis.v2.voice.speaker.SpeakerState.MATCH,
+            actionEligible = false)
+
+    private fun gatedWithSpeaker(state: com.battlesbudz.jarvis.v2.voice.speaker.SpeakerState): Pair<KeywordBargeInAudioInput, IntArray> {
+        val confirmed = intArrayOf(0)
+        val gated = KeywordBargeInAudioInput(input(), createDetector = {
+            object : InterruptionKeywordDetector {
+                override val ready = true
+                override fun accept(pcm: ByteArray): String? = if (pcm[0] == 3.toByte()) "stop" else null
+                override fun close() {}
+            }
+        }, onConfirmed = { confirmed[0]++ })
+        gated.speakerDecision = { decision(state, if (state == com.battlesbudz.jarvis.v2.voice.speaker.SpeakerState.NO_MATCH) .321f else null) }
+        return gated to confirmed
+    }
+
+    @Test fun speakerNoMatchBlocksKeywordButUnverifiableAndMatchConfirm() = runBlocking {
+        val (noMatch, blocked) = gatedWithSpeaker(com.battlesbudz.jarvis.v2.voice.speaker.SpeakerState.NO_MATCH)
+        noMatch.chunks().collect {}
+        assertEquals(0, blocked[0])
+
+        val (unverifiable, allowedUnverifiable) = gatedWithSpeaker(com.battlesbudz.jarvis.v2.voice.speaker.SpeakerState.UNVERIFIABLE)
+        unverifiable.chunks().collect {}
+        assertEquals(1, allowedUnverifiable[0])
+
+        val (match, allowedMatch) = gatedWithSpeaker(com.battlesbudz.jarvis.v2.voice.speaker.SpeakerState.MATCH)
+        match.chunks().collect {}
+        assertEquals(1, allowedMatch[0])
+    }
+
     private fun input() = object : AudioInput {
         override val sampleRateHz = 16000
         override val channelCount = 1

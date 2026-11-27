@@ -17,11 +17,14 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.battlesbudz.jarvis.v2.voice.ChatDictation
+import com.battlesbudz.jarvis.v2.voice.WavEncoder
+import com.battlesbudz.jarvis.v2.voice.speaker.SpeakerGate
 import kotlinx.coroutines.*
 
 @Composable
 internal fun ChatVoiceInput(enabled: Boolean, canSendAudio: Boolean, audioUnavailableReason: String?, createRecorder: () -> ChatDictation,
     onBusy: (Boolean) -> Unit, onAudio: suspend (ByteArray, String) -> Unit, onTranscript: (String) -> Unit, onError: (String) -> Unit,
+    onSpeakerGateEvidence: (String) -> Unit = {},
     composer: @Composable (@Composable () -> Unit) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -30,6 +33,7 @@ internal fun ChatVoiceInput(enabled: Boolean, canSendAudio: Boolean, audioUnavai
     val currentTranscript by rememberUpdatedState(onTranscript)
     val currentAudio by rememberUpdatedState(onAudio)
     val currentError by rememberUpdatedState(onError)
+    val currentSpeakerEvidence by rememberUpdatedState(onSpeakerGateEvidence)
     val currentBusy by rememberUpdatedState(onBusy)
     var job by remember { mutableStateOf<Job?>(null) }
     var recorder by remember { mutableStateOf<ChatDictation?>(null) }
@@ -61,6 +65,15 @@ internal fun ChatVoiceInput(enabled: Boolean, canSendAudio: Boolean, audioUnavai
                     scope.launch { if (recorder === session) status = update }
                 }
                 ensureActive()
+                val decision = withContext(Dispatchers.Default) {
+                    SpeakerGate.get(context).evaluate(WavEncoder.pcm16Mono(pcm, 16_000))
+                }
+                val score = decision.score?.let { "%.3f".format(java.util.Locale.ROOT, it) } ?: "null"
+                currentSpeakerEvidence("speaker_gate state=${decision.state} score=$score chatThreshold=0.50 actionThreshold=0.60 admitted=${decision.admitted} actionEligible=${decision.actionEligible}")
+                if (!decision.admitted) {
+                    status = ""
+                    return@launch
+                }
                 if (sendAudio) { status = "Sending…"; currentAudio(pcm, text) }
                 else currentTranscript(text)
             } catch (timeout: TimeoutCancellationException) { currentError("Voice input timed out. Please try again.") }

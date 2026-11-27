@@ -74,6 +74,28 @@ internal class VoiceTurnRunner(
                     is VoiceStageResult.Ready -> result.value
                     is VoiceStageResult.Finished -> { lifetime.finalMessage = result.message; return@launch }
                 }
+                val speakerAdmission = VoiceSpeakerAdmissionGate.evaluate(
+                    spoken = prepared.correction?.origin != com.battlesbudz.jarvis.v2.voice.TranscriptOrigin.TYPED,
+                    wav = finalized.audioBytes,
+                    evaluate = prepared.speakerGate::evaluate)
+                if (speakerAdmission.decision != null) {
+                    val decision = requireNotNull(speakerAdmission.decision)
+                    prepared.speakerActionEligible.set(decision.actionEligible)
+                    val score = decision.score?.let { "%.3f".format(java.util.Locale.ROOT, it) } ?: "null"
+                    diagnosticRecorder.recordTurnEvidence(request.asrTurnId, "speaker_gate",
+                        "speaker_gate state=${decision.state} score=$score chatThreshold=0.50 actionThreshold=0.60 admitted=${decision.admitted} actionEligible=${decision.actionEligible}")
+                    if (!speakerAdmission.proceed) {
+                        observation.outcome = com.battlesbudz.jarvis.v2.diagnostics.PipelineBenchmarkOutcome.REJECTED
+                        observation.failure = "speaker_no_match"
+                        lifetime.finalMessage = ""
+                        return@launch
+                    }
+                    if (!decision.actionEligible) {
+                        prepared.engine.setToolsEnabled(false)
+                        diagnosticRecorder.recordTurnEvidence(request.asrTurnId, "speaker_gate_action",
+                            "speaker_gate action_blocked score=$score")
+                    }
+                }
                 when (val accepted = acceptedReplies.run(request, prepared, finalized, observation, lifetime)) {
                     is AcceptedVoiceStageResult.Handled -> { lifetime.finalMessage = accepted.message; return@launch }
                     AcceptedVoiceStageResult.NotApplicable -> Unit

@@ -4,6 +4,8 @@ import android.content.Context
 import android.media.AudioManager
 import java.io.File
 import kotlinx.coroutines.*
+import com.battlesbudz.jarvis.v2.voice.speaker.SpeakerDecision
+import com.battlesbudz.jarvis.v2.voice.speaker.SpeakerGate
 
 /** Local speech capture alongside generation/playback, with the ordinary mic-priority contract. */
 class ReplyVoiceCapture(private val context: Context, private val log: (String) -> Unit) {
@@ -65,7 +67,10 @@ class ReplyVoiceCapture(private val context: Context, private val log: (String) 
                     val ownWords = PlaybackEchoText.words(currentOutput().recentSpokenText())
                     if (keyword == "stop") "stop" !in ownWords
                     else !PlaybackEchoText.words(keyword.replace('_', ' ')).all { it in ownWords }
-                }, log = log).also { log("barge_asr_disabled scope=all_natural_and_keyword_verification_probes fallback=keyword_vad_only") }
+                }, log = log).also {
+                    it.speakerDecision = ::evaluateBargeSpeaker
+                    log("barge_asr_disabled scope=all_natural_and_keyword_verification_probes fallback=keyword_vad_only")
+                }
             else NaturalBargeInAudioInput(input,
                     createKeyword = { MicroInterruptionKeywords(context.assets) },
                     createVad = { SileroSpeechDetector.create(context.assets) },
@@ -85,7 +90,7 @@ class ReplyVoiceCapture(private val context: Context, private val log: (String) 
                             endConversation = evidence == "stop listening"
                         }
                         confirm()
-                    }, log = log)
+                    }, log = log).also { it.speakerDecision = ::evaluateBargeSpeaker }
             lateinit var capture: AudioTurnCapture
             capture = AudioTurnCapture(gated, this,
                 createDetector = { SileroSpeechDetector.create(context.assets) },
@@ -177,5 +182,11 @@ class ReplyVoiceCapture(private val context: Context, private val log: (String) 
                 throw error
             } finally { capture.stop() }
         }
+    }
+
+    private fun evaluateBargeSpeaker(pcm: ByteArray): SpeakerDecision? {
+        val gate = SpeakerGate.get(context)
+        if (!gate.isEnrolled()) return null
+        return gate.evaluate(WavEncoder.pcm16Mono(pcm, 16_000))
     }
 }

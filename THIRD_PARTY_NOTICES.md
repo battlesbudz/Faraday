@@ -37,3 +37,10 @@ and
 https://github.com/wangzan101/Mika/tree/2ca391c4c868/app/src/main/java/com/wangzan101/mika/cap/phone/setup.
 The full license is included at `app/src/main/assets/licenses/smart-turn/Apache-2.0.txt`;
 the upstream LICENSE is at https://github.com/wangzan101/Mika/blob/2ca391c4c868/LICENSE.
+# CAM++ speaker-verification model
+
+The CAM++ speaker-verification model is from the 3D-Speaker project (Alibaba
+DAMO Academy), licensed under Apache-2.0. Source model: ModelScope
+`iic/speech_campplus_sv_en_voxceleb_16k`. ONNX export distributed via
+sherpa-onnx releases.
+

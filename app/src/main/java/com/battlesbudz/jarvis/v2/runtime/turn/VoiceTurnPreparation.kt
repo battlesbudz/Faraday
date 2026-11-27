@@ -276,7 +276,8 @@ internal class VoiceTurnPreparation(
                     diagnosticRecorder.recordTurnEvidence(request.asrTurnId, it.substringBefore(' '), it)
             })
         lifetime.preparation = incremental
-        diagnosticRecorder.recordSummary("Voice input: speaker_identity=disabled interruption_policy=recognized_non_echo_words")
+        val speakerIdentity = if (com.battlesbudz.jarvis.v2.voice.speaker.SpeakerGate.get(context).isEnrolled()) "enabled" else "not_enrolled"
+        diagnosticRecorder.recordSummary("Voice input: speaker_identity=$speakerIdentity interruption_policy=recognized_non_echo_words")
         val correction = request.queuedTypedInput?.let { typed ->
             com.battlesbudz.jarvis.v2.voice.CapturedVoiceTurn(
                 typed.text, byteArrayOf(), utteranceId = typed.id, capturedAtMs = typed.capturedAtMs,
@@ -565,6 +566,8 @@ internal class VoiceTurnPreparation(
                 log = { diagnosticRecorder.recordImportant(it) })
             diagnosticRecorder.recordImportant("Wake acknowledged; command microphone ready.")
         }
-        return PreparedVoiceTurn(engine, selectedSpec, asrDirectory, ttsDirectory, input, expectedCallId, models, voiceHistory, output, incremental, activeCapture, correction, directAudioTurn, replyAsrEnabled, request.replyProbeEnabled, primedAudio = lifetime.routeBPriming, callSessionReusable = callSessionReusable)
+        return PreparedVoiceTurn(engine, selectedSpec, asrDirectory, ttsDirectory, input, expectedCallId, models, voiceHistory, output, incremental, activeCapture, correction,
+            com.battlesbudz.jarvis.v2.voice.speaker.SpeakerGate.get(context), java.util.concurrent.atomic.AtomicBoolean(true),
+            directAudioTurn, replyAsrEnabled, request.replyProbeEnabled, primedAudio = lifetime.routeBPriming, callSessionReusable = callSessionReusable)
     }
 }

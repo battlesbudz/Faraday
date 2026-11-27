@@ -43,7 +43,8 @@ internal data class ConversationInvocation(
      * tool-intent gate can check a model-emitted plan against. Null or
      * blank when no transcript exists for the turn.
      */
-    val asrTranscript: String? = null
+    val asrTranscript: String? = null,
+    val speakerActionEligible: Boolean = true
 )
 
 internal data class ConversationCallbacks(

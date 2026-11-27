@@ -152,7 +152,8 @@ internal class ConversationCoordinator(
                 val request = ConversationTurnRequest(input.prompt, input.history, conversationId,
                     input.imageUri != null, input.audioUri != null, input.voiceAudio != null,
                     input.directVoiceAudio, input.comparison != null, input.incrementalVoice,
-                    input.frozenActionPlan, input.frozenVoiceFinal, input.asrTranscript)
+                    input.frozenActionPlan, input.frozenVoiceFinal, input.asrTranscript,
+                    input.speakerActionEligible)
                 val routed = routing.route(request, reply, actions, callbacks.onPhonePlanFinished) ?: return@launch
                 progress("Preparing context for your reply", 1)
                 val prepared = contexts.prepare(request, routed, reply, prompt, contextLimit, callbacks.onMemoryBound) ?: return@launch

@@ -43,6 +43,8 @@ internal data class PreparedVoiceTurn(
     val incremental: IncrementalVoiceInput,
     val activeCapture: AudioTurnCapture,
     val correction: CapturedVoiceTurn?,
+    val speakerGate: com.battlesbudz.jarvis.v2.voice.speaker.SpeakerGate,
+    val speakerActionEligible: java.util.concurrent.atomic.AtomicBoolean,
     val directAudioTurn: Boolean,
     val replyAsrEnabled: Boolean,
     val replyProbeEnabled: Boolean,
@@ -69,6 +71,21 @@ internal data class FinalizedVoiceTurn(
     /** Route B: primed-audio owner carried to the reply stage when the seal produced sealed audio. */
     val primedAudio: com.battlesbudz.jarvis.v2.voice.PrimedAudioInput? = null
 )
+
+/** Sole admission decision between finalized recognition and either reply stage. */
+internal data class VoiceSpeakerAdmission(val proceed: Boolean, val decision: com.battlesbudz.jarvis.v2.voice.speaker.SpeakerDecision?)
+
+internal object VoiceSpeakerAdmissionGate {
+    fun evaluate(
+        spoken: Boolean,
+        wav: ByteArray,
+        evaluate: (ByteArray) -> com.battlesbudz.jarvis.v2.voice.speaker.SpeakerDecision,
+    ): VoiceSpeakerAdmission {
+        if (!spoken) return VoiceSpeakerAdmission(true, null)
+        val decision = evaluate(wav)
+        return VoiceSpeakerAdmission(decision.admitted, decision)
+    }
+}
 
 /** Intentional quiet/echo/control exits are distinct from stage exceptions/cancellation. */
 internal sealed interface VoiceStageResult<out T> {
