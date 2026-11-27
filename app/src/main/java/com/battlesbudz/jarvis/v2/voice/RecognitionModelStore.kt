@@ -107,6 +107,10 @@ class RecognitionModelStore(context: Context) {
             Spec("base.en-encoder.int8.onnx", 29120534, "ef6b936f4c9b1d90a3b68634b60c4ed8576b26172b33c2535ec0e933c9edb823"),
             Spec("base.en-decoder.int8.onnx", 130669978, "f7162ad6db2dbef16cfaeaa7f945b9d7dd9c1b8d472f6aca82f2273d185e4d41"),
             Spec("base.en-tokens.txt", 835554, "306cd27f03c1a714eca7108e03d66b7dc042abe8c258b44c199a7ed9838dd930"))
-        private val SPEAKER = Spec("model.onnx", 29596979, "98daf9bcf1c8abf3db374fec4c27a5eda7c58705bb3f180d057b085a72a88bb5")
+        // Named-argument form on purpose: scripts/check_recorded_audio.py owns the
+        // Whisper Spec("...", ...) literal contract (exactly 3 ASR weights); the
+        // speaker-verification pin is a different model family and must not be
+        // swept into that ASR contract.
+        private val SPEAKER = Spec(name = "model.onnx", bytes = 29596979, hash = "98daf9bcf1c8abf3db374fec4c27a5eda7c58705bb3f180d057b085a72a88bb5")
     }
 }
