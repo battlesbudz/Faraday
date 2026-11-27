@@ -82,7 +82,7 @@ class OperatedTaskFormationTest {
         assertNull(startOperatedTaskIfEligible(ActionTurnPlan.parse("open Settings"), act, text, "c", starter))
         assertNull(startOperatedTaskIfEligible(ActionTurnPlan.NotAction, act, "I like messaging Andrea", "c", starter))
         val beforeNull = calls
-        val nullStart = startOperatedTaskIfEligible(ActionTurnPlan.NotAction, act, text, "c") { _, _ -> null }
+        val nullStart = startOperatedTaskIfEligible(ActionTurnPlan.NotAction, act, text, "c", starter = { _, _ -> null })
         assertNotNull(nullStart)
         assertNull(nullStart?.second)
         assertEquals(beforeNull, calls)
