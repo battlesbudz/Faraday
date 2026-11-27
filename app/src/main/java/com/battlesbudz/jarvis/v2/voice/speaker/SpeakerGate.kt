@@ -12,7 +12,7 @@ class SherpaSpeakerEmbedder(model: File) : SpeakerEmbedder {
         val config = SpeakerEmbeddingExtractorConfig(
             model = modelPath,
             numThreads = 2, debug = false, provider = "cpu")
-        SpeakerEmbeddingExtractor(config).also { extractor = it }
+        SpeakerEmbeddingExtractor(assetManager = null, config = config).also { extractor = it }
     }
 
     override fun embed(samples: FloatArray, sampleRate: Int): FloatArray? = runCatching {
