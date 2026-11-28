@@ -139,6 +139,22 @@ class VoiceSessionController(
         return true
     }
 
+    /** Atomically records one Omni user/audio turn and its stable paired reply. */
+    @Synchronized internal fun appendOmniTurn(callId: String, replyId: String, userText: String, replyText: String,
+        latency: com.battlesbudz.jarvis.v2.diagnostics.TurnLatency): Boolean {
+        if (activeCall?.id != callId || replyId.isBlank()) return false
+        val call = requireActiveCall()
+        if (call.transcript.any { it.replyId == replyId }) return false
+        val now = nowMs()
+        val entries = call.transcript + TranscriptEntry("You", userText, now, complete = true) +
+            TranscriptEntry("Jarvis", replyText, now, complete = true, latency = latency, replyId = replyId,
+                delivery = SpeechDelivery(replyId, state = SpeechDeliveryState.COMPLETED), generationComplete = true)
+        activeCall = call.copy(transcript = entries)
+        captionInputVersion++
+        checkpoint()
+        return true
+    }
+
     /** Stable reply IDs separate generation, audio delivery and tool receipts. */
     @Synchronized fun beginReply(callId: String, replyId: String) {
         if (activeCall?.id != callId) return

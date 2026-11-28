@@ -29,13 +29,18 @@ import com.google.ai.edge.litert.Accelerator
 import com.google.ai.edge.litert.CompiledModel
 import java.io.File
 import java.io.RandomAccessFile
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -54,9 +59,9 @@ import kotlinx.coroutines.withContext
  * - U3: one [OmniTurnCapture] per turn over the call's borrowed microphone
  *   (the U3 capture is per-turn by construction; the wrapper bridges it to
  *   the call-scoped [OmniTurnCapture] interface U5's session expects).
- *   U3 supplies no transcript text, so the session's stated fallback
- *   stands: the turn records "[spoken audio; transcript unavailable]" and
- *   emits [OmniVoiceCallSession.Event.MissingInputTranscript].
+ *   endpoint PCM16 is retained by U6 and submitted to the app's selected
+ *   Whisper stack on a call-owned background job; its result updates the
+ *   paired durable and rollover entries without delaying Omni generation.
  * - U4: the speech stack ([OmniSpeechOutputFactory]) drives the
  *   interleaved generator; its [com.battlesbudz.jarvis.v2.ai.OmniPcmSink]
  *   feeds a 24 kHz [AudioTrack] through [OmniAudioTrackOutput].
@@ -68,8 +73,8 @@ import kotlinx.coroutines.withContext
  *   playback-head position, never as future queued chunks.
  * - U7: [Lfm3ToolProtocol] is wired into the call generation path (seam 5).
  *   The host loop watches the decoded text stream, halts generation on a
- *   complete `<tool_call>`, never plays audio belonging to a tool-call block
- *   (the speech sink drops chunks offered after the block begins), dispatches
+ *   complete `<tool_call>`, preserves every generated PCM chunk through the
+ *   lossless queue, dispatches
  *   through [dispatchToolCalls] — the existing direct-audio action path
  *   installed by runtime composition — appends each result as a `tool` role
  *   message, and continues generation in the same conversation state. No
@@ -105,6 +110,7 @@ internal class OmniVoiceCallOwnerImpl(
     @Volatile private var activeCallId: String? = null
     private var loopJob: Job? = null
     private val stackMutex = Mutex()
+    private val pendingOmniTranscripts = java.util.concurrent.ConcurrentHashMap<String, String>()
     /** Mutated only under [stackMutex]; volatile so [isRuntimeResident] can read it lock-free. */
     @Volatile private var stack: OmniCallStack? = null
 
@@ -133,6 +139,9 @@ internal class OmniVoiceCallOwnerImpl(
         val job = synchronized(lock) {
             if (callId != null && activeCallId != null && activeCallId != callId) return
             activeCallId = null
+            // Unblock a codec callback suspended in the bounded PCM handoff
+            // before cancelling the drain's parent coroutine.
+            stack?.engine?.discardQueuedAudio()
             loopJob
         }
         // Schedule teardown on the worker rather than blocking the caller:
@@ -144,6 +153,7 @@ internal class OmniVoiceCallOwnerImpl(
     override fun closeRuntime() {
         val job = synchronized(lock) {
             activeCallId = null
+            stack?.engine?.discardQueuedAudio()
             loopJob?.also { loopJob = null }
         }
         scope.launch {
@@ -184,9 +194,11 @@ internal class OmniVoiceCallOwnerImpl(
                 borrowMicrophone = { label -> voiceResources.borrowMicrophone(label, communication = true) },
                 output = output,
                 log = { diagnosticRecorder.record("Voice input: $it") },
+                transcribePcm = { bytes -> transcribeEndpointPcm(callId, bytes) },
                 // U8: accepted and rejected barge-in gate decisions go to the
                 // Omni diagnostics evidence, not the generic call record.
                 onBargeInEvent = { event, confirmedSpeechMs, stopLatencyMs ->
+                    if (event == "accepted") callStack.engine.discardQueuedAudio()
                     diagnosticRecorder.recordOmniBargeIn(event, confirmedSpeechMs, stopLatencyMs)
                 },
             )
@@ -203,6 +215,7 @@ internal class OmniVoiceCallOwnerImpl(
                 OmniVoiceCallLoop(session, isActive, ::onAnswer).run()
             } finally {
                 runCatching { voiceResources.closeMicrophone() }
+                runCatching { voiceResources.closeModels() }
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -223,6 +236,36 @@ internal class OmniVoiceCallOwnerImpl(
         runCatching { VoiceCallService.updateStatus(LISTENING_STATUS) }
     }
 
+    /** Existing selected Whisper stack, loaded and driven away from Jarvis-Omni. */
+    private suspend fun transcribeEndpointPcm(callId: String, pcm16: ByteArray): String? = withContext(Dispatchers.IO) {
+        if (pcm16.isEmpty() || pcm16.size % 2 != 0) return@withContext null
+        val asr = com.battlesbudz.jarvis.v2.voice.AsrEngine.selected(context)
+        val models = voiceResources.modelsFor("$callId:omni:${asr.id}")
+        diagnosticRecorder.recordOmniTurn("asr_submitted bytes=${pcm16.size} engine=${asr.id}")
+        val directory = asr.prepare(context) { status ->
+            diagnosticRecorder.recordOmniTurn("asr_model status=${status.take(100)}")
+        }
+        val segmented = com.battlesbudz.jarvis.v2.voice.SegmentedTranscriber(
+            create = { asr.create(directory, live = false, log = { line -> diagnosticRecorder.record("Omni ASR: $line") }, modelSession = models) },
+            log = { line -> diagnosticRecorder.record("Omni ASR: $line") },
+        )
+        try {
+            var offset = 0
+            // Feed bounded one-second windows. SegmentedTranscriber rotates its
+            // Whisper owner at the existing 15/22 second contracts.
+            while (offset < pcm16.size) {
+                currentCoroutineContext().ensureActive()
+                val end = minOf(pcm16.size, offset + 32_000)
+                val alignedEnd = if (end == pcm16.size) end else end - (end % 2)
+                segmented.accept(pcm16.copyOfRange(offset, alignedEnd), allowPartial = false)
+                offset = alignedEnd
+            }
+            segmented.finish().trim().takeIf { it.isNotBlank() }
+        } finally {
+            segmented.close()
+        }
+    }
+
     /**
      * Surface an Omni call failure the way the Gemma route surfaces a turn
      * failure (VoiceTurnRunner): a dismissible failure card scoped to the
@@ -240,7 +283,7 @@ internal class OmniVoiceCallOwnerImpl(
     private fun onSessionEvent(event: OmniVoiceCallSession.Event) {
         when (event) {
             is OmniVoiceCallSession.Event.Turn -> {
-                val latencyMs = event.firstSoundAtMs?.let { (it - event.endpointAtMs).coerceAtLeast(0) }
+                val latencyMs = event.firstSoundAtMs?.let { (it - event.endpointDecisionMs).coerceAtLeast(0) }
                 // U8: endpoint-to-first-nonempty-playback latency on the
                 // monotonic clock; both instants are elapsedRealtime.
                 if (latencyMs != null) diagnosticRecorder.recordOmniFirstSoundLatency(latencyMs)
@@ -256,18 +299,27 @@ internal class OmniVoiceCallOwnerImpl(
                 }
                 if (answer != null && turnLatency != null) {
                     diagnosticRecorder.recordSummary("Omni ${turnLatency.summary()}")
-                    val turnId = OmniTurnLatency.turnId(event.endpointAtMs)
+                    val turnId = event.turnId.ifBlank { OmniTurnLatency.turnId(event.endpointAtMs) }
                     val timings = event.graphTimingsMs.entries.joinToString { "${it.key}=${it.value}ms" }
                     diagnosticRecorder.recordTurnEvidence(
                         turnId,
                         "omni",
                         "endpointToFirstSoundMs=${latencyMs ?: "unknown"} totalMs=${event.totalMs} " +
                             "supplyGaps=${event.supplyGaps} graphTimings={$timings} " +
+                            "endpointDecisionMs=${event.endpointDecisionMs} audioEncodeMs=${event.graphTimingsMs["audio_encode_ms"] ?: "unknown"} " +
+                            "textPrefillMs=${event.graphTimingsMs["text_prefill_ms"] ?: "unknown"} firstChunkArrivalMs=${event.firstChunkArrivalMs ?: "unknown"} " +
+                            "gateReleaseMs=${event.gateReleaseMs ?: "unknown"} generationRealtimeFactor=${event.generationRealtimeFactor ?: "unknown"} " +
+                            "maxChunkIntervalMs=${event.maxChunkIntervalMs} rebufferCount=${event.rebufferCount} rebufferTotalMs=${event.rebufferTotalMs} droppedChunks=${event.droppedChunks} " +
+                            "playCalledMs=${event.playCalledAtMs ?: "unknown"} firstHeadAdvanceMs=${event.firstSoundAtMs ?: "unknown"} firstWriteCompleteMs=${event.firstWriteCompleteAtMs ?: "unknown"} " +
                             "speechFrames=${answer.speechFrames} textTokens=${answer.textTokens}",
                     )
                     if (answer.text.isNotBlank()) {
                         runCatching {
-                            voiceSessionController.appendTranscript("Jarvis", answer.text, latency = turnLatency)
+                            val callId = activeCallId
+                            val userText = event.transcriptText ?: pendingOmniTranscripts.remove(turnId).orEmpty()
+                            if (callId != null) voiceSessionController.appendOmniTurn(
+                                callId, turnId, userText, answer.text, turnLatency,
+                            )
                         }
                     }
                 }
@@ -282,6 +334,9 @@ internal class OmniVoiceCallOwnerImpl(
                             "frames=${answer.speechFrames} finished=${answer.finished} stopped=${answer.stopped} " +
                             "pcmChunks=${answer.pcmChunks} pcmSamples=${answer.pcmSamples} pcmPeak=${answer.pcmPeak} " +
                             "writtenShorts=${event.writtenShorts} supplyGaps=${event.supplyGaps} totalMs=${event.totalMs} " +
+                            "generationRealtimeFactor=${event.generationRealtimeFactor ?: "unknown"} maxChunkIntervalMs=${event.maxChunkIntervalMs} " +
+                            "rebufferCount=${event.rebufferCount} rebufferTotalMs=${event.rebufferTotalMs} droppedChunks=${event.droppedChunks} " +
+                            "playCalledMs=${event.playCalledAtMs ?: "unknown"} firstHeadAdvanceMs=${event.firstSoundAtMs ?: "unknown"} firstWriteCompleteMs=${event.firstWriteCompleteAtMs ?: "unknown"} " +
                             "audioRows=${answer.audioRows} positions=${answer.positionsAfterPrefill}"
                     )
                 }
@@ -310,6 +365,20 @@ internal class OmniVoiceCallOwnerImpl(
                     "Omni call turn: no transcript for captured speech (endpoint ${event.endpointAtMs}); " +
                         "text-only rollover cannot retain the user's spoken words"
                 )
+            is OmniVoiceCallSession.Event.TranscriptUpdated -> {
+                val callId = voiceSessionController.currentCallId()
+                val currentCall = callId != null && activeCallId == callId
+                if (currentCall) pendingOmniTranscripts[event.turnId] = event.text
+                val updated = if (currentCall) callId?.let { voiceSessionController.updateUserTranscriptForReply(
+                    it, event.turnId, event.text, expectedText = "",
+                ) == true } else false
+                diagnosticRecorder.recordOmniTurn(
+                    "asr_transcript_update turn=${event.turnId} outcome=${when { updated -> "paired"; currentCall -> "pending_before_reply"; else -> "stale_call" }} chars=${event.text.length}"
+                )
+                if (updated) pendingOmniTranscripts.remove(event.turnId)
+            }
+            is OmniVoiceCallSession.Event.TranscriptStale ->
+                diagnosticRecorder.recordOmniTurn("asr_stale turn=${event.turnId} reason=call_or_turn_fence")
         }
     }
 
@@ -460,44 +529,55 @@ internal class OmniCallStack(
     }
 }
 
-/** The speech stack's sink: enqueues generated PCM for the active turn's drain. Never blocks. */
+/** The speech stack's bounded lossless PCM handoff. A full queue applies producer backpressure. */
 internal class OmniPcmQueueSink : com.battlesbudz.jarvis.v2.ai.OmniPcmSink {
     @Volatile var activeQueue: Channel<FloatArray>? = null
-    /** PCM offered this turn (chunks, samples, peak amplitude); tallied at
-     * offer entry so suppressed offers count too — the codec stream offered
-     * them, which is the generation evidence the turn record needs. */
+    /** PCM offered this turn (chunks, samples, peak amplitude), counted at handoff. */
     @Volatile var offeredChunks: Int = 0
         private set
     @Volatile var offeredSamples: Int = 0
         private set
     @Volatile var offeredPeak: Float = 0f
         private set
+    private val droppedChunkCount = AtomicInteger(0)
+    val droppedChunks: Int get() = droppedChunkCount.get()
+    @Volatile var maxChunkIntervalMs: Long = 0L
+        private set
+    @Volatile var firstChunkArrivalAtMs: Long? = null
+        private set
+    @Volatile private var previousChunkAtMs: Long? = null
 
     fun resetOffered() {
         offeredChunks = 0
         offeredSamples = 0
         offeredPeak = 0f
+        droppedChunkCount.set(0)
+        maxChunkIntervalMs = 0L
+        firstChunkArrivalAtMs = null
+        previousChunkAtMs = null
     }
-    /**
-     * U7: while the current generation round's decoded text holds a
-     * tool-call block, chunks offered here are dropped at the source and
-     * never queued — audio belonging to a tool-call block is never played.
-     * Set and cleared on the Omni worker (or before generation starts), so
-     * no chunk can straddle the decision: the codec emits one chunk per
-     * 12-frame audio block, and the watch runs during the text slots that
-     * precede it. Dropped offers report success so the codec keeps streaming
-     * the answer's state forward.
-     */
-    @Volatile var suppressOffers: Boolean = false
-    override fun offer(pcm24k: FloatArray): Boolean {
+    fun recordDroppedChunk() { droppedChunkCount.incrementAndGet() }
+    override suspend fun offer(pcm24k: FloatArray): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        if (firstChunkArrivalAtMs == null) firstChunkArrivalAtMs = now
+        previousChunkAtMs?.let { maxChunkIntervalMs = maxOf(maxChunkIntervalMs, now - it) }
+        previousChunkAtMs = now
         offeredChunks++
         offeredSamples += pcm24k.size
         for (sample in pcm24k) {
             val magnitude = kotlin.math.abs(sample)
             if (magnitude > offeredPeak) offeredPeak = magnitude
         }
-        if (suppressOffers) return true
-        return activeQueue?.trySend(pcm24k)?.isSuccess ?: false
+        val queue = activeQueue ?: run { recordDroppedChunk(); return false }
+        return try {
+            queue.send(pcm24k)
+            true
+        } catch (_: kotlinx.coroutines.channels.ClosedSendChannelException) {
+            // The only normal close is stop/barge-in teardown; evidence makes
+            // this explicit rather than hiding an unexpected rejected chunk.
+            recordDroppedChunk()
+            false
+        }
     }
 }
 
@@ -527,6 +607,11 @@ internal class OmniCallEngineImpl(
     @Volatile private var lastTextToken: Int = -1
 
     override val contextPositions: Int get() = observedPositions
+    override fun discardQueuedAudio() {
+        // Closing wakes a producer suspended in the codec callback;
+        // only stop/barge-in calls this before the turn queue's normal close.
+        sink.activeQueue?.close()
+    }
 
     override suspend fun estimateTextPositions(transcript: List<OmniCallMessage>): Int =
         withContext(components.dispatcher) {
@@ -606,12 +691,9 @@ internal class OmniCallEngineImpl(
 
         // U7 tool-call watch. The host loop decodes the round's text at the
         // end of each text block and whenever the text phase ends, so a
-        // marker is always caught during the text slots that precede the
-        // audio block that would speak it:
-        // - `<tool_call>` (or a trailing fragment of it, so a marker split
-        //   across text blocks cannot leak its first half as speech) sets the
-        //   sink's suppression: chunks offered after the block began are
-        //   dropped at the source and never played.
+        // complete closing marker is caught at a step boundary. Every PCM
+        // chunk remains in the lossless queue; only stop/barge-in teardown
+        // discards queued audio.
         // - a complete `</tool_call>` halts generation at the next step
         //   boundary, so the call block is never spoken and never completed
         //   past its closing tag.
@@ -633,29 +715,52 @@ internal class OmniCallEngineImpl(
         var tokensSinceWatch = 0
         var toolCallComplete = false
         // Runs on the Omni worker inside the token callback, so the sink flag
-        // it sets is in place before the audio block that follows this text
-        // block. Suppression is speculative on a trailing marker fragment
-        // and is re-evaluated at the next boundary, so a fragment that never
-        // becomes a call costs at most one audio block of speech.
+        // it sets is in place before the following audio block.
         fun watchToolCallBoundary() {
             val roundText = components.tokenizer.decode(roundTokens.toIntArray())
-            sink.suppressOffers = "<tool_call>" in roundText || endsWithToolCallPrefix(roundText)
             if ("</tool_call>" in roundText) toolCallComplete = true
             tokensSinceWatch = 0
         }
         var genMsTotal = 0L
-        val queue = Channel<FloatArray>(capacity = 4)
+        val queue = Channel<FloatArray>(capacity = 8)
         sink.activeQueue = queue
         sink.resetOffered()
         var speechFrames = 0
         var generationFinished = false
         var generationStopped = false
+        val turnGenerationFinished = AtomicBoolean(false)
         try {
             coroutineScope {
                 val drain = launch {
-                    for (chunk in queue) {
-                        if (shouldStop()) break
+                    var seenGaps = output.supplyGapsThisTurn
+                    while (true) {
+                        val item = queue.receiveCatching()
+                        if (item.isClosed) break
+                        val chunk = item.getOrNull() ?: continue
+                        // Keep accepting/discarding on teardown so a producer
+                        // backpressured in offer() is released immediately.
+                        if (shouldStop()) {
+                            sink.recordDroppedChunk()
+                            continue
+                        }
                         output.playChunk(chunk)
+                        val gapsNow = output.supplyGapsThisTurn
+                        if (gapsNow > seenGaps && !turnGenerationFinished.get() && !shouldStop()) {
+                            seenGaps = gapsNow
+                            output.pauseForRebuffer()
+                            val refill = ArrayList<FloatArray>(OmniPlaybackBufferPolicy.REBUFFER_CHUNKS)
+                            repeat(OmniPlaybackBufferPolicy.REBUFFER_CHUNKS) {
+                                if (!shouldStop()) queue.receiveCatching().getOrNull()?.let(refill::add)
+                            }
+                            if (!shouldStop()) output.resumeAfterRebuffer()
+                            for (buffered in refill) {
+                                if (shouldStop()) {
+                                    sink.recordDroppedChunk()
+                                    continue
+                                }
+                                output.playChunk(buffered)
+                            }
+                        }
                     }
                 }
                 var hiddenState = hidden
@@ -664,7 +769,6 @@ internal class OmniCallEngineImpl(
                     toolCallComplete = false
                     roundTokens.clear()
                     tokensSinceWatch = 0
-                    sink.suppressOffers = false
                     val roundStart = SystemClock.elapsedRealtime()
                     withContext(components.dispatcher) {
                         val maxSteps = (components.runner.cacheLength - components.runner.pos - 8)
@@ -739,12 +843,12 @@ internal class OmniCallEngineImpl(
                     }
                     toolRounds++
                 }
+                turnGenerationFinished.set(true)
                 queue.close()
                 drain.join()
             }
         } finally {
             sink.activeQueue = null
-            sink.suppressOffers = false
         }
         val genMs = genMsTotal
         lastTextToken = lastToken
@@ -768,15 +872,10 @@ internal class OmniCallEngineImpl(
             pcmChunks = sink.offeredChunks,
             pcmSamples = sink.offeredSamples,
             pcmPeak = sink.offeredPeak,
+            maxChunkIntervalMs = sink.maxChunkIntervalMs,
+            firstChunkArrivalAtMs = sink.firstChunkArrivalAtMs,
+            droppedChunks = sink.droppedChunks,
         )
-    }
-
-    private fun endsWithToolCallPrefix(text: String): Boolean {
-        val marker = "<tool_call>"
-        for (length in 1 until marker.length) {
-            if (text.endsWith(marker.substring(0, length))) return true
-        }
-        return false
     }
 
     /** Removes complete `<tool_call>...</tool_call>` blocks and any trailing incomplete block. */
@@ -844,7 +943,7 @@ internal class OmniCallEngineImpl(
  * [SystemClock.elapsedRealtime] instant the playback head first advances
  * past zero after playback starts — actual audible start, not
  * generation or write-start time — in the same clock domain as the
- * capture endpoint. Playback starts after [OmniPrerollGate.PREROLL_FRAMES]
+ * capture endpoint. Playback starts after two 23,040-frame codec chunks
  * have arrived or at [finishTurn], whichever comes first. Barge-in via
  * [stopAndFlush] remains immediate and never waits for the pre-roll. The
  * track lives for the call; [close] releases it.
@@ -857,7 +956,15 @@ internal class OmniAudioTrackOutput(
     private var track: AudioTrack? = null
     @Volatile private var firstSound: Long? = null
     @Volatile private var stopped: Boolean = false
-    private val prerollGate = OmniPrerollGate()
+    private val playbackPolicy = OmniPlaybackBufferPolicy()
+    private val headObserverScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    @Volatile private var firstHeadJob: Job? = null
+    @Volatile private var playCalledAt: Long? = null
+    @Volatile private var firstWriteCompleteAt: Long? = null
+    @Volatile private var firstHeadBaseline = 0L
+    @Volatile private var rebufferCount = 0
+    @Volatile private var rebufferStartedAt: Long? = null
+    @Volatile private var rebufferTotalMs = 0L
     @Volatile private var underrunBaseline: Int = 0
     /** One diagnostics line per turn when playback writes start failing; reset every [beginTurn]. */
     @Volatile private var writeFailureLogged: Boolean = false
@@ -876,7 +983,22 @@ internal class OmniAudioTrackOutput(
         val frames: Long get() = pcm.size / 2L
     }
 
-    override val firstSoundAtMonotonicMs: Long? get() = firstSound
+    override val firstSoundAtMonotonicMs: Long?
+        get() {
+            firstSound?.let { return it }
+            val audioTrack = synchronized(lock) { track } ?: return null
+            val advanced = runCatching { audioTrack.playbackHeadPosition.toLong() > firstHeadBaseline }.getOrDefault(false)
+            if (advanced) {
+                val now = SystemClock.elapsedRealtime()
+                firstSound = now
+                log("first_head_advance playCalledMs=${playCalledAt ?: "unknown"} firstHeadAdvanceMs=$now firstWriteCompleteMs=${firstWriteCompleteAt ?: "pending"}")
+            }
+            return firstSound
+        }
+    override val playCalledAtMs: Long? get() = playCalledAt
+    override val firstWriteCompleteAtMs: Long? get() = firstWriteCompleteAt
+    override val rebufferCountThisTurn: Int get() = rebufferCount
+    override val rebufferTotalMsThisTurn: Long get() = rebufferTotalMs
     override val writtenShortsThisTurn: Long
         get() = synchronized(lock) { writtenFrames - turnStartWrittenFrames }
     override val supplyGapsThisTurn: Int
@@ -889,23 +1011,35 @@ internal class OmniAudioTrackOutput(
     override fun beginTurn() {
         synchronized(lock) {
             turnStartWrittenFrames = writtenFrames
+            firstHeadBaseline = turnStartWrittenFrames
             stopped = false
             firstSound = null
+            playCalledAt = null
+            firstWriteCompleteAt = null
+            firstHeadJob?.cancel()
+            rebufferCount = 0
+            rebufferTotalMs = 0L
+            rebufferStartedAt = null
             writeFailureLogged = false
             val audioTrack = ensureTrackLocked()
+            // Every Omni turn re-enters the arrival gate even if the prior
+            // track state remained PLAYING after its final write.
+            runCatching { audioTrack.pause() }
             underrunBaseline = runCatching { audioTrack.underrunCount }.getOrDefault(0)
-            prerollGate.reset()
+            playbackPolicy.reset()
         }
     }
 
     override suspend fun playChunk(pcm24kMono: FloatArray) {
         if (pcm24kMono.isEmpty()) return
         val audioTrack = synchronized(lock) { if (stopped) null else track } ?: return
-        val startNow = prerollGate.onChunkArrived(pcm24kMono.size)
-        val startedThisChunk = startNow && synchronized(lock) {
+        val startNow = playbackPolicy.arrived(pcm24kMono.size)
+        if (startNow) synchronized(lock) {
             if (stopped || track !== audioTrack) false
             else {
+                playCalledAt = SystemClock.elapsedRealtime()
                 audioTrack.play()
+                startHeadObservation(audioTrack)
                 true
             }
         }
@@ -934,16 +1068,43 @@ internal class OmniAudioTrackOutput(
             offset += written
             recordWritten(shorts, offset - written, written)
         }
-        if (startedThisChunk) observeFirstSound(audioTrack)
+        if (startNow || firstWriteCompleteAt == null) firstWriteCompleteAt = SystemClock.elapsedRealtime()
     }
 
     override suspend fun finishTurn() {
         val shouldStart = synchronized(lock) { !stopped && track != null }
-        if (!shouldStart || !prerollGate.onGenerationFinished()) return
-        val audioTrack = synchronized(lock) {
-            if (stopped) null else track?.also { it.play() }
-        } ?: return
-        observeFirstSound(audioTrack)
+        if (shouldStart && playbackPolicy.finished()) {
+            synchronized(lock) {
+                track?.takeUnless { stopped }?.let {
+                    playCalledAt = SystemClock.elapsedRealtime()
+                    it.play()
+                    startHeadObservation(it)
+                }
+            }
+        }
+        // Polling has run concurrently with writes since play(); joining here
+        // only makes the measurement available before the turn record emits.
+        firstHeadJob?.join()
+    }
+
+    override fun pauseForRebuffer() {
+        synchronized(lock) {
+            if (stopped || rebufferStartedAt != null) return
+            runCatching { track?.pause() }
+            playbackPolicy.underrun()
+            rebufferStartedAt = SystemClock.elapsedRealtime()
+            rebufferCount++
+        }
+    }
+
+    override fun resumeAfterRebuffer() {
+        synchronized(lock) {
+            val startedAt = rebufferStartedAt ?: return
+            if (stopped) { rebufferStartedAt = null; return }
+            runCatching { track?.play() }
+            rebufferTotalMs += (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0)
+            rebufferStartedAt = null
+        }
     }
 
     /**
@@ -1014,6 +1175,8 @@ internal class OmniAudioTrackOutput(
     override fun stopAndFlush() {
         synchronized(lock) {
             stopped = true
+            playbackPolicy.stop()
+            firstHeadJob?.cancel()
             // flush() resets the playback head to zero: flushed audio never
             // renders, so drop it and restart frame accounting.
             pendingPcm.clear()
@@ -1030,11 +1193,14 @@ internal class OmniAudioTrackOutput(
     override fun close() {
         val audioTrack = synchronized(lock) {
             stopped = true
+            playbackPolicy.stop()
+            firstHeadJob?.cancel()
             pendingPcm.clear()
             writtenFrames = 0
             releasedFrames = 0
             track.also { track = null }
         }
+        headObserverScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
         if (audioTrack != null) trackFactory.releaseAfterWriterStops(audioTrack)
     }
 
@@ -1052,14 +1218,25 @@ internal class OmniAudioTrackOutput(
             } catch (_: IllegalStateException) {
                 return
             }
-            if (head != 0) {
-                firstSound = SystemClock.elapsedRealtime()
+            if (head.toLong() > firstHeadBaseline) {
+                val now = SystemClock.elapsedRealtime()
+                if (firstSound == null) {
+                    firstSound = now
+                    log("first_head_advance playCalledMs=${playCalledAt ?: "unknown"} firstHeadAdvanceMs=$now firstWriteCompleteMs=${firstWriteCompleteAt ?: "pending"}")
+                }
                 return
             }
             delay(5)
         }
         // The track never reported audible progress; first sound stays
         // unknown rather than reporting a write time as audible start.
+    }
+
+    private fun startHeadObservation(audioTrack: AudioTrack) {
+        firstHeadJob?.cancel()
+        firstHeadJob = headObserverScope.launch {
+            observeFirstSound(audioTrack)
+        }
     }
 
     companion object {

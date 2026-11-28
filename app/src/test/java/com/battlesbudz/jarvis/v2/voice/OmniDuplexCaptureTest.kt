@@ -62,6 +62,7 @@ class OmniDuplexCaptureTest {
         assertNull(capture.endpoint(399))
         val endpoint = capture.endpoint(400)
         assertEquals(OmniDuplexTurnBuffer.Reason.SILENCE, endpoint?.reason)
+        assertEquals(400L, endpoint?.decisionAtMs)
         assertEquals(sixSeconds.size + speech.size, endpoint?.pcm?.size)
     }
 

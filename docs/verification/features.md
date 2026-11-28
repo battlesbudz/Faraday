@@ -1,5 +1,47 @@
 # Feature and acceptance map
 
+## LFM3-Omni build 1997 fix round — implementation status
+
+The Omni PCM queue is bounded at eight chunks and uses producer backpressure;
+the production start threshold is two 23,040-frame chunks (46,080 frames / 1.92
+seconds at 24 kHz). On an observed AudioTrack underrun, the drain pauses the
+track and accumulates four further chunks (92,160 frames / 3.84 seconds) before
+resuming. Short answers still start on generation finish. Stop/barge-in keeps
+the synchronous track pause/flush path and the drain consumes teardown chunks
+without playback to release any blocked producer. Diagnostics report
+`droppedChunks`, which should remain zero outside stop teardown.
+The prior U7 source-side suppression of chunks while a tool-call text block
+was open is removed so it cannot bypass the lossless handoff; a model-emitted
+tool-call round may therefore play its interleaved audio before the closing
+marker halts generation. Omni tool-call audio is not device-validated.
+
+First-head polling now starts at `AudioTrack.play()` independently of the
+blocking chunk write. The turn evidence exports exact `endpointDecisionMs`,
+`audioEncodeMs`, `textPrefillMs`, first chunk arrival, gate release, play call,
+first playback-head advance and first write completion, plus the generation
+realtime factor, maximum chunk interval and rebuffer counts/duration. The
+existing Omni summary `firstTokenMs` remains audio encode plus text prefill.
+
+Omni duplex capture retains a copied 16 kHz mono PCM16 endpoint beside the
+float PCM passed to Omni. The call submits that source audio to the currently
+selected `AsrEngine` and the existing call-owned `VoiceModelSession` Whisper
+lease using `SegmentedTranscriber` on `Dispatchers.IO`; it does not wait before
+`answerAudio`. The endpoint copy is fed in one-second byte
+windows, and the existing segmented owner handles its 15/22-second rollover
+contract. Recognized text updates the exact user entry paired with the stable
+Omni reply ID and updates private rollover history by turn ID. Empty/error
+results leave the user record empty and are diagnostics only. ASR jobs are
+cancelled and joined before call PCM/capture teardown.
+
+JVM coverage was added for two-chunk and short-answer start, four-chunk
+rebuffer arithmetic, policy stop/reset, queue backpressure without drops,
+transcript completion before/after reply, empty failure, stale completion,
+rollover history, and one-entry controller pairing. The local workspace has
+neither `gradlew` nor a `gradle` executable, so these tests were not executed
+here. Android integration and the hosted release gate were not run. Physical
+Fold 6 latency/continuity, real Whisper accuracy and accelerator/thermal
+contention remain device-only acceptance checks.
+
 # LFM3-Omni U2 runtime core — 15 November 2026
 
 The text-only `OmniRuntime` drives the pinned LFM3 `.litertlm` bundle sections

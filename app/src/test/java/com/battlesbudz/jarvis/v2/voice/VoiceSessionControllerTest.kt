@@ -4,8 +4,21 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.battlesbudz.jarvis.v2.runtime.turn.OmniCallAnswer
+import com.battlesbudz.jarvis.v2.runtime.turn.OmniTurnLatency
 
 class VoiceSessionControllerTest {
+    @Test fun omniTranscriptUpdatesTheSinglePairedUserEntry() {
+        val controller = VoiceSessionController(MemoryStore())
+        val call = controller.beginCall()
+        val latency = OmniTurnLatency.build(1L, null, emptyMap(), 2L, OmniCallAnswer("reply"))
+        assertTrue(controller.appendOmniTurn(call.id, "omni-1", "", "reply", latency))
+        assertTrue(controller.updateUserTranscriptForReply(call.id, "omni-1", "recognized" , expectedText = ""))
+        assertEquals(listOf("recognized", "reply"), controller.currentTranscript().map { it.text })
+        assertFalse(controller.appendOmniTurn(call.id, "omni-1", "duplicate", "duplicate", latency))
+        assertFalse(controller.updateUserTranscriptForReply("stale", "omni-1", "wrong"))
+    }
+
     @Test fun finalGemmaCaptionReplacesOnlyItsPairedUserEntry() {
         val controller = VoiceSessionController(MemoryStore())
         val call = controller.beginCall()

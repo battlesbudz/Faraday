@@ -3,6 +3,7 @@ package com.battlesbudz.jarvis.v2.ai
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlinx.coroutines.runBlocking
 
 class OmniOverlapAddTest {
     /**
@@ -27,7 +28,7 @@ class OmniOverlapAddTest {
     }
 
     @Test
-    fun fullChunkPlusFinishEmitsExactlyOneChunkOfSamples() {
+    fun fullChunkPlusFinishEmitsExactlyOneChunkOfSamples() = runBlocking {
         val offered = mutableListOf<FloatArray>()
         val stream = OmniCodecStream(FakeCodec(), FloatArray(1280) { 1f }, OmniPcmSink { offered += it; true })
 
@@ -41,7 +42,7 @@ class OmniOverlapAddTest {
     }
 
     @Test
-    fun frameSamplesAreReadAtTheirOwnStride() {
+    fun frameSamplesAreReadAtTheirOwnStride() = runBlocking {
         val offered = mutableListOf<FloatArray>()
         val stream = OmniCodecStream(FakeCodec(spike = true), FloatArray(1280) { 1f }, OmniPcmSink { offered += it; true })
 

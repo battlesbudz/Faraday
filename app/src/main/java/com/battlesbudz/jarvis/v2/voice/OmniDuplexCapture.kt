@@ -160,7 +160,7 @@ internal class OmniDuplexTurnBuffer(
     private val maxTurnMs: Long = 30_000,
     private val endpointSilenceMs: Long = 300
 ) {
-    data class Endpoint(val pcm: ByteArray, val reason: Reason)
+    data class Endpoint(val pcm: ByteArray, val reason: Reason, val decisionAtMs: Long = 0L)
     enum class Reason { SILENCE, AUDIO_CAP }
 
     // Keep a confirmation cushion as well as the promised pre-speech six seconds.
@@ -230,7 +230,7 @@ internal class OmniDuplexTurnBuffer(
     }
 
     private fun seal(reason: Reason): Endpoint {
-        val endpoint = Endpoint(turn.snapshot(), reason)
+        val endpoint = Endpoint(turn.snapshot(), reason, nowMs)
         reset()
         return endpoint
     }
@@ -257,7 +257,7 @@ internal class OmniDuplexCapture(
 ) {
     sealed interface Event {
         data class SpeechTurnStarted(val atMs: Long, val interruptedAssistantResponse: Boolean) : Event
-        data class TurnReady(val pcm: ByteArray, val endpoint: OmniDuplexTurnBuffer.Reason) : Event
+        data class TurnReady(val pcm: ByteArray, val endpoint: OmniDuplexTurnBuffer.Reason, val decisionAtMs: Long = 0L) : Event
         data class CaptureFailed(val cause: Throwable) : Event
     }
 
@@ -333,7 +333,7 @@ internal class OmniDuplexCapture(
             smartTurnHold = runCatching { smartTurnWantsMore(turnBuffer.currentPcm()) }.getOrDefault(false)
         }
         turnBuffer.endpoint(now, smartTurnHold)?.let { endpoint ->
-            eventChannel.send(Event.TurnReady(endpoint.pcm, endpoint.reason))
+            eventChannel.send(Event.TurnReady(endpoint.pcm, endpoint.reason, endpoint.decisionAtMs))
             gate.reset()
             smartTurnChecked = false
         }

@@ -202,20 +202,20 @@ internal class CompiledFrameEmbedder(file: File, options: CompiledModel.Options,
     override fun close() = model.close()
 }
 
-/** Callback must enqueue quickly; playback consumes its own queue while generation continues. */
-internal fun interface OmniPcmSink { fun offer(pcm24k: FloatArray): Boolean }
+/** Callback performs bounded handoff; a full playback queue applies backpressure without losing PCM. */
+internal fun interface OmniPcmSink { suspend fun offer(pcm24k: FloatArray): Boolean }
 
 /** Overlap-adds codec frames and emits the finalized PCM as soon as each 12-frame graph chunk completes. */
 internal class OmniCodecStream(private val decoder: OmniCodecDecoder, window: FloatArray, private val sink: OmniPcmSink) {
     private val stream = OmniOverlapAdd(window)
     private val pending = ArrayList<IntArray>(12)
     fun reset() { pending.clear(); decoder.reset(); stream.reset() }
-    fun push(codes: IntArray): Boolean {
+    suspend fun push(codes: IntArray): Boolean {
         pending += codes.copyOf()
         if (pending.size < 12) return true
         return emit(decoder.decode(pending.toList()), false).also { pending.clear() }
     }
-    fun finish(): Boolean {
+    suspend fun finish(): Boolean {
         var ok = true
         if (pending.isNotEmpty()) { ok = emit(decoder.decode(pending.toList()), true); pending.clear() }
         else {
@@ -225,7 +225,7 @@ internal class OmniCodecStream(private val decoder: OmniCodecDecoder, window: Fl
         reset()
         return ok
     }
-    private fun emit(frames: FloatArray, final: Boolean): Boolean {
+    private suspend fun emit(frames: FloatArray, final: Boolean): Boolean {
         // The codec graph returns 6 time frames of 1,280 samples per codec
         // frame (the sample's FRAME_STACK = 6), and the overlap-add consumes
         // time frames: the count is derived from the decoded output's size,
@@ -372,7 +372,7 @@ internal class OmniSpeechGenerator(
     data class Result(val tokens: List<Int>, val frames: List<IntArray>, val finished: Boolean, val stopped: Boolean,
                       val samplerDraws: Long, val samplerMismatches: Long)
 
-    fun generate(initialHidden: FloatArray, initialMode: Mode = Mode.INTERLEAVED, maxSteps: Int,
+    suspend fun generate(initialHidden: FloatArray, initialMode: Mode = Mode.INTERLEAVED, maxSteps: Int,
                  rng: OmniSpeechRng, onTextToken: (Int) -> Unit = {}, stop: () -> Boolean = { false }): Result {
         codec.reset()
         var hidden = initialHidden

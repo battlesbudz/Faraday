@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlinx.coroutines.runBlocking
 
 class OmniSpeechOutputTest {
     @Test fun fastSamplerCheckModeMatchesReferenceOnFixedRows() {
@@ -51,7 +52,7 @@ class OmniSpeechOutputTest {
         assertTrue(u.all { it >= 0f && it <= 1f - 1f / 2048 })
     }
 
-    @Test fun interleavedStateMachineDoesSixTextThenTwelveFramesAndStopsAtTextEnd() {
+    @Test fun interleavedStateMachineDoesSixTextThenTwelveFramesAndStopsAtTextEnd() = runBlocking {
         val lm = FakeSpeechLm(intArrayOf(10, 11, 12, 13, 14, 15, OmniSpeechTokens.TEXT_END, OmniSpeechTokens.IM_END))
         val depth = FakeDepth(IntArray(11) { 5 })
         val codec = FakeCodec()
@@ -65,7 +66,7 @@ class OmniSpeechOutputTest {
         assertFalse(result.stopped)
     }
 
-    @Test fun audioEosNormalizesAllCodesAndReturnsToTextMode() {
+    @Test fun audioEosNormalizesAllCodesAndReturnsToTextMode() = runBlocking {
         val lm = FakeSpeechLm(intArrayOf(21))
         val depth = FakeDepth(intArrayOf(8, 4, OmniSpeechTokens.AUDIO_EOS, 2, 3, 4, 5, 6, 7, 8, 9, 10))
         val codec = FakeCodec()
@@ -77,7 +78,7 @@ class OmniSpeechOutputTest {
         assertTrue(result.frames.all { it.none { code -> code == OmniSpeechTokens.AUDIO_EOS } })
     }
 
-    @Test fun stopIsCheckedBeforeGeneratingAnySlot() {
+    @Test fun stopIsCheckedBeforeGeneratingAnySlot() = runBlocking {
         val depth = FakeDepth(intArrayOf(1))
         val result = OmniSpeechGenerator(FakeSpeechLm(intArrayOf(2)), depth, FakeFrame(),
             OmniCodecStream(FakeCodec(), FloatArray(1280) { 1f }, OmniPcmSink { true }))

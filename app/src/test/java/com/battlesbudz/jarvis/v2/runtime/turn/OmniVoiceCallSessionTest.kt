@@ -80,12 +80,60 @@ class OmniVoiceCallSessionTest {
         assertEquals(2, fixture.engine.audioTurns)
     }
 
+    @Test fun transcriptThatFinishesBeforeReplyIsIncludedExactlyOnce() = runBlocking {
+        val fixture = Fixture().apply { capture.omitCapturedTranscript = true; capture.resultOnSubmit = "recognized first" }
+        val session = fixture.session()
+        session.start(); session.runTurn()
+        assertEquals(listOf("recognized first", "answer-1"), session.transcriptSnapshot().map { it.text })
+        assertEquals("recognized first", fixture.events.filterIsInstance<OmniVoiceCallSession.Event.Turn>().single().transcriptText)
+        session.closeCall()
+    }
+
+    @Test fun transcriptThatFinishesAfterReplyUpdatesPrivateHistoryInPlace() = runBlocking {
+        val fixture = Fixture().apply { capture.omitCapturedTranscript = true }
+        val session = fixture.session()
+        session.start(); session.runTurn()
+        assertEquals(listOf("", "answer-1"), session.transcriptSnapshot().map { it.text })
+        fixture.capture.complete("recognized late")
+        assertEquals(listOf("recognized late", "answer-1"), session.transcriptSnapshot().map { it.text })
+        assertEquals(2, session.transcriptSnapshot().size)
+        session.closeCall()
+    }
+
+    @Test fun asrFailureLeavesEmptyHistoryAndStaleResultIsFenced() = runBlocking {
+        val fixture = Fixture().apply { capture.omitCapturedTranscript = true; capture.resultOnSubmit = null; capture.completeImmediately = true }
+        val session = fixture.session()
+        session.start(); session.runTurn()
+        assertEquals("", session.transcriptSnapshot().first().text)
+        assertTrue(fixture.events.any { it is OmniVoiceCallSession.Event.MissingInputTranscript })
+        session.closeCall()
+        assertEquals("", session.transcriptSnapshot().firstOrNull()?.text ?: "")
+    }
+
+    @Test fun lateTranscriptForEndedCallIsStale() = runBlocking {
+        val fixture = Fixture().apply { capture.omitCapturedTranscript = true }
+        val session = fixture.session()
+        session.start(); session.runTurn(); session.closeCall()
+        fixture.capture.complete("late after close")
+        assertTrue(fixture.events.any { it is OmniVoiceCallSession.Event.TranscriptStale })
+    }
+
+    @Test fun recognizedTextIsRetainedForTextOnlyRollover() = runBlocking {
+        val fixture = Fixture().apply { capture.omitCapturedTranscript = true; capture.resultOnSubmit = "spoken history" }
+        val session = fixture.session()
+        session.start(); session.runTurn()
+        fixture.engine.fakeContextPositions = OmniVoiceCallSession.ROLLOVER_AT
+        session.runTurn()
+        assertEquals("spoken history", fixture.engine.prefilled.first().text)
+        session.closeCall()
+    }
+
     private class Fixture {
         var active = true
         val events = mutableListOf<OmniVoiceCallSession.Event>()
         val engine = FakeEngine { active }
         val output = FakeOutput()
-        private val capture = FakeCapture()
+        val capture = FakeCapture()
 
         fun session() = OmniVoiceCallSession(engine, capture, output, events::add,
             isCallActive = { active }, clockMs = { 2_000L })
@@ -132,9 +180,22 @@ class OmniVoiceCallSessionTest {
 
     private class FakeCapture : OmniTurnCapture {
         var turn = 0
+        var suppliedText: String? = null
+        var omitCapturedTranscript = false
+        var resultOnSubmit: String? = null
+        var completeImmediately = false
+        private var pending: ((String?) -> Unit)? = null
         override suspend fun startCall() = Unit
-        override suspend fun awaitTurn(): OmniCapturedTurn =
-            OmniCapturedTurn(floatArrayOf(0.0f), 1000L + turn, "question ${++turn}")
+        override suspend fun awaitTurn(): OmniCapturedTurn {
+            val next = ++turn
+            return OmniCapturedTurn(floatArrayOf(0.0f), 1000L + next,
+                if (omitCapturedTranscript) null else suppliedText ?: "question $next")
+        }
+        override fun submitTranscription(turn: OmniCapturedTurn, onResult: (String?) -> Unit) {
+            if (completeImmediately || resultOnSubmit != null) onResult(resultOnSubmit)
+            else pending = onResult
+        }
+        fun complete(text: String) { pending?.invoke(text); pending = null }
         override fun close() = Unit
     }
 

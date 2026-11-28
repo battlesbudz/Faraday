@@ -70,12 +70,19 @@ internal data class OmniCapturedTurn(
     val endpointAtMs: Long,
     /** Optional text supplied by the call UI/input adapter; never produced by Whisper on this route. */
     val transcriptText: String? = null,
+    /** Immutable source PCM for call-owned ASR; the float copy above is Omni's encoder input. */
+    val pcm16kMonoBytes: ByteArray = byteArrayOf(),
+    val turnId: String = "omni-$endpointAtMs",
+    val endpointDecisionMs: Long = endpointAtMs,
 )
 
 /** U3 call-scoped capture seam. Implementations keep microphone capture alive between turns. */
 internal interface OmniTurnCapture : AutoCloseable {
     suspend fun startCall()
     suspend fun awaitTurn(): OmniCapturedTurn
+    fun submitTranscription(turn: OmniCapturedTurn, onResult: (String?) -> Unit) {}
+    suspend fun awaitTranscriptions() {}
+    suspend fun closeCall() { close() }
     override fun close()
 }
 
@@ -87,6 +94,12 @@ internal interface OmniCallSpeechOutput : AutoCloseable {
     val writtenShortsThisTurn: Long get() = 0L
     /** Playback starvations (AudioTrack underruns) observed so far this turn; 0 when the output cannot measure them. */
     val supplyGapsThisTurn: Int get() = 0
+    val rebufferCountThisTurn: Int get() = 0
+    val rebufferTotalMsThisTurn: Long get() = 0L
+    val playCalledAtMs: Long? get() = null
+    val firstWriteCompleteAtMs: Long? get() = null
+    fun pauseForRebuffer() {}
+    fun resumeAfterRebuffer() {}
     fun beginTurn()
     suspend fun playChunk(pcm24kMono: FloatArray)
     /** Generation for this turn has ended: start playback now if the pre-roll is still holding it. */
@@ -127,9 +140,57 @@ internal class OmniPrerollGate(private val prerollFrames: Int = PREROLL_FRAMES) 
     }
 
     companion object {
-        const val PREROLL_FRAMES: Int = 3 * 23_040
+        const val PREROLL_FRAMES: Int = 2 * 23_040
     }
 }
+
+/** Pure arrival-driven policy. Frames arrive before blocking AudioTrack writes. */
+internal class OmniPlaybackBufferPolicy(
+    private val startFrames: Int = START_CHUNKS * OmniAudioTrackOutputFrames.CHUNK,
+    private val rebufferFrames: Int = REBUFFER_CHUNKS * OmniAudioTrackOutputFrames.CHUNK,
+) {
+    var arrivedFrames = 0
+        private set
+    var started = false
+        private set
+    var generationFinished = false
+        private set
+    var rebuffering = false
+        private set
+    var stopped = false
+        private set
+    @Synchronized fun arrived(frames: Int): Boolean {
+        if (stopped) return false
+        arrivedFrames += frames
+        if (!started && (arrivedFrames >= startFrames || generationFinished && arrivedFrames > 0)) {
+            started = true
+            return true
+        }
+        if (rebuffering && arrivedFrames >= rebufferFrames) {
+            rebuffering = false
+            arrivedFrames = 0
+            return true
+        }
+        return false
+    }
+    @Synchronized fun finished(): Boolean {
+        if (stopped) return false
+        generationFinished = true
+        if (!started && arrivedFrames > 0) { started = true; return true }
+        if (rebuffering && arrivedFrames > 0) { rebuffering = false; return true }
+        return false
+    }
+    @Synchronized fun underrun() { if (started && !generationFinished) { rebuffering = true; arrivedFrames = 0 } }
+    @Synchronized fun stop() { stopped = true; arrivedFrames = 0; rebuffering = false }
+    @Synchronized fun reset() { arrivedFrames = 0; started = false; generationFinished = false; rebuffering = false; stopped = false }
+
+    companion object {
+        const val START_CHUNKS = 2
+        const val REBUFFER_CHUNKS = 4
+    }
+}
+
+internal object OmniAudioTrackOutputFrames { const val CHUNK = 23_040 }
 
 /** Narrow U2 runtime adapter used by the voice call. All methods run on OmniRuntime's worker. */
 internal interface OmniCallEngine {
@@ -155,11 +216,14 @@ internal interface OmniCallEngine {
         shouldStop: () -> Boolean,
     ): OmniCallAnswer
 
+    /** Immediately releases a producer suspended on the bounded PCM queue during teardown. */
+    fun discardQueuedAudio() {}
+
 }
 
 internal enum class OmniCallRole { USER, ASSISTANT }
 
-internal data class OmniCallMessage(val role: OmniCallRole, val text: String)
+internal data class OmniCallMessage(val role: OmniCallRole, val text: String, val turnId: String? = null)
 
 internal data class OmniCallAnswer(
     val text: String,
@@ -180,6 +244,9 @@ internal data class OmniCallAnswer(
     val pcmChunks: Int = 0,
     val pcmSamples: Int = 0,
     val pcmPeak: Float = 0f,
+    val maxChunkIntervalMs: Long = 0L,
+    val firstChunkArrivalAtMs: Long? = null,
+    val droppedChunks: Int = 0,
 )
 
 /** U6 duplex coordination, supplied by the call-scoped capture adapter. Null on non-duplex paths. */
@@ -219,7 +286,21 @@ internal class OmniVoiceCallSession(
             val writtenShorts: Long = 0,
             val supplyGaps: Int = 0,
             val totalMs: Long = 0,
+            val turnId: String = "",
+            val endpointDecisionMs: Long = endpointAtMs,
+            val generationRealtimeFactor: Double? = null,
+            val maxChunkIntervalMs: Long = 0,
+            val rebufferCount: Int = 0,
+            val rebufferTotalMs: Long = 0,
+            val droppedChunks: Int = 0,
+            val firstChunkArrivalMs: Long? = null,
+            val gateReleaseMs: Long? = null,
+            val playCalledAtMs: Long? = null,
+            val firstWriteCompleteAtMs: Long? = null,
+            val transcriptText: String? = null,
         ) : Event
+        data class TranscriptUpdated(val turnId: String, val text: String) : Event
+        data class TranscriptStale(val turnId: String) : Event
         /** The sealed user audio for this turn: its duration and peak amplitude. */
         data class CapturedSpeech(val seconds: Float, val peak: Float) : Event
         /** U8: a rollover has begun; prefill has not run yet, so prefillMs is unknown here. */
@@ -229,6 +310,8 @@ internal class OmniVoiceCallSession(
     }
 
     private val transcript = mutableListOf<OmniCallMessage>()
+    private val recognizedTexts = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val submittedTurnIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private var started = false
     private var closed = false
 
@@ -247,6 +330,7 @@ internal class OmniVoiceCallSession(
     suspend fun runTurn(): OmniCallAnswer {
         check(started && !closed) { "omni_call_session_not_active" }
         if (!isCallActive()) throw CancellationException("omni_voice_call_ended")
+        capture.awaitTranscriptions()
         rolloverIfNeeded()
         val captured = capture.awaitTurn()
         if (!isCallActive()) throw CancellationException("omni_voice_call_ended")
@@ -254,6 +338,23 @@ internal class OmniVoiceCallSession(
         diagnostics(Event.CapturedSpeech(captured.pcm16kMono.size / 16_000f, capturePeak))
 
         output.beginTurn()
+        submittedTurnIds += captured.turnId
+        capture.submitTranscription(captured) { text ->
+            if (closed || !isCallActive() || captured.turnId !in submittedTurnIds) {
+                diagnostics(Event.TranscriptStale(captured.turnId))
+                return@submitTranscription
+            }
+            if (text.isNullOrBlank()) {
+                diagnostics(Event.MissingInputTranscript(captured.endpointAtMs))
+            } else {
+                recognizedTexts[captured.turnId] = text
+                synchronized(transcript) {
+                    val index = transcript.indexOfFirst { it.role == OmniCallRole.USER && it.turnId == captured.turnId }
+                    if (index >= 0) transcript[index] = transcript[index].copy(text = text)
+                }
+                diagnostics(Event.TranscriptUpdated(captured.turnId, text))
+            }
+        }
         duplexHooks?.setAssistantActive(true)
         val answer = try {
             engine.answerAudio(captured.pcm16kMono, output, shouldStop = {
@@ -261,6 +362,7 @@ internal class OmniVoiceCallSession(
                     duplexHooks?.bargeInRequested() == true
             })
         } catch (cancelled: CancellationException) {
+            engine.discardQueuedAudio()
             output.stopAndFlush()
             throw cancelled
         } finally {
@@ -273,11 +375,11 @@ internal class OmniVoiceCallSession(
         }
         output.finishTurn()
         val userText = captured.transcriptText?.takeIf { it.isNotBlank() }
-        if (userText == null) {
-            diagnostics(Event.MissingInputTranscript(captured.endpointAtMs))
-            transcript += OmniCallMessage(OmniCallRole.USER, "[spoken audio; transcript unavailable]")
-        } else transcript += OmniCallMessage(OmniCallRole.USER, userText)
-        transcript += OmniCallMessage(OmniCallRole.ASSISTANT, answer.text)
+            ?: recognizedTexts[captured.turnId]?.takeIf { it.isNotBlank() }
+        synchronized(transcript) {
+            transcript += OmniCallMessage(OmniCallRole.USER, userText.orEmpty(), captured.turnId)
+            transcript += OmniCallMessage(OmniCallRole.ASSISTANT, answer.text, captured.turnId)
+        }
         diagnostics(Event.Turn(
             captured.endpointAtMs,
             output.firstSoundAtMonotonicMs,
@@ -286,6 +388,17 @@ internal class OmniVoiceCallSession(
             output.writtenShortsThisTurn,
             output.supplyGapsThisTurn,
             (clockMs() - captured.endpointAtMs).coerceAtLeast(0),
+            captured.turnId,
+            captured.endpointDecisionMs,
+            answer.graphTimingsMs["speech_generate_ms"]?.takeIf { it > 0 }?.let {
+                (answer.pcmSamples.toDouble() / 24_000.0) / (it / 1000.0)
+            },
+            answer.maxChunkIntervalMs, output.rebufferCountThisTurn, output.rebufferTotalMsThisTurn, answer.droppedChunks,
+            answer.firstChunkArrivalAtMs?.let { (it - captured.endpointDecisionMs).coerceAtLeast(0) },
+            output.playCalledAtMs?.let { (it - captured.endpointDecisionMs).coerceAtLeast(0) },
+            output.playCalledAtMs,
+            output.firstWriteCompleteAtMs,
+            synchronized(transcript) { transcript.lastOrNull { it.role == OmniCallRole.USER && it.turnId == captured.turnId }?.text?.takeIf { it.isNotBlank() } },
         ))
         return answer
     }
@@ -319,7 +432,7 @@ internal class OmniVoiceCallSession(
         if (closed) return
         closed = true
         output.stopAndFlush()
-        runCatching { capture.close() }
+        runCatching { capture.closeCall() }
         runCatching { output.close() }
         // Model residency follows selection, not call duration. Clear only the
         // host-owned conversation; the model setup owner closes OmniRuntime on swap.
@@ -327,10 +440,12 @@ internal class OmniVoiceCallSession(
             engine.endCall()
         } finally {
             transcript.clear()
+            recognizedTexts.clear()
+            submittedTurnIds.clear()
         }
     }
 
-    internal fun transcriptSnapshot(): List<OmniCallMessage> = transcript.toList()
+    internal fun transcriptSnapshot(): List<OmniCallMessage> = synchronized(transcript) { transcript.toList() }
 
     companion object {
         const val MAX_CONTEXT_POSITIONS = 4096

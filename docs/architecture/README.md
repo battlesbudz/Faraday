@@ -32,9 +32,10 @@ for the decision to keep package/collaborator boundaries before adding build mod
 | `JarvisAppComposition` | Compatibility composition adapter supplying only benchmark-store and call-evidence dependencies to UI |
 | `JarvisRuntime.get(applicationContext)` | Process composition/lifecycle facade wiring typed owners/ports, shared history and compatibility entry adapters |
 | `runtime/turn/VoiceTurnRunner` | Admits and orders typed voice stages, with fenced terminal errors/rearm policy; resource release belongs to finalizer |
-| `runtime/turn/OmniVoiceCallSession` / `OmniVoiceCallLoop` | Owns one sequential Omni conversation per call, adapts U3 captured audio to U2 and U4 streaming output, drives turns until call end, and performs text-only rollover at the 4,096-position boundary |
+| `runtime/turn/OmniVoiceCallSession` / `OmniVoiceCallLoop` | Owns one sequential Omni conversation per call, adapts duplex-captured PCM to U2/U4, fences call-owned Whisper transcript updates to their paired turns, and performs text-only rollover at the 4,096-position boundary |
 | `voice/VoiceCallService` | User-started foreground microphone/playback eligibility, notification controls and wake lock |
 | `voice/OmniDuplexCapture` | U6 call-lifetime microphone pump for Omni: VAD-only barge-in, playback-reference echo gate, pre-roll turn PCM and deadline-first endpointing; U5 supplies the route/cancel/flush and consumes completed turns |
+| `runtime/turn/OmniDuplexCallCapture` / `OmniAudioTrackOutput` | Keeps endpoint PCM16 paired with Omni float input, timestamps endpoint and playback-head edges, owns background Whisper jobs for the call, and runs bounded lossless PCM handoff/rebuffering; stop/flush remains synchronous |
 | `voice/VideoCallService` / `VideoForegroundNotification` / `VideoNotificationLifecycle` / `CallVisionController` / `CameraXVideoBinder` | Call-scoped camera foreground eligibility, terminal notification publication/removal, capture generation, bounded cleanup and in-memory frames; independent of audio ownership |
 | `voice/VoiceSessionController` | Call identity, transcript, delivered reply/action state and persisted call record |
 | `work/ProcessConversationAdmission` | One shared atomic admission owner for conversation and model-file operations; `ConversationWork` is its compatibility view |

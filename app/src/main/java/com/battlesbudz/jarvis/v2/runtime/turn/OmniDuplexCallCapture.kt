@@ -42,6 +42,7 @@ internal class OmniDuplexCallCapture(
     private val borrowMicrophone: suspend (String) -> AudioInput,
     private val output: OmniAudioTrackOutput,
     private val log: (String) -> Unit = {},
+    private val transcribePcm: suspend (ByteArray) -> String?,
     /**
      * U8: receives accepted and rejected barge-in gate decisions for the
      * Omni diagnostics evidence. Null leaves the capture behavior unchanged.
@@ -53,6 +54,8 @@ internal class OmniDuplexCallCapture(
     private var duplex: OmniDuplexCapture? = null
     private var releaseTicker: Job? = null
     private var started = false
+    @Volatile private var callClosed = false
+    private val transcriptionJobs = java.util.concurrent.CopyOnWriteArrayList<Job>()
     @Volatile private var assistantActiveFlag = false
     @Volatile private var bargeInFlag = false
 
@@ -87,6 +90,7 @@ internal class OmniDuplexCallCapture(
             },
             smartTurnWantsMore = { false },
             onLog = log,
+            nowMs = SystemClock::elapsedRealtime,
         )
         duplex = capture
         // U8: a candidate the echo guard rejects never stops playback or
@@ -116,9 +120,12 @@ internal class OmniDuplexCallCapture(
             }
         } as OmniDuplexCapture.Event.TurnReady
         return OmniCapturedTurn(
-            OmniAudioEncoder.pcm16ToFloat(ready.pcm),
-            SystemClock.elapsedRealtime(),
+            OmniAudioEncoder.pcm16ToFloat(ready.pcm.copyOf()),
+            ready.decisionAtMs.takeIf { it > 0 } ?: SystemClock.elapsedRealtime(),
             null,
+            ready.pcm.copyOf(),
+            "omni-${ready.decisionAtMs}",
+            ready.decisionAtMs,
         )
     }
 
@@ -137,6 +144,44 @@ internal class OmniDuplexCallCapture(
                 runCatching { capture.stop() }
             }
         }
+    }
+
+    override fun submitTranscription(turn: OmniCapturedTurn, onResult: (String?) -> Unit) {
+        val bytes = turn.pcm16kMonoBytes.copyOf()
+        val job = scope.launch(Dispatchers.IO) {
+            val recognized = try { transcribePcm(bytes) }
+            catch (cancelled: kotlinx.coroutines.CancellationException) {
+                log("asr_empty turn=${turn.turnId} reason=cancelled")
+                throw cancelled
+            }
+            catch (failure: Throwable) {
+                log("asr_empty turn=${turn.turnId} reason=${failure.javaClass.simpleName}")
+                null
+            }
+            if (callClosed || !isActive) {
+                log("asr_stale turn=${turn.turnId} reason=call_ended")
+            } else if (recognized.isNullOrBlank()) {
+                log("asr_empty turn=${turn.turnId} reason=blank_decode")
+                onResult(null)
+            } else {
+                log("asr_complete turn=${turn.turnId} chars=${recognized.length} bytes=${bytes.size}")
+                onResult(recognized.trim())
+            }
+        }
+        transcriptionJobs += job
+    }
+
+    override suspend fun awaitTranscriptions() {
+        transcriptionJobs.toList().forEach { it.join() }
+        transcriptionJobs.removeAll { it.isCompleted }
+    }
+
+    override suspend fun closeCall() {
+        callClosed = true
+        transcriptionJobs.forEach { it.cancel() }
+        transcriptionJobs.toList().forEach { it.join() }
+        transcriptionJobs.clear()
+        close()
     }
 
     // OmniDuplexSessionHooks: driven by the session around generation+playback.
