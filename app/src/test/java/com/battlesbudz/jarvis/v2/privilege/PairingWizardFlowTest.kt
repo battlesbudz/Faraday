@@ -44,6 +44,8 @@ class PairingWizardFlowTest {
 
         val confirmed = PairingWizardFlow.evaluate(input(
             developerOptions = false,
+            usbDebugging = false,
+            wirelessDebugging = false,
             confirmed = setOf(PairingWizardFlow.Step.DeveloperOptions),
         ))
         assertEquals(PairingWizardFlow.Step.UsbDebugging, confirmed.currentStep)
