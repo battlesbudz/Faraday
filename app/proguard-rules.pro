@@ -624,6 +624,9 @@
 
 # A1 pairing front end is reached through composed settings and an explicit notification receiver.
 -keep class com.battlesbudz.jarvis.v2.ui.AppControlPairingSectionKt { *; }
+-keep class com.battlesbudz.jarvis.v2.privilege.PairingWizardFlow** { *; }
+-keep class com.battlesbudz.jarvis.v2.privilege.PairingWizardSystemState** { *; }
+-keep class com.battlesbudz.jarvis.v2.privilege.PostPairingCompletion** { *; }
 -keep class com.battlesbudz.jarvis.v2.ui.SpeakerGateSectionKt { *; }
 -keep class com.battlesbudz.jarvis.v2.voice.speaker.SpeakerEnrollmentController { *; }
 -keep class com.battlesbudz.jarvis.v2.voice.speaker.EnrollmentRecorder { *; }

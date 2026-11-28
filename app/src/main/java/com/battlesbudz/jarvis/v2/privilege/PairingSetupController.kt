@@ -44,7 +44,7 @@ internal class PairingSetupController(
     fun arm() {
         deadline = SystemClock.elapsedRealtime() + armedWindowMs
         val freshArm = !mutableState.value.armed
-        mutableState.value = mutableState.value.copy(armed = true, lastMessage = null)
+        mutableState.value = mutableState.value.copy(armed = true, lastMessage = null, dialogFound = false)
         if (freshArm) {
             armedJob?.cancel()
             armedJob = scope.launch { runArmedWindow() }
@@ -57,12 +57,25 @@ internal class PairingSetupController(
     }
 
     fun submitManual(raw: String): Boolean {
-        val code = raw.filterNot(Char::isWhitespace)
-        if (!CODE.matches(code)) {
+        return submitManualCode(raw, null)
+    }
+
+    fun submitManualCode(code: String, port: Int?): Boolean {
+        val cleanCode = code.filterNot(Char::isWhitespace)
+        if (!CODE.matches(cleanCode)) {
             updateMessage("That is not the 6-digit code from the pairing dialog.")
             return false
         }
-        scope.launch { pairAttempt(code, null) }
+        if (port != null && port !in 1..65535) {
+            updateMessage("Enter a port from 1 to 65535.")
+            return false
+        }
+        val discovered = if (port == null) null else runCatching(discovery).getOrNull()
+        val endpointOverride = if (port == null) null else discovered?.copy(port = port)
+        val missingEndpointMessage = if (port != null && discovered == null) {
+            "Faraday hasn't found the pairing dialog yet — the port alone isn't enough without it."
+        } else null
+        scope.launch { pairAttempt(cleanCode, endpointOverride, missingEndpointMessage) }
         return true
     }
 
@@ -81,8 +94,17 @@ internal class PairingSetupController(
                 attemptInFlight = { mutableState.value.attemptInFlight },
                 discovery = discovery,
                 waitingToPair = { runCatching { !supervisor.status().present }.getOrDefault(false) },
-                windowTexts = windowTexts,
-                onAttempt = ::pairAttempt,
+                windowTexts = {
+                    val windows = runCatching(windowTexts).getOrDefault(emptyList())
+                    if (windows.any { texts ->
+                            val reading = PairingScreen.read(texts)
+                            reading.code != null || reading.port != null
+                        }) {
+                        mutableState.value = mutableState.value.copy(dialogFound = true)
+                    }
+                    windows
+                },
+                onAttempt = { code, endpoint -> pairAttempt(code, endpoint, null) },
             )
         }
         try {
@@ -107,7 +129,7 @@ internal class PairingSetupController(
         }
     }
 
-    private suspend fun pairAttempt(code: String, endpointOverride: AdbEndpoint?) {
+    private suspend fun pairAttempt(code: String, endpointOverride: AdbEndpoint?, missingEndpointMessage: String?) {
         if (!attemptMutex.tryLock()) return
         try {
             mutableState.value = mutableState.value.copy(attemptInFlight = true)
@@ -130,9 +152,12 @@ internal class PairingSetupController(
                     synchronized(this) { finishArmed(cancelNotice = false, cancelJob = false) }
                 }
                 else -> {
-                    mutableState.value = mutableState.value.copy(lastMessage = reason)
-                    if (mutableState.value.armed) notifier.showEnterCode(reason)
-                    else notifier.showProblem(reason)
+                    val message = if (missingEndpointMessage != null &&
+                        reason.contains("endpoint", ignoreCase = true) && reason.contains("unavailable", ignoreCase = true)
+                    ) missingEndpointMessage else reason
+                    mutableState.value = mutableState.value.copy(lastMessage = message)
+                    if (mutableState.value.armed) notifier.showEnterCode(message)
+                    else notifier.showProblem(message)
                 }
             }
         } finally {
@@ -172,6 +197,7 @@ internal data class PairingSetupState(
     val armed: Boolean = false,
     val attemptInFlight: Boolean = false,
     val lastMessage: String? = null,
+    val dialogFound: Boolean = false,
 )
 
 /** Notification operations used by the process controller and replaceable by behavior-test fakes. */

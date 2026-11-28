@@ -1,5 +1,38 @@
 # Feature and acceptance map
 
+## Guided wireless pairing and post-pairing accessibility — 28 November 2026
+
+`PairingWizardFlow` owns the pure five-step checklist and conservative failure
+revisit policy. `PairingWizardSystemState` reads Android switch, Wi-Fi,
+notification and accessibility state while the settings section is visible.
+The UI opens Android settings for each step, arms the existing pairing reader
+before opening the pairing dialog path, and keeps manual code entry collapsed
+until requested. `PairingSetupController` reports whether a pairing dialog was
+seen and accepts an optional port with the discovered host. After a consented
+helper attaches, `PrivilegeSupervisor` schedules one accessibility enable
+attempt on its recovery executor for that helper-attach episode.
+
+Acceptance checks:
+
+- JVM logic: `PairingWizardFlowTest` covers order, satisfied and unknown switch
+  readings, helper success, reconnect progress, automatic reading, notification
+  access, known failure causes and Wi-Fi guidance. `PostPairingCompletionTest`
+  covers the enable decision. `PairingSetupControllerTest` covers dialog
+  detection and port override.
+- Android/UI: `AppControlPairingSectionTest` retains the real voice settings
+  entry point and consent/revoke journey, and covers connected presentation,
+  collapsed manual entry and dialog-dependent port visibility.
+- Failure cases: unknown failure text has no suggested step; a pairing code
+  without a discovered endpoint cannot use a manually entered port; a missing
+  or blocked notification path opens the matching Android permission/settings
+  screen.
+- Existing behavior that must remain intact: pairing transport and AIDL,
+  consent persistence, revoke behavior, armed reader window and notification
+  timing are unchanged.
+- Verification: tests and Android release checks were not run in this workspace
+  because the brief prohibits Gradle here. Hosted JVM, release and emulator
+  checks remain required; physical audio and device behavior remain unverified.
+
 ## EmbeddingGemma front-door classifier — 22 November 2026
 
 `conversation/FrontDoorClassifier` scores the current message and, when present,

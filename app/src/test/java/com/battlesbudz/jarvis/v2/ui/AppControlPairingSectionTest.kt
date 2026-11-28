@@ -1,6 +1,8 @@
 package com.battlesbudz.jarvis.v2.ui
 
 import android.content.Context
+import android.Manifest
+import android.provider.Settings
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
@@ -9,6 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -30,6 +33,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -58,6 +62,10 @@ class AppControlPairingSectionTest {
         // this class, matching the single-Application device reality.
         bound = boundContext ?: context.applicationContext.also { boundContext = it }
         prefs.edit().clear().commit()
+        Settings.Global.putInt(bound.contentResolver, "development_settings_enabled", 1)
+        Settings.Global.putInt(bound.contentResolver, "adb_enabled", 1)
+        Settings.Global.putInt(bound.contentResolver, "adb_wifi_enabled", 1)
+        shadowOf(bound as android.app.Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
         PairingIdentity.initialize(bound)
         // Pin the supervisor singleton to the bound context when this
         // class creates it first, so composition-created instances in
@@ -126,21 +134,24 @@ class AppControlPairingSectionTest {
             autoReadGraceMs = 20,
         )
         compose.setContent {
-            MaterialTheme {
-                // Scrollable host: the section is taller than the
-                // Robolectric surface, and the Revoke button below the
-                // fold did not receive performClick in run 45368112213
-                // (Start/Manual, above the fold, worked; the supervisor
-                // never registered the revocation).
-                androidx.compose.foundation.layout.Column(
-                    Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()),
-                ) {
-                    AppControlPairingSection(enabled = true, controller = controller)
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides activityResultOwner) {
+                MaterialTheme {
+                    // Scrollable host: the section is taller than the
+                    // Robolectric surface, and the Revoke button below the
+                    // fold did not receive performClick in run 45368112213
+                    // (Start/Manual, above the fold, worked; the supervisor
+                    // never registered the revocation).
+                    androidx.compose.foundation.layout.Column(
+                        Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                    ) {
+                        AppControlPairingSection(enabled = true, controller = controller)
+                    }
                 }
             }
         }
         compose.onNodeWithTag("app_control_pairing_start").performClick()
         compose.onNodeWithText("Waiting for the pairing dialog…").assertExists()
+        compose.onNodeWithTag("app_control_pairing_manual_toggle").performClick()
         compose.onNodeWithTag("app_control_pairing_code").performTextInput("123456")
         compose.onNodeWithTag("app_control_pairing_manual").performClick()
         compose.waitUntil(5_000) { transport.calls.isNotEmpty() && controller.state.value.lastMessage?.startsWith("Paired.") == true }
@@ -159,7 +170,7 @@ class AppControlPairingSectionTest {
         assertTrue("supervisor never registered the pairing: ${pairedStatus.reason}",
             pairedStatus.reason?.contains("did not establish") == true)
         compose.waitForIdle()
-        compose.onNodeWithTag("app_control_pairing_status").assertTextContains("did not establish", substring = true)
+        compose.onNodeWithTag("app_control_pairing_status").assertTextContains("Faraday couldn't start the helper", substring = true)
         compose.onNodeWithTag("app_control_pairing_revoke").performScrollTo().performClick()
         // Poll the supervisor until the revocation registers (reason in
         // the failure message), then poll the status TEXT until the
@@ -177,10 +188,60 @@ class AppControlPairingSectionTest {
             val node = compose.onNodeWithTag("app_control_pairing_status").fetchSemanticsNode()
             val text = node?.config?.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Text) { emptyList() }
                 ?.joinToString("") { it.text }.orEmpty()
-            text.contains("wireless-debugging pairing is absent or revoked")
+            text.contains("pairing was revoked")
         }
         assertFalse(prefs.getBoolean(PrivilegeSupervisor.CONSENT, true))
         assertFalse(prefs.getBoolean("adb_pairing_complete", true))
+    }
+
+    @Test fun connectedStateShowsSetupMessageWithoutWizardSteps() {
+        val controller = PairingSetupController(
+            context = bound,
+            supervisor = PrivilegeSupervisor.get(bound),
+            discovery = { AdbEndpoint("192.168.0.12", 5555) },
+            transportFactory = { RecordingTransport() },
+            windowTexts = { emptyList() },
+            notifier = RecordingNotifier(),
+        )
+        assertTrue(controller.submitManual("123456"))
+        compose.waitUntil(5_000) { controller.state.value.lastMessage?.startsWith("Paired.") == true }
+        PrivilegeHandoffState.helper.set(android.os.Binder())
+        compose.waitUntil(5_000) { controller.status().present }
+        compose.setContent {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides activityResultOwner) {
+                MaterialTheme { AppControlPairingSection(enabled = true, controller = controller) }
+            }
+        }
+        compose.onNodeWithText("Phone control is set up").assertExists()
+        compose.onNodeWithText("Helper status: connected.").assertExists()
+        compose.onNodeWithText("Pair again").assertExists()
+        compose.onNodeWithText("1. Developer options").assertDoesNotExist()
+    }
+
+    @Test fun manualEntryStartsCollapsedAndPortIsHiddenOnceDialogIsFound() {
+        val controller = PairingSetupController(
+            context = bound,
+            supervisor = PrivilegeSupervisor.get(bound),
+            discovery = { null },
+            transportFactory = { RecordingTransport() },
+            windowTexts = { listOf(listOf("Pair device with pairing code", "123456")) },
+            notifier = RecordingNotifier(),
+            pollIntervalMs = 20,
+            armedWindowMs = 2_000,
+            autoReadGraceMs = 20,
+        )
+        compose.setContent {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides activityResultOwner) {
+                MaterialTheme { AppControlPairingSection(enabled = true, controller = controller) }
+            }
+        }
+        compose.onNodeWithTag("app_control_pairing_code").assertDoesNotExist()
+        compose.onNodeWithTag("app_control_pairing_manual_toggle").performClick()
+        compose.onNodeWithTag("app_control_pairing_code").assertExists()
+        compose.onNodeWithTag("app_control_pairing_port").assertExists()
+        controller.arm()
+        compose.waitUntil(5_000) { controller.state.value.dialogFound }
+        compose.onNodeWithTag("app_control_pairing_port").assertDoesNotExist()
     }
 
     private fun mount() {

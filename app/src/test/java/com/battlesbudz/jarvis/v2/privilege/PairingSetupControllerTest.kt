@@ -91,6 +91,51 @@ class PairingSetupControllerTest {
         assertTrue(notifier.enterCodes.contains("Wireless-debugging pairing code was rejected."))
     }
 
+    @Test fun dialogFoundTurnsOnForCodeOrPortSeenInSettingsWindow() {
+        var texts = listOf(listOf("Pair device with pairing code", "123456"))
+        val controller = controller(RecordingTransport(), RecordingNotifier()) { texts }
+        controller.arm()
+        await { controller.state.value.dialogFound }
+        texts = emptyList()
+        controller.disarm()
+        assertTrue(controller.state.value.dialogFound)
+        controller.arm()
+        assertFalse(controller.state.value.dialogFound)
+        Thread.sleep(60)
+        assertFalse(controller.state.value.dialogFound)
+        controller.disarm()
+    }
+
+    @Test fun manualCodeUsesDiscoveredHostAndEnteredPort() {
+        val transport = RecordingTransport()
+        val controller = PairingSetupController(
+            context = bound,
+            supervisor = supervisor,
+            discovery = { AdbEndpoint("192.168.0.12", 5555) },
+            transportFactory = { transport },
+            windowTexts = { emptyList() },
+            notifier = RecordingNotifier(),
+        )
+        assertTrue(controller.submitManualCode("123456", 37123))
+        await { transport.calls.isNotEmpty() }
+        assertEquals(AdbEndpoint("192.168.0.12", 37123), transport.calls.single().endpoint)
+    }
+
+    @Test fun manualPortWithoutDiscoveredHostKeepsCurrentDiscoveryFailure() {
+        val transport = RecordingTransport()
+        val controller = PairingSetupController(
+            context = bound,
+            supervisor = supervisor,
+            discovery = { null },
+            transportFactory = { transport },
+            windowTexts = { emptyList() },
+            notifier = RecordingNotifier(),
+        )
+        assertTrue(controller.submitManualCode("123456", 37123))
+        await { controller.state.value.lastMessage?.startsWith("Faraday hasn't found the pairing dialog yet") == true }
+        assertTrue(transport.calls.isEmpty())
+    }
+
     @Test fun invalidManualCodeNeverCallsTransportAndRevokeClearsPairingAndConsent() {
         val transport = RecordingTransport()
         val controller = controller(transport, RecordingNotifier()) { emptyList() }

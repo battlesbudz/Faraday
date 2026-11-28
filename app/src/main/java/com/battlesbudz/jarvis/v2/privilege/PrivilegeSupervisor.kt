@@ -2,6 +2,7 @@ package com.battlesbudz.jarvis.v2.privilege
 
 import android.content.Context
 import android.os.IBinder
+import android.provider.Settings
 import android.util.Log
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
@@ -19,6 +20,7 @@ internal class PrivilegeSupervisor private constructor(private val context: Cont
     @Volatile private var identityProblem: String? = PairingIdentity.initialize(app)
     private val recoveryExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "privilege-supervisor").apply { isDaemon = true } }
     @Volatile private var recoveryQueued = false
+    @Volatile private var accessibilityEnableAttempted = false
     private val watchdog = PrivilegeWatchdogController(
         helperResponsive = { helperBinder()?.pingBinder() == true },
         pairingValid = { identityProblem == null && PairingIdentity.peerInfo() != null && prefs.getBoolean("adb_pairing_complete", false) },
@@ -68,6 +70,27 @@ internal class PrivilegeSupervisor private constructor(private val context: Cont
         val result = if (identityProblem != null) {
             PrivilegeWatchdogController.Status(false, identityProblem)
         } else watchdog.refresh()
+        if (!result.present) {
+            accessibilityEnableAttempted = false
+        } else {
+            val consented = prefs.getBoolean(CONSENT, false)
+            val component = ShellPrivilegePolicy.accessibilityComponent
+            val enabledServices = runCatching {
+                Settings.Secure.getString(
+                    app.contentResolver,
+                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                ).orEmpty().split(':')
+            }.getOrDefault(emptyList())
+            val accessibilityEnabled = component in enabledServices
+            if (!accessibilityEnableAttempted && PostPairingCompletion.shouldAttemptEnable(
+                    helperPresent = result.present,
+                    consentGranted = consented,
+                    accessibilityEnabled = accessibilityEnabled,
+                )) {
+                accessibilityEnableAttempted = true
+                recoveryExecutor.execute { runCatching { enableAccessibilityService() } }
+            }
+        }
         record(source, result.present, result.reason)
         return result
     }
