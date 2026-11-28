@@ -369,9 +369,11 @@ internal class OmniVoiceCallOwnerImpl(
                 val callId = voiceSessionController.currentCallId()
                 val currentCall = callId != null && activeCallId == callId
                 if (currentCall) pendingOmniTranscripts[event.turnId] = event.text
-                val updated = if (currentCall) callId?.let { voiceSessionController.updateUserTranscriptForReply(
-                    it, event.turnId, event.text, expectedText = "",
-                ) == true } else false
+                val updated = if (currentCall && callId != null) {
+                    voiceSessionController.updateUserTranscriptForReply(
+                        callId, event.turnId, event.text, expectedText = "",
+                    )
+                } else false
                 diagnosticRecorder.recordOmniTurn(
                     "asr_transcript_update turn=${event.turnId} outcome=${when { updated -> "paired"; currentCall -> "pending_before_reply"; else -> "stale_call" }} chars=${event.text.length}"
                 )

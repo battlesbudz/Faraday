@@ -209,7 +209,7 @@ internal class OmniDuplexTurnBuffer(
     fun endpoint(nowMs: Long, smartTurnWantsMore: Boolean = false): Endpoint? {
         if (!active) return null
         if (capturedBytes >= maxTurnMs * sampleRateHz * 2 / 1000) {
-            return seal(Reason.AUDIO_CAP)
+            return seal(Reason.AUDIO_CAP, nowMs)
         }
         if (nowMs - lastSpeechAtMs < endpointSilenceMs) return null
         if (smartTurnWantsMore && !endpointExtended) {
@@ -217,7 +217,7 @@ internal class OmniDuplexTurnBuffer(
             lastSpeechAtMs = nowMs
             return null
         }
-        return seal(Reason.SILENCE)
+        return seal(Reason.SILENCE, nowMs)
     }
 
     fun reset() {
@@ -229,7 +229,7 @@ internal class OmniDuplexTurnBuffer(
         capturedBytes = 0L
     }
 
-    private fun seal(reason: Reason): Endpoint {
+    private fun seal(reason: Reason, nowMs: Long): Endpoint {
         val endpoint = Endpoint(turn.snapshot(), reason, nowMs)
         reset()
         return endpoint
