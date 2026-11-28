@@ -188,7 +188,7 @@ class OmniVoiceCallSessionTest {
         override suspend fun startCall() = Unit
         override suspend fun awaitTurn(): OmniCapturedTurn {
             val next = ++turn
-            return OmniCapturedTurn(floatArrayOf(0.0f), 1000L + next,
+            return OmniCapturedTurn(floatArrayOf(0.0f), 1000L + next - 1,
                 if (omitCapturedTranscript) null else suppliedText ?: "question $next")
         }
         override fun submitTranscription(turn: OmniCapturedTurn, onResult: (String?) -> Unit) {
