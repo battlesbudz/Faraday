@@ -77,7 +77,7 @@ class OmniPrerollGateTest {
 
     @Test fun boundedPcmHandoffBackpressuresWithoutNormalDrops() {
         runBlocking {
-            val sink = OmniPcmQueueSink()
+            val sink = OmniPcmQueueSink(clockMs = { 0L })
             val queue = Channel<FloatArray>(capacity = 1)
             sink.activeQueue = queue
             val first = async(Dispatchers.Default) { sink.offer(floatArrayOf(1f)) }

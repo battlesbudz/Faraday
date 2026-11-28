@@ -532,7 +532,9 @@ internal class OmniCallStack(
 }
 
 /** The speech stack's bounded lossless PCM handoff. A full queue applies producer backpressure. */
-internal class OmniPcmQueueSink : com.battlesbudz.jarvis.v2.ai.OmniPcmSink {
+internal class OmniPcmQueueSink(
+    private val clockMs: () -> Long = { SystemClock.elapsedRealtime() },
+) : com.battlesbudz.jarvis.v2.ai.OmniPcmSink {
     @Volatile var activeQueue: Channel<FloatArray>? = null
     /** PCM offered this turn (chunks, samples, peak amplitude), counted at handoff. */
     @Volatile var offeredChunks: Int = 0
@@ -560,7 +562,7 @@ internal class OmniPcmQueueSink : com.battlesbudz.jarvis.v2.ai.OmniPcmSink {
     }
     fun recordDroppedChunk() { droppedChunkCount.incrementAndGet() }
     override suspend fun offer(pcm24k: FloatArray): Boolean {
-        val now = SystemClock.elapsedRealtime()
+        val now = clockMs()
         if (firstChunkArrivalAtMs == null) firstChunkArrivalAtMs = now
         previousChunkAtMs?.let { maxChunkIntervalMs = maxOf(maxChunkIntervalMs, now - it) }
         previousChunkAtMs = now
