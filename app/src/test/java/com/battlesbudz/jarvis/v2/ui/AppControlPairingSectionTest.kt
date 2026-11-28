@@ -153,7 +153,20 @@ class AppControlPairingSectionTest {
         compose.onNodeWithTag("app_control_pairing_manual_toggle").performClick()
         compose.onNodeWithTag("app_control_pairing_code").performTextInput("123456")
         compose.onNodeWithTag("app_control_pairing_manual").performClick()
-        compose.waitUntil(5_000) { transport.calls.isNotEmpty() && controller.state.value.lastMessage?.startsWith("Paired.") == true }
+        // TEMP DIAGNOSTIC (wizard fix round): poll with a state dump, then
+        // probe the controller directly to separate a swallowed UI click
+        // from an attempt that ran and failed.
+        val diagDeadline = System.currentTimeMillis() + 5_000
+        while (!(transport.calls.isNotEmpty() && controller.state.value.lastMessage?.startsWith("Paired.") == true) &&
+            System.currentTimeMillis() < diagDeadline) Thread.sleep(50)
+        if (!(transport.calls.isNotEmpty() && controller.state.value.lastMessage?.startsWith("Paired.") == true)) {
+            val beforeProbe = "calls=${transport.calls} state=${controller.state.value}"
+            val probeResult = controller.submitManual("123456")
+            val probeDeadline = System.currentTimeMillis() + 5_000
+            while (!(transport.calls.isNotEmpty() && controller.state.value.lastMessage?.startsWith("Paired.") == true) &&
+                System.currentTimeMillis() < probeDeadline) Thread.sleep(50)
+            fail("DIAG ui-click path never paired. beforeProbe: $beforeProbe probeSubmitReturned=$probeResult afterProbe: calls=${transport.calls} state=${controller.state.value}")
+        }
         // The supervisor must now see the pairing (paired + consented,
         // helper not yet attached): its blocked reason is the consented-
         // recovery one. Poll the supervisor directly and keep its reason
